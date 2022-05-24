@@ -1,12 +1,11 @@
 import torch
 import torch.nn.functional as F
-import torchmetrics
-import pytorch_lightning as pl
 
 from .zwei.lib.modules import *
 from .drei.lib.modules import *
+from ..types import *
 
-from typing import List,Dict,Callable
+from typing import List
 
 def crop_to_size(X: torch.Tensor,output_size: list) -> torch.Tensor:
     """Crops a tensor to the size given by list. Assumes the first two 
@@ -32,11 +31,28 @@ def crop_to_size(X: torch.Tensor,output_size: list) -> torch.Tensor:
     return X
 
 class ActDropNorm(torch.nn.Module):
-    def __init__(self,in_channels=None,ordering='NDA',
+    def __init__(self,in_channels:int=None,ordering:str='NDA',
                  norm_fn: torch.nn.Module=torch.nn.BatchNorm2d,
                  act_fn: torch.nn.Module=torch.nn.PReLU,
                  dropout_fn:torch.nn.Module=torch.nn.Dropout,
                  dropout_param: float=0.):
+        """Convenience function to combine activation, dropout and 
+        normalisation. Similar to ADN in MONAI.
+
+        Args:
+            in_channels (int, optional): number of input channels. Defaults to
+            None.
+            ordering (str, optional): ordering of the N(ormalization), 
+            D(ropout) and A(ctivation) operations. Defaults to 'NDA'.
+            norm_fn (torch.nn.Module, optional): torch module used for 
+            normalization. Defaults to torch.nn.BatchNorm2d.
+            act_fn (torch.nn.Module, optional): activation function. Defaults 
+            to torch.nn.PReLU.
+            dropout_fn (torch.nn.Module, optional): Function used for dropout. 
+            Defaults to torch.nn.Dropout.
+            dropout_param (float, optional): parameter for dropout. Defaults 
+            to 0.
+        """
         super().__init__()
         self.ordering = ordering
         self.norm_fn = norm_fn
@@ -48,6 +64,8 @@ class ActDropNorm(torch.nn.Module):
         self.init_layers()
 
     def init_layers(self):
+        """Initiates the necessary layers.
+        """
         if self.act_fn is None:
             self.act_fn = torch.nn.Identity
         if self.norm_fn is None:
@@ -67,12 +85,38 @@ class ActDropNorm(torch.nn.Module):
         self.op = torch.nn.Sequential(*self.op_list)
 
     def forward(self,X:torch.Tensor)->torch.Tensor:
+        """Forward function.
+
+        Args:
+            X (torch.Tensor)
+
+        Returns:
+            torch.Tensor
+        """
         return self.op(X)
 
 class ConvolutionalBlock3d(torch.nn.Module):
-    def __init__(self,in_channels: list,out_channels: list,kernel_size: list,
-                 adn_fn:torch.nn.Module=ActDropNorm,adn_args:dict={},
-                 stride: int=1,padding: str="valid") -> torch.nn.Module:
+    def __init__(self,in_channels:List[int],out_channels:List[int],
+                 kernel_size:List[int],adn_fn:torch.nn.Module=ActDropNorm,
+                 adn_args:dict={},stride:int=1,
+                 padding:str="valid"):
+        """Assembles a set of blocks containing convolutions followed by 
+        ActDropNorm operations. Used to quickly build convolutional neural
+        networks.
+
+        Args:
+            in_channels (List[int]): list of input channels for convolutions.
+            out_channels (List[int]): list of output channels for convolutions.
+            kernel_size (List[int]): list of kernel sizes.
+            adn_fn (torch.nn.Module, optional): module applied after 
+            convolutions. Defaults to ActDropNorm.
+            adn_args (dict, optional): args for the module applied after 
+            convolutions. Defaults to {}.
+            stride (int, optional): stride for the convolutions. Defaults to 1.
+            padding (str, optional): padding for the convolutions. Defaults to
+            "valid".
+        """
+
         super().__init__()
         self.in_channels = in_channels
         self.out_channels = out_channels
@@ -102,10 +146,10 @@ class ConvolutionalBlock3d(torch.nn.Module):
         """Forward pass for this Module.
 
         Args:
-            X (torch.Tensor): 5D tensor.
+            X (torch.Tensor)
 
         Returns:
-            torch.Tensor: 5D tensor.
+            torch.Tensor
         """
         return self.op(X)
 
@@ -114,6 +158,24 @@ class GCN2d(torch.nn.Module):
                  out_channels:int,kernel_size:int,
                  adn_fn:torch.nn.Module=ActDropNorm,
                  adn_args:dict={}):
+        """Global convolution network module. First introduced in [1]. Useful
+        with very large kernel sizes to get information from very distant
+        pixels. In essence, a n*n convolution is decomposed into two separate
+        branches, where one is two convolutions (1*n->n*1) and the other is
+        two convolutions (n*1->1*n). After this, the result from both branches
+        is combined.
+
+        [1] https://arxiv.org/pdf/1703.02719.pdf
+
+        Args:
+            in_channels (int): number of input channels.
+            out_channels (int): number of output channels.
+            kernel_size (int): kernel size.
+            adn_fn (torch.nn.Module, optional): module applied after 
+            convolutions. Defaults to ActDropNorm.
+            adn_args (dict, optional): args for the module applied after 
+            convolutions. Defaults to {}.
+        """
         super().__init__()
         self.in_channels = in_channels
         self.out_channels = out_channels
@@ -124,6 +186,8 @@ class GCN2d(torch.nn.Module):
         self.init_layers()
 
     def init_layers(self):
+        """Initializes layers.
+        """
         self.op1 = torch.nn.Sequential(
             torch.nn.Conv2d(
                 self.in_channels,self.out_channels,
@@ -150,6 +214,19 @@ class Refine2d(torch.nn.Module):
     def __init__(self,in_channels:int,kernel_size:int,
                  adn_fn:torch.nn.Module=ActDropNorm,
                  adn_args:dict={}):
+        """Refinement module from the AHNet paper [1]. Essentially a residual
+        module.
+
+        [1] https://arxiv.org/pdf/1711.08580.pdf
+
+        Args:
+            in_channels (int): number of input channels.
+            kernel_size (int): number of output channels.
+            adn_fn (torch.nn.Module, optional): module applied after 
+            convolutions. Defaults to ActDropNorm.
+            adn_args (dict, optional): args for the module applied after 
+            convolutions. Defaults to {}.
+        """
         super().__init__()
         self.in_channels = in_channels
         self.kernel_size = kernel_size
@@ -159,6 +236,8 @@ class Refine2d(torch.nn.Module):
         self.init_layers()
 
     def init_layers(self):
+        """Initializes layers.
+        """
         self.op = torch.nn.Sequential(
             torch.nn.Conv2d(
                 self.in_channels,self.in_channels,
@@ -170,12 +249,34 @@ class Refine2d(torch.nn.Module):
             self.adn_fn(self.in_channels,**self.adn_args))
     
     def forward(self,X:torch.Tensor)->torch.Tensor:
+        """Forward pass for this Module.
+
+        Args:
+            X (torch.Tensor)
+
+        Returns:
+            torch.Tensor
+        """
         return X + self.op(X)
 
 class AHNetDecoderUnit3d(torch.nn.Module):
     def __init__(self,in_channels:int,
                  adn_fn:torch.nn.Module=ActDropNorm,
                  adn_args:dict={}):
+        """3D AHNet decoder unit from the AHNet paper [1]. Combines multiple, 
+        branching and consecutive convolutions. Each unit is composed of a 
+        residual-like operation followed by a concatenation with the original
+        input.
+
+        [1] https://arxiv.org/pdf/1711.08580.pdf
+
+        Args:
+            in_channels (int): number of input channels.
+            adn_fn (torch.nn.Module, optional): module applied after 
+            convolutions. Defaults to ActDropNorm.
+            adn_args (dict, optional): args for the module applied after 
+            convolutions. Defaults to {}.
+        """
         super().__init__()
         self.in_channels = in_channels
         self.adn_fn = adn_fn
@@ -203,6 +304,17 @@ class AHNetDecoder3d(torch.nn.Module):
     def __init__(self,in_channels:int,
                  adn_fn:torch.nn.Module=ActDropNorm,
                  adn_args:dict={"norm_fn":torch.nn.BatchNorm3d}):
+        """Three consecutive AHNetDecoderUnit3d. Can be modified to include
+        more but it is hard to know what concrete improvements this may lead
+        to.
+
+        Args:
+            in_channels (int): number of input channels.
+            adn_fn (torch.nn.Module, optional): module applied after 
+            convolutions. Defaults to ActDropNorm.
+            adn_args (dict, optional): args for the module applied after 
+            convolutions. Defaults to {"norm_fn":torch.nn.BatchNorm3d}.
+        """
         super().__init__()
         self.in_channels = in_channels
         self.adn_fn = adn_fn
@@ -211,6 +323,8 @@ class AHNetDecoder3d(torch.nn.Module):
         self.init_layers()
     
     def init_layers(self):
+        """Initializes layers.
+        """
         self.op = torch.nn.Sequential(
             AHNetDecoderUnit3d(
                 self.in_channels,self.adn_fn,self.adn_args),
@@ -223,12 +337,34 @@ class AHNetDecoder3d(torch.nn.Module):
             torch.nn.Conv3d(self.in_channels*2,self.in_channels,1))
 
     def forward(self,X:torch.Tensor)->torch.Tensor:
+        """Forward pass for this class.
+
+        Args:
+            X (torch.Tensor)
+
+        Returns:
+            torch.Tensor
+        """
         return self.op(X)
 
 class AnysotropicHybridResidual(torch.nn.Module):
     def __init__(self,spatial_dim:int,in_channels:int,kernel_size:int,
                  adn_fn:torch.nn.Module=ActDropNorm,
                  adn_args:dict={}):
+        """A 2D residual block that can be converted to a 3D residual block by
+        increasing the number of spatial dimensions in the filters. Here I also
+        transfer the parameters from `adn_fn`, particularly those belonging to
+        activation/batch normalization layers.
+
+        Args:
+            spatial_dim (int): number of spatial dimensions.
+            in_channels (int): number of input channels.
+            kernel_size (int): kernel size.
+            adn_fn (torch.nn.Module, optional): module applied after 
+            convolutions. Defaults to ActDropNorm.
+            adn_args (dict, optional): args for the module applied after 
+            convolutions. Defaults to {}.
+        """
         super().__init__()
         self.spatial_dim = spatial_dim
         self.in_channels = in_channels
@@ -242,10 +378,14 @@ class AnysotropicHybridResidual(torch.nn.Module):
             self.convert_to_3d()
 
     def init_layers(self):
+        """Initialize layers.
+        """
         self.op = self.get_op_2d()
         self.op_ds = self.get_downsample_op_2d()
 
     def get_op_2d(self):
+        """Creates the 2D operation.
+        """
         adn_args = self.adn_args.copy()
         adn_args["norm_fn"] = torch.nn.BatchNorm2d
         return torch.nn.Sequential(
@@ -261,6 +401,8 @@ class AnysotropicHybridResidual(torch.nn.Module):
             self.adn_fn(self.in_channels,**adn_args))
 
     def get_op_3d(self):
+        """Creates the 3D operation.
+        """
         adn_args = self.adn_args.copy()
         adn_args["norm_fn"] = torch.nn.BatchNorm3d
         K = [self.kernel_size for _ in range(3)]
@@ -277,20 +419,35 @@ class AnysotropicHybridResidual(torch.nn.Module):
                 self.adn_fn(self.in_channels,**adn_args))
         
     def get_downsample_op_2d(self):
+        """Creates the downsampling 2D operation.
+        """
         return torch.nn.Conv2d(self.in_channels,self.in_channels,2,stride=2)
 
     def get_downsample_op_3d(self):
+        """Creates the downsampling 3D operation.
+        """
         return torch.nn.Sequential(
             torch.nn.Conv3d(
                 self.in_channels,self.in_channels,[2,2,1],stride=[2,2,1]),
             torch.nn.MaxPool3d([1,1,2],stride=[1,1,2]))
     
     def forward(self,X:torch.Tensor)->torch.Tensor:
+        """Forward pass for this class.
+
+        Args:
+            X (torch.Tensor)
+
+        Returns:
+            torch.Tensor
+        """
         out = X + self.op(X)
         out = self.op_ds(out)
         return out
     
     def convert_to_3d(self)->None:
+        """Converts the layer from 2D to 3D, handling all of the necessary
+        weight transfers between layers.
+        """
         if self.spatial_dim == 3:
             pass
         else:
@@ -314,6 +471,9 @@ class AnysotropicHybridResidual(torch.nn.Module):
             self.spatial_dim = 3
 
     def convert_to_2d(self)->None:
+        """Converts the layer from 3D to 2D, handling all of the necessary
+        weight transfers between layers.
+        """
         if self.spatial_dim == 2:
             pass
         else:
@@ -338,6 +498,22 @@ class AnysotropicHybridInput(torch.nn.Module):
     def __init__(self,spatial_dim:int,in_channels:int,out_channels:int,
                  kernel_size:int,
                  adn_fn:torch.nn.Module=ActDropNorm,adn_args:dict={}):
+        """A 2D residual block that can be converted to a 3D residual block by
+        increasing the number of spatial dimensions in the filters. Used as the 
+        input layer for AHNet. Here I also transfer the parameters from 
+        `adn_fn`, particularly those belonging to activation/batch 
+        normalization layers. Unlike `AnysotropicHybridResidual`, this cannot 
+        be converted from 3D to 2D.
+
+        Args:
+            spatial_dim (int): number of spatial dimensions.
+            in_channels (int): number of input channels.
+            kernel_size (int): kernel size.
+            adn_fn (torch.nn.Module, optional): module applied after 
+            convolutions. Defaults to ActDropNorm.
+            adn_args (dict, optional): args for the module applied after 
+            convolutions. Defaults to {}.
+        """
         super().__init__()
         self.spatial_dim = spatial_dim
         self.in_channels = in_channels
@@ -352,6 +528,8 @@ class AnysotropicHybridInput(torch.nn.Module):
             self.convert_to_3d()
 
     def init_layers(self):
+        """Initializes layers.
+        """
         self.p = int(self.kernel_size//2)
         self.op = torch.nn.Sequential(
             torch.nn.Conv2d(
@@ -360,9 +538,20 @@ class AnysotropicHybridInput(torch.nn.Module):
             self.adn_fn(self.out_channels,**self.adn_args))
     
     def forward(self,X:torch.Tensor)->torch.Tensor:
+        """Forward pass for this class.
+
+        Args:
+            X (torch.Tensor)
+
+        Returns:
+            torch.Tensor
+        """
         return self.op(X)
     
     def convert_to_3d(self)->None:
+        """Converts the layer from 2D to 3D, handling all of the necessary
+        weight transfers between layers.
+        """
         if self.spatial_dim == 3:
             pass
         else:
@@ -386,6 +575,18 @@ class AnysotropicHybridInput(torch.nn.Module):
 
 class PyramidSpatialPooling3d(torch.nn.Module):
     def __init__(self,in_channels:int,levels:List[float]):
+        """Pyramidal spatial pooling layer. In this operation, the image is 
+        first downsample at different levels and convolutions are applied to 
+        the downsampled image, retrieving features at different resoltuions [1].
+        Quite similar to other, more recent developments encompassing atrous 
+        convolutions.
+
+        [1] https://arxiv.org/abs/1612.01105
+
+        Args:
+            in_channels (int): number of input channels.
+            levels (List[float]): number of downsampling levels.
+        """
         super().__init__()
         self.in_channels = in_channels
         self.levels = levels
@@ -401,7 +602,7 @@ class PyramidSpatialPooling3d(torch.nn.Module):
             self.pyramidal_ops.append(op)
     
     def forward(self,X):
-        b,c,h,w,d = X.shape
+        _,_,h,w,d = X.shape
         outs = [X]
         for op in self.pyramidal_ops:
             x = op(X)
@@ -413,6 +614,27 @@ class AHNet(torch.nn.Module):
     def __init__(self,in_channels:int,out_channels:int,spatial_dim=2,
                  n_classes:int=2,n_layers:int=5,
                  adn_fn:torch.nn.Module=ActDropNorm,adn_args:dict={}):
+        """Implementation of the AHNet (anysotropic hybrid network), which is 
+        capable of learning segmentation features in 2D and then learn how to
+        use in 3D images. More details in [1].
+
+        [1] https://arxiv.org/abs/1711.08580 
+
+        Args:
+            in_channels (int): number of input channels.
+            out_channels (int): number of output channels.
+            spatial_dim (int, optional): number of initial spatial dimensions.
+            Defaults to 2.
+            n_classes (int, optional): number of classes. Defaults to 2.
+            n_layers (int, optional): number of layers. In the 2D case this 
+            changes how many AH residual/GCN/Refine modules there are, in the
+            3D case this changes how many AH decoders are instantiated. 
+            Defaults to 5.
+            adn_fn (torch.nn.Module, optional): module applied after 
+            convolutions. Defaults to ActDropNorm.
+            adn_args (dict, optional): args for the module applied after 
+            convolutions. Defaults to {}.
+        """
         super().__init__()
         self.in_channels = in_channels
         self.out_channels = out_channels
@@ -429,12 +651,16 @@ class AHNet(torch.nn.Module):
         self.init_layers_3d()
 
     def convert_to_3d(self):
+        """Converts the relevant operations to 3D.
+        """
         self.res_layer_1.convert_to_3d()
         for op in self.res_layers:
             op.convert_to_3d()
         self.spatial_dim = 3
 
     def init_layers_2d(self):
+        """Initializes the 2D layers.
+        """
         O = self.out_channels
         self.res_layer_1 = AnysotropicHybridInput(
             2,self.in_channels,O,kernel_size=7,
@@ -469,6 +695,14 @@ class AHNet(torch.nn.Module):
                 torch.nn.Softmax(1))
 
     def forward_2d(self,X:torch.Tensor)->torch.Tensor:
+        """Forward pass for this class for 2D images.
+
+        Args:
+            X (torch.Tensor)
+
+        Returns:
+            torch.Tensor
+        """
         out_tensors = []
         out_tensors.append(
             self.res_layer_1(X))
@@ -490,6 +724,8 @@ class AHNet(torch.nn.Module):
         return prediction
 
     def init_layers_3d(self):
+        """Initializes the 3D layers.
+        """
         O = self.out_channels
         adn_args = self.adn_args.copy()
         adn_args["norm_fn"] = torch.nn.BatchNorm3d
@@ -520,6 +756,14 @@ class AHNet(torch.nn.Module):
                 torch.nn.Softmax(1))
 
     def forward_3d(self,X:torch.Tensor)->torch.Tensor:
+        """Forward pass for this class for 3D images.
+
+        Args:
+            X (torch.Tensor)
+
+        Returns:
+            torch.Tensor
+        """
         out_tensors = []
         out_tensors.append(
             self.res_layer_1(X))
@@ -541,6 +785,15 @@ class AHNet(torch.nn.Module):
         return prediction
 
     def forward(self,X:torch.Tensor)->torch.Tensor:
+        """Forward pass for this class. Uses `self.spatial_dim` to decide 
+        between 2D and 3D operations.
+        
+        Args:
+            X (torch.Tensor)
+
+        Returns:
+            torch.Tensor
+        """
         if self.spatial_dim == 2:
             return self.forward_2d(X)
         elif self.spatial_dim == 3:
@@ -645,6 +898,8 @@ class UNet(torch.nn.Module):
         self.loss_accumulator_d = 0.
 
     def get_norm_op(self):
+        """Retrieves the normalization operation using `self.norm_type`.
+        """
         if self.norm_type is None:
             self.norm_op = torch.nn.Identity
             
@@ -661,6 +916,8 @@ class UNet(torch.nn.Module):
                 self.norm_op = torch.nn.InstanceNorm3d
 
     def get_drop_op(self):
+        """Retrieves the dropout operations using `self.dropout_type`.
+        """
         if self.dropout_type is None:
             self.drop_op = torch.nn.Identity
             
@@ -670,6 +927,8 @@ class UNet(torch.nn.Module):
             self.drop_op = UOut
             
     def get_conv_op(self):
+        """Retrieves the convolutional operations using `self.conv_type`.
+        """
         if self.spatial_dimensions == 2:
             if self.conv_type == "regular":
                 self.conv_op = torch.nn.Conv2d
@@ -678,6 +937,8 @@ class UNet(torch.nn.Module):
                 self.conv_op = torch.nn.Conv3d
     
     def init_upscale_ops(self):
+        """Initializes upscaling operations.
+        """
         depths_a = self.depth[:0:-1]
         depths_b = self.depth[-2::-1]
         if self.upscale_type == "upsample":
@@ -709,6 +970,8 @@ class UNet(torch.nn.Module):
                 self.upscale_ops = torch.nn.ModuleList(self.upscale_ops)
     
     def init_link_ops(self):
+        """Initializes linking (skip) operations.
+        """
         if self.link_type == "identity":
             self.link_ops = [
                 torch.nn.Identity() for _ in self.depth[:-1]]
@@ -734,10 +997,22 @@ class UNet(torch.nn.Module):
                     ResidualBlock3d(d,3) for d in self.depth[-2::-1]]
                 self.link_ops = torch.nn.ModuleList(self.link_ops)
     
-    def interpolate_depths(self,a,b,n=3):
+    def interpolate_depths(self,a:int,b:int,n=3)->List[int]:
+        """Interpolates between two whole numbers. Not really used.
+
+        Args:
+            a (int): start integer
+            b (int): final integer
+            n (int, optional): number of points. Defaults to 3.
+
+        Returns:
+            (List[int]): list of `n` integers sampled between `a` and `b`.
+        """
         return list(np.linspace(a,b,n,dtype=np.int32))
 
     def init_encoder(self):
+        """Initializes the encoder operations.
+        """
         self.encoding_operations = torch.nn.ModuleList([])
         previous_d = self.n_channels
         for i in range(len(self.depth)-1):
@@ -763,6 +1038,8 @@ class UNet(torch.nn.Module):
             torch.nn.ModuleList([op,op_downsample]))
     
     def init_decoder(self):
+        """Initializes the decoder operations.
+        """
         self.decoding_operations = torch.nn.ModuleList([])
         depths = self.depth[-2::-1]
         kernel_sizes = self.kernel_sizes[-2::-1]
@@ -795,7 +1072,15 @@ class UNet(torch.nn.Module):
                 self.conv_op(o,1,1),
                 torch.nn.Sigmoid())
         
-    def forward(self,X):
+    def forward(self,X:torch.Tensor)->torch.Tensor:
+        """Forward pass for this class.
+
+        Args:
+            X (torch.Tensor)
+
+        Returns:
+            torch.Tensor
+        """
         encoding_out = []
         curr = X
         for op,op_ds in self.encoding_operations:

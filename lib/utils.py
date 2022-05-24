@@ -6,11 +6,8 @@ import torch.nn.functional as F
 import monai
 from glob import glob
 
-from typing import Dict,List,Union
+from typing import Dict,List,Union,Tuple
 from .modules.losses import *
-
-PathDict = Dict[str,Dict[str,str]]
-TensorOrNDarray = Union[np.ndarray,torch.Tensor]
 
 activation_factory = {
     "elu": torch.nn.ELU,
@@ -54,6 +51,18 @@ loss_factory = {
         "unified_focal":mc_unified_focal_loss}}
 
 def get_prostatex_path_dictionary(base_path:str)->PathDict:
+    """Builds a path dictionary (a dictionary where each key is a patient
+    ID and each value is a dictionary containing a modality-to-MRI scan path
+    mapping). Assumes that the folders "T2WAx", "DWI", "aggregated-labels-gland"
+    and "aggregated-labels-lesion" in `base_path`.
+
+    Args:
+        base_path (str): path containing the "T2WAx", "DWI", 
+        "aggregated-labels-gland" and "aggregated-labels-lesion" folders.
+
+    Returns:
+        PathDict: a path dictionary.
+    """
     paths = {
         "t2w":os.path.join(base_path,"T2WAx"),
         "dwi":os.path.join(base_path,"DWI"),
@@ -92,7 +101,24 @@ def get_prostatex_path_dictionary(base_path:str)->PathDict:
     
     return path_dictionary
 
-def get_size_spacing_dict(path_dictionary:PathDict,keys:List[str]):
+def get_size_spacing_dict(
+    path_dictionary:PathDict,
+    keys:List[str])->Tuple[SizeDict,SpacingDict]:
+    """Retrieves the scan sizes and pixel spacings from a path dictionary.
+
+    Args:
+        path_dictionary (PathDict): a path dictionary (see 
+        `get_prostatex_path_dictionary` for details).
+        keys (List[str]): modality keys that should be considered in the
+        path dictionary.
+
+    Returns:
+        size_dict (SizeDict): a dictionary with `keys` as keys and a list
+        of scan sizes (2 or 3 int) as values.
+        spacing_dict (SpacingDict): a dictionary with `keys` as keys and a 
+        of spacing sizes (2 or 3 floats) as values.
+    """
+    
     size_dict = {k:[] for k in keys}
     spacing_dict = {k:[] for k in keys}
     for pid in path_dictionary:
@@ -103,9 +129,25 @@ def get_size_spacing_dict(path_dictionary:PathDict,keys:List[str]):
                 spacing_dict[k].append(X.GetSpacing())
     return size_dict,spacing_dict
 
-def get_loss_param_dict(weights:torch.Tensor,
-                        gamma:Union[torch.Tensor,float],
-                        comb:Union[torch.Tensor,float]):
+def get_loss_param_dict(
+    weights:torch.Tensor,
+    gamma:FloatOrTensor,
+    comb:FloatOrTensor)->Dict[str,Dict[str,FloatOrTensor]]:
+    """Constructs a keyword dictionary that can be used with the losses in 
+    `losses.py`.
+
+    Args:
+        weights (torch.Tensor): weights for different classes (or for the 
+        positive class).
+        gamma (Union[torch.Tensor,float]): gamma for focal losses.
+        comb (Union[torch.Tensor,float]): relative combination coefficient for
+        combination losses.
+
+    Returns:
+        Dict[str,Dict[str,Union[float,torch.Tensor]]]: dictionary where each 
+        key refers to a loss function and each value is keyword dictionary for
+        different losses. 
+    """
     loss_param_dict = {
         "cross_entropy":{"weight":weights},
         "focal":{"alpha":weights,"gamma":gamma},
@@ -120,14 +162,38 @@ def get_loss_param_dict(weights:torch.Tensor,
     return loss_param_dict
 
 class ConvertToOneHot(monai.transforms.Transform):
-    def __init__(self,keys:str,out_key:str,priority_key:str,bg:bool=True):
+    def __init__(self,keys:str,out_key:str,
+                 priority_key:str,bg:bool=True)->monai.transforms.Transform:
+        """Convenience MONAI transform to convert a set of keys in a 
+        dictionary into a single one-hot format dictionary. Useful to coerce
+        several binary class problems into a single multi-class problem.
+
+        Args:
+            keys (str): keys that willbe used to construct the one-hot 
+            encoding.
+            out_key (str): key for the output.
+            priority_key (str): key for the element that takes priority when
+            more than one key is available for the same position.
+            bg (bool, optional): whether a level for the "background" class 
+            should be included. Defaults to True.
+
+        Returns:
+            monai.transforms.Transform
+        """
         super().__init__()
         self.keys = keys
         self.out_key = out_key
         self.priority_key = priority_key
         self.bg = bg
     
-    def __call__(self,X):
+    def __call__(self,X:TensorDict)->TensorDict:
+        """
+        Args:
+            X (TensorDict)
+
+        Returns:
+            TensorDict
+        """
         rel = {k:X[k] for k in self.keys}
         p = X[self.priority_key]
         dev = p.device
@@ -148,6 +214,9 @@ class ConvertToOneHot(monai.transforms.Transform):
         return X
 
 class PrintShaped(monai.transforms.Transform):
+    """Convenience MONAI transform that prints the shape of elements in a 
+    dictionary of tensors. Used for debugging.
+    """
     def __call__(self,X):
         for k in X:
             try: print(k,X[k].shape)
