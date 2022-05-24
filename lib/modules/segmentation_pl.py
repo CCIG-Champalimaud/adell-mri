@@ -65,6 +65,7 @@ class UNetPL(pl.LightningModule,UNet):
         x, y = batch[self.image_key],batch[self.label_key]
         prediction = self.forward(x)
         prediction = torch.squeeze(prediction,1)
+        y = torch.squeeze(y,1)
         batch_size = int(prediction.shape[0])
         if batch_size == 1:
             y = torch.unsqueeze(y,0)
@@ -73,8 +74,10 @@ class UNetPL(pl.LightningModule,UNet):
         loss = self.calculate_loss(prediction,y)
             
         self.log("train_loss", loss)
+        b_y = torch.round(y).int()
+        prediction = prediction
         for k in self.train_metrics:
-            self.train_metrics[k](prediction,y.int())
+            self.train_metrics[k](prediction,b_y)
             self.log(
                 k,self.train_metrics[k],on_epoch=True,
                 on_step=False,prog_bar=True)
@@ -85,6 +88,7 @@ class UNetPL(pl.LightningModule,UNet):
         y = torch.squeeze(y)
         prediction = self.forward(x)
         prediction = torch.squeeze(prediction,1)
+        y = torch.squeeze(y,1)
         batch_size = int(prediction.shape[0])
         if batch_size == 1:
             y = torch.unsqueeze(y,0)
@@ -94,8 +98,10 @@ class UNetPL(pl.LightningModule,UNet):
 
         self.loss_accumulator += loss
         self.loss_accumulator_d += 1.
+        b_y = torch.round(y).int()
+        prediction = prediction
         for k in self.val_metrics:
-            self.val_metrics[k].update(prediction,y.int())        
+            self.val_metrics[k].update(prediction,b_y)        
         return loss
     
     def train_dataloader(self) -> torch.utils.data.DataLoader:
@@ -128,26 +134,27 @@ class UNetPL(pl.LightningModule,UNet):
 
     def setup_metrics(self):
         if self.n_classes == 2:
-            C = None
+            C_1 = 2
+            C_2 = None
+            A = None
         else:
-            C = self.n_classes
-        C = self.n_classes
+            C_1 = self.n_classes
+            C_2 = self.n_classes
+            A = "samplewise"
         self.train_metrics = torch.nn.ModuleDict({
             "IoU":torchmetrics.JaccardIndex(
-                num_classes=C,mdmc_average="samplewise"),
+                num_classes=C_1,mdmc_average=A),
             "Rec":torchmetrics.Recall(
-                num_classes=C,mdmc_average="samplewise"),
+                num_classes=C_2,mdmc_average=A),
             "Prec":torchmetrics.Precision(
-                num_classes=C,mdmc_average="samplewise")
-        })
+                num_classes=C_2,mdmc_average=A)})
         self.val_metrics = torch.nn.ModuleDict({
             "Val IoU":torchmetrics.JaccardIndex(
-                num_classes=C,mdmc_average="samplewise"),
+                num_classes=C_1,mdmc_average=A),
             "Val Rec":torchmetrics.Recall(
-                num_classes=C,mdmc_average="samplewise"),
+                num_classes=C_2,mdmc_average=A),
             "Val Prec":torchmetrics.Precision(
-                num_classes=C,mdmc_average="samplewise")
-        })
+                num_classes=C_2,mdmc_average=A)})
 
 class AHNetPL(pl.LightningModule,):
     def __init__(
