@@ -155,9 +155,9 @@ if __name__ == "__main__":
             counts["positive"][1]/counts["total"]*100))
         weights = torch.Tensor(weights)
 
-        loss_params = get_loss_param_dict(
-            weights=weights,gamma=args.loss_gamma,
-            comb=args.loss_comb)[loss_key]
+    loss_params = get_loss_param_dict(
+        weights=weights,gamma=args.loss_gamma,
+        comb=args.loss_comb)[loss_key]
 
     print("Setting up dataloaders...")
     transforms = [
