@@ -1,0 +1,9 @@
+[submodule "lib/dataoperations"]
+	path = lib/dataoperations
+	url = git@bitbucket.org:josegcpa/dataoperations.git
+[submodule "lib/drei"]
+	path = lib/drei
+	url = git@bitbucket.org:josegcpa/drei.git
+[submodule "lib/zwei"]
+	path = lib/zwei
+	url = git@bitbucket.org:josegcpa/zwei.git
