@@ -10,10 +10,10 @@ padding: 1
 dropout_param: 0.1
 activation_fn: "prelu"
 n_channels: 1
-depth: [16,32,64]
-kernel_sizes: [3,3,3]
-strides: [2,2,2]
-learning_rate: 0.001
+depth: [16,32,64,128]
+kernel_sizes: [3,3,3,3]
+strides: [2,2,2,2]
+learning_rate: 0.0001
 batch_size: 4
 weight_decay: 0.005
 loss_fn: "unified_focal"
