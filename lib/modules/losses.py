@@ -5,7 +5,7 @@ Implementations of different loss functions for segmentation tasks.
 import torch
 from typing import Union
 
-EPS = 1e-8
+EPS = 1e-6
 FOCAL_DEFAULT = {"alpha":None,"gamma":1}
 TVERSKY_DEFAULT = {"alpha":1,"beta":1,"gamma":1}
 
@@ -71,7 +71,8 @@ def binary_focal_loss(pred:torch.Tensor,
     p = torch.flatten(p,start_dim=1)
     bce = -torch.log(p+EPS)
     
-    return torch.mean(alpha*((1-p+EPS)**gamma)*bce,dim=-1)
+    x = alpha*((1-p+EPS)**gamma)
+    return torch.mean(x*bce,dim=-1)
     
 def generalized_dice_loss(pred:torch.Tensor,
                           target:torch.Tensor,
@@ -136,7 +137,9 @@ def binary_focal_tversky_loss(pred:torch.Tensor,
     d_1 = alpha*torch.sum(p_fore*t_back,dim=1)
     d_2 = beta*torch.sum(p_back*t_fore,dim=1)
     d = n + d_1 + d_2 + 1
-    return 1-(n/d)**gamma
+    nd = n/d
+
+    return 1-(nd)**gamma
 
 def combo_loss(pred:torch.Tensor,
                target:torch.Tensor,
