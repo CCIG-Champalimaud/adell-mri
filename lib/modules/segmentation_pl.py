@@ -74,18 +74,18 @@ class UNetPL(pl.LightningModule,UNet):
         loss = self.calculate_loss(prediction,y)
             
         self.log("train_loss", loss)
-        b_y = torch.round(y).int()
         prediction = prediction
+        try: y = torch.round(y).int()
+        except: pass
         for k in self.train_metrics:
-            self.train_metrics[k](prediction,b_y)
+            self.train_metrics[k](prediction,y)
             self.log(
                 k,self.train_metrics[k],on_epoch=True,
                 on_step=False,prog_bar=True)
         return loss
     
     def validation_step(self,batch,batch_idx):
-        x, y = batch['image'],batch['label']
-        y = torch.squeeze(y)
+        x, y = batch[self.image_key],batch[self.label_key]
         prediction = self.forward(x)
         prediction = torch.squeeze(prediction,1)
         y = torch.squeeze(y,1)
@@ -98,17 +98,17 @@ class UNetPL(pl.LightningModule,UNet):
 
         self.loss_accumulator += loss
         self.loss_accumulator_d += 1.
-        b_y = torch.round(y).int()
-        prediction = prediction
+        try: y = torch.round(y).int()
+        except: pass
         for k in self.val_metrics:
-            self.val_metrics[k].update(prediction,b_y)        
+            self.val_metrics[k].update(prediction,y)        
         return loss
     
     def train_dataloader(self) -> torch.utils.data.DataLoader:
         return self.training_dataloader_call()
 
     def configure_optimizers(self):
-        optimizer = torch.optim.AdamW(
+        optimizer = torch.optim.Adam(
             self.parameters(),lr=self.learning_rate,
             weight_decay=self.weight_decay)
         lr_schedulers = torch.optim.lr_scheduler.ExponentialLR(
@@ -248,7 +248,7 @@ class AHNetPL(pl.LightningModule,):
         return self.training_dataloader_call()
 
     def configure_optimizers(self):
-        optimizer = torch.optim.AdamW(
+        optimizer = torch.optim.Adam(
             self.parameters(),lr=self.learning_rate,
             weight_decay=self.weight_decay)
         lr_schedulers = torch.optim.lr_scheduler.ExponentialLR(

@@ -8,6 +8,7 @@ from glob import glob
 
 from typing import Dict,List,Union,Tuple
 from .modules.losses import *
+from .types import *
 
 activation_factory = {
     "elu": torch.nn.ELU,
@@ -161,6 +162,29 @@ def get_loss_param_dict(
             "lam":comb}}
     return loss_param_dict
 
+def collate_last_slice(X):
+    def swap(x):
+        return x.swapaxes(-1,0).swapaxes(-1,1).swapaxes(2,3)
+    def swap_cat(x):
+        try:
+            return torch.cat([swap(y) for y in x])
+        except:
+            pass
+
+    example = X[0]
+    if isinstance(example,list):
+        output = []
+        for elements in zip(*X):
+            output.append(swap_cat(elements))
+    elif isinstance(example,dict):
+        keys = list(example.keys())
+        output = {}
+        for k in keys:
+            elements = [x[k] for x in X]
+            output[k] = swap_cat(elements)
+    
+    return output
+
 class ConvertToOneHot(monai.transforms.Transform):
     def __init__(self,keys:str,out_key:str,
                  priority_key:str,bg:bool=True)->monai.transforms.Transform:
@@ -209,7 +233,7 @@ class ConvertToOneHot(monai.transforms.Transform):
                 torch.ones_like(p).to(dev))
             out.insert(0,bg_tensor)
         out = torch.cat(out,0)
-        out = torch.argmax(out,0)
+        out = torch.argmax(out,0,keepdim=True)
         X[self.out_key] = out
         return X
 
@@ -221,4 +245,58 @@ class PrintShaped(monai.transforms.Transform):
         for k in X:
             try: print(k,X[k].shape)
             except: pass
+        return X
+
+class RandomSlices(monai.transforms.RandomizableTransform):
+    def __init__(self,keys:List[str],label_key:List[str],
+                 n:int=1,base:float=0.001):
+        """Randomly samples slices from a volume (assumes the slice dimension
+        is the last dimension). A segmentation map (corresponding to 
+        `label_key`) is used to calculate the number of positive elements
+        for each slice and these are used as sampling weights for the slice
+        extraction.
+
+        Args:
+            keys (List[str]): keys for which slices will be retrieved.
+            label_key (List[str]): segmentation map that will be used to 
+            calculate sampling weights.
+            n (int, optional): number of slices to be sampled. Defaults to 1.
+            base (float, optional): minimum probability (ensures that slices 
+            with no positive cases are also sampled). Defaults to 0.01.
+        """
+        self.keys = keys
+        self.label_key = label_key
+        self.n = n
+        self.base = base
+    
+    def __call__(self,X):
+        X_label = X[self.label_key]
+        if isinstance(X_label,torch.Tensor) == False:
+            X_label = torch.Tensor(X_label)
+        M = X_label.max()
+        if M > 1:
+            X_label = F.one_hot(X_label,M+1)
+            X_label = torch.squeeze(X_label.swapaxes(-1,0))
+            X_label = X_label[1:] # remove background dim
+        c = torch.flatten(X_label,start_dim=1,end_dim=-2)
+        c_sum = c.sum(1)
+        total_class = torch.unsqueeze(c_sum.sum(1),-1)
+        c_prop = c_sum/total_class + self.base
+        slice_weight = c_prop.mean(0)
+        slice_idxs = torch.multinomial(slice_weight,self.n)
+        return {k:np.take(X[k],slice_idxs,-1)
+                for k in self.keys}
+
+class SlicesToFirst(monai.transforms.RandomizableTransform):
+    def __init__(self,keys:List[str]):
+        """Returns the slices as the first spatial dimension.
+
+        Args:
+            keys (List[str]): keys for which slices will be retrieved.
+        """
+        self.keys = keys
+    
+    def __call__(self,X):
+        for k in self.keys:
+            X[k] = torch.unsqueeze(X[k],1).swapaxes(1,-1).squeeze(-1)
         return X
