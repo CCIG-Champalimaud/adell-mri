@@ -1,95 +1,70 @@
 base_path=/home/jose_almeida/data/PROSTATEx/ProstateX_resized/
+M=200
+F=5
+GAMMA=0.5
+
+spatial_dim=$1
+
+mkdir -p models
+mkdir -p summaries
+mkdir -p metrics
+mkdir -p models/u-net-$spatial_dim
+mkdir -p summaries/u-net-$spatial_dim
+mkdir -p metrics/u-net-$spatial_dim
 
 for mod in DWI T2WAx
 do
     for C in gland lesion gland_lesion
     do
-        b="$mod.$C.2d"
+        # lower resolution of T2WAx in 3d, at least for now
+        if [ $mod = "T2WAx" ] && [ $spatial_dim = "3d" ]
+        then
+            rate=0.5
+        else 
+            rate=1.0
+        fi
+        
+        b="$mod.$C.$spatial_dim"
         python3 train-u-net-prostate-x.py \
             --base_path $base_path \
-            --classes $(echo gland_lesion | tr '_' ' ')\
-            --config_file u-net-2d.yaml \
-            --early_stopping 50 \
+            --classes $(echo $C | tr '_' ' ')\
+            --config_file config/u-net-$spatial_dim.yaml \
+            --early_stopping 10 \
             --mod $mod \
             --seed 42 \
             --n_workers 8 \
-            --loss_gamma 1.0 \
+            --loss_gamma $GAMMA \
             --loss_comb 0.5 \
-            --max_epochs 250 \
-            --n_folds 5 \
-            --checkpoint_dir models \
+            --max_epochs $M \
+            --n_folds $F \
+            --checkpoint_dir models/u-net-$spatial_dim \
             --checkpoint_name $b \
-            --summary_dir summaries \
+            --summary_dir summaries/u-net-$spatial_dim \
             --summary_name $b \
-            --metric_path metrics/$b.csv \
-            --early_stopping 50
+            --metric_path metrics/u-net-$spatial_dim/$b.csv \
+            --dev cuda \
+            --downsample_rate $rate
 
-        b="$mod.$C.2d.augment"
+        b="$mod.$C.$spatial_dim.augment"
         python3 train-u-net-prostate-x.py \
             --base_path $base_path \
-            --classes $(echo gland_lesion | tr '_' ' ')\
-            --config_file u-net-2d.yaml \
-            --early_stopping 50 \
+            --classes $(echo $C | tr '_' ' ')\
+            --config_file config/u-net-$spatial_dim.yaml \
+            --early_stopping 10 \
             --mod $mod \
             --seed 42 \
             --n_workers 8 \
-            --loss_gamma 1.0 \
+            --loss_gamma $GAMMA \
             --loss_comb 0.5 \
-            --max_epochs 250 \
-            --n_folds 5 \
-            --checkpoint_dir models \
+            --max_epochs $M \
+            --n_folds $F \
+            --checkpoint_dir models/u-net-$spatial_dim \
             --checkpoint_name $b \
-            --summary_dir summaries \
+            --summary_dir summaries/u-net-$spatial_dim \
             --summary_name $b \
-            --metric_path metrics/$b.csv \
-            --early_stopping 50 \
-            --augment
-    done
-done
-
-for mod in DWI T2WAx
-do
-    for C in gland lesion gland_lesion
-    do
-        b="$mod.$C.2d"
-        python3 train-u-net-prostate-x.py \
-            --base_path $base_path \
-            --classes $(echo gland_lesion | tr '_' ' ')\
-            --config_file u-net-3d.yaml \
-            --early_stopping 50 \
-            --mod $mod \
-            --seed 42 \
-            --n_workers 8 \
-            --loss_gamma 1.0 \
-            --loss_comb 0.5 \
-            --max_epochs 250 \
-            --n_folds 5 \
-            --checkpoint_dir models \
-            --checkpoint_name $b \
-            --summary_dir summaries \
-            --summary_name $b \
-            --metric_path metrics/$b.csv \
-            --early_stopping 50
-
-        b="$mod.$C.2d.augment"
-        python3 train-u-net-prostate-x.py \
-            --base_path $base_path \
-            --classes $(echo gland_lesion | tr '_' ' ')\
-            --config_file u-net-3d.yaml \
-            --early_stopping 50 \
-            --mod $mod \
-            --seed 42 \
-            --n_workers 8 \
-            --loss_gamma 1.0 \
-            --loss_comb 0.5 \
-            --max_epochs 250 \
-            --n_folds 5 \
-            --checkpoint_dir models \
-            --checkpoint_name $b \
-            --summary_dir summaries \
-            --summary_name $b \
-            --metric_path metrics/$b.csv \
-            --early_stopping 50 \
+            --metric_path metrics/u-net-$spatial_dim/$b.csv \
+            --dev cuda \
+            --downsample_rate $rate \
             --augment
     done
 done

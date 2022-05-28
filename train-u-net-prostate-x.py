@@ -5,11 +5,12 @@ import numpy as np
 import nibabel as nib
 import torch
 import monai
-from sklearn.model_selection import KFold
-from torchmetrics import JaccardIndex,Precision
+from sklearn.model_selection import KFold,train_test_split
+from torchmetrics import JaccardIndex,Precision,FBetaScore
+from tqdm import tqdm
 
 from pytorch_lightning import Trainer
-from pytorch_lightning.callbacks import EarlyStopping
+from pytorch_lightning.callbacks import EarlyStopping,StochasticWeightAveraging
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.callbacks.model_checkpoint import ModelCheckpoint
 
@@ -25,7 +26,6 @@ from lib.utils import (
     SlicesToFirst,
     PrintShaped)
 from lib.modules.segmentation_pl import UNetPL
-from lib.dataoperations.lib.data_functions import MONAIDataset
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -59,6 +59,9 @@ if __name__ == "__main__":
         '--augment',dest='augment',action="store_true",
         help="Use data augmentations",default=False)
     parser.add_argument(
+        '--downsample_rate',dest='downsample_rate',type=float,
+        default=1.0,help="Resizes images with downsample rate")
+    parser.add_argument(
         '--loss_gamma',dest="loss_gamma",
         help="Gamma for focal loss",default=2.0,type=float)
     parser.add_argument(
@@ -88,7 +91,10 @@ if __name__ == "__main__":
     parser.add_argument(
         '--early_stopping',dest='early_stopping',type=int,default=None,
         help="No. of checks before early stop (defaults to no early stop).")
-        
+    parser.add_argument(
+        '--swa',dest='swa',action="store_true",
+        help="Use stochastic gradient averaging.",default=False)
+
     args = parser.parse_args()
 
     torch.manual_seed(args.seed)
@@ -119,8 +125,11 @@ if __name__ == "__main__":
     size_dict,spacing_dict = get_size_spacing_dict(path_dictionary,[args.mod])
 
     for k in size_dict:
-        size_dict[k] = np.int32(
-            np.median(np.array(size_dict[k]),axis=0))
+        mm = np.median(np.array(size_dict[k]),axis=0)
+        # downsample only non-depth dimensions
+        mm[0] = mm[0]*args.downsample_rate
+        mm[1] = mm[1]*args.downsample_rate
+        size_dict[k] = np.int32(np.round(mm))
         spacing_dict[k] = np.median(np.array(spacing_dict[k]),axis=0)
 
     with open(args.config_file,'r') as o:
@@ -129,7 +138,7 @@ if __name__ == "__main__":
     if "activation_fn" in network_config:
         network_config["activation_fn"] = activation_factory[
             network_config["activation_fn"]]
-    
+
     if "loss_fn" in network_config:
         loss_key = network_config["loss_fn"]
         k = "binary" if n_classes == 2 else "categorical"
@@ -146,35 +155,52 @@ if __name__ == "__main__":
     if args.augment == True:
         augments = [
             monai.transforms.RandBiasFieldd([args.mod]),
+            monai.transforms.RandGaussianNoised([args.mod]),
             monai.transforms.RandGibbsNoised([args.mod]),
-            monai.transforms.RandAdjustContrastd([args.mod]),
-            monai.transforms.RandStdShiftIntensityd([args.mod])]
+            monai.transforms.RandAdjustContrastd([args.mod])]
     else:
         augments = []
 
-    intp = ["bilinear","nearest","nearest"]*len(args.classes)
+    intp = ["area","nearest","nearest"][:n_classes]
     transforms_train = [
         monai.transforms.LoadImaged(all_keys),
         monai.transforms.AddChanneld(all_keys),
         monai.transforms.Orientationd(all_keys,"RAS"),
         monai.transforms.EnsureTyped(all_keys),
-        # just in case some minor mismatches exist
-        monai.transforms.Resized(all_keys,size_dict[args.mod]),
+        # in case images should be downsampled
+        monai.transforms.Resized(
+            all_keys,tuple(size_dict[args.mod]),mode=intp),
         *augments,
-        monai.transforms.ScaleIntensityd([args.mod],0,1)]
+        monai.transforms.ScaleIntensityd([args.mod],0,1),
+        monai.transforms.EnsureTyped(all_keys)]
+
+    transforms_train_val = [
+        monai.transforms.LoadImaged(all_keys),
+        monai.transforms.AddChanneld(all_keys),
+        monai.transforms.Orientationd(all_keys,"RAS"),
+        monai.transforms.EnsureTyped(all_keys),
+        # in case images should be downsampled
+        monai.transforms.Resized(
+            all_keys,tuple(size_dict[args.mod]),mode=intp),
+        monai.transforms.ScaleIntensityd([args.mod],0,1),
+        monai.transforms.EnsureTyped(all_keys)]
 
     transforms_val = [
         monai.transforms.LoadImaged(all_keys),
         monai.transforms.AddChanneld(all_keys),
         monai.transforms.Orientationd(all_keys,"RAS"),
         monai.transforms.EnsureTyped(all_keys),
-        monai.transforms.Resized(all_keys,size_dict[args.mod]),
-        monai.transforms.ScaleIntensityd([args.mod],0,1)]
+        monai.transforms.Resized(
+            all_keys,tuple(size_dict[args.mod]),mode=intp),
+        monai.transforms.ScaleIntensityd([args.mod],0,1),
+        monai.transforms.EnsureTyped(all_keys)]
 
     if n_classes > 2:
         lesion_key = "{}_{}_segmentations".format(args.mod,"lesion")
         label_key = "label"
         transforms_train.append(
+            ConvertToOneHot(label_keys,label_key,lesion_key,bg=True))
+        transforms_train_val.append(
             ConvertToOneHot(label_keys,label_key,lesion_key,bg=True))
         transforms_val.append(
             ConvertToOneHot(label_keys,label_key,lesion_key,bg=True))
@@ -183,17 +209,22 @@ if __name__ == "__main__":
 
     if network_config["spatial_dimensions"] == 2:
         transforms_train.append(
-            RandomSlices(all_keys,label_key,1,base=0.01))
+            RandomSlices([args.mod,label_key],label_key,4,base=0.01))
+        transforms_train_val.append(
+            RandomSlices([args.mod,label_key],label_key,4,base=0.01))
         transforms_val.append(
-            SlicesToFirst(all_keys))
-
+            SlicesToFirst([args.mod,label_key]))
         collate_fn = collate_last_slice
     else:
         collate_fn = None
 
     all_pids = [k for k in path_dictionary]
-    fold_generator = KFold(
-        args.n_folds,shuffle=True,random_state=args.seed).split(all_pids)
+    if args.n_folds > 1:
+        fold_generator = KFold(
+            args.n_folds,shuffle=True,random_state=args.seed).split(all_pids)
+    else:
+        fold_generator = iter(
+            [train_test_split(range(len(all_pids)),test_size=0.2)])
 
     for val_fold in range(args.n_folds):
         train_idxs,val_idxs = next(fold_generator)
@@ -205,7 +236,7 @@ if __name__ == "__main__":
         train_dataset = monai.data.CacheDataset(
             path_list_train,monai.transforms.Compose(transforms_train))
         train_dataset_val = monai.data.CacheDataset(
-            path_list_train,monai.transforms.Compose(transforms_val))
+            path_list_train,monai.transforms.Compose(transforms_train_val))
         validation_dataset = monai.data.CacheDataset(
             path_list_val,monai.transforms.Compose(transforms_val))
 
@@ -224,44 +255,53 @@ if __name__ == "__main__":
             print("Class proportions: {:.3f}% ({})".format(
                 positive/total*100,args.classes[0]))
             weights = total/(2*positive)
-            weights = torch.Tensor([weights])
+            weights = torch.as_tensor([weights])
 
         else:
             counts = {"positive":[0 for _ in args.classes],
                     "total":0}
             N = 0
             for element in path_list_train:
-                for i,label_key in enumerate(label_keys):
-                    if label_key in element:
+                for i,kk in enumerate(label_keys):
+                    if kk in element:
                         N += 1
-                        path = element[label_key]
+                        path = element[kk]
                         x = nib.load(path).get_fdata()
                         counts["positive"][i] += x.sum()
                         size = x.size
                 counts["total"] += size
-                    
-            weights =  [
+
+            weights =  np.array([
                 counts["total"]/(3*(counts["total"]-np.sum(counts["positive"]))),
                 counts["total"]/(3*counts['positive'][0]),
-                counts["total"]/(3*counts['positive'][1])]
+                counts["total"]/(3*counts['positive'][1])])
             print("Class proportions: {:.3f}% (gland), {:.3f}% (lesion)".format(
                 counts["positive"][0]/counts["total"]*100,
                 counts["positive"][1]/counts["total"]*100))
-            weights = torch.Tensor(weights)
+            weights = torch.as_tensor(weights)
+            weights = weights/torch.sum(weights)
         
         weights = weights.to(args.dev)
-        weights = weights/torch.sum(weights)
-
+        
         loss_params = get_loss_param_dict(
             weights=weights,gamma=args.loss_gamma,
             comb=args.loss_comb)[loss_key]
 
-        train_loader_call = lambda: torch.utils.data.DataLoader(
+        train_loader_call = lambda: monai.data.ThreadDataLoader(
             train_dataset,batch_size=network_config["batch_size"],
             shuffle=True,num_workers=args.n_workers,generator=g,
-            collate_fn=collate_fn)
+            collate_fn=collate_fn,pin_memory=True,
+            persistent_workers=True)
+
         train_loader = train_loader_call()
-        train_val_loader = train_loader_call()
+        train_val_loader = monai.data.ThreadDataLoader(
+            train_dataset_val,batch_size=network_config["batch_size"],
+            shuffle=False,num_workers=args.n_workers,generator=g,
+            collate_fn=collate_fn,persistent_workers=True)
+        validation_loader = monai.data.ThreadDataLoader(
+            validation_dataset,batch_size=1,
+            shuffle=False,num_workers=args.n_workers,generator=g,
+            collate_fn=collate_fn,persistent_workers=True)
 
         print("Setting up training...")
         unet = UNetPL(training_dataloader_call=train_loader_call,
@@ -276,11 +316,19 @@ if __name__ == "__main__":
                 'val_loss',patience=args.early_stopping,
                 strict=True,mode="min")
             callbacks.append(early_stopping)
+        if args.swa == True:
+            swa_callback = StochasticWeightAveraging()
+            callbacks.append(swa_callback)
 
+        ckpt_name = args.checkpoint_name + "_fold" + str(val_fold)
+        ckpt_name = ckpt_name + "_{epoch:03d}"
+        ckpt_name = ckpt_name + "_{val_loss:.3f}"
         ckpt_callback = ModelCheckpoint(
             dirpath=args.checkpoint_dir,
-            filename="{}_fold{}".format(args.checkpoint_name,val_fold),
-            monitor="val_loss",save_last=True,save_top_k=2,mode="min")
+            filename=ckpt_name,monitor="val_loss",
+            save_last=True,save_top_k=2,mode="min")
+        ckpt_callback.CHECKPOINT_NAME_LAST = \
+            args.checkpoint_name + "_fold" + str(val_fold) + "_last"
         callbacks.append(ckpt_callback)
         logger = TensorBoardLogger(
                 save_dir=args.summary_dir, 
@@ -290,61 +338,58 @@ if __name__ == "__main__":
             accelerator="gpu" if args.dev=="cuda" else "cpu",devices=1,
             logger=logger,callbacks=callbacks,
             auto_lr_find=True,max_epochs=args.max_epochs,
-            check_val_every_n_epoch=1,detect_anomaly=True)
+            check_val_every_n_epoch=1,log_every_n_steps=50)
+
         trainer.fit(unet, train_loader, train_val_loader)
 
         # assessing performance on validation set
+        unet = unet.to(args.dev)
         unet.eval()
         if n_classes > 2:
-            jaccard_validation = JaccardIndex(
-                num_classes=n_classes,reduction="none")
-            precision_validation = Precision(
-                num_classes=n_classes,mdmc_average="samplewise",
-                average="none")
+            metrics = {
+                "iou":JaccardIndex(n_classes,reduction="none"),
+                "prec":Precision(
+                    n_classes,mdmc_average="samplewise",average="none"),
+                "f1-score":FBetaScore(
+                    n_classes,mdmc_average="samplewise",average="none")}
         else:
-            jaccard_validation = JaccardIndex(
-                num_classes=n_classes)
-            precision_validation = Precision(
-                num_classes=None)
+            metrics = {
+                "iou":JaccardIndex(n_classes),
+                "prec":Precision(None),
+                "f1-score":FBetaScore(None,average="micro")}
+            jaccard_validation = JaccardIndex(n_classes)
+            precision_validation = Precision(None)
+        
+        metrics = {k:metrics[k].to(args.dev) for k in metrics}
 
-        validation_loader = torch.utils.data.DataLoader(
-            validation_dataset,batch_size=1,
-            shuffle=False,num_workers=args.n_workers,generator=g,
-            collate_fn=collate_fn)
-
-        for s in validation_loader:
-            pred = unet(s[args.mod])
-            y = torch.squeeze(s[label_key],1)
+        print("Validating...")
+        for s in tqdm(validation_loader):
+            pred = unet(s[args.mod].to(args.dev))
+            y = torch.squeeze(s[label_key],1).to(args.dev)
             try: y = torch.round(y).int()
             except: pass
 
-            jaccard_validation.update(pred,y)
-            precision_validation.update(pred,y)
+            for k in metrics:
+                metrics[k].update(pred,y)
+
+        for k in metrics:
+            metrics[k] = metrics[k].compute().to("cpu")
         
-        iou = jaccard_validation.compute()
-        prec = precision_validation.compute()
         if n_classes > 2:
             # multi class scenario
-            for i,v in enumerate(iou):
-                S = "{},{},{},{}".format(
-                    "iou",val_fold,i,float(v.numpy()))
-                print(S)
-                output_file.write(S+'\n')
-            for i,v in enumerate(prec):
-                S = "{},{},{},{}".format(
-                    "prec",val_fold,i,float(v.numpy()))
-                print(S)
-                output_file.write(S+'\n')
+            for k in metrics:
+                for i,v in enumerate(metrics[k]):
+                    S = "{},{},{},{}".format(
+                        k,val_fold,i,float(v.numpy()))
+                    print(S)
+                    output_file.write(S+'\n')
                 
         else:
-            S = "{},{},{},{}".format(
-                "iou",val_fold,0,float(iou.numpy()))
-            print(S)
-            output_file.write(S+'\n')
-            S = "{},{},{},{}".format(
-                "prec",val_fold,0,float(prec.numpy()))
-            print(S)
-            output_file.write(S+'\n')
+            for k in metrics:
+                S = "{},{},{},{}".format(
+                    k,val_fold,0,float(metrics[k].numpy()))
+                print(S)
+                output_file.write(S+'\n')
         
         output_file.write("{},{},{},{}\n".format(
             "train_ids",val_fold,0,":".join(train_pids)))

@@ -6,7 +6,7 @@ import torch.nn.functional as F
 import monai
 from glob import glob
 
-from typing import Dict,List,Union,Tuple
+from typing import Dict,List,Tuple
 from .modules.losses import *
 from .types import *
 
@@ -164,12 +164,12 @@ def get_loss_param_dict(
 
 def collate_last_slice(X):
     def swap(x):
-        return x.swapaxes(-1,0).swapaxes(-1,1).swapaxes(2,3)
+        return x.unsqueeze(1).swapaxes(1,-1).squeeze(-1)
     def swap_cat(x):
         try:
-            return torch.cat([swap(y) for y in x])
-        except:
-            pass
+            o = torch.cat([swap(y) for y in x])
+            return o
+        except: pass
 
     example = X[0]
     if isinstance(example,list):
@@ -182,7 +182,6 @@ def collate_last_slice(X):
         for k in keys:
             elements = [x[k] for x in X]
             output[k] = swap_cat(elements)
-    
     return output
 
 class ConvertToOneHot(monai.transforms.Transform):
@@ -221,7 +220,7 @@ class ConvertToOneHot(monai.transforms.Transform):
         rel = {k:X[k] for k in self.keys}
         p = X[self.priority_key]
         dev = p.device
-        p_inv = torch.ones_like(p).to(dev) - p
+        p_inv = torch.ones_like(p,device=dev) - p
         for k in self.keys:
             if k != self.priority_key:
                 rel[k] = rel[k] * p_inv
@@ -229,8 +228,8 @@ class ConvertToOneHot(monai.transforms.Transform):
         if self.bg == True:
             bg_tensor = torch.where(
                 torch.cat(out,0).sum(0)>0,
-                torch.zeros_like(p).to(dev),
-                torch.ones_like(p).to(dev))
+                torch.zeros_like(p,device=dev),
+                torch.ones_like(p,device=dev))
             out.insert(0,bg_tensor)
         out = torch.cat(out,0)
         out = torch.argmax(out,0,keepdim=True)
@@ -268,14 +267,25 @@ class RandomSlices(monai.transforms.RandomizableTransform):
         self.label_key = label_key
         self.n = n
         self.base = base
+        self.is_multiclass = None
+        self.M = 0
     
     def __call__(self,X):
         X_label = X[self.label_key]
         if isinstance(X_label,torch.Tensor) == False:
-            X_label = torch.Tensor(X_label)
-        M = X_label.max()
-        if M > 1:
-            X_label = F.one_hot(X_label,M+1)
+            X_label = torch.as_tensor(X_label)
+        if self.is_multiclass is None:
+            M = X_label.max()
+            if M > 1:
+                X_label = F.one_hot(X_label,M+1)
+                X_label = torch.squeeze(X_label.swapaxes(-1,0))
+                X_label = X_label[1:] # remove background dim
+                self.is_multiclass = True
+                self.M = M
+            else:
+                self.is_multiclass = False
+        elif self.is_multiclass == True:
+            X_label = F.one_hot(X_label,self.M+1)
             X_label = torch.squeeze(X_label.swapaxes(-1,0))
             X_label = X_label[1:] # remove background dim
         c = torch.flatten(X_label,start_dim=1,end_dim=-2)
@@ -284,10 +294,11 @@ class RandomSlices(monai.transforms.RandomizableTransform):
         c_prop = c_sum/total_class + self.base
         slice_weight = c_prop.mean(0)
         slice_idxs = torch.multinomial(slice_weight,self.n)
-        return {k:np.take(X[k],slice_idxs,-1)
-                for k in self.keys}
+        for k in self.keys:
+            X[k] = np.take(X[k],slice_idxs,-1).swapaxes(0,-1)
+        return X
 
-class SlicesToFirst(monai.transforms.RandomizableTransform):
+class SlicesToFirst(monai.transforms.Transform):
     def __init__(self,keys:List[str]):
         """Returns the slices as the first spatial dimension.
 
@@ -298,5 +309,16 @@ class SlicesToFirst(monai.transforms.RandomizableTransform):
     
     def __call__(self,X):
         for k in self.keys:
-            X[k] = torch.unsqueeze(X[k],1).swapaxes(1,-1).squeeze(-1)
+            X[k] = torch.unsqueeze(X[k],0).swapaxes(0,-1).squeeze(1)
+        return X
+
+class Index(monai.transforms.Transform):
+    def __init__(self,keys:List[str],idxs:List[int],axis:int):
+        self.keys = keys
+        self.idxs = idxs
+        self.axis = axis
+    
+    def __call__(self,X):
+        for k in self.keys:
+            X[k] = np.take(X[k],self.idxs,self.axis)
         return X
