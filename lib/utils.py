@@ -320,5 +320,6 @@ class Index(monai.transforms.Transform):
     
     def __call__(self,X):
         for k in self.keys:
-            X[k] = np.take(X[k],self.idxs,self.axis)
+            if self.idxs is not None:
+                X[k] = np.take(X[k],self.idxs,self.axis)
         return X
