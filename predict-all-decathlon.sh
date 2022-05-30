@@ -1,4 +1,5 @@
 base_path=/home/jose_almeida/data/PROSTATEx/ProstateX_resized/
+decathlon_path=/home/jose_almeida/data/Task05_Prostate/
 DEV=cpu
 
 spatial_dim=$1
@@ -32,7 +33,7 @@ do
             head -1 | 
             cut -d ',' -f 2)
         python3 predict-u-net.py \
-            --input_path $(ls /home/jose_almeida/data/Task05_Prostate/images*/*nii.gz | xargs) \
+            --input_path $(ls $decathlon_path/images*/*nii.gz | xargs) \
             --index $index \
             --mod $mod \
             --prostate_x_path $base_path \
@@ -51,7 +52,7 @@ do
             head -1 | 
             cut -d ',' -f 2)
         python3 predict-u-net.py \
-            --input_path $(ls /home/jose_almeida/data/Task05_Prostate/images*/*nii.gz | xargs) \
+            --input_path $(ls $decathlon_path/images*/*nii.gz | xargs) \
             --index $index \
             --mod $mod \
             --prostate_x_path $base_path \
