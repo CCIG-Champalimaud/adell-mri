@@ -95,6 +95,8 @@ if __name__ == "__main__":
         monai.transforms.AddChanneld(["image"]),
         monai.transforms.Orientationd(["image"],"RAS"),
         monai.transforms.EnsureTyped(["image"]),
+        monai.transforms.Spacingd(
+            ["image"],tuple(spacing_dict[args.mod]),mode="bilinear"),
         monai.transforms.Resized(
             ["image"],tuple(size_dict[args.mod]),mode=intp),
         monai.transforms.ScaleIntensityd(["image"],0,1),
@@ -137,5 +139,5 @@ if __name__ == "__main__":
             pred = pred.squeeze(0)
         image = pred.detach().numpy()
         pred = pred.detach().numpy()
-        o = np.array([path,image,pred],dtype=np.object)
+        o = np.array([path,image,pred],dtype=object)
         np.save(output_path,o,allow_pickle=True)

@@ -314,6 +314,16 @@ class SlicesToFirst(monai.transforms.Transform):
 
 class Index(monai.transforms.Transform):
     def __init__(self,keys:List[str],idxs:List[int],axis:int):
+        """Indexes tensors in a dictionary at a given dimension `axis`.
+        Useful for datasets such as the MONAI Medical Decathlon, where 
+        arrays are composed of more than one modality and we only care about
+        a specific modality.
+
+        Args:
+            keys (List[str]): list of keys to tensors which will be indexed.
+            idxs (List[int]): indices that will be retrieved.
+            axis (int): axis at which indices will be retrieved.
+        """
         self.keys = keys
         self.idxs = idxs
         self.axis = axis

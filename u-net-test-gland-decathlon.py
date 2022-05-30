@@ -94,6 +94,7 @@ if __name__ == "__main__":
         network_config["batch_size"] = 1
 
     intp = ["area","nearest"]
+    intp_spacing = ["bilinear","nearest"]
 
     transforms = [
         monai.transforms.LoadImaged(all_keys),
@@ -101,6 +102,8 @@ if __name__ == "__main__":
         monai.transforms.AddChanneld(all_keys),
         monai.transforms.Orientationd(all_keys,"RAS"),
         monai.transforms.EnsureTyped(all_keys),
+        monai.transforms.Spacingd(
+            all_keys,tuple(spacing_dict[args.mod]),mode=intp_spacing),
         monai.transforms.Resized(
             all_keys,tuple(size_dict[args.mod]),mode=intp),
         monai.transforms.ScaleIntensityd(all_keys,0,1),
@@ -127,7 +130,8 @@ if __name__ == "__main__":
 
     unet = UNetPL(image_key=keys[0],label_key=label_keys[0],
                   n_classes=n_classes,**network_config)
-    state_dict = torch.load(args.checkpoint_path)['state_dict']
+    state_dict = torch.load(
+        args.checkpoint_path,map_location=args.dev)['state_dict']
     inc = unet.load_state_dict(state_dict)
     print("Incompatible keys:",inc)
 

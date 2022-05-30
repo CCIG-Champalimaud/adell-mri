@@ -1,11 +1,10 @@
 base_path=/home/jose_almeida/data/PROSTATEx/ProstateX_resized/
-M=400
-F=5
-GAMMA=0.5
+DEV=cpu
 
 spatial_dim=$1
 
 mkdir -p metrics_test
+mkdir -p metrics_test/u-net-$spatial_dim
 
 for mod in DWI T2WAx
 do
@@ -20,37 +19,37 @@ do
         fi
 
         b="$mod.$C.$spatial_dim"
-        best_fold=$(cat metrics/$b.csv | 
+        best_fold=$(cat metrics/u-net-$spatial_dim/$b.csv | 
             grep iou | 
             awk -F, '{print $4","$2}' | 
             sort -nr | 
             head -1 | 
             cut -d ',' -f 2)
-        python3 test-u-net-gland-decathlon.py \
+        python3 u-net-test-gland-decathlon.py \
             --root_dir /home/jose_almeida/data/ \
             --prostate_x_path $base_path \
-            --metrics_path metrics_test/$b.csv \
+            --metrics_path metrics_test/u-net-$spatial_dim/$b.csv \
             --config_file config/u-net-$spatial_dim.yaml \
-            --checkpoint_path models/$mod.$C."$spatial_dim"_fold"$best_fold"_last.ckpt \
+            --checkpoint_path models/u-net-$spatial_dim/$mod.$C."$spatial_dim"_fold"$best_fold"_last.ckpt \
             --downsample_rate $rate \
-            --dev 'cuda' \
+            --dev $DEV \
             --mod $mod
 
         b="$mod.$C.$spatial_dim.augment"
-        best_fold=$(cat metrics/$b.csv | 
+        best_fold=$(cat metrics/u-net-$spatial_dim/$b.csv | 
             grep iou | 
             awk -F, '{print $4","$2}' | 
             sort -nr | 
             head -1 | 
             cut -d ',' -f 2)
-        python3 test-u-net-gland-decathlon.py \
+        python3 u-net-test-gland-decathlon.py \
             --root_dir /home/jose_almeida/data/ \
             --prostate_x_path $base_path \
-            --metrics_path metrics_test/$b.csv \
+            --metrics_path metrics_test/u-net-$spatial_dim/$b.csv \
             --config_file config/u-net-$spatial_dim.yaml \
-            --checkpoint_path models/$mod.$C.$spatial_dim.augment_fold"$best_fold"_last.ckpt \
+            --checkpoint_path models/u-net-$spatial_dim/$mod.$C.$spatial_dim.augment_fold"$best_fold"_last.ckpt \
             --downsample_rate $rate \
-            --dev 'cuda' \
+            --dev $DEV \
             --mod $mod
         done
 done
