@@ -23,8 +23,7 @@ from lib.utils import (
     collate_last_slice,
     ConvertToOneHot,
     RandomSlices,
-    SlicesToFirst,
-    PrintShaped)
+    SlicesToFirst)
 from lib.modules.segmentation_pl import UNetPL
 
 if __name__ == "__main__":
