@@ -123,12 +123,12 @@ class UNetPL(pl.LightningModule,UNet):
         for k in self.test_metrics:
             self.test_metrics[k].update(prediction,y)        
         return loss
-
+        
     def train_dataloader(self) -> torch.utils.data.DataLoader:
         return self.training_dataloader_call()
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(
+        optimizer = torch.optim.AdamW(
             self.parameters(),lr=self.learning_rate,
             weight_decay=self.weight_decay)
         lr_schedulers = torch.optim.lr_scheduler.ReduceLROnPlateau(

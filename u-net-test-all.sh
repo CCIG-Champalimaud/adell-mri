@@ -1,5 +1,5 @@
 base_path=/home/jose_almeida/data/PROSTATEx/ProstateX_resized/
-DEV=cpu
+DEV=cuda
 
 spatial_dim=$1
 

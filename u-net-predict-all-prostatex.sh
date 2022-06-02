@@ -1,10 +1,11 @@
 base_path=/home/jose_almeida/data/PROSTATEx/ProstateX_resized
-DEV=cpu
+DEV=cuda
 
 spatial_dim=$1
 dataset=$2
 
-mkdir -p $base_path/predictions
+mkdir -p predictions
+mkdir -p predictions/prostate-x
 
 for mod in DWI T2WAx
 do
@@ -43,7 +44,7 @@ do
             --input_path $scan_paths \
             --mod $mod \
             --prostate_x_path $base_path \
-            --output_path $base_path/predictions/$b \
+            --output_path predictions/prostate-x/$b \
             --config_file config/u-net-$spatial_dim.yaml \
             --checkpoint_path models/u-net-$spatial_dim/$mod.$C."$spatial_dim"_fold"$best_fold"_last.ckpt \
             --n_workers 8 \
@@ -68,7 +69,7 @@ do
             --input_path $scan_paths \
             --mod $mod \
             --prostate_x_path $base_path \
-            --output_path $base_path/predictions/$b \
+            --output_path predictions/prostate-x/$b \
             --config_file config/u-net-$spatial_dim.yaml \
             --checkpoint_path models/u-net-$spatial_dim/$mod.$C.$spatial_dim.augment_fold"$best_fold"_last.ckpt \
             --n_workers 8 \

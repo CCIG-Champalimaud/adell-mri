@@ -1,10 +1,11 @@
 base_path=/home/jose_almeida/data/PROSTATEx/ProstateX_resized/
 decathlon_path=/home/jose_almeida/data/Task05_Prostate/
-DEV=cpu
+DEV=cuda
 
 spatial_dim=$1
 
-mkdir -p $base_path/predictions
+mkdir -p predictions
+mkdir -p predictions/decathlon
 
 for mod in DWI T2WAx
 do
@@ -37,7 +38,7 @@ do
             --index $index \
             --mod $mod \
             --prostate_x_path $base_path \
-            --output_path $base_path/predictions/$b \
+            --output_path predictions/decathlon/$b \
             --config_file config/u-net-$spatial_dim.yaml \
             --checkpoint_path models/u-net-$spatial_dim/$mod.$C."$spatial_dim"_fold"$best_fold"_last.ckpt \
             --n_workers 8 \
@@ -56,7 +57,7 @@ do
             --index $index \
             --mod $mod \
             --prostate_x_path $base_path \
-            --output_path $base_path/predictions/$b \
+            --output_path predictions/decathlon/$b \
             --config_file config/u-net-$spatial_dim.yaml \
             --checkpoint_path models/u-net-$spatial_dim/$mod.$C.$spatial_dim.augment_fold"$best_fold"_last.ckpt \
             --n_workers 8 \

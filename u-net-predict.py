@@ -137,7 +137,6 @@ if __name__ == "__main__":
             pred = pred.unsqueeze(-1).swapaxes(0,-1).squeeze(0)
         elif n_classes == 3:
             pred = pred.squeeze(0)
-        image = pred.detach().numpy()
-        pred = pred.detach().numpy()
-        o = np.array([path,image,pred],dtype=object)
+        pred = pred.detach().to("cpu").numpy()
+        o = np.array([path,image.numpy(),pred],dtype=object)
         np.save(output_path,o,allow_pickle=True)
