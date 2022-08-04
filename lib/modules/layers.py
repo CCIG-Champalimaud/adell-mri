@@ -1,5 +1,4 @@
 
-from turtle import forward
 from typing import OrderedDict
 import numpy as np
 import torch
