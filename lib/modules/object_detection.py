@@ -64,6 +64,15 @@ def nms_nd(bb:torch.Tensor,scores:torch.Tensor,
 
 class mAP(torch.nn.Module):
     def __init__(self,ndim=3,score_threshold=0.5,iou_threshold=0.5,n_classes=2):
+        """Mean average precision implementation for any number of dimensions.
+
+        Args:
+            ndim (int, optional): number of dimensions. Defaults to 3.
+            score_threshold (float, optional): objectness score threshold. 
+                Defaults to 0.5.
+            iou_threshold (float, optional): IoU threshold. Defaults to 0.5.
+            n_classes (int, optional): number of classes. Defaults to 2.
+        """
         super().__init__()
         self.ndim = ndim
         self.iou_threshold = iou_threshold
@@ -168,17 +177,37 @@ class mAP(torch.nn.Module):
 
 class YOLONet3d(torch.nn.Module):
     def __init__(self,n_channels:int=1,n_c:int=2,
-                 activation_fn:torch.nn.Module=torch.nn.ReLU,
                  anchor_sizes:List=np.ones([1,6]),dev:str="cuda",
                  resnet_structure:List[Tuple[int,int,int,int]]=resnet_default,
                  maxpool_structure:List[Tuple[int,int,int]]=maxpool_default,
-                 pyramid_layers:List[Tuple[int,int,int]]=pyramid_default,
+                 pyramid_layers:List[Tuple[int,int,int]]=None,
                  adn_fn:torch.nn.Module=lambda s:ActDropNorm(
                      s,norm_fn=torch.nn.BatchNorm3d)):
+        """Implementation of a YOLO network for object detection in 3d.
+
+        Args:
+            n_channels (int, optional): number of input channels. Defaults to 
+                1.
+            n_c (int, optional): number of classes. Defaults to 2.
+            anchor_sizes (List, optional): anchor sizes. Defaults to 
+                np.ones([1,6]).
+            dev (str, optional): device for memory allocation. Defaults to 
+                "cuda".
+            resnet_structure (List[Tuple[int,int,int,int]], optional): 
+                structure for the ResNet backbone. Defaults to resnet_default.
+            maxpool_structure (List[Tuple[int,int,int]], optional): structure
+                for the maximum pooling operations. Defaults to 
+                maxpool_default.
+            pyramid_layers (List[Tuple[int,int,int]], optional): structure for
+                the atrous spatial pyramid pooling layer. Defaults to None.
+            adn_fn (torch.nn.Module, optional): function that is applied after
+                each layer (activations, batch normalisation, dropout and etc. 
+                should be specified here). Defaults to 
+                lambda s:ActDropNorm(s,norm_fn=torch.nn.BatchNorm3d).
+        """
         super().__init__()
         self.in_channels = n_channels
         self.n_c = n_c
-        self.act_fn = activation_fn
         self.anchor_sizes = anchor_sizes
         self.resnet_structure = resnet_structure
         self.maxpool_structure = maxpool_structure
@@ -203,9 +232,7 @@ class YOLONet3d(torch.nn.Module):
             maxpool_structure=self.maxpool_structure)
         self.feature_extraction = self.res_net 
         last_size = self.resnet_structure[-1][0]
-        #self.feature_extraction = FeaturePyramidNetworkBackbone(
-        #    self.res_net,3,self.resnet_structure,adn_fn=self.adn_fn)
-        #last_size = self.resnet_structure[0][0]
+        
         self.feature_extraction = torch.nn.Sequential(
             self.feature_extraction,
             self.adn_fn(last_size),
@@ -255,11 +282,30 @@ class YOLONet3d(torch.nn.Module):
         class_pred = self.classifiation_layer(features)
         return bb_center_pred,bb_size_pred,bb_object_pred,class_pred
 
-    def recover_boxes(self,bb_size_pred:torch.Tensor,
+    def recover_boxes(self,
+                      bb_size_pred:torch.Tensor,
                       bb_center_pred:torch.Tensor,
                       bb_object_pred:torch.Tensor,
                       class_pred:torch.Tensor,
                       nms:bool=False)->torch.Tensor:
+        """Converts the predictions from forward into bounding boxes. The 
+        format of these boxes is (uc_x,uc_y,lc_x,lc_y), where uc and lc refer
+        to upper and lower corners.
+
+        Args:
+            bb_size_pred (torch.Tensor): size predictions.
+            bb_center_pred (torch.Tensor): center offset predictions.
+            bb_object_pred (torch.Tensor): objectness predictions.
+            class_pred (torch.Tensor): class predictions.
+            nms (bool, optional): whether to perform non-maximum suppression. 
+                Defaults to False.
+
+        Returns:
+            long_bb (torch.Tensor): bounding boxes in the corner format 
+                specified above.
+            object_scores (torch.Tensor): objectness scores (1d).
+            long_classes (torch.Tensor): classes.
+        """
         c,h,w,d,a = bb_center_pred.shape
         mesh = torch.stack(
             torch.meshgrid([torch.arange(h),torch.arange(w),torch.arange(d)],
@@ -326,24 +372,44 @@ class YOLONet3d(torch.nn.Module):
         return output
 
 class CoarseDetector3d(torch.nn.Module):
-    def __init__(self,n_channels:int=1,
-                 activation_fn:torch.nn.Module=torch.nn.ReLU,
+    def __init__(self,
+                 n_channels:int=1,
                  anchor_sizes:List=np.ones([1,6]),dev:str="cuda",
                  resnet_structure:List[Tuple[int,int,int,int]]=resnet_default,
                  maxpool_structure:List[Tuple[int,int,int]]=maxpool_default,
                  pyramid_layers:List[Tuple[int,int,int]]=pyramid_default,
                  adn_fn:torch.nn.Module=lambda s:ActDropNorm(
                      s,norm_fn=torch.nn.BatchNorm3d)):
+        """Implementation of a YOLO network for object detection in 3d.
+
+        Args:
+            n_channels (int, optional): number of input channels. Defaults to 
+                1.
+            anchor_sizes (List, optional): anchor sizes. Redundant (kept for
+                compatibility purposes). Defaults to np.ones([1,6]).
+            dev (str, optional): device for memory allocation. Defaults to 
+                "cuda".
+            resnet_structure (List[Tuple[int,int,int,int]], optional): 
+                structure for the ResNet backbone. Defaults to resnet_default.
+            maxpool_structure (List[Tuple[int,int,int]], optional): structure
+                for the maximum pooling operations. Defaults to 
+                maxpool_default.
+            pyramid_layers (List[Tuple[int,int,int]], optional): structure for
+                the atrous spatial pyramid pooling layer. Defaults to None.
+            adn_fn (torch.nn.Module, optional): function that is applied after
+                each layer (activations, batch normalisation, dropout and etc. 
+                should be specified here). Defaults to 
+                lambda s:ActDropNorm(s,norm_fn=torch.nn.BatchNorm3d).
+        """
+
         super().__init__()
         self.in_channels = n_channels
-        self.act_fn = activation_fn
         self.anchor_sizes = anchor_sizes
         self.resnet_structure = resnet_structure
         self.maxpool_structure = maxpool_structure
         self.pyramid_layers = pyramid_layers
         self.adn_fn = adn_fn
         self.dev = dev
-        self.n_b = len(self.anchor_sizes)
 
         self.init_layers()
 
@@ -353,9 +419,6 @@ class CoarseDetector3d(torch.nn.Module):
             maxpool_structure=self.maxpool_structure)
         self.feature_extraction = self.res_net 
         last_size = self.resnet_structure[-1][0]
-        #self.feature_extraction = FeaturePyramidNetworkBackbone(
-        #    self.res_net,3,self.resnet_structure,adn_fn=self.adn_fn)
-        #last_size = self.resnet_structure[0][0]
         self.feature_extraction = torch.nn.Sequential(
             self.feature_extraction,
             self.adn_fn(last_size),
