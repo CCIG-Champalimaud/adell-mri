@@ -20,7 +20,7 @@ Here I develop and present methods for segmenting prostate cancer from different
 
 ### Modules and networks
 
-I have placed most of the scripts and implementations under `lib/modules/segmentation.py` and `lib/modules/object_detection.py`. `lib/modules/layers.py` contain building blocks for 3D and 2D neural networks.
+I have placed most of the scripts and implementations under `lib/modules/segmentation.py`, `lib/modules/classification.py` and `lib/modules/object_detection.py`. `lib/modules/layers.py` contain building blocks for 3D and 2D neural networks.
 
 #### Adaptations to PyTorch Lightning
 
@@ -32,4 +32,4 @@ In `lib/modules/losses.py` I have coded most losses necessary based loosely on a
 
 ### Tests
 
-I have included a few unit tests in `lib/tests`. In them, I confirm that networks and modules are outputing the correct shapes, mostly.
+I have included a few unit tests in `lib/tests`. In them, I confirm that networks and modules are outputing the correct shapes and that they are compiling correctly.
