@@ -7,8 +7,6 @@ import torch
 import monai
 import torchio
 from sklearn.model_selection import KFold,train_test_split
-from torchmetrics import JaccardIndex,Precision,FBetaScore
-from tqdm import tqdm
 
 from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import EarlyStopping,StochasticWeightAveraging
@@ -191,14 +189,14 @@ if __name__ == "__main__":
         monai.transforms.LoadImaged(keys),
         monai.transforms.AddChanneld(keys),
         monai.transforms.Orientationd(keys,"RAS"),
+        # in case images should be downsampled
+        monai.transforms.Resized(
+            keys,tuple(input_size),mode=intp),
         MaskToAdjustedAnchorsd(
             anchor_sizes=anchor_array,input_sh=input_size,
             output_sh=output_sh,iou_thresh=args.iou_threshold,
             bb_key="boxes",class_key="labels",shape_key="shape",
             output_key="bb_map"),
-        # in case images should be downsampled
-        monai.transforms.Resized(
-            keys,tuple(input_size),mode=intp),
         monai.transforms.ScaleIntensityd(keys,0,1),
         monai.transforms.EnsureTyped([*keys,"bb_map"])]
 
@@ -206,14 +204,14 @@ if __name__ == "__main__":
         monai.transforms.LoadImaged(keys),
         monai.transforms.AddChanneld(keys),
         monai.transforms.Orientationd(keys,"RAS"),
+        # in case images should be downsampled
+        monai.transforms.Resized(
+            keys,tuple(input_size),mode=intp),
         MaskToAdjustedAnchorsd(
             anchor_sizes=anchor_array,input_sh=input_size,
             output_sh=output_sh,iou_thresh=args.iou_threshold,
             bb_key="boxes",class_key="labels",shape_key="shape",
             output_key="bb_map"),
-        # in case images should be downsampled
-        monai.transforms.Resized(
-            keys,tuple(input_size),mode=intp),
         monai.transforms.ScaleIntensityd(keys,0,1),
         monai.transforms.EnsureTyped([*keys,"bb_map"])]
 

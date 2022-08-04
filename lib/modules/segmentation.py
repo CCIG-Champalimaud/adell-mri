@@ -1,8 +1,6 @@
 import torch
 import torch.nn.functional as F
 
-from .zwei.lib.modules import *
-from .drei.lib.modules import *
 from .layers import *
 from ..types import *
 
