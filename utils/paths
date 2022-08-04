@@ -1,0 +1,17 @@
+# PROSTATEx
+export PROSTATE_X_PATH=/home/jose_almeida/data/PROSTATEx/ProstateX_resized
+export PROSTATE_X_RESIZED_PATH=$PROSTATE_X_PATH"_resized"
+
+# PI-CAI paths
+export PICAI_BASE=/home/jose_almeida/data/PI-CAI
+export PICAI_PATH=$PICAI_BASE/dataset
+export PICAI_PATH_RESAMPLED=$PICAI_PATH"_resampled"
+export PICAI_PATH_RESAMPLED_CORRECTED=$PICAI_PATH_RESAMPLED"_corrected"
+
+# PI-CAI mask paths
+export PICAI_MASK_PATH_HUMAN=$PICAI_BASE/labels/csPCa_lesion_delineations/human_expert/original/
+export PICAI_MASK_PATH_AI=$PICAI_BASE/labels/csPCa_lesion_delineations/human_expert/original/
+export PICAI_MASK_PATH_GLAND_AI=$PICAI_BASE/labels/csPCa_lesion_delineations/human_expert/original/
+
+# PI-CAI marksheet csv
+export PICAI_MARKSHEET_ISUP=dataset_information/marksheet_isup.csv

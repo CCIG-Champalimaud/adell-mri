@@ -2,10 +2,10 @@ import os
 import re
 from glob import glob 
 
-input_path = "../../data/PI-CAI/dataset/"
+input_path = os.environ["PICAI_PATH"]
 output_paths = {
-    "resampled":"../../data/PI-CAI/dataset_resampled/",
-    "corrected":"../../data/PI-CAI/dataset_resampled_corrected/",
+    "resampled":os.environ["PICAI_PATH_RESAMPLED"],
+    "corrected":os.environ["PICAI_PATH_RESAMPLED_CORRECTED"],
     "dataset_information":"dataset_information"}
 
 for k in output_paths:
@@ -26,7 +26,7 @@ for k in patterns:
     output_spacing.append(
         "{}/spacing.{}.PICAI".format(output_paths["dataset_information"],k))
     for path in glob(os.path.join(input_path,patterns[k])):
-        o = path.replace(input_path,"")
+        o = path.replace(input_path,"").strip('/')
         out = os.path.join(output_paths["resampled"],o)
         output_resampled.append(out)
         out = os.path.join(output_paths["corrected"],o)

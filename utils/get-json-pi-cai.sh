@@ -1,15 +1,11 @@
-base_path=/home/jose_almeida/data/PI-CAI/dataset_resampled_corrected/
-mask_path=/home/jose_almeida/data/PI-CAI/labels/csPCa_lesion_delineations/human_expert/original/
-mask_path_ai=/home/jose_almeida/data/PI-CAI/labels/csPCa_lesion_delineations/AI/
-mask_path_gland_ai=/home/jose_almeida/data/PI-CAI/labels/anatomical_delineations/whole_gland/AI/
-class_csv_path=/home/jose_almeida/data/PI-CAI/labels/clinical_information/marksheet_isup.csv
+source ./paths
 
 mkdir -p dataset_information
 
 echo python3 utils/generate-dataset-json.py \
-    --input_path $base_path \
-    --mask_path $mask_path/ \
-    --class_csv_path $class_csv_path \
+    --input_path $PICAI_PATH_RESAMPLED_CORRECTED \
+    --mask_path $PICAI_MASK_PATH_HUMAN/ \
+    --class_csv_path $PICAI_MARKSHEET_ISUP \
     --mask_pattern "*/*nii.gz" \
     --patterns "*/*/*_t2w.mha" "*/*/*_adc.mha" "*/*/*_hbv.mha" \
     --output_json dataset_information/bb.lesion.pi-cai.json \
@@ -17,9 +13,9 @@ echo python3 utils/generate-dataset-json.py \
     --mask_key lesion_human
 
 echo python3 utils/generate-dataset-json.py \
-    --input_path $base_path \
-    --mask_path $mask_path_ai/ \
-    --class_csv_path $class_csv_path \
+    --input_path $PICAI_PATH_RESAMPLED_CORRECTED \
+    --mask_path $PICAI_MASK_PATH_AI/ \
+    --class_csv_path $PICAI_MARKSHEET_ISUP \
     --mask_pattern "*/*nii.gz" \
     --patterns "*/*/*_t2w.mha" "*/*/*_adc.mha" "*/*/*_hbv.mha" \
     --output_json dataset_information/bb.lesion.pi-cai.ai.json \
@@ -27,9 +23,9 @@ echo python3 utils/generate-dataset-json.py \
     --mask_key lesion_ai
 
 python3 utils/generate-dataset-json.py \
-    --input_path $base_path \
-    --mask_path $mask_path_gland_ai/ \
-    --class_csv_path $class_csv_path \
+    --input_path $PICAI_PATH_RESAMPLED_CORRECTED \
+    --mask_path $PICAI_MASK_PATH_GLAND_AI/ \
+    --class_csv_path $PICAI_MARKSHEET_ISUP \
     --mask_pattern "*/*nii.gz" \
     --patterns "*/*/*_t2w.mha" "*/*/*_adc.mha" "*/*/*_hbv.mha" \
     --output_json dataset_information/bb.gland.pi-cai.ai.json \

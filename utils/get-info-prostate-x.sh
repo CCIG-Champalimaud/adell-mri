@@ -1,4 +1,4 @@
-base_path=/home/jose_almeida/data/PROSTATEx/ProstateX_resized
+source ./paths
 
 mkdir -p dataset_information
 
@@ -14,7 +14,7 @@ do
         fi
 
         python3 utils/get-info.py \
-            --input_dir $base_path/$mod \
+            --input_dir $PROSTATE_X_RESIZED_PATH/$mod \
             --parameter $info \
             --quantile $q > dataset_information/$info.$mod
     done

@@ -17,8 +17,8 @@ do
         
         echo $region $mod
         python3 utils/generate-dataset-json.py \
-            --input_path $base_path \
-            --mask_path $base_path/aggregated-labels-$region/ \
+            --input_path $PROSTATE_X_PATH \
+            --mask_path $PROSTATE_X_PATH/aggregated-labels-$region/ \
             --mask_pattern $mask_pattern \
             --patterns $patterns \
             --output_json dataset_information/bb.$region.$mod.prostate_x.json \
