@@ -1,7 +1,7 @@
 import os
 import argparse
 import numpy as np
-import nibabel as nib
+import monai
 from skimage import measure
 from glob import glob
 
@@ -42,8 +42,13 @@ if __name__ == "__main__":
     
     args = parser.parse_args()
 
+    t = monai.transforms.Compose([
+        monai.transforms.LoadImaged(['image']),
+        monai.transforms.AddChanneld(['image']),
+        monai.transforms.Orientationd(['image'],"RAS")])
+
     for file_path in glob(os.path.join(args.input_path,args.pattern)):
-        fdata = nib.load(file_path).get_fdata()
+        fdata = t({'image':file_path})['image'][0]
         sh = np.array(fdata.shape)
         image_id = file_path.split(os.sep)[-1]
         if args.split_character is not None:

@@ -2,7 +2,7 @@ import sys
 sys.path.append("..")
 
 import torch
-from modules.segmentation import *
+from ..lib.modules.layers import *
 
 h,w,d,c = 128,128,32,16
 i = torch.rand(size=[1,c,h,w,d])

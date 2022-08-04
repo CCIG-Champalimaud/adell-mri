@@ -1,11 +1,15 @@
+import numpy as np
 import torch
+import torch.nn.functional as F
 import torchmetrics
 import pytorch_lightning as pl
 from typing import Callable
+from copy import deepcopy
 
-from .segmentation import UNet,AHNet
+from .segmentation import UNet
+from .segmentation_plus import UNetPlusPlus
 
-class UNetPL(pl.LightningModule,UNet):
+class UNetPL(UNet,pl.LightningModule):
     def __init__(
         self,
         image_key: str="image",
@@ -19,18 +23,20 @@ class UNetPL(pl.LightningModule,UNet):
         """Standard U-Net [1] implementation for Pytorch Lightning.
 
         Args:
-            image_key (str): key corresponding to the key from the train
-            dataloader.
+            image_key (str): key corresponding to the input from the train
+                dataloader.
+            label_key (str): key corresponding to the label map from the train
+                dataloader.
             learning_rate (float, optional): learning rate. Defaults to 0.001.
             batch_size (int, optional): batch size. Defaults to 4.
             weight_decay (float, optional): weight decay for optimizer. Defaults 
-            to 0.005.
+                to 0.005.
             training_dataloader_call (Callable, optional): call for the 
             training dataloader. Defaults to None.
             loss_fn (Callable, optional): function to calculate the loss. 
-            Defaults to torch.nn.functional.binary_cross_entropy.
+                Defaults to torch.nn.functional.binary_cross_entropy.
             loss_params (dict, optional): additional parameters for the loss
-            function. Defaults to {}.
+                function. Defaults to {}.
             args: arguments for UNet class.
             kwargs: keyword arguments for UNet class.
 
@@ -40,8 +46,7 @@ class UNetPL(pl.LightningModule,UNet):
             pl.LightningModule: a U-Net module.
         """
         
-        pl.LightningModule.__init__(self)
-        UNet.__init__(self,*args,**kwargs)
+        super().__init__(*args,**kwargs)
         
         self.image_key = image_key
         self.label_key = label_key
@@ -52,18 +57,38 @@ class UNetPL(pl.LightningModule,UNet):
         self.loss_fn = loss_fn
         self.loss_params = loss_params
         
+        self.loss_fn_class = torch.nn.BCEWithLogitsLoss()
         self.setup_metrics()
         
         self.loss_accumulator = 0.
+        self.loss_accumulator_class = 0.
         self.loss_accumulator_d = 0.
+        self.bn_mult = 0.01
    
-    def calculate_loss(self,prediction,y,weights=None):
+    def calculate_loss(self,prediction,y):
         loss = self.loss_fn(prediction,y,**self.loss_params)
         return loss.mean()
-    
-    def training_step(self,batch,batch_idx):
-        x, y = batch[self.image_key],batch[self.label_key]
-        prediction = self.forward(x)
+
+    def calculate_loss_class(self,prediction,y):
+        y = y.type(torch.float32)
+        prediction = prediction.squeeze(1).type(torch.float32)
+        loss = self.loss_fn_class(prediction,y)
+        return loss.mean()
+
+    def update_metrics(self,metrics,pred,y,pred_class,y_class,**kwargs):
+        y = y.long()
+        if y_class is not None:
+            y_class = y_class.long()
+        for k in metrics:
+            if 'cl:' in k:
+                metrics[k].update(pred_class,y_class)
+            else:    
+                metrics[k].update(pred,y)
+            self.log(k,metrics[k],**kwargs)
+
+    def loss_wrapper(self,x,y,y_class):
+        y = torch.round(y)
+        prediction,pred_class = self.forward(x)
         prediction = torch.squeeze(prediction,1)
         y = torch.squeeze(y,1)
         batch_size = int(prediction.shape[0])
@@ -72,57 +97,72 @@ class UNetPL(pl.LightningModule,UNet):
         y = torch.squeeze(y,1)
 
         loss = self.calculate_loss(prediction,y)
-            
+        if self.bottleneck_classification == True:
+            class_loss = self.calculate_loss_class(pred_class,y_class)
+            output_loss = loss + class_loss * self.bn_mult
+        else:
+            class_loss = None
+            output_loss = loss
+        return prediction,pred_class,loss,class_loss,output_loss
+
+    def training_step(self,batch,batch_idx):
+        x, y = batch[self.image_key],batch[self.label_key]
+        if self.bottleneck_classification == True:
+            y_class = y.flatten(start_dim=1).max(1).values
+        else:
+            y_class = None
+        pred_final,pred_class,loss,class_loss,output_loss = self.loss_wrapper(
+            x,y,y_class)
+
         self.log("train_loss", loss)
-        prediction = prediction
+        if class_loss is not None:
+            self.log("train_cl_loss",class_loss)
         try: y = torch.round(y).int()
         except: pass
-        for k in self.train_metrics:
-            self.train_metrics[k](prediction,y)
-            self.log(
-                k,self.train_metrics[k],on_epoch=True,
-                on_step=False,prog_bar=True)
-        return loss
+        self.update_metrics(
+            self.train_metrics,pred_final,y,pred_class,y_class,
+            on_epoch=True,on_step=False,prog_bar=True)
+        return output_loss
     
     def validation_step(self,batch,batch_idx):
         x, y = batch[self.image_key],batch[self.label_key]
-        prediction = self.forward(x)
-        prediction = torch.squeeze(prediction,1)
-        y = torch.squeeze(y,1)
-        batch_size = int(prediction.shape[0])
-        if batch_size == 1:
-            y = torch.unsqueeze(y,0)
-        y = torch.squeeze(y,1)
-
-        loss = self.calculate_loss(prediction,y,None)
+        if self.bottleneck_classification == True:
+            y_class = y.flatten(start_dim=1).max(1).values
+        else:
+            y_class = None
+        pred_final,pred_class,loss,class_loss,output_loss = self.loss_wrapper(
+            x,y,y_class)
 
         self.loss_accumulator += loss
+        if self.bottleneck_classification == True:
+            self.loss_accumulator_class += class_loss
         self.loss_accumulator_d += 1.
         try: y = torch.round(y).int()
         except: pass
-        for k in self.val_metrics:
-            self.val_metrics[k].update(prediction,y)        
-        return loss
+        self.update_metrics(
+            self.val_metrics,pred_final,y,pred_class,y_class,
+            on_epoch=True,prog_bar=True)
+        return output_loss
 
     def test_step(self,batch,batch_idx):
         x, y = batch[self.image_key],batch[self.label_key]
-        prediction = self.forward(x)
-        prediction = torch.squeeze(prediction,1)
-        y = torch.squeeze(y,1)
-        batch_size = int(prediction.shape[0])
-        if batch_size == 1:
-            y = torch.unsqueeze(y,0)
-        y = torch.squeeze(y,1)
-                
-        loss = self.calculate_loss(prediction,y,None)
+        if self.bottleneck_classification == True:
+            y_class = y.flatten(start_dim=1).max(1).values
+        else:
+            y_class = None
+        pred_final,pred_class,loss,class_loss,output_loss = self.loss_wrapper(
+            x,y,y_class)
 
         self.loss_accumulator += loss
+        if self.bottleneck_classification == True:
+            self.loss_accumulator_class += class_loss
         self.loss_accumulator_d += 1.
         try: y = torch.round(y).int()
         except: pass
-        for k in self.test_metrics:
-            self.test_metrics[k].update(prediction,y)        
-        return loss
+        self.update_metrics(
+            self.test_metrics,pred_final,y,pred_class,y_class,
+            on_epoch=True,on_step=False,prog_bar=True)
+        return output_loss
         
     def train_dataloader(self) -> torch.utils.data.DataLoader:
         return self.training_dataloader_call()
@@ -139,48 +179,58 @@ class UNetPL(pl.LightningModule,UNet):
                 "monitor":"val_loss"}
     
     def on_validation_epoch_end(self):
-        for k in self.val_metrics: 
-            val = self.val_metrics[k].compute()
-            self.log(
-                k,val,prog_bar=True)
+        for k in self.val_metrics:
             self.val_metrics[k].reset()
-        val_loss = self.loss_accumulator/self.loss_accumulator_d
+        D = self.loss_accumulator_d
+        if D > 0:
+            val_loss = self.loss_accumulator/D
+            if self.bottleneck_classification == True:
+                val_loss_class = self.loss_accumulator_class/D
+                self.log("val_cl_loss",val_loss_class,prog_bar=True)
+        else:
+            val_loss = np.nan
+        self.log("val_loss",val_loss,prog_bar=True)
         sch = self.lr_schedulers().state_dict()
         lr = self.learning_rate
         last_lr = sch['_last_lr'][0] if '_last_lr' in sch else lr
         self.log("lr",last_lr)
-        self.log("val_loss",val_loss,prog_bar=True)
         self.loss_accumulator = 0.
+        self.loss_accumulator_class = 0.
         self.loss_accumulator_d = 0.
 
     def setup_metrics(self):
         if self.n_classes == 2:
-            C_1 = 2
-            C_2 = None
-            A = None
-            M = "micro"
+            C_1,C_2,A,M,I = 2,None,None,"micro",0
         else:
-            C_1 = self.n_classes
-            C_2 = self.n_classes
-            A = "samplewise"
-            M = "macro"
-        self.train_metrics = torch.nn.ModuleDict({
-            "IoU":torchmetrics.JaccardIndex(C_1,mdmc_average=A),
-            "Re":torchmetrics.Recall(C_2,mdmc_average=A,average=M),
-            "Pr":torchmetrics.Precision(C_2,mdmc_average=A,average=M),
-            "F1":torchmetrics.FBetaScore(C_2,mdmc_average=A,average=M)})
-        self.val_metrics = torch.nn.ModuleDict({
-            "VIoU":torchmetrics.JaccardIndex(C_1,mdmc_average=A),
-            "VRe":torchmetrics.Recall(C_2,mdmc_average=A,average=M),
-            "VPr":torchmetrics.Precision(C_2,mdmc_average=A,average=M),
-            "VF1":torchmetrics.FBetaScore(C_2,mdmc_average=A,average=M)})
-        self.test_metrics = torch.nn.ModuleDict({
-            "Test IoU":torchmetrics.JaccardIndex(C_1,mdmc_average=A),
-            "Test Re":torchmetrics.Recall(C_2,mdmc_average=A,average=M),
-            "Test Pr":torchmetrics.Precision(C_2,mdmc_average=A,average=M),
-            "Test F1":torchmetrics.FBetaScore(C_2,mdmc_average=A,average=M)})
+            C_1,C_2,A,M,I = [
+                self.n_classes,self.n_classes,"samplewise","macro",None]
+        self.train_metrics = torch.nn.ModuleDict({})
+        self.val_metrics = torch.nn.ModuleDict({})
+        self.test_metrics = torch.nn.ModuleDict({})
+        md = {"IoU":torchmetrics.JaccardIndex,
+              "Pr":torchmetrics.Precision,
+              "F1":torchmetrics.FBetaScore}
+        if self.bottleneck_classification == True:
+            md["cl:F1"] = torchmetrics.FBetaScore
+            md["cl:Re"] = torchmetrics.Recall
+        for k in md:
+            if k == "IoU":
+                m,C = "macro",C_1
+            else:
+                m,C = M,C_2
+            if k in ["cl:Re","cl:F1"]:
+                I_ = None
+            else:
+                I_ = I
+            if k in ["IoU","cl:F1"]:
+                self.train_metrics[k] = md[k](
+                    C,mdmc_average=A,average=m,ignore_index=I_).to(self.device)
+                self.val_metrics["V_"+k] = md[k](
+                    C,mdmc_average=A,average=m,ignore_index=I_).to(self.device)
+            self.test_metrics["T_"+k] = md[k](
+                C,mdmc_average=A,average=m,ignore_index=I_).to(self.device)
 
-class AHNetPL(pl.LightningModule,AHNet):
+class UNetPlusPlusPL(UNetPlusPlus,pl.LightningModule):
     def __init__(
         self,
         image_key: str="image",
@@ -191,32 +241,33 @@ class AHNetPL(pl.LightningModule,AHNet):
         training_dataloader_call: Callable=None,
         loss_fn: Callable=torch.nn.functional.binary_cross_entropy,
         loss_params: dict={},*args,**kwargs) -> torch.nn.Module:
-        """Standard AHNet [1] implementation for Pytorch Lightning.
+        """Standard U-Net++ [1] implementation for Pytorch Lightning.
 
         Args:
-            image_key (str): key corresponding to the key from the train
-            dataloader.
+            image_key (str): key corresponding to the input from the train
+                dataloader.
+            label_key (str): key corresponding to the label map from the train
+                dataloader.
             learning_rate (float, optional): learning rate. Defaults to 0.001.
             batch_size (int, optional): batch size. Defaults to 4.
             weight_decay (float, optional): weight decay for optimizer. Defaults 
-            to 0.005.
+                to 0.005.
             training_dataloader_call (Callable, optional): call for the 
             training dataloader. Defaults to None.
             loss_fn (Callable, optional): function to calculate the loss. 
-            Defaults to torch.nn.functional.binary_cross_entropy.
+                Defaults to torch.nn.functional.binary_cross_entropy.
             loss_params (dict, optional): additional parameters for the loss
-            function. Defaults to {}.
-            args: arguments for AHNet class.
-            kwargs: keyword arguments for AHNet class.
+                function. Defaults to {}.
+            args: arguments for UNet class.
+            kwargs: keyword arguments for UNet class.
 
-        [1] https://link.springer.com/chapter/10.1007/978-3-030-00934-2_94
+        [1] https://www.nature.com/articles/s41592-018-0261-2
 
         Returns:
-            pl.LightningModule: a AHNet module.
+            pl.LightningModule: a U-Net module.
         """
         
-        pl.LightningModule.__init__(self)
-        AHNet.__init__(self,*args,**kwargs)
+        super().__init__(*args,**kwargs)
         
         self.image_key = image_key
         self.label_key = label_key
@@ -227,83 +278,132 @@ class AHNetPL(pl.LightningModule,AHNet):
         self.loss_fn = loss_fn
         self.loss_params = loss_params
         
+        self.loss_fn_class = torch.nn.BCEWithLogitsLoss()
         self.setup_metrics()
-        
+
         self.loss_accumulator = 0.
+        self.loss_accumulator_class = 0.
         self.loss_accumulator_d = 0.
+        self.bn_mult = 0.01
    
-    def calculate_loss(self,prediction,y,weights=None):
+    def calculate_loss(self,prediction,prediction_aux,y):
         loss = self.loss_fn(prediction,y,**self.loss_params)
+        n = len(prediction_aux)
+        for i,p in enumerate(prediction_aux):
+            l = self.loss_fn(p,y,**self.loss_params)
+            # scales based on how deep the features are
+            loss = loss + l / (2**(n-i+1))
         return loss.mean()
     
-    def training_step(self,batch,batch_idx):
-        x, y = batch[self.image_key],batch[self.label_key]
-        prediction = self.forward(x)
+    def loss_wrapper(self,x,y,y_class):
+        y = torch.round(y)
+        prediction,prediction_aux,pred_class = self.forward(x,return_aux=True)
         prediction = torch.squeeze(prediction,1)
+        prediction_aux = [torch.squeeze(x,1) for x in prediction_aux]
         y = torch.squeeze(y,1)
         batch_size = int(prediction.shape[0])
         if batch_size == 1:
             y = torch.unsqueeze(y,0)
         y = torch.squeeze(y,1)
 
-        loss = self.calculate_loss(prediction,y)
-            
+        loss = self.calculate_loss(prediction,prediction_aux,y)
+        if self.bottleneck_classification == True:
+            class_loss = self.calculate_loss_class(pred_class,y_class)
+            output_loss = loss + class_loss * self.bn_mult
+        else:
+            class_loss = None
+            output_loss = loss
+
+        n = len(prediction_aux)
+        D = [1/(2**(n-i+1)) for i in range(n)]
+        pred_final = torch.add(
+            prediction,
+            sum([x*d for x,d in zip(prediction_aux,D)]))
+        pred_final = pred_final / (1+sum(D))
+
+        return pred_final,pred_class,output_loss,loss,class_loss
+
+    def calculate_loss_class(self,prediction,y):
+        loss = self.loss_fn_class(
+            prediction.squeeze(1),y.type(torch.int32))
+        return loss.mean()
+
+    def update_metrics(self,metrics,pred,y,pred_class,y_class,*kwargs):
+        y = y.long()
+        if y_class is not None:
+            y_class = y_class.long()
+        for k in metrics:
+            if 'cl:' in k:
+                metrics[k].update(pred_class,y_class)
+            else:    
+                metrics[k].update(pred,y)
+            self.log(k,metrics[k],**kwargs)
+
+    def training_step(self,batch,batch_idx):
+        x, y = batch[self.image_key],batch[self.label_key]
+        if self.bottleneck_classification == True:
+            y_class = y.flatten(start_dim=1).max(1).values
+        else:
+            y_class = None
+
+        pred_final,pred_class,output_loss,loss,class_loss = self.loss_wrapper(
+            x,y,y_class)
+        if class_loss is not None:
+            self.log("train_cl_loss",class_loss)
         self.log("train_loss", loss)
-        prediction = prediction
         try: y = torch.round(y).int()
         except: pass
-        for k in self.train_metrics:
-            self.train_metrics[k](prediction,y)
-            self.log(
-                k,self.train_metrics[k],on_epoch=True,
-                on_step=False,prog_bar=True)
-        return loss
+        self.update_metrics(
+            self.train_metrics,pred_final,y,pred_class,y_class,
+            on_epoch=True,on_step=False,prog_bar=True)
+        return output_loss
     
     def validation_step(self,batch,batch_idx):
         x, y = batch[self.image_key],batch[self.label_key]
-        prediction = self.forward(x)
-        prediction = torch.squeeze(prediction,1)
-        y = torch.squeeze(y,1)
-        batch_size = int(prediction.shape[0])
-        if batch_size == 1:
-            y = torch.unsqueeze(y,0)
-        y = torch.squeeze(y,1)
-
-        loss = self.calculate_loss(prediction,y,None)
+        if self.bottleneck_classification == True:
+            y_class = y.flatten(start_dim=1).max(1).values
+        else:
+            y_class = None
+        
+        pred_final,pred_class,output_loss,loss,class_loss = self.loss_wrapper(
+            x,y,y_class)
 
         self.loss_accumulator += loss
+        if self.bottleneck_classification == True:
+            self.loss_accumulator_class += class_loss
         self.loss_accumulator_d += 1.
         try: y = torch.round(y).int()
         except: pass
-        for k in self.val_metrics:
-            self.val_metrics[k].update(prediction,y)        
-        return loss
+        self.update_metrics(
+            self.val_metrics,pred_final,y,pred_class,y_class,
+            on_epoch=True,prog_bar=True)
+        return output_loss
 
     def test_step(self,batch,batch_idx):
         x, y = batch[self.image_key],batch[self.label_key]
-        prediction = self.forward(x)
-        prediction = torch.squeeze(prediction,1)
-        y = torch.squeeze(y,1)
-        batch_size = int(prediction.shape[0])
-        if batch_size == 1:
-            y = torch.unsqueeze(y,0)
-        y = torch.squeeze(y,1)
-                
-        loss = self.calculate_loss(prediction,y,None)
+        if self.bottleneck_classification == True:
+            y_class = y.flatten(start_dim=1).max(1).values
+        else:
+            y_class = None
+            
+        pred_final,pred_class,output_loss,loss,class_loss = self.loss_wrapper(
+            x,y,y_class)
 
         self.loss_accumulator += loss
+        if self.bottleneck_classification == True:
+            self.loss_accumulator_class += class_loss
         self.loss_accumulator_d += 1.
         try: y = torch.round(y).int()
         except: pass
-        for k in self.test_metrics:
-            self.test_metrics[k].update(prediction,y)        
-        return loss
-
+        self.update_metrics(
+            self.test_metrics,pred_final,y,pred_class,y_class)
+        return output_loss
+        
     def train_dataloader(self) -> torch.utils.data.DataLoader:
         return self.training_dataloader_call()
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(
+        optimizer = torch.optim.AdamW(
             self.parameters(),lr=self.learning_rate,
             weight_decay=self.weight_decay)
         lr_schedulers = torch.optim.lr_scheduler.ReduceLROnPlateau(
@@ -314,12 +414,10 @@ class AHNetPL(pl.LightningModule,AHNet):
                 "monitor":"val_loss"}
     
     def on_validation_epoch_end(self):
-        for k in self.val_metrics: 
-            val = self.val_metrics[k].compute()
-            self.log(
-                k,val,prog_bar=True)
-            self.val_metrics[k].reset()
-        val_loss = self.loss_accumulator/self.loss_accumulator_d
+        if self.loss_accumulator_d > 0:
+            val_loss = self.loss_accumulator/self.loss_accumulator_d
+        else:
+            val_loss = np.nan
         sch = self.lr_schedulers().state_dict()
         lr = self.learning_rate
         last_lr = sch['_last_lr'][0] if '_last_lr' in sch else lr
@@ -330,27 +428,27 @@ class AHNetPL(pl.LightningModule,AHNet):
 
     def setup_metrics(self):
         if self.n_classes == 2:
-            C_1 = 2
-            C_2 = None
-            A = None
-            M = "micro"
+            C_1,C_2,A,M,I = 2,None,None,"micro",0
         else:
-            C_1 = self.n_classes
-            C_2 = self.n_classes
-            A = "samplewise"
-            M = "macro"
-        self.train_metrics = torch.nn.ModuleDict({
-            "IoU":torchmetrics.JaccardIndex(C_1,mdmc_average=A),
-            "Re":torchmetrics.Recall(C_2,mdmc_average=A,average=M),
-            "Pr":torchmetrics.Precision(C_2,mdmc_average=A,average=M),
-            "F1":torchmetrics.FBetaScore(C_2,mdmc_average=A,average=M)})
-        self.val_metrics = torch.nn.ModuleDict({
-            "VIoU":torchmetrics.JaccardIndex(C_1,mdmc_average=A),
-            "VRe":torchmetrics.Recall(C_2,mdmc_average=A,average=M),
-            "VPr":torchmetrics.Precision(C_2,mdmc_average=A,average=M),
-            "VF1":torchmetrics.FBetaScore(C_2,mdmc_average=A,average=M)})
-        self.test_metrics = torch.nn.ModuleDict({
-            "Test IoU":torchmetrics.JaccardIndex(C_1,mdmc_average=A),
-            "Test Re":torchmetrics.Recall(C_2,mdmc_average=A,average=M),
-            "Test Pr":torchmetrics.Precision(C_2,mdmc_average=A,average=M),
-            "Test F1":torchmetrics.FBetaScore(C_2,mdmc_average=A,average=M)})
+            C_1,C_2,A,M,I = [
+                self.n_classes,self.n_classes,"samplewise","macro",None]
+        self.train_metrics = torch.nn.ModuleDict({})
+        self.val_metrics = torch.nn.ModuleDict({})
+        self.test_metrics = torch.nn.ModuleDict({})
+        md = {"IoU":torchmetrics.JaccardIndex,
+              "Pr":torchmetrics.Precision,
+              "F1":torchmetrics.FBetaScore}
+        if self.bottleneck_classification == True:
+            md["cl:F1"] = torchmetrics.FBetaScore
+            md["cl:Re"] = torchmetrics.Recall
+        for k in md:
+            if k == "IoU":
+                m,C = "macro",C_1
+            else:
+                m,C = M,C_2
+            self.train_metrics[k] = md[k](
+                C,mdmc_average=A,average=m,ignore_index=I).to(self.device)
+            self.val_metrics["V_"+k] = md[k](
+                C,mdmc_average=A,average=m,ignore_index=I).to(self.device)
+            self.test_metrics["T_"+k] = md[k](
+                C,mdmc_average=A,average=m,ignore_index=I).to(self.device)

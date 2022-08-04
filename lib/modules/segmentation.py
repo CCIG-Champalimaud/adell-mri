@@ -201,6 +201,7 @@ class UNet(torch.nn.Module):
     def __init__(
         self,
         spatial_dimensions: int=2,
+        encoding_operations: List[ModuleList]=None,
         conv_type: str="regular",
         link_type: str="identity",
         upscale_type: str="upsample",
@@ -214,7 +215,8 @@ class UNet(torch.nn.Module):
         n_classes: int=2,
         depth: list=[16,32,64],
         kernel_sizes: list=[3,3,3],
-        strides: list=[2,2,2]) -> torch.nn.Module:
+        strides: list=[2,2,2],
+        bottleneck_classification: bool=False) -> torch.nn.Module:
         """Standard U-Net [1] implementation. Features some useful additions 
         such as residual links, different upsampling types, normalizations 
         (batch or instance) and ropouts (dropout and U-out). This version of 
@@ -223,40 +225,47 @@ class UNet(torch.nn.Module):
 
         Args:
             spatial_dimensions (int, optional): number of dimensions for the 
-            input (not counting batch or channels). Defaults to 2.
+                input (not counting batch or channels). Defaults to 2.
+            encoding_operations (List[ModuleList], optional): backbone operations 
+                (uses these rather than a standard U-Net encoder). 
+                Must be a list where each element is a list containing a 
+                convolutional operation and a downsampling operation.
             conv_type (str, optional): types of base convolutional operations.
-            For now it only supports convolutions ("regular"). Defaults to 
-            "regular".
+                For now it only supports convolutions ("regular"). Defaults to 
+                "regular".
             link_type (str, optional): link type for the skip connections.
-            Can be a regular convolution ("conv"), residual block ("residual) or
-            the identity ("identity"). Defaults to "identity".
+                Can be a regular convolution ("conv"), residual block ("residual) or
+                the identity ("identity"). Defaults to "identity".
             upscale_type (str, optional): upscaling type for decoder. Can be 
-            regular interpolate upsampling ("upsample") or transpose 
-            convolutions ("transpose"). Defaults to "upsample".
+                regular interpolate upsampling ("upsample") or transpose 
+                convolutions ("transpose"). Defaults to "upsample".
             interpolation (str, optional): interpolation for the upsampling
-            operation (if `upscale_type="upsample"`). Defaults to "bilinear".
+                operation (if `upscale_type="upsample"`). Defaults to "bilinear".
             norm_type (str, optional): type of normalization. Can be batch
-            normalization ("batch") or instance normalization ("instance"). 
-            Defaults to "batch".
+                normalization ("batch") or instance normalization ("instance"). 
+                Defaults to "batch".
             dropout_type (str, optional): type of dropout. Can be either 
-            regular dropout ("dropout") or U-out [2] ("uout"). Defaults to 
-            "dropout".
+                regular dropout ("dropout") or U-out [2] ("uout"). Defaults to 
+                "dropout".
             padding (int, optional): amount of padding for convolutions. 
-            Defaults to 0.
+                Defaults to 0.
             dropout_param (float, optional): parameter for dropout layers. 
-            Sets the dropout rate for "dropout" and beta for "uout". Defaults 
-            to 0.1.
+                Sets the dropout rate for "dropout" and beta for "uout". Defaults 
+                to 0.1.
             activation_fn (torch.nn.Module, optional): activation function to
-            be applied after normalizing. Defaults to torch.nn.PReLU.
+                be applied after normalizing. Defaults to torch.nn.PReLU.
             n_channels (int, optional): number of channels in input. Defaults
-            to 1.
+                to 1.
             n_classes (int, optional): number of output classes. Defaults to 2.
             depth (list, optional): defines the depths of each layer of the 
-            U-Net (the decoder will be the opposite). Defaults to [16,32,64].
+                U-Net (the decoder will be the opposite). Defaults to [16,32,64].
             kernel_sizes (list, optional): defines the kernels of each layer 
-            of the U-Net. Defaults to [3,3,3].
+                of the U-Net. Defaults to [3,3,3].
             strides (list, optional): defines the strides of each layer of the
-            U-Net. Defaults to [2,2,2].
+                U-Net. Defaults to [2,2,2].
+            bottleneck_classification (bool, optional): sets up a 
+                classification task using the channel-wise maximum of the 
+                bottleneck layer. Defaults to False.
 
         [1] https://www.nature.com/articles/s41592-018-0261-2
         [2] https://openaccess.thecvf.com/content_CVPR_2019/papers/Li_Understanding_the_Disharmony_Between_Dropout_and_Batch_Normalization_by_Variance_CVPR_2019_paper.pdf
@@ -267,6 +276,7 @@ class UNet(torch.nn.Module):
         
         super().__init__()
         self.spatial_dimensions = spatial_dimensions
+        self.encoding_operations = encoding_operations
         self.conv_type = conv_type
         self.link_type = link_type
         self.upscale_type = upscale_type
@@ -281,17 +291,24 @@ class UNet(torch.nn.Module):
         self.depth = depth
         self.kernel_sizes = kernel_sizes
         self.strides = strides
+        self.bottleneck_classification = bottleneck_classification
         
         # initialize all layers
-        self.get_conv_op()
         self.get_norm_op()
         self.get_drop_op()
-        self.init_encoder()
+
+        self.get_conv_op()
+        if self.encoding_operations is None:
+            self.init_encoder()
+        else:
+            self.init_encoder_backbone()
         self.init_upscale_ops()
         self.init_link_ops()
         self.init_decoder()
         self.init_final_layer()
-                
+        if self.bottleneck_classification == True:
+            self.init_bottleneck_classifier()
+
         self.loss_accumulator = 0.
         self.loss_accumulator_d = 0.
 
@@ -329,11 +346,39 @@ class UNet(torch.nn.Module):
         """
         if self.spatial_dimensions == 2:
             if self.conv_type == "regular":
-                self.conv_op = torch.nn.Conv2d
+                self.conv_op_enc = torch.nn.Conv2d
+            elif self.conv_type == "resnet":
+                self.conv_op_enc = self.res_block_conv_2d
+            self.conv_op_dec = torch.nn.Conv2d
         if self.spatial_dimensions == 3:
             if self.conv_type == "regular":
-                self.conv_op = torch.nn.Conv3d
+                self.conv_op_enc = torch.nn.Conv3d
+            elif self.conv_type == "resnet":
+                self.conv_op_enc = self.res_block_conv_3d
+            self.conv_op_dec = torch.nn.Conv3d
     
+    def res_block_conv_2d(self,in_d,out_d,kernel_size,
+                          stride=None,padding=None):
+        """Convenience wrapper for ResidualBlock2d.
+        """
+        if in_d > 32:
+            inter_d = int(in_d//2)
+        else:
+            inter_d = None
+        return ResidualBlock2d(
+            in_d,kernel_size,inter_d,out_d,adn_fn=self.adn_fn)
+
+    def res_block_conv_3d(self,in_d,out_d,kernel_size,
+                          stride=None,padding=None):
+        """Convenience wrapper for ResidualBlock3d.
+        """
+        if in_d > 32:
+            inter_d = int(in_d//2)
+        else:
+            inter_d = None
+        return ResidualBlock3d(
+            in_d,kernel_size,inter_d,out_d,adn_fn=self.adn_fn)
+
     def init_upscale_ops(self):
         """Initializes upscaling operations.
         """
@@ -341,31 +386,29 @@ class UNet(torch.nn.Module):
         depths_b = self.depth[-2::-1]
         if self.upscale_type == "upsample":
             if self.spatial_dimensions == 2:
-                self.upscale_ops = [
+                upscale_ops = [
                     torch.nn.Sequential(
                         torch.nn.Conv2d(d1,d2,1),
                         torch.nn.Upsample(scale_factor=s,mode=self.interpolation))
                     for d1,d2,s in zip(depths_a,depths_b,self.strides[::-1])]
             if self.spatial_dimensions == 3:
-                self.upscale_ops = [
+                upscale_ops = [
                     torch.nn.Sequential(
                         torch.nn.Conv3d(d1,d2,1),
                         torch.nn.Upsample(scale_factor=s,mode=self.interpolation))
                     for d1,d2,s in zip(depths_a,depths_b,self.strides[::-1])]
-            self.upscale_ops = torch.nn.ModuleList(self.upscale_ops)
         elif self.upscale_type == "transpose":
             if self.spatial_dimensions == 2:
-                self.upscale_ops = [
+                upscale_ops = [
                     torch.nn.ConvTranspose2d(
                         d1,d2,2,stride=s,padding=0) 
                     for d1,d2,s in zip(depths_a,depths_b,self.strides[::-1])]
-                self.upscale_ops = torch.nn.ModuleList(self.upscale_ops)
             if self.spatial_dimensions == 3:
-                self.upscale_ops = [
+                upscale_ops = [
                     torch.nn.ConvTranspose3d(
                         d1,d2,2,stride=s,padding=0) 
                     for d1,d2,s in zip(depths_a,depths_b,self.strides[::-1])]
-                self.upscale_ops = torch.nn.ModuleList(self.upscale_ops)
+            self.upscale_ops = torch.nn.ModuleList(upscale_ops)
     
     def init_link_ops(self):
         """Initializes linking (skip) operations.
@@ -377,12 +420,12 @@ class UNet(torch.nn.Module):
         elif self.link_type == "conv":
             if self.spatial_dimensions == 2:
                 self.link_ops = [
-                    ConvBatchAct2d(d,d,3,padding=self.padding)
+                    torch.nn.Conv2d(d,d,3,padding=self.padding)
                     for d in self.depth[-2::-1]]
                 self.link_ops = torch.nn.ModuleList(self.link_ops)
             elif self.spatial_dimensions == 3:
                 self.link_ops = [
-                    ConvBatchAct3d(d,d,3,padding=self.padding) 
+                    torch.nn.Conv3d(d,d,3,padding=self.padding)
                     for d in self.depth[-2::-1]]
                 self.link_ops = torch.nn.ModuleList(self.link_ops)
         elif self.link_type == "residual":
@@ -416,44 +459,52 @@ class UNet(torch.nn.Module):
         for i in range(len(self.depth)-1):
             d,k,s = self.depth[i],self.kernel_sizes[i],self.strides[i]
             op = torch.nn.Sequential(
-                self.conv_op(previous_d,d,kernel_size=k,stride=1,
-                             padding=self.padding),
-                self.norm_op(d),self.drop_op(self.dropout_param),
-                self.activation_fn())
+                self.conv_op_enc(previous_d,d,kernel_size=k,stride=1,
+                                 padding=self.padding),
+                self.adn_fn(d))
             op_downsample = torch.nn.Sequential(
-                self.conv_op(d,d,kernel_size=k,stride=s,padding=self.padding),
-                self.activation_fn())
+                self.conv_op_enc(d,d,kernel_size=k,stride=s,
+                                 padding=self.padding),
+                self.adn_fn(d))
             self.encoding_operations.append(
                 torch.nn.ModuleList([op,op_downsample]))
             previous_d = d
         op = torch.nn.Sequential(
-            self.conv_op(self.depth[-2],self.depth[-1],kernel_size=k,stride=1,
-                         padding=self.padding),
-            self.norm_op(self.depth[-1]),self.drop_op(self.dropout_param),
-            self.activation_fn())
+            self.conv_op_enc(self.depth[-2],self.depth[-1],kernel_size=k,
+                             stride=1,padding=self.padding),
+            self.adn_fn(self.depth[-1]))
         op_downsample = torch.nn.Identity()        
         self.encoding_operations.append(
             torch.nn.ModuleList([op,op_downsample]))
-    
+
+    def init_encoder_backbone(self):
+        """Initializes the encoder operations.
+        """
+        if self.spatial_dimensions == 2:
+            mp = torch.nn.MaxPool2d
+        elif self.spatial_dimensions == 3:
+            mp = torch.nn.MaxPool3d
+        for i in range(len(self.encoding_operations)):
+            self.encoding_operations[i][1] = mp(
+                self.kernel_sizes[i],2,self.kernel_sizes[i]//2)
+        self.encoding_operations[-1][1] = torch.nn.Identity()
+
     def init_decoder(self):
         """Initializes the decoder operations.
         """
         self.decoding_operations = torch.nn.ModuleList([])
         depths = self.depth[-2::-1]
         kernel_sizes = self.kernel_sizes[-2::-1]
-        previous_d = self.depth[-1]
         for i in range(len(depths)):
             d,k = depths[i],kernel_sizes[i]
             op = torch.nn.Sequential(
-                self.conv_op(previous_d,d,kernel_size=k,stride=1,
-                             padding=self.padding),
-                self.activation_fn(),
-                self.conv_op(d,d,kernel_size=k,stride=1,
-                             padding=self.padding),
-                self.norm_op(d),self.drop_op(self.dropout_param),
-                self.activation_fn())
+                self.conv_op_dec(d*2,d,kernel_size=k,stride=1,
+                                 padding=self.padding),
+                self.adn_fn(d),
+                self.conv_op_dec(d,d,kernel_size=k,stride=1,
+                                 padding=self.padding),
+                self.adn_fn(d))
             self.decoding_operations.append(op)
-            previous_d = d
             
     def init_final_layer(self):
         """Initializes the classification layer (simple linear layer).
@@ -461,15 +512,28 @@ class UNet(torch.nn.Module):
         o = self.depth[0]
         if self.n_classes > 2:
             self.final_layer = torch.nn.Sequential(
-                self.conv_op(o,self.n_classes,1),
+                self.conv_op_dec(o,self.n_classes,1),
                 torch.nn.Softmax(dim=1))
         else:
             # coherces to a binary classification problem rather than
             # to a multiclass problem with two classes
             self.final_layer = torch.nn.Sequential(
-                self.conv_op(o,1,1),
+                self.conv_op_dec(o,1,1),
                 torch.nn.Sigmoid())
-        
+
+    def init_bottleneck_classifier(self):
+        nc = self.n_classes if self.n_classes > 2 else 1
+        self.bottleneck_classifier = torch.nn.Linear(
+            self.depth[-1],nc)
+
+    def adn_fn(self,s:int)->torch.Tensor:
+        return ActDropNorm(
+            in_channels=s,ordering='NDA',
+            norm_fn=self.norm_op,
+            act_fn=self.activation_fn,
+            dropout_fn=self.drop_op,
+            dropout_param=self.dropout_param)
+
     def forward(self,X:torch.Tensor)->torch.Tensor:
         """Forward pass for this class.
 
@@ -502,4 +566,9 @@ class UNet(torch.nn.Module):
             curr = op(curr)
             
         curr = self.final_layer(curr)
-        return curr
+        if self.bottleneck_classification == True:
+            bottleneck = bottleneck.flatten(start_dim=2).max(-1).values
+            bn_out = self.bottleneck_classifier(bottleneck)
+        else:
+            bn_out = None
+        return curr,bn_out

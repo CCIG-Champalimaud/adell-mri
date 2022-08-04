@@ -5,6 +5,7 @@ import numpy as np
 import nibabel as nib
 import torch
 import monai
+import torchio
 from sklearn.model_selection import KFold,train_test_split
 from torchmetrics import JaccardIndex,Precision,FBetaScore
 from tqdm import tqdm
@@ -24,7 +25,7 @@ from lib.utils import (
     ConvertToOneHot,
     RandomSlices,
     SlicesToFirst)
-from lib.modules.segmentation_pl import UNetPL
+from lib.modules.segmentation_pl import UNetPL,UNetPlusPlusPL
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -153,10 +154,14 @@ if __name__ == "__main__":
     print("Setting up transforms...")
     if args.augment == True:
         augments = [
-            monai.transforms.RandBiasFieldd([args.mod]),
-            monai.transforms.RandGaussianNoised([args.mod]),
-            monai.transforms.RandGibbsNoised([args.mod]),
-            monai.transforms.RandAdjustContrastd([args.mod])]
+            torchio.transforms.RandomBiasField(
+                include=[args.mod],p=0.1),
+            torchio.transforms.RandomNoise(
+                include=[args.mod],p=0.1),
+            torchio.transforms.RandomGamma(0.1,include=[args.mod]),
+            torchio.transforms.RandomAffine(
+                scales=0.,degrees=10,translation=0,
+                p=0.1,include=all_keys,label_keys=label_keys)]
     else:
         augments = []
 
@@ -210,7 +215,8 @@ if __name__ == "__main__":
         transforms_train.append(
             RandomSlices([args.mod,label_key],label_key,4,base=0.01))
         transforms_train_val.append(
-            RandomSlices([args.mod,label_key],label_key,4,base=0.01))
+            RandomSlices([args.mod,label_key],label_key,4,base=0.01,
+            seed=args.seed))
         transforms_val.append(
             SlicesToFirst([args.mod,label_key]))
         collate_fn = collate_last_slice
@@ -342,7 +348,7 @@ if __name__ == "__main__":
         trainer = Trainer(
             accelerator="gpu" if args.dev=="cuda" else "cpu",devices=1,
             logger=logger,callbacks=callbacks,
-            max_epochs=args.max_epochs,gradient_clip_val=1,
+            max_epochs=args.max_epochs,
             check_val_every_n_epoch=1,log_every_n_steps=10)
 
         trainer.fit(unet, train_loader, train_val_loader)
@@ -371,12 +377,12 @@ if __name__ == "__main__":
         for s in tqdm(validation_loader):
             with torch.no_grad():
                 pred = unet(s[args.mod].to(args.dev))
-            y = torch.squeeze(s[label_key],1).to(args.dev)
-            try: y = torch.round(y).int()
-            except: pass
+                y = torch.squeeze(s[label_key],1).to(args.dev)
+                try: y = torch.round(y).int()
+                except: pass
 
-            for k in metrics:
-                metrics[k].update(pred,y)
+                for k in metrics:
+                    metrics[k].update(pred,y)
 
         for k in metrics:
             metrics[k] = metrics[k].compute().to("cpu")

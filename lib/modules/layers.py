@@ -1,9 +1,36 @@
 
+from turtle import forward
+from typing import OrderedDict
 import numpy as np
 import torch
 import torch.nn.functional as F
+import torchvision
 from math import floor
-from typing import List,Dict
+from ..types import *
+
+activation_factory = {
+    "elu": torch.nn.ELU,
+    "hard_shrink": torch.nn.Hardshrink,
+    "hard_tanh": torch.nn.Hardtanh,
+    "leaky_relu": torch.nn.LeakyReLU,
+    "logsigmoid": torch.nn.LogSigmoid,
+    "prelu": torch.nn.PReLU,
+    "relu": torch.nn.ReLU,
+    "relu6": torch.nn.ReLU6,
+    "rrelu": torch.nn.RReLU,
+    "selu": torch.nn.SELU,
+    "celu": torch.nn.CELU,
+    "sigmoid": torch.nn.Sigmoid,
+    "softplus": torch.nn.Softplus,
+    "softshrink": torch.nn.Softshrink,
+    "softsign": torch.nn.Softsign,
+    "tanh": torch.nn.Tanh,
+    "tanhshrink": torch.nn.Tanhshrink,
+    "threshold": torch.nn.Threshold,
+    "softmin": torch.nn.Softmin,
+    "softmax": torch.nn.Softmax,
+    "logsoftmax": torch.nn.LogSoftmax,
+    "swish": torch.nn.SiLU}
 
 def split_int_into_n(i,n):
     r = i % n
@@ -38,6 +65,30 @@ def crop_to_size(X: torch.Tensor,output_size: list) -> torch.Tensor:
         X = torch.index_select(X,i+2,idx)
     return X
 
+def get_adn_fn(spatial_dim,norm_fn="batch",
+               act_fn="swish",dropout_param=0.1):
+    if norm_fn == "batch":
+        if spatial_dim == 1:
+            norm_fn = torch.nn.BatchNorm1d
+        elif spatial_dim == 2:
+            norm_fn = torch.nn.BatchNorm2d
+        elif spatial_dim == 3:
+            norm_fn = torch.nn.BatchNorm3d
+    elif norm_fn == "instance":
+        if spatial_dim == 1:
+            norm_fn = torch.nn.InstanceNorm1d
+        elif spatial_dim == 2:
+            norm_fn = torch.nn.InstanceNorm2d
+        elif spatial_dim == 3:
+            norm_fn = torch.nn.InstanceNorm3d
+    act_fn = activation_factory[act_fn]
+    def adn_fn(s):
+        return ActDropNorm(
+            s,norm_fn=norm_fn,act_fn=act_fn,
+            dropout_param=dropout_param)
+
+    return adn_fn
+
 class ActDropNorm(torch.nn.Module):
     def __init__(self,in_channels:int=None,ordering:str='NDA',
                  norm_fn: torch.nn.Module=torch.nn.BatchNorm2d,
@@ -49,17 +100,17 @@ class ActDropNorm(torch.nn.Module):
 
         Args:
             in_channels (int, optional): number of input channels. Defaults to
-            None.
+                None.
             ordering (str, optional): ordering of the N(ormalization), 
-            D(ropout) and A(ctivation) operations. Defaults to 'NDA'.
+                D(ropout) and A(ctivation) operations. Defaults to 'NDA'.
             norm_fn (torch.nn.Module, optional): torch module used for 
-            normalization. Defaults to torch.nn.BatchNorm2d.
+                normalization. Defaults to torch.nn.BatchNorm2d.
             act_fn (torch.nn.Module, optional): activation function. Defaults 
-            to torch.nn.PReLU.
+                to torch.nn.PReLU.
             dropout_fn (torch.nn.Module, optional): Function used for dropout. 
-            Defaults to torch.nn.Dropout.
+                Defaults to torch.nn.Dropout.
             dropout_param (float, optional): parameter for dropout. Defaults 
-            to 0.
+                to 0.
         """
         super().__init__()
         self.ordering = ordering
@@ -69,6 +120,7 @@ class ActDropNorm(torch.nn.Module):
         self.dropout_fn = dropout_fn
         self.dropout_param = dropout_param
 
+        self.name_dict = {"A":"activation","D":"dropout","N":"normalization"}
         self.init_layers()
 
     def init_layers(self):
@@ -81,17 +133,27 @@ class ActDropNorm(torch.nn.Module):
         if self.dropout_fn is None:
             self.dropout_fn = torch.nn.Identity
 
-        self.op_dict = {
-            "A":lambda: self.act_fn(),
-            "D":lambda: self.dropout_fn(self.dropout_param),
-            "N":lambda: self.norm_fn(self.in_channels)}
+        op_dict = {
+            "A":self.get_act_fn,
+            "D":self.get_dropout_fn,
+            "N":self.get_norm_fn}
         
-        self.op_list = torch.nn.ModuleList([])
+        op_list = {}
         for k in self.ordering:
-            self.op_list.append(self.op_dict[k]())
-        
-        self.op = torch.nn.Sequential(*self.op_list)
+            op_list[self.name_dict[k]] = op_dict[k]()
+        op_list = OrderedDict(op_list)
 
+        self.op = torch.nn.Sequential(op_list)
+        
+    def get_act_fn(self):
+        return self.act_fn()
+
+    def get_dropout_fn(self):
+        return self.dropout_fn(self.dropout_param)
+    
+    def get_norm_fn(self):
+        return self.norm_fn(self.in_channels)
+        
     def forward(self,X:torch.Tensor)->torch.Tensor:
         """Forward function.
 
@@ -103,13 +165,655 @@ class ActDropNorm(torch.nn.Module):
         """
         return self.op(X)
 
+class ResidualBlock2d(torch.nn.Module):
+    def __init__(
+        self,in_channels:int,kernel_size:int,
+        inter_channels:int=None,out_channels:int=None,
+        adn_fn:torch.nn.Module=torch.nn.Identity):
+        """Default residual block in 2 dimensions. If `out_channels`
+        is different from `in_channels` then a convolution is applied to
+        the skip connection to match the number of `out_channels`.
+
+        Args:
+            in_channels (int): number of input channels.
+            kernel_size (int): kernel size.
+            inter_channels (int): number of intermediary channels. Defaults 
+                to None.
+            out_channels (int): number of output channels. Defaults to None.
+            adn_fn (torch.nn.Module, optional): the activation-dropout-normalization
+                module used. Defaults to torch.nn.Identity.
+        """
+        super().__init__()
+        self.in_channels = in_channels
+        self.kernel_size = kernel_size
+        if inter_channels is not None:
+            self.inter_channels = inter_channels
+        else:
+            self.inter_channels = self.in_channels
+        if out_channels is not None:
+            self.out_channels = out_channels
+        else:
+            self.out_channels = self.in_channels
+        self.adn_fn = adn_fn
+
+        self.init_layers()
+    
+    def init_layers(self):
+        if self.inter_channels is not None:
+            self.op = torch.nn.Sequential(
+                torch.nn.Conv2d(
+                    self.in_channels,self.inter_channels,1),
+                self.adn_fn(self.inter_channels),
+                torch.nn.Conv2d(
+                    self.inter_channels,self.inter_channels,self.kernel_size,
+                    padding="same"),
+                self.adn_fn(self.inter_channels),
+                torch.nn.Conv2d(
+                    self.inter_channels,self.out_channels,1))
+        else:
+            self.op = torch.nn.Sequential(
+                torch.nn.Conv2d(
+                    self.in_channels,self.in_channels,self.kernel_size,
+                    padding="same"),
+                self.adn_fn(self.in_channels),
+                torch.nn.Conv2d(
+                    self.in_channels,self.out_channels,self.kernel_size,
+                    padding="same"))
+
+        # convolve residual connection to match possible difference in 
+        # output channels
+        if self.in_channels != self.out_channels:
+            self.skip_op = torch.nn.Conv2d(
+                self.in_channels,self.out_channels,1)
+        else:
+            self.skip_op = torch.nn.Identity()
+    
+    def forward(self,X):
+        return self.op(X) + self.skip_op(X)
+
+class ResidualBlock3d(torch.nn.Module):
+    def __init__(
+        self,in_channels:int,kernel_size:int,
+        inter_channels:int=None,out_channels:int=None,
+        adn_fn:torch.nn.Module=torch.nn.Identity):
+        """Default residual block in 3 dimensions. If `out_channels`
+        is different from `in_channels` then a convolution is applied to
+        the skip connection to match the number of `out_channels`.
+
+        Args:
+            in_channels (int): number of input channels.
+            kernel_size (int): kernel size.
+            inter_channels (int): number of intermediary channels. Defaults 
+                to None.
+            out_channels (int): number of output channels. Defaults to None.
+            adn_fn (torch.nn.Module, optional): the activation-dropout-normalization
+                module used. Defaults to torch.nn.Identity.
+        """
+        super().__init__()
+        self.in_channels = in_channels
+        self.kernel_size = kernel_size
+        if inter_channels is not None:
+            self.inter_channels = inter_channels
+        else:
+            self.inter_channels = self.in_channels
+        if out_channels is not None:
+            self.out_channels = out_channels
+        else:
+            self.out_channels = self.in_channels
+        self.adn_fn = adn_fn
+
+        self.init_layers()
+    
+    def init_layers(self):
+        if self.inter_channels is not None:
+            self.op = torch.nn.Sequential(
+                torch.nn.Conv3d(
+                    self.in_channels,self.inter_channels,1),
+                self.adn_fn(self.inter_channels),
+                torch.nn.Conv3d(
+                    self.inter_channels,self.inter_channels,self.kernel_size,
+                    padding="same"),
+                self.adn_fn(self.inter_channels),
+                torch.nn.Conv3d(
+                    self.inter_channels,self.out_channels,1))
+        else:
+            self.op = torch.nn.Sequential(
+                torch.nn.Conv3d(
+                    self.in_channels,self.in_channels,self.kernel_size,
+                    padding="same"),
+                self.adn_fn(self.in_channels),
+                torch.nn.Conv3d(
+                    self.in_channels,self.out_channels,self.kernel_size,
+                    padding="same"))
+
+        # convolve residual connection to match possible difference in 
+        # output channels
+        if self.in_channels != self.out_channels:
+            self.skip_op = torch.nn.Conv3d(
+                self.in_channels,self.out_channels,1)
+        else:
+            self.skip_op = torch.nn.Identity()
+
+        self.final_op = self.adn_fn(self.out_channels)
+    
+    def forward(self,X):
+        return self.final_op(self.op(X) + self.skip_op(X))
+
+class ParallelOperationsAndSum(torch.nn.Module):
+    def __init__(self,
+                 operation_list: ModuleList,
+                 crop_to_smallest: bool=False) -> torch.nn.Module:
+        """Module that uses a set of other modules on the original input
+        and sums the output of this set of other modules as the output.
+
+        Args:
+            operation_list (ModuleList): list of PyTorch Modules (i.e. 
+                [torch.nn.Conv2d(16,32,3),torch.nn.Conv2d(16,32,5)])
+            crop_to_smallest (bool, optional): whether the output should be
+                cropped to the size of the smallest operation output
+
+        Returns:
+            torch.nn.Module: a PyTorch Module
+        """
+        super().__init__()
+        self.operation_list = operation_list
+        self.crop_to_smallest = crop_to_smallest
+
+    def forward(self,X: torch.Tensor) -> torch.Tensor:
+        """Forward pass for this Module.
+
+        Args:
+            X (torch.Tensor): 5D tensor 
+
+        Returns:
+            torch.Tensor: 5D Tensor
+        """
+        outputs = []
+        for operation in self.operation_list:
+            outputs.append(operation(X))
+        if self.crop_to_smallest == True:
+            sh = []
+            for output in outputs:
+                sh.append(list(output.shape))
+            crop_sizes = np.array(sh).min(axis=0)[2:]
+            for i in range(len(outputs)):
+                outputs[i] = crop_to_size(outputs[i],crop_sizes)
+        output = outputs[0] + outputs[1]
+        if len(outputs) > 2:
+            for o in outputs[2:]:
+                output = output + o
+        return output
+
+class ResNeXtBlock2d(torch.nn.Module):
+    def __init__(
+        self,in_channels:int,kernel_size:int,
+        inter_channels:int=None,out_channels:int=None,
+        adn_fn:torch.nn.Module=torch.nn.Identity,n_splits:int=16):
+        """Default ResNeXt block in 2 dimensions. If `out_channels`
+        is different from `in_channels` then a convolution is applied to
+        the skip connection to match the number of `out_channels`.
+
+        Args:
+            in_channels (int): number of input channels.
+            inter_channels (int): number of intermediary channels. Defaults 
+                to None.
+            out_channels (int): number of output channels. Defaults to None.
+            kernel_size (int): kernel size.
+            adn_fn (torch.nn.Module, optional): the activation-dropout-normalization
+                module used. Defaults to torch.nn.Identity.
+            n_splits (int, optional): number of branches in intermediate step 
+                of the ResNeXt module. Defaults to 32.
+        """
+        super().__init__()
+        self.in_channels = in_channels
+        self.kernel_size = kernel_size
+        if inter_channels is not None:
+            self.inter_channels = inter_channels
+        else:
+            self.inter_channels = self.in_channels
+        if out_channels is not None:
+            self.out_channels = out_channels
+        else:
+            self.out_channels = self.in_channels
+        self.adn_fn = adn_fn
+        self.n_splits = n_splits
+
+        self.init_layers()
+    
+    def init_layers(self):
+        if self.inter_channels is None:
+            self.inter_channels = self.output_channels
+        self.n_channels_splits = split_int_into_n(
+            self.inter_channels,n=self.n_splits)
+        self.ops = torch.nn.ModuleList([])
+        for n_channels in self.n_channels_splits:
+            op = torch.nn.Sequential(
+                torch.nn.Conv2d(self.in_channels,n_channels,1),
+                self.adn_fn(n_channels),
+                torch.nn.Conv2d(
+                    n_channels,n_channels,self.kernel_size,padding="same"),
+                self.adn_fn(n_channels),
+                torch.nn.Conv2d(n_channels,self.out_channels,1))
+            self.ops.append(op)
+        
+        self.op = ParallelOperationsAndSum(self.ops)
+
+        # convolve residual connection to match possible difference in 
+        # output channels
+        if self.in_channels != self.out_channels:
+            self.skip_op = torch.nn.Conv3d(
+                self.in_channels,self.out_channels,1)
+        else:
+            self.skip_op = torch.nn.Identity()
+
+        self.final_op = self.adn_fn(self.out_channels)
+
+    def forward(self,X):
+        return self.final_op(self.op(X) + self.skip_op(X))
+
+class ResNeXtBlock3d(torch.nn.Module):
+    def __init__(
+        self,in_channels:int,kernel_size:int,
+        inter_channels:int=None,out_channels:int=None,
+        adn_fn:torch.nn.Module=torch.nn.Identity,n_splits:int=32):
+        """Default ResNeXt block in 2 dimensions. If `out_channels`
+        is different from `in_channels` then a convolution is applied to
+        the skip connection to match the number of `out_channels`.
+
+        Args:
+            in_channels (int): number of input channels.
+            inter_channels (int): number of intermediary channels. Defaults 
+                to None.
+            out_channels (int): number of output channels. Defaults to None.
+            kernel_size (int): kernel size.
+            adn_fn (torch.nn.Module, optional): the activation-dropout-normalization
+                module used. Defaults to torch.nn.Identity.
+            n_splits (int, optional): number of branches in intermediate step 
+                of the ResNeXt module. Defaults to 32.
+        """
+        super().__init__()
+        self.in_channels = in_channels
+        self.kernel_size = kernel_size
+        if inter_channels is not None:
+            self.inter_channels = inter_channels
+        else:
+            self.inter_channels = self.in_channels
+        if out_channels is not None:
+            self.out_channels = out_channels
+        else:
+            self.out_channels = self.in_channels
+        self.adn_fn = adn_fn
+        self.n_splits = n_splits
+
+        self.init_layers()
+    
+    def init_layers(self):
+        if self.inter_channels is None:
+            self.inter_channels = self.output_channels
+        self.n_channels_splits = split_int_into_n(
+            self.inter_channels,n=self.n_splits)
+        self.ops = torch.nn.ModuleList([])
+        for n_channels in self.n_channels_splits:
+            op = torch.nn.Sequential(
+                torch.nn.Conv3d(self.in_channels,n_channels,1),
+                self.adn_fn(n_channels),
+                torch.nn.Conv3d(
+                    n_channels,n_channels,self.kernel_size,padding="same"),
+                self.adn_fn(n_channels),
+                torch.nn.Conv3d(n_channels,self.out_channels,1))
+            self.ops.append(op)
+        
+        self.op = ParallelOperationsAndSum(self.ops)
+
+        # convolve residual connection to match possible difference in 
+        # output channels
+        if self.in_channels != self.out_channels:
+            self.skip_op = torch.nn.Conv3d(
+                self.in_channels,self.out_channels,1)
+        else:
+            self.skip_op = torch.nn.Identity()
+
+        self.final_op = self.adn_fn(self.out_channels)
+
+    def forward(self,X):
+        return self.final_op(self.op(X) + self.skip_op(X))
+
+class ResNetBackbone(torch.nn.Module):
+    def __init__(
+        self,
+        spatial_dim:int,
+        in_channels:int,
+        structure:List[Tuple[int,int,int,int]],
+        maxpool_structure:List[Union[Tuple[int,int],Tuple[int,int,int]]]=None,
+        padding=None,
+        adn_fn:torch.nn.Module=torch.nn.Identity,
+        res_type:str="resnet"):
+        """Default ResNet backbone. Takes a `structure` and `maxpool_structure`
+        to parameterize the entire network.
+
+        Args:
+            spatial_dim (int): number of dimensions.
+            in_channels (int): number of input channels.
+            structure (List[Tuple[int,int,int,int]]): Structure of the 
+                backbone. Each element of this list should contain 4 integers 
+                corresponding to the input channels, output channels, filter
+                size and number of consecutive, identical blocks.
+            maxpool_structure (List[Union[Tuple[int,int],Tuple[int,int,int]]],
+                optional): The maxpooling structure used for the backbone. 
+                Defaults to size and stride 2 maxpooling.
+            adn_fn (torch.nn.Module, optional): the 
+                activation-dropout-normalization module used. Defaults to
+                ActDropNorm.
+            res_type (str, optional): the type of residual operation. Can be 
+                either "resnet" (normal residual block) or "resnext" (ResNeXt 
+                block)
+        """
+        super().__init__()
+        self.spatial_dim = spatial_dim
+        self.in_channels = in_channels
+        self.structure = structure
+        self.maxpool_structure = maxpool_structure
+        if self.maxpool_structure is None:
+            self.maxpool_structure = [2 for _ in self.structure]
+        self.adn_fn = adn_fn
+        self.res_type = res_type
+        
+        self.get_ops()
+        self.init_layers()
+
+    def get_ops(self):
+        if self.spatial_dim == 2:
+            if self.res_type == "resnet":
+                self.res_op = ResidualBlock2d
+            elif self.res_type == "resnext":
+                self.res_op = ResNeXtBlock2d
+            self.conv_op = torch.nn.Conv2d
+            self.max_pool_op = torch.nn.MaxPool2d
+        elif self.spatial_dim == 3:
+            if self.res_type == "resnet":
+                self.res_op = ResidualBlock3d
+            elif self.res_type == "resnext":
+                self.res_op = ResNeXtBlock3d
+            self.conv_op = torch.nn.Conv3d
+            self.max_pool_op = torch.nn.MaxPool3d
+
+    def init_layers(self):
+        f = self.structure[0][0]
+        self.input_layer = torch.nn.Sequential(
+            self.conv_op(
+                self.in_channels,f,7,padding="same"),
+            self.adn_fn(f),
+            self.conv_op(
+                f,f,3,padding="same"),
+            self.adn_fn(f))
+        self.first_pooling = self.max_pool_op(2,2)
+        self.operations = torch.nn.ModuleList([])
+        self.pooling_operations = torch.nn.ModuleList([])
+        prev_inp = f
+        for s,mp in zip(self.structure,self.maxpool_structure):
+            op = torch.nn.ModuleList([])
+            inp,inter,k,N = s
+            op.append(self.res_op(prev_inp,k,inter,inp,self.adn_fn))
+            for _ in range(1,N):
+                op.append(self.res_op(inp,k,inter,inp,self.adn_fn))
+            prev_inp = inp
+            op = torch.nn.Sequential(*op)
+            self.operations.append(op)
+            self.pooling_operations.append(self.max_pool_op(mp,mp))
+    
+    def forward_with_intermediate(self,X,after_pool=False):
+        X = self.input_layer(X)
+        X = self.first_pooling(X)
+        output_list = []
+        for op,pool_op in zip(self.operations,self.pooling_operations):
+            if after_pool == False:
+                X = op(X)
+                output_list.append(X)
+                X = pool_op(X)
+            else:
+                X = pool_op(op(X))
+                output_list.append(X)
+        return X,output_list
+
+    def forward_regular(self,X):
+        X = self.input_layer(X)
+        X = self.first_pooling(X)
+        for op,pool_op in zip(self.operations,self.pooling_operations):
+            X = op(X)
+            X = pool_op(X)
+        return X
+
+    def forward(self,X,return_intermediate=False,after_pool=False):
+        if return_intermediate == True:
+            return self.forward_with_intermediate(X,after_pool=after_pool)
+        else:
+            return self.forward_regular(X)
+
+class ProjectionHead(torch.nn.Module):
+    def __init__(
+        self,
+        in_channels:int,
+        structure:List[int],
+        adn_fn:torch.nn.Module=torch.nn.Identity):
+        """Classification head. Takes a `structure` argument to parameterize
+        the entire network. Takes in a [B,C,H,W,(D)] vector, flattens and 
+        performs convolution operations on it.
+
+        Args:
+            in_channels (int): number of input channels.
+            structure (List[Tuple[int,int,int,int]]): Structure of the 
+                backbone. Each element of this list should contain 4 integers 
+                corresponding to the input channels, output channels, filter
+                size and number of consecutive, identical blocks.
+            adn_fn (torch.nn.Module, optional): the 
+                activation-dropout-normalization module used. Defaults to
+                Identity.
+        """
+        super().__init__()
+        self.in_channels = in_channels
+        self.structure = structure
+        self.adn_fn = adn_fn
+
+        self.init_head()
+
+    def init_head(self):
+        prev_d = self.in_channels
+        ops = OrderedDict()
+        for i,fd in enumerate(self.structure[:-1]):
+            k = "linear_{}".format(i)
+            ops[k] = torch.nn.Sequential(
+                torch.nn.Linear(prev_d,fd),
+                self.adn_fn(fd))
+            prev_d = fd
+        fd = self.structure[-1]
+        ops["linear_{}".format(i+1)] = torch.nn.Linear(prev_d,fd)
+        self.op = torch.nn.Sequential(ops)
+
+    def forward(self,X):
+        if len(X.shape) > 2:
+            X = X.flatten(start_dim=2).max(-1).values
+        o = self.op(X)
+        return o
+
+class ResNet(torch.nn.Module):
+    def __init__(self,
+                 backbone_args:dict,
+                 projection_head_args:dict,
+                 prediction_head_args:dict=None):
+        """Quick way of creating a ResNet.
+
+        Args:
+            backbone_args (dict): parameter dict for ResNetBackbone.
+            projection_head_args (dict): parameter dict for ProjectionHead.
+            prediction_head_args (dict, optional): parameter dict for
+                second ProjectionHead. Defaults to None.
+        """
+        super().__init__()
+        self.backbone_args = backbone_args
+        self.projection_head_args = projection_head_args
+        self.prediction_head_args = prediction_head_args
+
+        self.init_backbone()
+        self.init_projection_head()
+        self.init_prediction_head()
+
+    def init_backbone(self):
+        self.backbone = ResNetBackbone(
+            **self.backbone_args)
+    
+    def init_projection_head(self):
+        try:
+            d = self.projection_head_args["structure"][-1]
+            norm_fn = self.projection_head_args["adn_fn"](d).norm_fn
+        except:
+            pass
+        self.projection_head = torch.nn.Sequential(
+            ProjectionHead(
+                **self.projection_head_args),
+            norm_fn(d))
+
+    def init_prediction_head(self):
+        if self.prediction_head_args is not None:
+            self.prediction_head = ProjectionHead(
+                **self.prediction_head_args)
+
+    def forward(self,X,ret="projection"):
+        X = self.backbone(X)
+        if ret == "representation":
+            return X
+        X = self.projection_head(X)
+        if ret == "projection":
+            return X
+        X = self.prediction_head(X)
+        if ret == "prediction":
+            return X
+
+class ResNetSimSiam(torch.nn.Module):
+    def __init__(self,backbone_args:dict,projection_head_args:dict,
+                 prediction_head_args:dict=None):
+        """Very similar to ResNet but with a few pecularities: 1) no activation
+        in the last layer of the projection head and 2)
+
+        Args:
+            backbone_args (dict): _description_
+            projection_head_args (dict): _description_
+            prediction_head_args (dict, optional): _description_. Defaults to None.
+        """
+        self.backbone_args = backbone_args
+        self.projection_head_args = projection_head_args
+        self.prediction_head_args = prediction_head_args
+
+        self.init_backbone()
+        self.init_projection_head()
+        self.init_prediction_head()
+
+    def init_backbone(self):
+        self.backbone = ResNetBackbone(
+            **self.backbone_args)
+    
+    def init_projection_head(self):
+        self.projection_head = ProjectionHead(
+            **self.projection_head_args)
+
+    def init_prediction_head(self):
+        if self.prediction_head_args is not None:
+            self.prediction_head = ProjectionHead(
+                **self.prediction_head_args)
+
+    def forward(self,X,ret="projection"):
+        X = self.backbone(X)
+        if ret == "representation":
+            return X
+        X = self.projection_head(X)
+        if ret == "projection":
+            return X
+        X = self.prediction_head(X)
+        return X
+
+class FeaturePyramidNetworkBackbone(torch.nn.Module):
+    def __init__(
+        self,
+        backbone:torch.nn.Module,
+        spatial_dim:int,
+        structure:List[Tuple[int,int,int,int]],
+        maxpool_structure:List[Union[Tuple[int,int],Tuple[int,int,int]]]=None,
+        adn_fn:torch.nn.Module=torch.nn.Identity):
+        """Feature pyramid network. Aggregates the intermediate features from a
+        given backbone with `backbone.forward(X,return_intermediate=Trues)`.
+
+        Args:
+            backbone (torch.nn.Module): backbone module. Must have a `forward`
+                method that takes a `return_intermediate=True` argument, returning
+                the output and the features specified in the `structure` argument.
+            spatial_dim (int): number of dimensions.
+            structure (List[Tuple[int,int,int,int]]): Structure of the backbone.
+                Only the first three integers of each element are used, corresponding
+                to input features, output features and kernel size.
+            maxpool_structure (List[Union[Tuple[int,int],Tuple[int,int,int]]], optional): 
+                The maxpooling structure used for the backbone. Defaults to None.
+            adn_fn (torch.nn.Module, optional): the activation-dropout-normalization
+                module used. Defaults to torch.nn.Identity.
+        """
+        super().__init__()
+
+        self.backbone = backbone
+        self.spatial_dim = spatial_dim
+        self.structure = structure
+        self.maxpool_structure = maxpool_structure
+        if self.maxpool_structure is None:
+            self.maxpool_structure = [2 for _ in self.structure]
+        self.adn_fn = adn_fn
+        self.n_levels = len(structure)
+
+        self.shape_check = False
+        self.resize_ops = torch.nn.ModuleList([])
+
+        self.get_upscale_ops()
+        self.init_pyramid_layers()
+
+    def get_upscale_ops(self):
+        if self.spatial_dim == 2:
+            self.res_op = ResidualBlock2d
+            self.upscale_op = torch.nn.ConvTranspose2d
+        if self.spatial_dim == 3:
+            self.res_op = ResidualBlock3d
+            self.upscale_op = torch.nn.ConvTranspose3d
+
+    def init_pyramid_layers(self):
+        self.pyramid_ops = torch.nn.ModuleList([])
+        self.upscale_ops = torch.nn.ModuleList([])
+        prev_inp = self.structure[-1][0]
+        for s,mp in zip(self.structure[-1::-1],self.maxpool_structure[-1::-1]):
+            i,inter,k,N = s
+            self.pyramid_ops.append(
+                self.res_op(prev_inp,k,inter,i,self.adn_fn))
+            self.upscale_ops.append(
+                self.upscale_op(
+                    i,i,mp,stride=mp))
+            prev_inp = i
+    
+    def forward(self, X):
+        X,il = self.backbone.forward(X,return_intermediate=True)
+        prev_x = X
+        for pyr_op,up_op,x in zip(self.pyramid_ops,self.upscale_ops,il[-1::-1]):
+            prev_x = pyr_op(prev_x)
+            prev_x = up_op(prev_x)
+            # shouldn't be necessary but cannot be easily avoided when working with
+            # MRI scans with weird numbers of slices...
+            if self.shape_check == False:
+                if prev_x.shape != x.shape:
+                    prev_x = F.interpolate(
+                        prev_x,x.shape[2:],mode='nearest')
+            prev_x = x + prev_x
+        return prev_x
+
 class ConvolutionalBlock3d(torch.nn.Module):
     def __init__(self,in_channels:List[int],out_channels:List[int],
-                 kernel_size:List[int],adn_fn:torch.nn.Module=ActDropNorm,
+                 kernel_size:List[int],adn_fn:torch.nn.Module=torch.nn.Identity,
                  adn_args:dict={},stride:int=1,
                  padding:str="valid"):
         """Assembles a set of blocks containing convolutions followed by 
-        ActDropNorm operations. Used to quickly build convolutional neural
+        adn_fn operations. Used to quickly build convolutional neural
         networks.
 
         Args:
@@ -117,7 +821,7 @@ class ConvolutionalBlock3d(torch.nn.Module):
             out_channels (List[int]): list of output channels for convolutions.
             kernel_size (List[int]): list of kernel sizes.
             adn_fn (torch.nn.Module, optional): module applied after 
-            convolutions. Defaults to ActDropNorm.
+            convolutions. Defaults to torch.nn.Identity.
             adn_args (dict, optional): args for the module applied after 
             convolutions. Defaults to {}.
             stride (int, optional): stride for the convolutions. Defaults to 1.
@@ -164,7 +868,7 @@ class ConvolutionalBlock3d(torch.nn.Module):
 class GCN2d(torch.nn.Module):
     def __init__(self,in_channels:int,
                  out_channels:int,kernel_size:int,
-                 adn_fn:torch.nn.Module=ActDropNorm,
+                 adn_fn:torch.nn.Module=torch.nn.Identity,
                  adn_args:dict={}):
         """Global convolution network module. First introduced in [1]. Useful
         with very large kernel sizes to get information from very distant
@@ -180,7 +884,7 @@ class GCN2d(torch.nn.Module):
             out_channels (int): number of output channels.
             kernel_size (int): kernel size.
             adn_fn (torch.nn.Module, optional): module applied after 
-            convolutions. Defaults to ActDropNorm.
+            convolutions. Defaults to torch.nn.Identity.
             adn_args (dict, optional): args for the module applied after 
             convolutions. Defaults to {}.
         """
@@ -220,7 +924,7 @@ class GCN2d(torch.nn.Module):
 
 class Refine2d(torch.nn.Module):
     def __init__(self,in_channels:int,kernel_size:int,
-                 adn_fn:torch.nn.Module=ActDropNorm,
+                 adn_fn:torch.nn.Module=torch.nn.Identity,
                  adn_args:dict={}):
         """Refinement module from the AHNet paper [1]. Essentially a residual
         module.
@@ -231,7 +935,7 @@ class Refine2d(torch.nn.Module):
             in_channels (int): number of input channels.
             kernel_size (int): number of output channels.
             adn_fn (torch.nn.Module, optional): module applied after 
-            convolutions. Defaults to ActDropNorm.
+            convolutions. Defaults to torch.nn.Identity.
             adn_args (dict, optional): args for the module applied after 
             convolutions. Defaults to {}.
         """
@@ -269,7 +973,7 @@ class Refine2d(torch.nn.Module):
 
 class AHNetDecoderUnit3d(torch.nn.Module):
     def __init__(self,in_channels:int,
-                 adn_fn:torch.nn.Module=ActDropNorm,
+                 adn_fn:torch.nn.Module=torch.nn.Identity,
                  adn_args:dict={}):
         """3D AHNet decoder unit from the AHNet paper [1]. Combines multiple, 
         branching and consecutive convolutions. Each unit is composed of a 
@@ -281,7 +985,7 @@ class AHNetDecoderUnit3d(torch.nn.Module):
         Args:
             in_channels (int): number of input channels.
             adn_fn (torch.nn.Module, optional): module applied after 
-            convolutions. Defaults to ActDropNorm.
+            convolutions. Defaults to torch.nn.Identity.
             adn_args (dict, optional): args for the module applied after 
             convolutions. Defaults to {}.
         """
@@ -310,7 +1014,7 @@ class AHNetDecoderUnit3d(torch.nn.Module):
 
 class AHNetDecoder3d(torch.nn.Module):
     def __init__(self,in_channels:int,
-                 adn_fn:torch.nn.Module=ActDropNorm,
+                 adn_fn:torch.nn.Module=torch.nn.Identity,
                  adn_args:dict={"norm_fn":torch.nn.BatchNorm3d}):
         """Three consecutive AHNetDecoderUnit3d. Can be modified to include
         more but it is hard to know what concrete improvements this may lead
@@ -319,7 +1023,7 @@ class AHNetDecoder3d(torch.nn.Module):
         Args:
             in_channels (int): number of input channels.
             adn_fn (torch.nn.Module, optional): module applied after 
-            convolutions. Defaults to ActDropNorm.
+            convolutions. Defaults to torch.nn.Identity.
             adn_args (dict, optional): args for the module applied after 
             convolutions. Defaults to {"norm_fn":torch.nn.BatchNorm3d}.
         """
@@ -357,7 +1061,7 @@ class AHNetDecoder3d(torch.nn.Module):
 
 class AnysotropicHybridResidual(torch.nn.Module):
     def __init__(self,spatial_dim:int,in_channels:int,kernel_size:int,
-                 adn_fn:torch.nn.Module=ActDropNorm,
+                 adn_fn:torch.nn.Module=torch.nn.Identity,
                  adn_args:dict={}):
         """A 2D residual block that can be converted to a 3D residual block by
         increasing the number of spatial dimensions in the filters. Here I also
@@ -369,7 +1073,7 @@ class AnysotropicHybridResidual(torch.nn.Module):
             in_channels (int): number of input channels.
             kernel_size (int): kernel size.
             adn_fn (torch.nn.Module, optional): module applied after 
-            convolutions. Defaults to ActDropNorm.
+            convolutions. Defaults to torch.nn.Identity.
             adn_args (dict, optional): args for the module applied after 
             convolutions. Defaults to {}.
         """
@@ -505,7 +1209,7 @@ class AnysotropicHybridResidual(torch.nn.Module):
 class AnysotropicHybridInput(torch.nn.Module):
     def __init__(self,spatial_dim:int,in_channels:int,out_channels:int,
                  kernel_size:int,
-                 adn_fn:torch.nn.Module=ActDropNorm,adn_args:dict={}):
+                 adn_fn:torch.nn.Module=torch.nn.Identity,adn_args:dict={}):
         """A 2D residual block that can be converted to a 3D residual block by
         increasing the number of spatial dimensions in the filters. Used as the 
         input layer for AHNet. Here I also transfer the parameters from 
@@ -518,7 +1222,7 @@ class AnysotropicHybridInput(torch.nn.Module):
             in_channels (int): number of input channels.
             kernel_size (int): kernel size.
             adn_fn (torch.nn.Module, optional): module applied after 
-            convolutions. Defaults to ActDropNorm.
+            convolutions. Defaults to torch.nn.Identity.
             adn_args (dict, optional): args for the module applied after 
             convolutions. Defaults to {}.
         """
@@ -653,7 +1357,7 @@ class DepthWiseSeparableConvolution2d(torch.nn.Module):
         self.pointwise_op = torch.nn.Conv2d(
             self.input_channels,self.output_channels,
             kernel_size=1)
-        self.act_op = self.act_fn(inplace=True)
+        self.act_op = self.act_fn()
 
     def forward(self,X:torch.Tensor)->torch.Tensor:
         X = self.depthwise_op(X)
@@ -696,7 +1400,7 @@ class DepthWiseSeparableConvolution3d(torch.nn.Module):
         self.pointwise_op = torch.nn.Conv3d(
             self.input_channels,self.output_channels,
             kernel_size=1)
-        self.act_op = self.act_fn(inplace=True)
+        self.act_op = self.act_fn()
 
     def forward(self,X:torch.Tensor)->torch.Tensor:
         X = self.depthwise_op(X)
@@ -736,11 +1440,11 @@ class SpatialPyramidPooling2d(torch.nn.Module):
                 torch.nn.Conv2d(
                     self.in_channels,self.out_channels,
                     kernel_size=filter_size,padding="same"),
-                self.act_fn(inplace=True),
+                self.act_fn(),
                 DepthWiseSeparableConvolution2d(
                     self.out_channels,self.out_channels,
                     kernel_size=filter_size,padding="same"),
-                self.act_fn(inplace=True))
+                self.act_fn())
             self.layers.append(op)
     
     def forward(self,X:torch.Tensor)->torch.Tensor:
@@ -765,15 +1469,16 @@ class SpatialPyramidPooling3d(torch.nn.Module):
             out_channels (int): number of output channels
             filter_sizes (List[int], optional): list of kernel sizes. Defaults
             to 3.
-            padding (int, optional): amount of padding. Defaults to 1.
             act_fn (torch.nn.Module, optional): activation function applied
             after convolution. Defaults to torch.nn.ReLU.
         """
         super().__init__()
         self.in_channels = in_channels
         self.out_channels = out_channels
-        self.filter_size = filter_sizes
+        self.filter_sizes = filter_sizes
         self.act_fn = act_fn
+
+        self.init_layers()
 
     def init_layers(self):
         self.layers = torch.nn.ModuleList([])
@@ -782,23 +1487,22 @@ class SpatialPyramidPooling3d(torch.nn.Module):
                 torch.nn.Conv3d(
                     self.in_channels,self.out_channels,
                     kernel_size=filter_size,padding="same"),
-                self.act_fn(inplace=True),
+                self.act_fn(),
                 DepthWiseSeparableConvolution3d(
                     self.out_channels,self.out_channels,
                     kernel_size=filter_size,padding="same"),
-                self.act_fn(inplace=True))
+                self.act_fn())
             self.layers.append(op)
     
     def forward(self,X:torch.Tensor)->torch.Tensor:
         outputs = []
         for layer in self.layers:
             outputs.append(layer(X))
-        output = torch.cat(output,dim=1)
+        output = torch.cat(outputs,dim=1)
         return output
 
 class AtrousSpatialPyramidPooling2d(torch.nn.Module):
-    def __init__(self,in_channels:int,out_channels:int,
-                 rates:List[int],
+    def __init__(self,in_channels:int,out_channels:int,rates:List[int],
                  act_fn:torch.nn.Module=torch.nn.ReLU):
         """Atrous spatial pyramid pooling for 2d inputs. Applies a set of 
         differently sized dilated filters to an input and then concatenates
@@ -829,11 +1533,11 @@ class AtrousSpatialPyramidPooling2d(torch.nn.Module):
                 torch.nn.Conv2d(
                     self.in_channels,self.out_channels,
                     dilation=rate,padding="same"),
-                self.act_fn(inplace=True),
+                self.act_fn(),
                 DepthWiseSeparableConvolution2d(
                     self.out_channels,self.out_channels,
                     kernel_size=3,padding="same"),
-                self.act_fn(inplace=True))
+                self.act_fn())
             self.layers.append(op)
 
     def forward(self,X:torch.Tensor)->torch.Tensor:
@@ -844,8 +1548,7 @@ class AtrousSpatialPyramidPooling2d(torch.nn.Module):
         return output
 
 class AtrousSpatialPyramidPooling3d(torch.nn.Module):
-    def __init__(self,in_channels:int,out_channels:int,
-                 rates:List[int],
+    def __init__(self,in_channels:int,out_channels:int,rates:List[int],
                  act_fn:torch.nn.Module=torch.nn.ReLU):
         """Atrous spatial pyramid pooling for 3d inputs. Applies a set of 
         differently sized dilated filters to an input and then concatenates
@@ -876,11 +1579,11 @@ class AtrousSpatialPyramidPooling3d(torch.nn.Module):
                 torch.nn.Conv3d(
                     self.in_channels,self.out_channels,kernel_size=3,
                     dilation=rate,padding="same"),
-                self.act_fn(inplace=True),
+                self.act_fn(),
                 DepthWiseSeparableConvolution3d(
                     self.out_channels,self.out_channels,
                     kernel_size=3,padding="same"),
-                self.act_fn(inplace=True))
+                self.act_fn())
             self.layers.append(op)
 
     def forward(self,X:torch.Tensor)->torch.Tensor:
@@ -926,19 +1629,19 @@ class ReceptiveFieldBlock2d(torch.nn.Module):
                 op = torch.nn.Sequential(
                     torch.nn.Conv2d(
                         self.in_channels,o,kernel_size=1,padding="same"),
-                    self.act_fn(inplace=True),
+                    self.act_fn(),
                     torch.nn.Conv2d(o,o,kernel_size=3,padding="same"),
-                    self.act_fn(inplace=True))
+                    self.act_fn())
             else:
                 op = torch.nn.Sequential(
                     torch.nn.Conv2d(
                         self.in_channels,o,kernel_size=1,padding="same"),
-                    self.act_fn(inplace=True),
+                    self.act_fn(),
                     torch.nn.Conv2d(o,o,kernel_size=rate,padding="same"),
-                    self.act_fn(inplace=True),
+                    self.act_fn(),
                     torch.nn.Conv2d(o,o,dilation=rate,kernel_size=3,
                                     padding="same"),
-                    self.act_fn(inplace=True))
+                    self.act_fn())
             self.layers.append(op)
         self.final_op = torch.nn.Conv2d(
             self.out_channels,self.out_channels,1)
@@ -988,19 +1691,19 @@ class ReceptiveFieldBlock3d(torch.nn.Module):
                 op = torch.nn.Sequential(
                     torch.nn.Conv3d(
                         self.in_channels,o,kernel_size=1,padding="same"),
-                    self.act_fn(inplace=True),
+                    self.act_fn(),
                     torch.nn.Conv3d(o,o,kernel_size=3,padding="same"),
-                    self.act_fn(inplace=True))
+                    self.act_fn())
             else:
                 op = torch.nn.Sequential(
                     torch.nn.Conv3d(
                         self.in_channels,o,kernel_size=1,padding="same"),
-                    self.act_fn(inplace=True),
+                    self.act_fn(),
                     torch.nn.Conv3d(o,o,kernel_size=rate,padding="same"),
-                    self.act_fn(inplace=True),
+                    self.act_fn(),
                     torch.nn.Conv3d(o,o,dilation=rate,kernel_size=3,
                                     padding="same"),
-                    self.act_fn(inplace=True))
+                    self.act_fn())
             self.layers.append(op)
         self.final_op = torch.nn.Conv3d(
             self.bottleneck_channels,self.in_channels,1)
@@ -1088,8 +1791,8 @@ class ChannelSqueezeAndExcite(torch.nn.Module):
     def forward(self,X:torch.Tensor)->torch.Tensor:
         channel_average = torch.flatten(X,start_dim=2).mean(-1)
         channel_squeeze = self.op(channel_average)
-        channel_squeeze = torch.unsqueeze(
-            torch.unsqueeze(channel_squeeze,-1),-1)
+        channel_squeeze = channel_squeeze.reshape(
+            *channel_squeeze.shape,1,1,1)
         X = X * channel_squeeze
         return X
 
@@ -1138,3 +1841,117 @@ class ConcurrentSqueezeAndExcite3d(torch.nn.Module):
         c = self.channel(X)
         output = s+c
         return output
+
+class GlobalPooling(torch.nn.Module):
+    def __init__(self,mode:str="max"):
+        """Wrapper for average and maximum pooling
+
+        Args:
+            mode (str, optional): pooling mode. Can be one of "average" or 
+            "max". Defaults to "max".
+        """
+        super().__init__()
+        self.mode = mode
+        
+        self.get_op()
+    
+    def get_op(self):
+        if self.mode == "average":
+            self.op = torch.mean
+        elif self.mode == "max":
+            self.op = torch.max
+        else:
+            raise "mode must be one of [average,max]"
+
+    def forward(self,X):
+        X = self.op(X.flatten(start_dim=2),-1)
+        if self.mode == "max":
+            X = X[0]
+        return X
+
+class DenseBlock(torch.nn.Module):
+    def __init__(self,
+                 spatial_dim:int,
+                 structure:List[int],
+                 kernel_size:int,
+                 adn_fn:torch.nn.Module=torch.nn.PReLU,
+                 structure_skip:List[int]=None,
+                 return_all:bool=False):
+        """Implementation of dense block with the possibility of including
+        skip connections for architectures such as U-Net++.
+
+        Args:
+            spatial_dim (int): dimensionality of the input (2D or 3D).
+            structure (List[int]): structure of the convolutions in the dense
+                block. 
+            kernel_size (int): kernel size for convolutions.
+            adn_fn (torch.nn.Module, optional): function to be applied after 
+                each convolution. Defaults to torch.nn.PReLU.
+            structure_skip (List[int], optional): structure of the additional
+                skip inputs. Skip inputs are optionally fed into the forward
+                method and are appended to the outputs of each layer. For this
+                reason, len(structure_skip) == len(structure) - 1. Defaults to
+                None (normal dense block).
+            return_all (bool, optional): Whether all outputs (intermediate 
+                convolutions) from this layer should be returned. Defaults to 
+                False.
+        """
+        super().__init__()
+        self.spatial_dim = spatial_dim
+        self.structure = structure
+        self.kernel_size = kernel_size
+        self.adn_fn = adn_fn
+        self.structure_skip = structure_skip
+        self.return_all = return_all
+
+        if self.structure_skip is None or len(self.structure_skip) == 0:
+            self.structure_skip = [0 for _ in range(len(self.structure)-1)]
+        self.init_layers()
+    
+    def init_layers(self):
+        if self.spatial_dim == 2:
+            self.conv_op = torch.nn.Conv2d
+        elif self.spatial_dim == 3:
+            self.conv_op = torch.nn.Conv3d
+        self.ops = torch.nn.ModuleList([])
+        self.upscale_ops = torch.nn.ModuleList([])
+        prev_d = self.structure[0]
+        d = self.structure[1]
+        k = self.kernel_size
+        self.ops.append(
+            torch.nn.Sequential(
+                self.conv_op(prev_d,d,k,padding="same"),self.adn_fn(d)))
+        for i in range(1,len(self.structure)-1):
+            prev_d = sum(self.structure[:(i+1)]) + self.structure_skip[i-1]
+            d = self.structure[i+1]
+            self.ops.append(
+                torch.nn.Sequential(
+                    self.conv_op(prev_d,d,k,padding="same"),self.adn_fn(d)))
+
+    def forward(self,X:torch.Tensor,X_skip:TensorList=None):
+        """
+        Args:
+            X (torch.Tensor): input tensor.
+            X_skip (TensorList, optional): list of tensors with an identical 
+                size as X (except for the channel dimension). The length of
+                this list should be len(self.structure). More details in 
+                __init__. Defaults to None.
+
+        Returns:
+            torch.Tensor or TensorList
+        """
+        outputs = [X]
+        out = X
+        for i in range(len(self.ops)):
+            if X_skip is not None and i > 0:
+                xs = X_skip[i-1]
+                xs = [F.interpolate(xs,out.shape[2:])]
+            else:
+                xs = []
+            out = torch.cat([out,*outputs[:-1],*xs],1)
+            out = self.ops[i](out)
+            outputs.append(out)
+        if self.return_all == True:
+            return outputs
+        else:
+            return outputs[-1]

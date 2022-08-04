@@ -157,13 +157,14 @@ if __name__ == "__main__":
 
     print("Validating...")
     for s in tqdm(loader):
-        pred = unet(s[mod].to(args.dev))
-        y = torch.squeeze(s[label_keys[0]],1).to(args.dev)
-        try: y = torch.round(y).int()
-        except: pass
+        with torch.no_grad():
+            pred = unet(s[mod].to(args.dev))
+            y = torch.squeeze(s[label_keys[0]],1).to(args.dev)
+            try: y = torch.round(y).int()
+            except: pass
 
-        for k in metrics:
-            metrics[k].update(pred,y)
+            for k in metrics:
+                metrics[k].update(pred,y)
 
     for k in metrics:
         metrics[k] = metrics[k].compute().to("cpu")
