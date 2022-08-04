@@ -1,6 +1,4 @@
 import torch
-import torchvision
-import torchmetrics
 
 from ..types import *
 from .layers import *

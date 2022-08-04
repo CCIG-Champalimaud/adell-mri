@@ -2,7 +2,6 @@ import argparse
 import random
 import yaml
 import numpy as np
-import nibabel as nib
 import torch
 import monai
 import torchio
