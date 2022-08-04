@@ -139,10 +139,6 @@ class YOLONet3dPL(YOLONet3d,pl.LightningModule):
             p,t = p[b,:,h,w,d],t[b,h,w,d]
         return p,t
 
-    def split(self,x,n_splits,dim):
-        size = int(x.shape[dim]//n_splits)
-        return torch.split(x,size,dim)
-
     def training_step(self,batch,batch_idx):
         x, y = batch[self.image_key],batch[self.label_key].float()
         prediction = list(self.forward(x))

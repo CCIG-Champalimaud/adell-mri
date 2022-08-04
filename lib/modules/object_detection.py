@@ -180,7 +180,7 @@ class YOLONet3d(torch.nn.Module):
                  anchor_sizes:List=np.ones([1,6]),dev:str="cuda",
                  resnet_structure:List[Tuple[int,int,int,int]]=resnet_default,
                  maxpool_structure:List[Tuple[int,int,int]]=maxpool_default,
-                 pyramid_layers:List[Tuple[int,int,int]]=None,
+                 pyramid_layers:List[Tuple[int,int,int]]=pyramid_default,
                  adn_fn:torch.nn.Module=lambda s:ActDropNorm(
                      s,norm_fn=torch.nn.BatchNorm3d)):
         """Implementation of a YOLO network for object detection in 3d.
@@ -199,7 +199,8 @@ class YOLONet3d(torch.nn.Module):
                 for the maximum pooling operations. Defaults to 
                 maxpool_default.
             pyramid_layers (List[Tuple[int,int,int]], optional): structure for
-                the atrous spatial pyramid pooling layer. Defaults to None.
+                the atrous spatial pyramid pooling layer. Defaults to 
+                pyramid_default.
             adn_fn (torch.nn.Module, optional): function that is applied after
                 each layer (activations, batch normalisation, dropout and etc. 
                 should be specified here). Defaults to 
@@ -282,19 +283,29 @@ class YOLONet3d(torch.nn.Module):
         class_pred = self.classifiation_layer(features)
         return bb_center_pred,bb_size_pred,bb_object_pred,class_pred
 
+    def split(self,x,n_splits,dim):
+        size = int(x.shape[dim]//n_splits)
+        return torch.split(x,size,dim)
+
+    def channels_to_anchors(self,prediction):
+        prediction[:-1] = [torch.stack(self.split(x,self.n_b,1),-1)
+                           for x in prediction[:-1]]
+        return prediction
+
     def recover_boxes(self,
-                      bb_size_pred:torch.Tensor,
                       bb_center_pred:torch.Tensor,
+                      bb_size_pred:torch.Tensor,
                       bb_object_pred:torch.Tensor,
                       class_pred:torch.Tensor,
                       nms:bool=False)->torch.Tensor:
-        """Converts the predictions from forward into bounding boxes. The 
-        format of these boxes is (uc_x,uc_y,lc_x,lc_y), where uc and lc refer
-        to upper and lower corners.
+        """Converts the predictions from a single prediction from forward into 
+        bounding boxes. The format of these boxes is 
+        (uc_x,uc_y,uc_z,lc_x,lc_y,lc_z), where uc and lc refer to upper and
+        lower corners, respectively.
 
         Args:
-            bb_size_pred (torch.Tensor): size predictions.
             bb_center_pred (torch.Tensor): center offset predictions.
+            bb_size_pred (torch.Tensor): size predictions.
             bb_object_pred (torch.Tensor): objectness predictions.
             class_pred (torch.Tensor): class predictions.
             nms (bool, optional): whether to perform non-maximum suppression. 
@@ -324,7 +335,7 @@ class YOLONet3d(torch.nn.Module):
         long_sizes = bb_size_pred[:,x,y,z,a].swapaxes(0,1)
         long_centers = bb_center_pred[:,x,y,z,a].swapaxes(0,1)
         if self.n_c > 2:
-            long_classes = class_pred[:,:,x,y,z].swapaxes(0,-1).squeeze()
+            long_classes = class_pred[:,x,y,z].swapaxes(0,-1).squeeze()
         else:
             long_classes = bb_object_pred[:,x,y,z,a].swapaxes(0,1).squeeze()
 
@@ -333,7 +344,7 @@ class YOLONet3d(torch.nn.Module):
         long_bb = torch.cat([upper_corner,lower_corner],1)
         if nms == True:
             bb_idxs = nms_nd(
-                long_bb,object_scores.reshape(-1),0.8,0.5)
+                long_bb,object_scores.reshape(-1),0.7,0.5)
             return (
                 long_bb[bb_idxs],
                 object_scores[bb_idxs],
@@ -352,12 +363,31 @@ class YOLONet3d(torch.nn.Module):
             else:
                 return (long_bb,object_scores,long_classes)
     
-    def recover_boxes_batch(self,bb_size_pred:torch.Tensor,
+    def recover_boxes_batch(self,
+                            bb_size_pred:torch.Tensor,
                             bb_center_pred:torch.Tensor,
                             bb_object_pred:torch.Tensor,
                             class_pred:torch.Tensor,
                             nms:bool=False,
                             to_dict:bool=False)->List[torch.Tensor]:
+        """Generalises recover_boxes to a batch.
+
+        Args:
+            bb_center_pred (torch.Tensor): center offset predictions.
+            bb_size_pred (torch.Tensor): size predictions.
+            bb_object_pred (torch.Tensor): objectness predictions.
+            class_pred (torch.Tensor): class predictions.
+            nms (bool, optional): whether to perform non-maximum suppression. 
+                Defaults to False.
+            to_dict (bool, optional): returns the output as a dict. Defaults
+                to False.
+
+        Returns:
+            long_bb (torch.Tensor): bounding boxes in the corner format 
+                specified above.
+            object_scores (torch.Tensor): objectness scores (1d).
+            long_classes (torch.Tensor): classes.
+        """
         def convert_to_dict(x):
             return {'boxes':x[0],'scores':x[1],'labels':x[2]}
 
@@ -365,7 +395,7 @@ class YOLONet3d(torch.nn.Module):
         for b in range(bb_size_pred.shape[0]):
             o = self.recover_boxes(
                 bb_size_pred[b],bb_center_pred[b],
-                bb_object_pred[b],class_pred,nms=nms)
+                bb_object_pred[b],class_pred[b],nms=nms)
             if to_dict == True:
                 o = convert_to_dict(o)
             output.append(o)
