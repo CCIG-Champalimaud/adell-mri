@@ -1,4 +1,4 @@
-base_path=/home/jose_almeida/data/PROSTATEx/ProstateX
+source ./paths
 
 mkdir -p dataset_information
 
