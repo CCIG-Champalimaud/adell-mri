@@ -59,8 +59,7 @@ def get_combs(wc):
 def get_masks(wc):
     C = get_combs(wc)
     masks = []
-    #masks.append("lesion_human")
-    masks.append("lesion_ai")
+    masks.append("lesion_merge")
     return masks
 
 def get_spacing(wc):
