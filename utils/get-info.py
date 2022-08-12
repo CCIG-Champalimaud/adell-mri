@@ -13,6 +13,8 @@ if __name__ == "__main__":
     parser.add_argument('--pattern',dest='pattern',default="*nii.gz")
     parser.add_argument('--parameter',dest='parameter',default="spacing",
                         choices=["spacing","size"])
+    parser.add_argument('--spacing',dest='spacing',default=None,nargs='+',
+                        help="spacing to calculate the size")
     parser.add_argument('--quantile',dest='quantile',default=0.5,type=float)
     args = parser.parse_args()
 
@@ -23,6 +25,12 @@ if __name__ == "__main__":
             info = x.GetSpacing()
         if args.parameter == "size":
             info = x.GetSize()
+            if args.spacing is not None:
+                info = list(info)
+                output_spacing = [float(j) for j in args.spacing]
+                input_spacing = x.GetSpacing()
+                for i in range(len(info)):
+                    info[i] = info[i] * (input_spacing[i] / output_spacing[i])
         all_info.append(info)
     
     print(

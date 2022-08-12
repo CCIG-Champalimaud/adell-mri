@@ -1,4 +1,4 @@
-source ./paths
+source utils/paths
 
 mkdir -p dataset_information
 
@@ -25,3 +25,15 @@ do
             --id_pattern "Prostatex[0-9]+"
     done
 done
+
+python3 utils/merge-json-files.py \
+    --input_paths \
+    $PICAI_MASK_PATH_HUMAN \
+    $PICAI_MASK_PATH_AI \
+    $PICAI_MASK_PATH_MERGE \
+    $PICAI_MASK_PATH_GLAND_AI \
+    --suffixes lesion_human lesion_ai lesion_merge gland_ai > dataset_information/bb.pi-cai.json
+
+python3 utils/remove-constant-masks.py \
+    --input_json dataset_information/bb.pi-cai.json \
+    --mask_keys lesion_merge > dataset_information/bb.pi-cai.nc.json

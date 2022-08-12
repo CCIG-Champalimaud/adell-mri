@@ -1,6 +1,7 @@
 mkdir -p dataset_information
 
 iou=0.4
+
 for file in dataset_information/bb*
 do  
     echo $file

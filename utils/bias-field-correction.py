@@ -8,13 +8,16 @@ import SimpleITK as sitk
 
 def correct_bias_field(image,n_fitting_levels,n_iter,shrink_factor=1):
     image_ = image
+    mask_image = sitk.OtsuThreshold(image_)
     if shrink_factor > 1:
         image_ = sitk.Shrink(
             image_,[shrink_factor]*image_.GetDimension())
-    #mask_image = sitk.OtsuThreshold(image_)
+        mask_image = sitk.Shrink(
+            mask_image,[shrink_factor]*mask_image.GetDimension())
     corrector = sitk.N4BiasFieldCorrectionImageFilter()
     corrector.SetMaximumNumberOfIterations(n_fitting_levels*[n_iter])
-    corrected_image = corrector.Execute(image_)
+    corrector.SetConvergenceThreshold(0.001)
+    corrected_image = corrector.Execute(image_,mask_image)
     log_bf = corrector.GetLogBiasFieldAsImage(image)
     corrected_input_image = image/sitk.Exp(log_bf)
     corrected_input_image = sitk.Cast(

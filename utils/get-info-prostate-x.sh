@@ -1,4 +1,4 @@
-source ./paths
+source utils/paths
 
 mkdir -p dataset_information
 
