@@ -5,7 +5,8 @@ import torchmetrics
 import pytorch_lightning as pl
 from typing import Callable
 
-from .classification import CatNet,OrdNet,ordinal_prediction_to_class
+from .classification import (
+    CatNet,OrdNet,ordinal_prediction_to_class,SegCatNet)
 
 class ClassNetPL(pl.LightningModule):
     def __init__(
@@ -189,3 +190,176 @@ class ClassNetPL(pl.LightningModule):
             else:
                 self.test_metrics["test"+k] = metric_dict[k](
                     C,mdmc_average=A,average=M)
+
+class SegCatNetPL(SegCatNet,pl.LightningModule):
+    def __init__(self,
+                 image_key: str="image",
+                 label_key: str="label",
+                 skip_conditioning_key: str=None,
+                 learning_rate: float=0.001,
+                 batch_size: int=4,
+                 weight_decay: float=0.005,
+                 training_dataloader_call: Callable=None,
+                 loss_fn: Callable=F.binary_cross_entropy_with_logits,
+                 loss_params: dict={},
+                 *args,**kwargs):
+
+        super().__init__(*args,**kwargs)
+        
+        self.image_key = image_key
+        self.label_key = label_key
+        self.skip_conditioning_key = skip_conditioning_key
+        self.learning_rate = learning_rate
+        self.batch_size = batch_size
+        self.weight_decay = weight_decay
+        self.trainig_dataloader_call = training_dataloader_call
+        self.loss_fn = loss_fn
+        self.loss_params = loss_params
+
+        self.setup_metrics()
+        
+        self.loss_accumulator = 0.
+        self.loss_accumulator_d = 0.
+   
+    def calculate_loss(self,prediction,y):
+        y = y.type(torch.float32)
+        if len(y.shape) > 1:
+            y = y.squeeze(1)
+        prediction = prediction.type(torch.float32)
+        if len(prediction.shape) > 1:
+            prediction = prediction.squeeze(1)
+        if 'weight' in self.loss_params:
+            weights = torch.ones_like(y)
+            if len(self.loss_params['weight']) == 1:
+                weights[y == 1] = self.loss_params['weight']
+            else:
+                weights = self.loss_params['weight'][y]
+            loss_params = {'weight':weights}
+        else:
+            loss_params = {}
+        loss = self.loss_fn(prediction,y,**loss_params)
+        return loss.mean()
+
+    def update_metrics(self,metrics,pred,y,**kwargs):
+        y = y.long()
+        for k in metrics:
+            metrics[k].update(pred,y)
+            self.log(k,metrics[k],**kwargs)
+
+    def loss_wrapper(self,x,y,x_cond):
+        try: y = torch.round(y)
+        except: y = torch.round(y.float())
+        prediction = self.forward(x,X_skip_layer=x_cond)
+        prediction = torch.squeeze(prediction,1)
+        if len(y.shape) > 1:
+            y = torch.squeeze(y,1)
+        batch_size = int(prediction.shape[0])
+        if batch_size == 1:
+            y = torch.unsqueeze(y,0)
+
+        loss = self.calculate_loss(prediction,y)
+        return prediction,loss
+
+    def training_step(self,batch,batch_idx):
+        x, y = batch[self.image_key],batch[self.label_key]
+        if self.skip_conditioning_key is not None:
+            x_cond = batch[self.skip_conditioning_key]
+        else:
+            x_cond = None
+        pred_final,loss = self.loss_wrapper(x,y,x_cond)
+
+        self.log("train_loss", loss)
+        try: y = torch.round(y).int()
+        except: pass
+        self.update_metrics(
+            self.train_metrics,pred_final,y,
+            on_epoch=True,on_step=False,prog_bar=True)
+        return loss
+    
+    def validation_step(self,batch,batch_idx):
+        x, y = batch[self.image_key],batch[self.label_key]
+        if self.skip_conditioning_key is not None:
+            x_cond = batch[self.skip_conditioning_key]
+        else:
+            x_cond = None
+        pred_final,loss = self.loss_wrapper(x,y,x_cond)
+
+        self.loss_accumulator += loss
+        self.loss_accumulator_d += 1.
+        try: y = torch.round(y).int()
+        except: pass
+        self.update_metrics(
+            self.val_metrics,pred_final,y,
+            on_epoch=True,prog_bar=True)
+        return loss
+
+    def test_step(self,batch,batch_idx):
+        x, y = batch[self.image_key],batch[self.label_key]
+        if self.skip_conditioning_key is not None:
+            x_cond = batch[self.skip_conditioning_key]
+        else:
+            x_cond = None
+        pred_final,loss = self.loss_wrapper(x,y,x_cond)
+
+        try: y = torch.round(y).int()
+        except: pass
+        self.update_metrics(
+            self.test_metrics,pred_final,y,
+            on_epoch=True,on_step=False,prog_bar=True)
+        return loss
+        
+    def train_dataloader(self) -> torch.utils.data.DataLoader:
+        return self.training_dataloader_call()
+
+    def configure_optimizers(self):
+        optimizer = torch.optim.AdamW(
+            self.parameters(),lr=self.learning_rate,
+            weight_decay=self.weight_decay)
+        lr_schedulers = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer,patience=5,min_lr=1e-6,factor=0.2)
+
+        return {"optimizer":optimizer,
+                "lr_scheduler":lr_schedulers,
+                "monitor":"val_loss"}
+    
+    def on_validation_epoch_end(self):
+        for k in self.val_metrics:
+            self.val_metrics[k].reset()
+        D = self.loss_accumulator_d
+        if D > 0:
+            val_loss = self.loss_accumulator/D
+        else:
+            val_loss = np.nan
+        self.log("val_loss",val_loss,prog_bar=True)
+        sch = self.lr_schedulers().state_dict()
+        lr = self.learning_rate
+        last_lr = sch['_last_lr'][0] if '_last_lr' in sch else lr
+        self.log("lr",last_lr)
+        self.loss_accumulator = 0.
+        self.loss_accumulator_d = 0.
+
+    def setup_metrics(self):
+        if self.n_classes == 2:
+            C_1,C_2,A,M,I = 2,None,None,"micro",None
+        else:
+            c = self.n_classes
+            C_1,C_2,A,M,I = [c,c,"samplewise","macro",None]
+        self.train_metrics = torch.nn.ModuleDict({})
+        self.val_metrics = torch.nn.ModuleDict({})
+        self.test_metrics = torch.nn.ModuleDict({})
+        md = {"Pr":torchmetrics.Precision,
+              "F1":torchmetrics.FBetaScore,
+              "Re":torchmetrics.Recall}
+        for k in md:
+            if k == "IoU":
+                m,C = "macro",C_1
+            else:
+                m,C = M,C_2
+
+            if k in ["F1"]:
+                self.train_metrics[k] = md[k](
+                    C,mdmc_average=A,average=m,ignore_index=I).to(self.device)
+                self.val_metrics["V_"+k] = md[k](
+                    C,mdmc_average=A,average=m,ignore_index=I).to(self.device)
+            self.test_metrics["T_"+k] = md[k](
+                C,mdmc_average=A,average=m,ignore_index=I).to(self.device)

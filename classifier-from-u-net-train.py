@@ -4,6 +4,7 @@ import json
 import numpy as np
 import torch
 import monai
+import torchio
 import wandb
 from sklearn.model_selection import KFold,train_test_split
 
@@ -13,18 +14,19 @@ from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.callbacks.model_checkpoint import ModelCheckpoint
 
 from lib.utils import (
-    PartiallyRandomSampler,
-    LabelOperatorSegmentationd,
-    get_loss_param_dict,
+    LabelOperatord,
+    PrintShaped,    
     collate_last_slice,
     RandomSlices,
     SlicesToFirst,
-    CombineBinaryLabelsd,
     ConditionalRescalingd,
+    FastResample,
     safe_collate)
 from lib.modules.layers import ResNet
-from lib.modules.segmentation_pl import UNetPL,UNetPlusPlusPL
-from lib.modules.config_parsing import parse_config_unet,parse_config_ssl
+from lib.modules.segmentation import UNet
+from lib.modules.segmentation_plus import UNetPlusPlus
+from lib.modules.classification_pl import SegCatNetPL
+from lib.modules.config_parsing import parse_config_unet,parse_config_ssl,unet_args
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -66,6 +68,9 @@ if __name__ == "__main__":
         help="Keys corresponding to input images which are segmentation masks",
         default=None)
     parser.add_argument(
+        '--label_key',dest='label_key',type=str,required=True,
+        help="Keys corresponding to labels.")
+    parser.add_argument(
         '--adc_image_keys',dest='adc_image_keys',type=str,nargs='+',
         help="Keys corresponding to input images which are ADC maps \
             (normalized differently)",
@@ -73,15 +78,6 @@ if __name__ == "__main__":
     parser.add_argument(
         '--adc_factor',dest='adc_factor',type=float,default=1/3,
         help="Multiplies ADC images by this factor.")
-    parser.add_argument(
-        '--mask_keys',dest='mask_keys',type=str,nargs='+',
-        help="Mask key in the dataset JSON.",
-        required=True)
-    parser.add_argument(
-        '--bottleneck_classification',dest='bottleneck_classification',
-        action="store_true",
-        help="Predicts the maximum class in the output using the bottleneck \
-            features.")
     parser.add_argument(
         '--possible_labels',dest='possible_labels',type=int,nargs='+',
         help="All the possible labels in the data.",
@@ -91,17 +87,13 @@ if __name__ == "__main__":
         help="Labels that should be considered positive (binarizes labels)",
         default=None)
     parser.add_argument(
-        '--constant_ratio',dest='constant_ratio',type=float,default=None,
-        help="If there are masks with only one value, defines how many are\
-            included relatively to masks with more than one value.")
-    parser.add_argument(
         '--subsample_size',dest='subsample_size',type=int,
         help="Subsamples data to a given size",
         default=None)
 
     # network + training
     parser.add_argument(
-        '--config_file',dest="config_file",
+        '--unet_config_file',dest="unet_config_file",
         help="Path to network configuration file (yaml)",
         required=True)
     parser.add_argument(
@@ -112,11 +104,9 @@ if __name__ == "__main__":
         help="Uses a ResNet as a backbone (depths are inferred from this). \
             This config file is then used to parameterise the ResNet.")
     parser.add_argument(
-        '--res_checkpoint',dest='res_checkpoint',action="store",default=None,
-        help="Checkpoint for SSL backbone (if --res_config_file is specified.")
-    parser.add_argument(
-        '--from_checkpoint',dest='from_checkpoint',action="store",
-        help="Uses this checkpoint as a starting point for the network")
+        '--unet_checkpoints',dest='unet_checkpoints',action="store",default=None,
+        nargs='+',
+        help="Checkpoint for U-Net (including ResNet backbone).")
     
     # training
     parser.add_argument(
@@ -124,6 +114,9 @@ if __name__ == "__main__":
         help="Device for PyTorch training",choices=["cuda","cpu"])
     parser.add_argument(
         '--seed',dest='seed',help="Random seed",default=42,type=int)
+    parser.add_argument(
+        '--batch_size',dest='batch_size',help="Batch size",
+        default=16,type=int)
     parser.add_argument(
         '--n_workers',dest='n_workers',
         help="Number of workers",default=1,type=int)
@@ -137,12 +130,6 @@ if __name__ == "__main__":
         '--pre_load',dest='pre_load',action="store_true",
         help="Load and process data to memory at the beginning of training",
         default=False)
-    parser.add_argument(
-        '--loss_gamma',dest="loss_gamma",
-        help="Gamma for focal loss",default=2.0,type=float)
-    parser.add_argument(
-        '--loss_comb',dest="loss_comb",
-        help="Relative weight for combined losses",default=0.5,type=float)
     parser.add_argument(
         '--max_epochs',dest="max_epochs",
         help="Maximum number of training epochs",default=100,type=int)
@@ -196,7 +183,7 @@ if __name__ == "__main__":
         n_classes = args.possible_labels
 
     keys = args.image_keys
-    label_keys = args.mask_keys
+    label_key = args.label_key
     if args.mask_image_keys is None:
         args.mask_image_keys = []
     if args.adc_image_keys is None:
@@ -213,9 +200,6 @@ if __name__ == "__main__":
     else:
         aux_key_net = None
 
-    # TODO: finish pipeline for aux_keys and aux_mask_keys (final layer 
-    # conditioning)
-
     args.adc_image_keys = [k for k in args.adc_image_keys if k in keys]
     intp = []
     intp_resampling_augmentations = []
@@ -227,13 +211,11 @@ if __name__ == "__main__":
             intp.append("area")
             intp_resampling_augmentations.append("bilinear")
     non_adc_keys = [k for k in keys if k not in args.adc_image_keys]
-    intp.extend(["nearest"]*len(label_keys))
     intp.extend(["area"]*len(aux_keys))
     intp.extend(["nearest"]*len(aux_mask_keys))
-    intp_resampling_augmentations.extend(["nearest"]*len(label_keys))
     intp_resampling_augmentations.extend(["bilinear"]*len(aux_keys))
     intp_resampling_augmentations.extend(["nearest"]*len(aux_mask_keys))
-    all_keys = [*keys,*label_keys,*aux_keys,*aux_mask_keys]
+    all_keys = [*keys,*aux_keys,*aux_mask_keys]
     if args.input_size is not None:
         if args.resize is None:
             R = [1 for _ in args.input_size]
@@ -253,15 +235,17 @@ if __name__ == "__main__":
         data_dict = {k:data_dict[k] for k in ss}
     
     network_config,loss_key = parse_config_unet(
-        args.config_file,len(keys),n_classes)
+        args.unet_config_file,len(keys),n_classes)
 
     print("Setting up transforms...")
     def get_transforms(x,label_mode=None):
         if args.target_spacing is not None:
             rs = [
-                monai.transforms.Spacingd(
-                    all_keys,args.target_spacing,
-                    mode=intp_resampling_augmentations)]
+                FastResample(keys=all_keys,target=args.target_spacing,
+                             mode=intp)]
+            rs = [
+                rs[0]
+            ]
         else:
             rs = []
         scaling_ops = []
@@ -289,15 +273,17 @@ if __name__ == "__main__":
                 monai.transforms.AddChanneld(all_keys),
                 *rs,
                 monai.transforms.Orientationd(all_keys,"RAS"),
-                monai.transforms.Resized(
-                    all_keys,tuple(args.input_size),mode=intp),
+                #monai.transforms.Resized(
+                #    all_keys,tuple(args.input_size),mode=intp),
                 *crop_op,
                 *scaling_ops,
-                monai.transforms.EnsureTyped(all_keys),
-                CombineBinaryLabelsd(label_keys,"any","mask"),
-                LabelOperatorSegmentationd(
-                    ["mask"],args.possible_labels,
-                    mode=label_mode,positive_labels=args.positive_labels)]
+                #PrintShaped(),
+                monai.transforms.EnsureTyped(all_keys,device=args.dev),
+                LabelOperatord(
+                    [label_key],args.possible_labels,
+                    mode=label_mode,positive_labels=args.positive_labels,
+                    output_keys={label_key:"label"})
+                    ]
         elif x == "post":
             if len(all_aux_keys) > 0:
                 aux_concat = [monai.transforms.ConcatItemsd(
@@ -306,8 +292,7 @@ if __name__ == "__main__":
                 aux_concat = []
             return [
                 monai.transforms.ConcatItemsd(keys,"image"),
-                *aux_concat,
-                monai.transforms.ToTensord(["image","mask"])]
+                *aux_concat]
 
     def get_augmentations(augment):
         if augment == True:
@@ -363,11 +348,11 @@ if __name__ == "__main__":
 
     if network_config["spatial_dimensions"] == 2:
         transforms_train.append(
-            RandomSlices(["image","mask"],"mask",8,base=0.001))
+            RandomSlices(["image"],8,base=0.001))
         transforms_train_val.append(
-            SlicesToFirst(["image","mask"]))
+            SlicesToFirst(["image"]))
         transforms_val.append(
-            SlicesToFirst(["image","mask"]))
+            SlicesToFirst(["image"]))
         collate_fn = collate_last_slice
     else:
         collate_fn = safe_collate
@@ -421,52 +406,30 @@ if __name__ == "__main__":
             np.array(args.class_weights),dtype=torch.float32,
             device=args.dev)
         
-        loss_params = get_loss_param_dict(
-            weights=weights,gamma=args.loss_gamma,
-            comb=args.loss_comb)[loss_key]
-
-        if args.constant_ratio is not None:
-            cl = []
-            for x in train_dataset:
-                if len(np.unique(x["mask"])) > 1:
-                    cl.append(1)
-                else:
-                    cl.append(0)
-            sampler = PartiallyRandomSampler(
-                cl,non_keep_ratio=args.constant_ratio,seed=args.seed)
-        else:
-            sampler = None
-
         def train_loader_call(): 
             return monai.data.ThreadDataLoader(
-                train_dataset,batch_size=network_config["batch_size"],
-                num_workers=args.n_workers,generator=g,sampler=sampler,
-                collate_fn=collate_fn,pin_memory=True,
-                persistent_workers=True)
+                train_dataset,batch_size=args.batch_size,
+                num_workers=0,generator=g,
+                collate_fn=collate_fn,pin_memory=True)
 
         train_loader = train_loader_call()
         train_val_loader = monai.data.ThreadDataLoader(
-            train_dataset_val,batch_size=network_config["batch_size"],
-            shuffle=False,num_workers=args.n_workers,generator=g,
-            collate_fn=collate_fn,persistent_workers=True)
+            train_dataset_val,batch_size=args.batch_size,
+            shuffle=False,num_workers=0,generator=g,
+            collate_fn=collate_fn)
         validation_loader = monai.data.ThreadDataLoader(
             validation_dataset,batch_size=1,
-            shuffle=False,num_workers=args.n_workers,generator=g,
-            collate_fn=collate_fn,persistent_workers=True)
+            shuffle=False,num_workers=0,generator=g,
+            collate_fn=collate_fn)
 
         print("Setting up training...")
         if args.res_config_file is not None:
             _,network_config_ssl = parse_config_ssl(
-                args.res_config_file,0.,len(keys),network_config["batch_size"])
+                args.res_config_file,0.,len(keys),args.batch_size)
             for k in ['weight_decay','learning_rate','batch_size']:
                 if k in network_config_ssl:
                     del network_config_ssl[k]
             res_net = ResNet(**network_config_ssl)
-            if args.res_checkpoint is not None:
-                res_state_dict = torch.load(
-                    args.res_checkpoint)['state_dict']
-                mismatched = res_net.load_state_dict(
-                    res_state_dict,strict=False)
             backbone = res_net.backbone
             network_config['depth'] = [
                 backbone.structure[0][0],
@@ -475,42 +438,52 @@ if __name__ == "__main__":
             network_config['strides'] = [2 for _ in network_config['depth']]
             res_ops = [backbone.input_layer,*backbone.operations]
             res_pool_ops = [backbone.first_pooling,*backbone.pooling_operations]
-            if args.res_checkpoint is not None:
-                # freezes training for resnet encoder
-                for res_op in res_ops:
-                    for param in res_op.parameters():
-                        pass
-                        #param.requires_grad = False
+            for res_op in res_ops:
+                for param in res_op.parameters():
+                    param.requires_grad = False
             encoding_operations = torch.nn.ModuleList(
                 [torch.nn.ModuleList([a,b]) 
                  for a,b in zip(res_ops,res_pool_ops)])
         else:
             encoding_operations = None
-        if args.unet_pp == True:
-            unet = UNetPlusPlusPL(
-                training_dataloader_call=train_loader_call,
-                encoding_operations=encoding_operations,
-                image_key="image",label_key="mask",
-                loss_params=loss_params,n_classes=n_classes,
-                bottleneck_classification=args.bottleneck_classification,
-                skip_conditioning=len(all_aux_keys),
-                skip_conditioning_key=aux_key_net,
-                **network_config)
-        else:
-            unet = UNetPL(
-                training_dataloader_call=train_loader_call,
-                encoding_operations=encoding_operations,
-                image_key="image",label_key="mask",
-                loss_params=loss_params,n_classes=n_classes,
-                bottleneck_classification=args.bottleneck_classification,
-                skip_conditioning=len(all_aux_keys),
-                skip_conditioning_key=aux_key_net,
-                **network_config)
 
-        if args.from_checkpoint is not None:
-            state_dict = torch.load(
-                args.from_checkpoint,map_location=args.dev)['state_dict']
-            inc = unet.load_state_dict(state_dict)
+        network_config_unet = {
+            k:network_config[k] for k in network_config
+            if k in unet_args}
+        if args.unet_pp == True:
+            unet = UNetPlusPlus(
+                encoding_operations=encoding_operations,
+                n_classes=n_classes,
+                skip_conditioning=len(all_aux_keys),
+                **network_config_unet)
+        else:
+            unet = UNet(
+                encoding_operations=encoding_operations,
+                n_classes=n_classes,
+                skip_conditioning=len(all_aux_keys),
+                **network_config_unet)
+
+        if len(args.unet_checkpoints) == args.n_folds:
+            ckpt = args.unet_checkpoints[val_fold]
+        else:
+            ckpt = args.unet_checkpoints[0]
+        state_dict = torch.load(ckpt)['state_dict']
+        mismatched = unet.load_state_dict(state_dict)
+
+        for param in unet.parameters():
+            param.requires_grad = False
+
+        seg_cat_net = SegCatNetPL(spatial_dim=unet.spatial_dimensions,
+                                  u_net=unet,n_input_channels=len(keys),
+                                  skip_conditioning_key=aux_key_net,
+                                  n_features_backbone=network_config['depth'][-1],
+                                  n_features_final_layer=network_config['depth'][0],
+                                  n_classes=n_classes,
+                                  batch_size=args.batch_size,
+                                  learning_rate=0.01,
+                                  weight_decay=0.005,
+                                  training_dataloader_call=train_loader_call,
+                                  loss_params={"weight":weights})
         
         callbacks = []
 
@@ -554,10 +527,10 @@ if __name__ == "__main__":
             max_epochs=args.max_epochs,enable_checkpointing=ckpt,
             check_val_every_n_epoch=1,log_every_n_steps=10)
 
-        trainer.fit(unet, train_loader, train_val_loader)
+        trainer.fit(seg_cat_net, train_loader, train_val_loader)
         
         print("Validating...")
-        test_metrics = trainer.test(unet,validation_loader)[0]
+        test_metrics = trainer.test(seg_cat_net,validation_loader)[0]
         for k in test_metrics:
             out = test_metrics[k]
             if n_classes == 2:

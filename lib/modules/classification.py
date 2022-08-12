@@ -1,4 +1,5 @@
 import torch
+import time 
 
 from ..types import *
 from .layers import *
@@ -143,3 +144,106 @@ class OrdNet(CatNet):
         p_general = self.classification_layer(features)
         p_ordinal = self.last_act(p_general + self.bias)
         return p_ordinal
+
+class SegCatNet(torch.nn.Module):
+    def __init__(self,
+                 spatial_dim:int,
+                 u_net:torch.nn.Module,
+                 n_input_channels:int,
+                 n_features_backbone:int,
+                 n_features_final_layer:int,
+                 n_classes:int):
+        """Uses the bottleneck and final layer features from a U-Net module
+        to train a classifier. The `u_net` module should have a `forward` 
+        method that can take a `return_features` argument that, when set to
+        True, returns a tuple of tensors: prediction, final layer features 
+        (before prediction) and bottleneck features.
+
+        Args:
+            spatial_dim (int): number of spatial dimensions.
+            u_net (torch.nn.Module): U-Net module.
+            n_input_channels (int): number of input channels.
+            n_features_backbone (int): number of channels in the U-Net 
+                backbone.
+            n_features_final_layer (int): number of features in the U-Net final
+                layer.
+            n_classes (int): number of classes.
+        """
+        super().__init__()
+        self.spatial_dim = spatial_dim
+        self.u_net = u_net
+        self.n_input_channels = n_input_channels
+        self.n_features_backbone = n_features_backbone
+        self.n_features_final_layer = n_features_final_layer
+        self.n_classes = n_classes
+
+        self.init_final_layer_classification()
+        self.init_bottleneck_classification()
+        self.init_classification_layer()
+
+    def init_final_layer_classification(self):
+        d = self.n_features_final_layer
+        input_d = d + self.n_input_channels
+        inter_d = self.n_features_final_layer * 2
+        structure = [[input_d,inter_d,3,2],
+                     [d*2,d*2,3,2],
+                     [d*4,d*4,3,2]]
+        prediction_structure = [d*4,d*4]
+        self.resnet_backbone_args = {
+            "spatial_dim":self.spatial_dim,
+            "in_channels":input_d,
+            "structure":structure,
+            "maxpool_structure":[2 for _ in structure],
+            "res_type":"resnet",
+            "adn_fn":get_adn_fn(self.spatial_dim,"batch","swish",0.1)}
+        self.resnet_prediction_args = {
+            "in_channels":structure[-1][0],
+            "structure":prediction_structure,
+            "adn_fn":get_adn_fn(1,"batch","swish",0.1)}
+        self.final_layer_classifier = ResNet(
+            self.resnet_backbone_args,self.resnet_prediction_args)
+    
+    def init_bottleneck_classification(self):
+        d = self.n_features_backbone
+        out_size = self.resnet_prediction_args["structure"][-1]
+        self.bottleneck_prediction_structure = [d*2,d*2,out_size]
+        
+        self.bottleneck_classifier = ProjectionHead(
+            d,self.bottleneck_prediction_structure,
+            adn_fn=get_adn_fn(1,"batch","swish",0.1))
+    
+    def init_classification_layer(self):
+        d1 = self.resnet_prediction_args["structure"][-1]
+        d2 = self.bottleneck_prediction_structure[-1]
+        d = d1+d2
+        if self.n_classes == 2:
+            nc = 1
+            self.final_act = torch.nn.Sigmoid()
+        else:
+            nc = self.n_classes
+            self.final_act = torch.nn.Softmax(dim=1)
+
+        self.classifier_structure = [d,d//2,d//4,nc]
+        self.classifier = ProjectionHead(
+            d,self.classifier_structure,
+            adn_fn=get_adn_fn(1,"batch","swish",0.1))
+
+
+    def forward(self,X,**kwargs):
+        times = {}
+        times['a'] = time.time()
+        with torch.no_grad():
+            pred,final_layer,bottleneck = self.u_net.forward(
+               X,return_features=True,**kwargs)
+        times['b'] = time.time()
+
+        class_fl = self.final_layer_classifier(
+            torch.cat([X,final_layer],axis=1))
+        times['c'] = time.time()
+        class_bn = self.bottleneck_classifier(bottleneck)
+        times['d'] = time.time()
+        classification = self.classifier(
+            torch.cat([class_fl,class_bn],axis=1))
+        times['e'] = time.time()
+        
+        return classification
