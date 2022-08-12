@@ -14,6 +14,7 @@ class UNetPL(UNet,pl.LightningModule):
         self,
         image_key: str="image",
         label_key: str="label",
+        skip_conditioning_key: str=None,
         learning_rate: float=0.001,
         batch_size: int=4,
         weight_decay: float=0.005,
@@ -27,6 +28,8 @@ class UNetPL(UNet,pl.LightningModule):
                 dataloader.
             label_key (str): key corresponding to the label map from the train
                 dataloader.
+            skip_conditioning_key (str, optional): key corresponding to
+                image which will be concatenated to the skip connections.            
             learning_rate (float, optional): learning rate. Defaults to 0.001.
             batch_size (int, optional): batch size. Defaults to 4.
             weight_decay (float, optional): weight decay for optimizer. Defaults 
@@ -50,6 +53,7 @@ class UNetPL(UNet,pl.LightningModule):
         
         self.image_key = image_key
         self.label_key = label_key
+        self.skip_conditioning_key = skip_conditioning_key
         self.learning_rate = learning_rate
         self.batch_size = batch_size
         self.weight_decay = weight_decay
@@ -86,9 +90,9 @@ class UNetPL(UNet,pl.LightningModule):
                 metrics[k].update(pred,y)
             self.log(k,metrics[k],**kwargs)
 
-    def loss_wrapper(self,x,y,y_class):
+    def loss_wrapper(self,x,y,y_class,x_cond):
         y = torch.round(y)
-        prediction,pred_class = self.forward(x)
+        prediction,pred_class = self.forward(x,x_cond)
         prediction = torch.squeeze(prediction,1)
         y = torch.squeeze(y,1)
         batch_size = int(prediction.shape[0])
@@ -107,12 +111,16 @@ class UNetPL(UNet,pl.LightningModule):
 
     def training_step(self,batch,batch_idx):
         x, y = batch[self.image_key],batch[self.label_key]
+        if self.skip_conditioning_key is not None:
+            x_cond = batch[self.skip_conditioning_key]
+        else:
+            x_cond = None
         if self.bottleneck_classification == True:
             y_class = y.flatten(start_dim=1).max(1).values
         else:
             y_class = None
         pred_final,pred_class,loss,class_loss,output_loss = self.loss_wrapper(
-            x,y,y_class)
+            x,y,y_class,x_cond)
 
         self.log("train_loss", loss)
         if class_loss is not None:
@@ -126,12 +134,16 @@ class UNetPL(UNet,pl.LightningModule):
     
     def validation_step(self,batch,batch_idx):
         x, y = batch[self.image_key],batch[self.label_key]
+        if self.skip_conditioning_key is not None:
+            x_cond = batch[self.skip_conditioning_key]
+        else:
+            x_cond = None
         if self.bottleneck_classification == True:
             y_class = y.flatten(start_dim=1).max(1).values
         else:
             y_class = None
         pred_final,pred_class,loss,class_loss,output_loss = self.loss_wrapper(
-            x,y,y_class)
+            x,y,y_class,x_cond)
 
         self.loss_accumulator += loss
         if self.bottleneck_classification == True:
@@ -146,12 +158,16 @@ class UNetPL(UNet,pl.LightningModule):
 
     def test_step(self,batch,batch_idx):
         x, y = batch[self.image_key],batch[self.label_key]
+        if self.skip_conditioning_key is not None:
+            x_cond = batch[self.skip_conditioning_key]
+        else:
+            x_cond = None
         if self.bottleneck_classification == True:
             y_class = y.flatten(start_dim=1).max(1).values
         else:
             y_class = None
         pred_final,pred_class,loss,class_loss,output_loss = self.loss_wrapper(
-            x,y,y_class)
+            x,y,y_class,x_cond)
 
         self.loss_accumulator += loss
         if self.bottleneck_classification == True:
@@ -235,6 +251,7 @@ class UNetPlusPlusPL(UNetPlusPlus,pl.LightningModule):
         self,
         image_key: str="image",
         label_key: str="label",
+        skip_conditioning_key: str=None,
         learning_rate: float=0.001,
         batch_size: int=4,
         weight_decay: float=0.005,
@@ -248,6 +265,8 @@ class UNetPlusPlusPL(UNetPlusPlus,pl.LightningModule):
                 dataloader.
             label_key (str): key corresponding to the label map from the train
                 dataloader.
+            skip_conditioning_key (str, optional): key corresponding to
+                image which will be concatenated to the skip connections.
             learning_rate (float, optional): learning rate. Defaults to 0.001.
             batch_size (int, optional): batch size. Defaults to 4.
             weight_decay (float, optional): weight decay for optimizer. Defaults 
@@ -271,6 +290,7 @@ class UNetPlusPlusPL(UNetPlusPlus,pl.LightningModule):
         
         self.image_key = image_key
         self.label_key = label_key
+        self.skip_conditioning_key = skip_conditioning_key
         self.learning_rate = learning_rate
         self.batch_size = batch_size
         self.weight_decay = weight_decay
@@ -295,9 +315,10 @@ class UNetPlusPlusPL(UNetPlusPlus,pl.LightningModule):
             loss = loss + l / (2**(n-i+1))
         return loss.mean()
     
-    def loss_wrapper(self,x,y,y_class):
+    def loss_wrapper(self,x,y,y_class,x_cond):
         y = torch.round(y)
-        prediction,prediction_aux,pred_class = self.forward(x,return_aux=True)
+        prediction,prediction_aux,pred_class = self.forward(
+            x,X_skip_layer=x_cond,return_aux=True)
         prediction = torch.squeeze(prediction,1)
         prediction_aux = [torch.squeeze(x,1) for x in prediction_aux]
         y = torch.squeeze(y,1)
@@ -328,7 +349,7 @@ class UNetPlusPlusPL(UNetPlusPlus,pl.LightningModule):
             prediction.squeeze(1),y.type(torch.int32))
         return loss.mean()
 
-    def update_metrics(self,metrics,pred,y,pred_class,y_class,*kwargs):
+    def update_metrics(self,metrics,pred,y,pred_class,y_class,**kwargs):
         y = y.long()
         if y_class is not None:
             y_class = y_class.long()
@@ -341,13 +362,18 @@ class UNetPlusPlusPL(UNetPlusPlus,pl.LightningModule):
 
     def training_step(self,batch,batch_idx):
         x, y = batch[self.image_key],batch[self.label_key]
+        if self.skip_conditioning_key is not None:
+            x_cond = batch[self.skip_conditioning_key]
+        else:
+            x_cond = None
         if self.bottleneck_classification == True:
             y_class = y.flatten(start_dim=1).max(1).values
         else:
             y_class = None
 
         pred_final,pred_class,output_loss,loss,class_loss = self.loss_wrapper(
-            x,y,y_class)
+            x,y,y_class,x_cond)
+
         if class_loss is not None:
             self.log("train_cl_loss",class_loss)
         self.log("train_loss", loss)
@@ -360,13 +386,17 @@ class UNetPlusPlusPL(UNetPlusPlus,pl.LightningModule):
     
     def validation_step(self,batch,batch_idx):
         x, y = batch[self.image_key],batch[self.label_key]
+        if self.skip_conditioning_key is not None:
+            x_cond = batch[self.skip_conditioning_key]
+        else:
+            x_cond = None
         if self.bottleneck_classification == True:
             y_class = y.flatten(start_dim=1).max(1).values
         else:
             y_class = None
         
         pred_final,pred_class,output_loss,loss,class_loss = self.loss_wrapper(
-            x,y,y_class)
+            x,y,y_class,x_cond)
 
         self.loss_accumulator += loss
         if self.bottleneck_classification == True:
@@ -381,13 +411,17 @@ class UNetPlusPlusPL(UNetPlusPlus,pl.LightningModule):
 
     def test_step(self,batch,batch_idx):
         x, y = batch[self.image_key],batch[self.label_key]
+        if self.skip_conditioning_key is not None:
+            x_cond = batch[self.skip_conditioning_key]
+        else:
+            x_cond = None
         if self.bottleneck_classification == True:
             y_class = y.flatten(start_dim=1).max(1).values
         else:
             y_class = None
             
         pred_final,pred_class,output_loss,loss,class_loss = self.loss_wrapper(
-            x,y,y_class)
+            x,y,y_class,x_cond)
 
         self.loss_accumulator += loss
         if self.bottleneck_classification == True:

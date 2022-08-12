@@ -214,7 +214,8 @@ class UNet(torch.nn.Module):
         depth: list=[16,32,64],
         kernel_sizes: list=[3,3,3],
         strides: list=[2,2,2],
-        bottleneck_classification: bool=False) -> torch.nn.Module:
+        bottleneck_classification: bool=False,
+        skip_conditioning: int=None) -> torch.nn.Module:
         """Standard U-Net [1] implementation. Features some useful additions 
         such as residual links, different upsampling types, normalizations 
         (batch or instance) and ropouts (dropout and U-out). This version of 
@@ -264,6 +265,11 @@ class UNet(torch.nn.Module):
             bottleneck_classification (bool, optional): sets up a 
                 classification task using the channel-wise maximum of the 
                 bottleneck layer. Defaults to False.
+            skip_conditioning (int, optional): assumes that the final 
+                layer (before prediction) will be conditioned by an image 
+                provided as the second argument of forward. This parameter
+                specifies the number of channels in that image. Useful if 
+                any priors (additional segmentation masks) are available.
 
         [1] https://www.nature.com/articles/s41592-018-0261-2
         [2] https://openaccess.thecvf.com/content_CVPR_2019/papers/Li_Understanding_the_Disharmony_Between_Dropout_and_Batch_Normalization_by_Variance_CVPR_2019_paper.pdf
@@ -290,6 +296,7 @@ class UNet(torch.nn.Module):
         self.kernel_sizes = kernel_sizes
         self.strides = strides
         self.bottleneck_classification = bottleneck_classification
+        self.skip_conditioning = skip_conditioning
         
         # initialize all layers
         self.get_norm_op()
@@ -333,7 +340,7 @@ class UNet(torch.nn.Module):
         """
         if self.dropout_type is None:
             self.drop_op = torch.nn.Identity
-            
+
         elif self.dropout_type == "dropout":
             self.drop_op = torch.nn.Dropout
         elif self.dropout_type == "uout":
@@ -411,6 +418,10 @@ class UNet(torch.nn.Module):
     def init_link_ops(self):
         """Initializes linking (skip) operations.
         """
+        if self.skip_conditioning is not None:
+            ex = self.skip_conditioning
+        else:
+            ex = 0
         if self.link_type == "identity":
             self.link_ops = [
                 torch.nn.Identity() for _ in self.depth[:-1]]
@@ -418,22 +429,24 @@ class UNet(torch.nn.Module):
         elif self.link_type == "conv":
             if self.spatial_dimensions == 2:
                 self.link_ops = [
-                    torch.nn.Conv2d(d,d,3,padding=self.padding)
+                    torch.nn.Conv2d(d+ex,d,3,padding=self.padding)
                     for d in self.depth[-2::-1]]
                 self.link_ops = torch.nn.ModuleList(self.link_ops)
             elif self.spatial_dimensions == 3:
                 self.link_ops = [
-                    torch.nn.Conv3d(d,d,3,padding=self.padding)
+                    torch.nn.Conv3d(d+ex,d,3,padding=self.padding)
                     for d in self.depth[-2::-1]]
                 self.link_ops = torch.nn.ModuleList(self.link_ops)
         elif self.link_type == "residual":
             if self.spatial_dimensions == 2:
                 self.link_ops =[
-                    ResidualBlock2d(d,3) for d in self.depth[-2::-1]]
+                    ResidualBlock2d(d+ex,3,out_channels=d,adn_fn=self.adn_fn) 
+                    for d in self.depth[-2::-1]]
                 self.link_ops = torch.nn.ModuleList(self.link_ops)
             elif self.spatial_dimensions == 3:
                 self.link_ops =[
-                    ResidualBlock3d(d,3) for d in self.depth[-2::-1]]
+                    ResidualBlock3d(d+ex,3,out_channels=d,adn_fn=self.adn_fn) 
+                    for d in self.depth[-2::-1]]
                 self.link_ops = torch.nn.ModuleList(self.link_ops)
     
     def interpolate_depths(self,a:int,b:int,n=3)->List[int]:
@@ -510,12 +523,14 @@ class UNet(torch.nn.Module):
         o = self.depth[0]
         if self.n_classes > 2:
             self.final_layer = torch.nn.Sequential(
+                self.conv_op_dec(o,o,3,padding="same"),
                 self.conv_op_dec(o,self.n_classes,1),
                 torch.nn.Softmax(dim=1))
         else:
             # coherces to a binary classification problem rather than
             # to a multiclass problem with two classes
             self.final_layer = torch.nn.Sequential(
+                self.conv_op_dec(o,o,3,padding="same"),
                 self.conv_op_dec(o,1,1),
                 torch.nn.Sigmoid())
 
@@ -532,7 +547,9 @@ class UNet(torch.nn.Module):
             dropout_fn=self.drop_op,
             dropout_param=self.dropout_param)
 
-    def forward(self,X:torch.Tensor)->torch.Tensor:
+    def forward(self,X:torch.Tensor,
+                X_skip_layer:torch.Tensor=None,
+                return_features=False)->torch.Tensor:
         """Forward pass for this class.
 
         Args:
@@ -541,6 +558,11 @@ class UNet(torch.nn.Module):
         Returns:
             torch.Tensor
         """
+        # check if channel dim is available and if not include it 
+        if X_skip_layer is not None:
+            if len(X_skip_layer.shape) < len(X.shape):
+                X_skip_layer = X_skip_layer.unsqueeze(1)
+
         encoding_out = []
         curr = X
         for op,op_ds in self.encoding_operations:
@@ -552,7 +574,13 @@ class UNet(torch.nn.Module):
             op = self.decoding_operations[i]
             link_op = self.link_ops[i]
             up = self.upscale_ops[i]
-            encoded = link_op(encoding_out[-i-2])
+            if X_skip_layer is not None:
+                S = encoding_out[-i-2].shape[2:]
+                xfl = F.interpolate(X_skip_layer,S,mode='nearest')
+                link_op_input = torch.cat([encoding_out[-i-2],xfl],axis=1)
+            else:
+                link_op_input = encoding_out[-i-2]
+            encoded = link_op(link_op_input)
             curr = up(curr)
             sh = list(curr.shape)[2:]
             sh2 = list(encoded.shape)[2:]
@@ -562,11 +590,17 @@ class UNet(torch.nn.Module):
                 curr = crop_to_size(curr,sh2)
             curr = torch.concat((curr,encoded),dim=1)
             curr = op(curr)
-            
+
+        final_features = curr
+
         curr = self.final_layer(curr)
+        if return_features == True:
+            return curr,final_features,bottleneck
+
         if self.bottleneck_classification == True:
             bottleneck = bottleneck.flatten(start_dim=2).max(-1).values
             bn_out = self.bottleneck_classifier(bottleneck)
         else:
             bn_out = None
+                
         return curr,bn_out

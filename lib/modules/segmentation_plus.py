@@ -26,7 +26,8 @@ class UNetPlusPlus(UNet):
         depth: list=[16,32,64],
         kernel_sizes: list=[3,3,3],
         strides: list=[2,2,2],
-        bottleneck_classification: bool=False) -> torch.nn.Module:
+        bottleneck_classification: bool=False,
+        skip_conditioning: int=None) -> torch.nn.Module:
         """Standard U-Net++ [1] implementation. Features some useful additions 
         such as residual links, different upsampling types, normalizations 
         (batch or instance) and ropouts (dropout and U-out). This version of 
@@ -74,12 +75,15 @@ class UNetPlusPlus(UNet):
             bottleneck_classification (bool, optional): sets up a 
                 classification task using the channel-wise maximum of the 
                 bottleneck layer. Defaults to False.
+            skip_conditioning (int, optional): conditions skip connections
+                with a given image with skip_conditioning channels during
+                forward passes.
 
         [1] https://www.nature.com/articles/s41592-018-0261-2
         [2] https://openaccess.thecvf.com/content_CVPR_2019/papers/Li_Understanding_the_Disharmony_Between_Dropout_and_Batch_Normalization_by_Variance_CVPR_2019_paper.pdf
 
         Returns:
-            torch.nn.Module: a U-Net module.
+            torch.nn.Module: a U-Net++ module.
         """
         super().__init__(
             spatial_dimensions=spatial_dimensions,
@@ -97,14 +101,15 @@ class UNetPlusPlus(UNet):
             depth=depth,
             kernel_sizes=kernel_sizes,
             strides=strides,
-            bottleneck_classification=bottleneck_classification)
+            bottleneck_classification=bottleneck_classification,
+            skip_conditioning=skip_conditioning)
                     
         # initialize all layers
         self.get_norm_op()
         self.get_drop_op()
 
         self.get_conv_op()
-        if self.backbone is None:
+        if self.encoding_operations is None:
             self.init_encoder()
         else:
             self.init_encoder_backbone()
@@ -121,20 +126,31 @@ class UNetPlusPlus(UNet):
     def init_link_ops(self):
         """Initializes linking (skip) operations.
         """
+        if self.skip_conditioning is not None:
+            ex = self.skip_conditioning
+        else:
+            ex = 0
         self.link_ops = torch.nn.ModuleList([])
         for i,idx in enumerate(range(len(self.depth)-2,-1,-1)):
             d = self.depth[idx]
             next_d = self.depth[idx+1]
             structure = [d for _ in range(i+2)]
             structure_skip = [next_d for _ in range(i)]
+            structure[0] += ex
+            if len(structure_skip) > 0:
+                structure_skip[0] += ex
             op = DenseBlock(
                 self.spatial_dimensions,structure,3,self.adn_fn,
                 structure_skip,True)
             self.link_ops.append(op)
-          
+
     def init_final_layer(self):
         """Initializes the classification layer (simple linear layer).
         """
+        if self.skip_conditioning is not None:
+            ex = self.skip_conditioning
+        else:
+            ex = 0
         if self.n_classes > 2:
             self.final_act = torch.nn.Softmax(dim=1)
             nc = self.n_classes
@@ -144,12 +160,20 @@ class UNetPlusPlus(UNet):
             self.final_act = torch.nn.Sigmoid()
             nc = 1
         o = self.depth[0]
-        self.final_layer = self.conv_op_dec(o,nc,1)
+        self.final_layer = torch.nn.Sequential(
+            self.conv_op_dec(o,o,3,padding="same"),
+            self.conv_op_dec(o,nc,1))
+        S = [o+ex for _ in self.depth[:-1]]
+        S[-1] = S[-1] - ex
         self.final_layer_aux = torch.nn.ModuleList(
-            [self.conv_op_dec(o,nc,1)
-             for _ in range(len(self.depth)-1)])
+            [torch.nn.Sequential(
+                self.conv_op_dec(s,s-ex,3,padding="same"),
+                self.conv_op_dec(s-ex,nc,1))
+             for s in S])
 
-    def forward(self,X:torch.Tensor,return_aux=False)->torch.Tensor:
+    def forward(self,X:torch.Tensor,return_aux=False,
+                X_final_layer:torch.Tensor=None,
+                return_features=False)->torch.Tensor:
         """Forward pass for this class.
 
         Args:
@@ -158,6 +182,11 @@ class UNetPlusPlus(UNet):
         Returns:
             torch.Tensor
         """
+        # check if channel dim is available and if not include it 
+        if X_final_layer is not None:
+            if len(X_final_layer.shape) < len(X.shape):
+                X_final_layer = X_final_layer.unsqueeze(1)
+
         encoding_out = []
         curr = X
         for op,op_ds in self.encoding_operations:
@@ -174,7 +203,13 @@ class UNetPlusPlus(UNet):
                 lo = link_outputs[-1][:-1]
             else:
                 lo = None
-            encoded = link_op(encoding_out[-i-2],lo)
+            if X_final_layer is not None:
+                S = encoding_out[-i-2].shape[2:]
+                xfl = F.interpolate(X_final_layer,S,mode='nearest')
+                link_op_input = torch.cat([encoding_out[-i-2],xfl],axis=1)
+            else:
+                link_op_input = encoding_out[-i-2]
+            encoded = link_op(link_op_input,lo)
             link_outputs.append(encoded)
             encoded = encoded[-1]
             curr = up(curr)
@@ -187,12 +222,19 @@ class UNetPlusPlus(UNet):
             curr = torch.concat((curr,encoded),dim=1)
             curr = op(curr)
         
+        final_features = curr
+
         curr = self.final_layer(curr)
         curr = self.final_act(curr)
+        if return_features == True:
+            return curr,final_features,bottleneck
+
         # return auxiliary classification layers
         if return_aux == True:
             curr_aux = []
             for op,x in zip(self.final_layer_aux,link_outputs[-1][1:-1]):
+                if X_final_layer is not None:
+                    x = torch.cat([x,X_final_layer],axis=1)
                 curr_aux.append(self.final_act(op(x)))
         else:
             curr_aux = None
