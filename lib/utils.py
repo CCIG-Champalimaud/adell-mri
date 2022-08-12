@@ -3,9 +3,11 @@ import os
 import json
 import numpy as np
 import SimpleITK as sitk
+import itk
 from pandas import Categorical
 import torch
 import torch.nn.functional as F
+import torchio
 import monai
 from glob import glob
 from itertools import product
@@ -330,9 +332,12 @@ class PrintShaped(monai.transforms.Transform):
     """Convenience MONAI transform that prints the shape of elements in a 
     dictionary of tensors. Used for debugging.
     """
+    def __init__(self,prefix=""):
+        self.prefix = prefix
+
     def __call__(self,X):
         for k in X:
-            try: print(k,X[k].shape)
+            try: print(self.prefix,k,X[k].shape)
             except: pass
         return X
 
@@ -1062,3 +1067,45 @@ class PartiallyRandomSampler(torch.utils.data.Sampler):
 
     def __len__(self) -> int:
         return self.n
+
+class FastResample(monai.transforms.Transform):
+    def __init__(self,target:List[float],keys=List[str],mode=List[str]):
+        """Does what monai.transforms.Spacingd does but fast by getting rid of
+        some unnecessary calculations.
+
+        Args:
+            target (List[float]): _description_
+            keys (_type_, optional): _description_. Defaults to List[str].
+            mode (_type_, optional): _description_. Defaults to List[str].
+        """
+        self.target = np.array(target,np.float64)
+        self.keys = keys
+        self.mode = mode
+
+        self.interpolation_modes = {
+            k:m for k,m in zip(self.keys,self.mode)}
+
+    def ensure_tensor(self,x):
+        x = torch.as_tensor(x).unsqueeze(1)
+        return x
+
+    def __call__(self,X):
+        for k in self.keys:
+            meta = X[k + '_meta_dict']
+            if 'spacing' in meta:
+                spacing = meta['spacing']
+                # redefine spacing
+                meta['spacing'] = self.target
+            else:
+                spacing = meta['pixdim'][1:4]
+                meta['pixdim'][1:4] = self.target
+            spacing = np.array(spacing,np.float64)
+            spacing_ratio = spacing/self.target
+            output_shape = np.round(np.multiply(
+                spacing_ratio,
+                np.array(X[k].shape[1:],dtype=np.float64))).astype(np.int64)
+            intp = self.interpolation_modes[k]
+            X[k] = F.interpolate(
+                self.ensure_tensor(X[k]),
+                size=output_shape.tolist(),mode=intp).squeeze(1)
+        return X
