@@ -2,6 +2,15 @@ import yaml
 from .layers import get_adn_fn
 from ..utils import activation_factory,loss_factory
 
+unet_args = [
+    "spatial_dimensions","encoding_operations","conv_type","link_type",
+    "upscale_type","interpolation","norm_type","dropout_type",
+    "padding","dropout_param","activation_fn","n_channels",
+    "n_classes","depth","kernel_sizes","strides",
+    "bottleneck_classification",
+    "skip_conditioning"
+]
+
 def parse_config_unet(config_file,n_keys,n_classes):
     with open(config_file,'r') as o:
         network_config = yaml.safe_load(o)
