@@ -207,7 +207,7 @@ class ResidualBlock2d(torch.nn.Module):
                     padding="same"),
                 self.adn_fn(self.inter_channels),
                 torch.nn.Conv2d(
-                    self.inter_channels,self.out_channels,1))
+                    self.inter_channels,self.in_channels,1))
         else:
             self.op = torch.nn.Sequential(
                 torch.nn.Conv2d(
@@ -215,19 +215,21 @@ class ResidualBlock2d(torch.nn.Module):
                     padding="same"),
                 self.adn_fn(self.in_channels),
                 torch.nn.Conv2d(
-                    self.in_channels,self.out_channels,self.kernel_size,
+                    self.in_channels,self.in_channels,self.kernel_size,
                     padding="same"))
 
         # convolve residual connection to match possible difference in 
         # output channels
         if self.in_channels != self.out_channels:
-            self.skip_op = torch.nn.Conv2d(
+            self.final_op = torch.nn.Conv2d(
                 self.in_channels,self.out_channels,1)
         else:
-            self.skip_op = torch.nn.Identity()
+            self.final_op = torch.nn.Identity()
+
+        self.adn_op = self.adn_fn(self.out_channels)
     
     def forward(self,X):
-        return self.op(X) + self.skip_op(X)
+        return self.adn_op(self.final_op(self.op(X) + X))
 
 class ResidualBlock3d(torch.nn.Module):
     def __init__(
@@ -273,7 +275,7 @@ class ResidualBlock3d(torch.nn.Module):
                     padding="same"),
                 self.adn_fn(self.inter_channels),
                 torch.nn.Conv3d(
-                    self.inter_channels,self.out_channels,1))
+                    self.inter_channels,self.in_channels,1))
         else:
             self.op = torch.nn.Sequential(
                 torch.nn.Conv3d(
@@ -281,21 +283,21 @@ class ResidualBlock3d(torch.nn.Module):
                     padding="same"),
                 self.adn_fn(self.in_channels),
                 torch.nn.Conv3d(
-                    self.in_channels,self.out_channels,self.kernel_size,
+                    self.in_channels,self.in_channels,self.kernel_size,
                     padding="same"))
 
         # convolve residual connection to match possible difference in 
         # output channels
         if self.in_channels != self.out_channels:
-            self.skip_op = torch.nn.Conv3d(
+            self.final_op = torch.nn.Conv3d(
                 self.in_channels,self.out_channels,1)
         else:
-            self.skip_op = torch.nn.Identity()
+            self.final_op = torch.nn.Identity()
 
-        self.final_op = self.adn_fn(self.out_channels)
+        self.adn_op = self.adn_fn(self.out_channels)
     
     def forward(self,X):
-        return self.final_op(self.op(X) + self.skip_op(X))
+        return self.adn_op(self.final_op(self.op(X) + X))
 
 class ParallelOperationsAndSum(torch.nn.Module):
     def __init__(self,
@@ -594,15 +596,13 @@ class ProjectionHead(torch.nn.Module):
         structure:List[int],
         adn_fn:torch.nn.Module=torch.nn.Identity):
         """Classification head. Takes a `structure` argument to parameterize
-        the entire network. Takes in a [B,C,H,W,(D)] vector, flattens and 
+        the entire network. Takes in a [B,C,(H,W,D)] vector, flattens and 
         performs convolution operations on it.
 
         Args:
             in_channels (int): number of input channels.
             structure (List[Tuple[int,int,int,int]]): Structure of the 
-                backbone. Each element of this list should contain 4 integers 
-                corresponding to the input channels, output channels, filter
-                size and number of consecutive, identical blocks.
+                projection head.
             adn_fn (torch.nn.Module, optional): the 
                 activation-dropout-normalization module used. Defaults to
                 Identity.
