@@ -15,6 +15,7 @@ class UNetPL(UNet,pl.LightningModule):
         image_key: str="image",
         label_key: str="label",
         skip_conditioning_key: str=None,
+        feature_conditioning_key: str=None,
         learning_rate: float=0.001,
         batch_size: int=4,
         weight_decay: float=0.005,
@@ -29,7 +30,10 @@ class UNetPL(UNet,pl.LightningModule):
             label_key (str): key corresponding to the label map from the train
                 dataloader.
             skip_conditioning_key (str, optional): key corresponding to
-                image which will be concatenated to the skip connections.            
+                image which will be concatenated to the skip connections. 
+            feature_conditioning_key (str, optional): key corresponding to
+                the tabular features which will be used in the feature
+                conditioning.
             learning_rate (float, optional): learning rate. Defaults to 0.001.
             batch_size (int, optional): batch size. Defaults to 4.
             weight_decay (float, optional): weight decay for optimizer. Defaults 
@@ -54,6 +58,7 @@ class UNetPL(UNet,pl.LightningModule):
         self.image_key = image_key
         self.label_key = label_key
         self.skip_conditioning_key = skip_conditioning_key
+        self.feature_conditioning_key = feature_conditioning_key
         self.learning_rate = learning_rate
         self.batch_size = batch_size
         self.weight_decay = weight_decay
@@ -90,9 +95,10 @@ class UNetPL(UNet,pl.LightningModule):
                 metrics[k].update(pred,y)
             self.log(k,metrics[k],**kwargs)
 
-    def loss_wrapper(self,x,y,y_class,x_cond):
+    def loss_wrapper(self,x,y,y_class,x_cond,x_fc):
         y = torch.round(y)
-        prediction,pred_class = self.forward(x,x_cond)
+        prediction,pred_class = self.forward(
+            x,X_skip_layer=x_cond,X_feature_conditioning=x_fc)
         prediction = torch.squeeze(prediction,1)
         y = torch.squeeze(y,1)
         batch_size = int(prediction.shape[0])
@@ -119,8 +125,13 @@ class UNetPL(UNet,pl.LightningModule):
             y_class = y.flatten(start_dim=1).max(1).values
         else:
             y_class = None
+        if self.feature_conditioning_key is not None:
+            x_fc = batch[self.feature_conditioning_key]
+        else:
+            x_fc = None
+
         pred_final,pred_class,loss,class_loss,output_loss = self.loss_wrapper(
-            x,y,y_class,x_cond)
+            x,y,y_class,x_cond,x_fc)
 
         self.log("train_loss", loss)
         if class_loss is not None:
@@ -142,8 +153,13 @@ class UNetPL(UNet,pl.LightningModule):
             y_class = y.flatten(start_dim=1).max(1).values
         else:
             y_class = None
+        if self.feature_conditioning_key is not None:
+            x_fc = batch[self.feature_conditioning_key]
+        else:
+            x_fc = None
+
         pred_final,pred_class,loss,class_loss,output_loss = self.loss_wrapper(
-            x,y,y_class,x_cond)
+            x,y,y_class,x_cond,x_fc)
 
         self.loss_accumulator += loss
         if self.bottleneck_classification == True:
@@ -166,8 +182,13 @@ class UNetPL(UNet,pl.LightningModule):
             y_class = y.flatten(start_dim=1).max(1).values
         else:
             y_class = None
+        if self.feature_conditioning_key is not None:
+            x_fc = batch[self.feature_conditioning_key]
+        else:
+            x_fc = None
+
         pred_final,pred_class,loss,class_loss,output_loss = self.loss_wrapper(
-            x,y,y_class,x_cond)
+            x,y,y_class,x_cond,x_fc)
 
         self.loss_accumulator += loss
         if self.bottleneck_classification == True:
@@ -252,6 +273,7 @@ class UNetPlusPlusPL(UNetPlusPlus,pl.LightningModule):
         image_key: str="image",
         label_key: str="label",
         skip_conditioning_key: str=None,
+        feature_conditioning_key: str=None,
         learning_rate: float=0.001,
         batch_size: int=4,
         weight_decay: float=0.005,
@@ -267,6 +289,9 @@ class UNetPlusPlusPL(UNetPlusPlus,pl.LightningModule):
                 dataloader.
             skip_conditioning_key (str, optional): key corresponding to
                 image which will be concatenated to the skip connections.
+            feature_conditioning_key (str, optional): key corresponding to
+                the tabular features which will be used in the feature
+                conditioning.
             learning_rate (float, optional): learning rate. Defaults to 0.001.
             batch_size (int, optional): batch size. Defaults to 4.
             weight_decay (float, optional): weight decay for optimizer. Defaults 
@@ -291,6 +316,7 @@ class UNetPlusPlusPL(UNetPlusPlus,pl.LightningModule):
         self.image_key = image_key
         self.label_key = label_key
         self.skip_conditioning_key = skip_conditioning_key
+        self.feature_conditioning_key = feature_conditioning_key
         self.learning_rate = learning_rate
         self.batch_size = batch_size
         self.weight_decay = weight_decay
@@ -315,10 +341,11 @@ class UNetPlusPlusPL(UNetPlusPlus,pl.LightningModule):
             loss = loss + l / (2**(n-i+1))
         return loss.mean()
     
-    def loss_wrapper(self,x,y,y_class,x_cond):
+    def loss_wrapper(self,x,y,y_class,x_cond,x_fc):
         y = torch.round(y)
-        prediction,prediction_aux,pred_class = self.forward(
-            x,X_skip_layer=x_cond,return_aux=True)
+        prediction,pred_class = self.forward(
+            x,X_skip_layer=x_cond,X_feature_conditioning=x_fc,
+            return_aux=True)
         prediction = torch.squeeze(prediction,1)
         prediction_aux = [torch.squeeze(x,1) for x in prediction_aux]
         y = torch.squeeze(y,1)
@@ -370,9 +397,13 @@ class UNetPlusPlusPL(UNetPlusPlus,pl.LightningModule):
             y_class = y.flatten(start_dim=1).max(1).values
         else:
             y_class = None
+        if self.feature_conditioning_key is not None:
+            x_fc = batch[self.feature_conditioning_key]
+        else:
+            x_fc = None
 
         pred_final,pred_class,output_loss,loss,class_loss = self.loss_wrapper(
-            x,y,y_class,x_cond)
+            x,y,y_class,x_cond,x_fc)
 
         if class_loss is not None:
             self.log("train_cl_loss",class_loss)
@@ -394,9 +425,13 @@ class UNetPlusPlusPL(UNetPlusPlus,pl.LightningModule):
             y_class = y.flatten(start_dim=1).max(1).values
         else:
             y_class = None
+        if self.feature_conditioning_key is not None:
+            x_fc = batch[self.feature_conditioning_key]
+        else:
+            x_fc = None
         
         pred_final,pred_class,output_loss,loss,class_loss = self.loss_wrapper(
-            x,y,y_class,x_cond)
+            x,y,y_class,x_cond,x_fc)
 
         self.loss_accumulator += loss
         if self.bottleneck_classification == True:
@@ -419,9 +454,13 @@ class UNetPlusPlusPL(UNetPlusPlus,pl.LightningModule):
             y_class = y.flatten(start_dim=1).max(1).values
         else:
             y_class = None
+        if self.feature_conditioning_key is not None:
+            x_fc = batch[self.feature_conditioning_key]
+        else:
+            x_fc = None
             
         pred_final,pred_class,output_loss,loss,class_loss = self.loss_wrapper(
-            x,y,y_class,x_cond)
+            x,y,y_class,x_cond,x_fc)
 
         self.loss_accumulator += loss
         if self.bottleneck_classification == True:
