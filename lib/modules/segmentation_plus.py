@@ -27,7 +27,8 @@ class UNetPlusPlus(UNet):
         kernel_sizes: list=[3,3,3],
         strides: list=[2,2,2],
         bottleneck_classification: bool=False,
-        skip_conditioning: int=None) -> torch.nn.Module:
+        skip_conditioning: int=None,
+        feature_conditioning: int=None) -> torch.nn.Module:
         """Standard U-Net++ [1] implementation. Features some useful additions 
         such as residual links, different upsampling types, normalizations 
         (batch or instance) and ropouts (dropout and U-out). This version of 
@@ -78,6 +79,10 @@ class UNetPlusPlus(UNet):
             skip_conditioning (int, optional): conditions skip connections
                 with a given image with skip_conditioning channels during
                 forward passes.
+            feature_conditioning (int,optional): linearly transforms tabular 
+                features and adds them to each channel of the skip connections.
+                Useful to include tabular features in the prediction algorithm.
+                Defaults to None.
 
         [1] https://www.nature.com/articles/s41592-018-0261-2
         [2] https://openaccess.thecvf.com/content_CVPR_2019/papers/Li_Understanding_the_Disharmony_Between_Dropout_and_Batch_Normalization_by_Variance_CVPR_2019_paper.pdf
@@ -102,8 +107,9 @@ class UNetPlusPlus(UNet):
             kernel_sizes=kernel_sizes,
             strides=strides,
             bottleneck_classification=bottleneck_classification,
-            skip_conditioning=skip_conditioning)
-                    
+            skip_conditioning=skip_conditioning,
+            feature_conditioning=feature_conditioning)
+
         # initialize all layers
         self.get_norm_op()
         self.get_drop_op()
@@ -119,6 +125,8 @@ class UNetPlusPlus(UNet):
         self.init_final_layer()
         if self.bottleneck_classification == True:
             self.init_bottleneck_classifier()
+        if self.feature_conditioning is not None:
+            self.init_feature_conditioning_operations()
                 
         self.loss_accumulator = 0.
         self.loss_accumulator_d = 0.
@@ -173,8 +181,10 @@ class UNetPlusPlus(UNet):
                 self.conv_op_dec(s-ex,nc,1))
              for s in S])
 
-    def forward(self,X:torch.Tensor,return_aux=False,
+    def forward(self,X:torch.Tensor,
+                return_aux=False,
                 X_skip_layer:torch.Tensor=None,
+                X_feature_conditioning:torch.Tensor=None,
                 return_features=False)->torch.Tensor:
         """Forward pass for this class.
 
@@ -212,6 +222,12 @@ class UNetPlusPlus(UNet):
             else:
                 link_op_input = encoding_out[-i-2]
             encoded = link_op(link_op_input,lo)
+            if X_feature_conditioning is not None:
+                op = self.feature_conditioning_ops[i]
+                transformed_features = op(X_feature_conditioning)
+                encoded = torch.multiply(
+                    encoded,
+                    self.unsqueeze_to_dim(transformed_features,encoded))
             link_outputs.append(encoded)
             encoded = encoded[-1]
             curr = up(curr)
