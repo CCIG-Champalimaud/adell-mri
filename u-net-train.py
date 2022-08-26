@@ -21,6 +21,7 @@ from lib.utils import (
     SlicesToFirst,
     CombineBinaryLabelsd,
     ConditionalRescalingd,
+    FastResample,
     safe_collate)
 from lib.modules.layers import ResNet
 from lib.modules.segmentation_pl import UNetPL,UNetPlusPlusPL
@@ -37,8 +38,8 @@ if __name__ == "__main__":
         '--input_size',dest='input_size',type=float,nargs='+',default=None,
         help="Input size for network")
     parser.add_argument(
-        '--resize',dest='resize',type=float,nargs='+',default=None,
-        help="Scales the input size by a float")
+        '--resize_keys',dest='resize_keys',type=str,nargs='+',default=None,
+        help="Keys that will be resized to input size")
     parser.add_argument(
         '--crop_size',dest='crop_size',action="store",
         default=None,type=float,nargs='+',
@@ -205,6 +206,8 @@ if __name__ == "__main__":
         args.skip_key = []
     if args.skip_mask_key is None:
         args.skip_mask_key = []
+    if args.resize_keys is None:
+        args.resize_keys = []
     aux_keys = args.skip_key
     aux_mask_keys = args.skip_mask_key
     all_aux_keys = aux_keys + aux_mask_keys
@@ -212,9 +215,6 @@ if __name__ == "__main__":
         aux_key_net = "aux_key"
     else:
         aux_key_net = None
-
-    # TODO: finish pipeline for aux_keys and aux_mask_keys (final layer 
-    # conditioning)
 
     args.adc_image_keys = [k for k in args.adc_image_keys if k in keys]
     intp = []
@@ -235,12 +235,7 @@ if __name__ == "__main__":
     intp_resampling_augmentations.extend(["nearest"]*len(aux_mask_keys))
     all_keys = [*keys,*label_keys,*aux_keys,*aux_mask_keys]
     if args.input_size is not None:
-        if args.resize is None:
-            R = [1 for _ in args.input_size]
-        else:
-            R = args.resize
-        args.input_size = [
-            int(x*y) for x,y in zip(args.input_size,R)]
+        args.input_size = [round(x) for x in args.input_size]
 
     data_dict = json.load(open(args.dataset_json,'r'))
     data_dict = {
@@ -260,7 +255,7 @@ if __name__ == "__main__":
         if args.target_spacing is not None:
             rs = [
                 monai.transforms.Spacingd(
-                    all_keys,args.target_spacing,
+                    keys=all_keys,pixdim=args.target_spacing,
                     mode=intp_resampling_augmentations)]
         else:
             rs = []
@@ -274,6 +269,13 @@ if __name__ == "__main__":
             scaling_ops.append(
                 monai.transforms.ScaleIntensityd(
                     args.adc_image_keys,None,None,1-args.adc_factor))
+        if args.input_size is not None and len(args.resize_keys) > 0:
+            intp_ = [k for k,kk in zip(intp,all_keys) 
+                     if kk in args.resize_keys]
+            resize = [monai.transforms.Resized(
+                args.resize_keys,tuple(args.input_size),mode=intp_)]
+        else:
+            resize = []
         if args.crop_size is not None:
             crop_op = [
                 monai.transforms.CenterSpatialCropd(
@@ -287,10 +289,9 @@ if __name__ == "__main__":
             return [
                 monai.transforms.LoadImaged(all_keys),
                 monai.transforms.AddChanneld(all_keys),
-                *rs,
                 monai.transforms.Orientationd(all_keys,"RAS"),
-                monai.transforms.Resized(
-                    all_keys,tuple(args.input_size),mode=intp),
+                *rs,
+                *resize,
                 *crop_op,
                 *scaling_ops,
                 monai.transforms.EnsureTyped(all_keys),
@@ -416,7 +417,6 @@ if __name__ == "__main__":
                 val_list,
                 monai.transforms.Compose(transforms_val))
 
-        print("Calculating class weights...")        
         weights = torch.as_tensor(
             np.array(args.class_weights),dtype=torch.float32,
             device=args.dev)
@@ -554,10 +554,11 @@ if __name__ == "__main__":
             max_epochs=args.max_epochs,enable_checkpointing=ckpt,
             check_val_every_n_epoch=1,log_every_n_steps=10)
 
-        trainer.fit(unet, train_loader, train_val_loader)
+        trainer.fit(unet,train_loader,train_val_loader)
         
         print("Validating...")
-        test_metrics = trainer.test(unet,validation_loader)[0]
+        test_metrics = trainer.test(
+            unet,validation_loader)[0]
         for k in test_metrics:
             out = test_metrics[k]
             if n_classes == 2:

@@ -137,6 +137,12 @@ if __name__ == "__main__":
         '--n_folds',dest="n_folds",
         help="Number of validation folds",default=5,type=int)
     parser.add_argument(
+        '--folds',dest="folds",
+        help="Specifies the comma separated IDs for each fold (overrides\
+            n_folds)",
+        default=None,
+        type=str,nargs='+')
+    parser.add_argument(
         '--checkpoint_dir',dest='checkpoint_dir',type=str,default="models",
         help='Path to directory where checkpoints will be saved.')
     parser.add_argument(
@@ -278,7 +284,7 @@ if __name__ == "__main__":
                 *crop_op,
                 *scaling_ops,
                 #PrintShaped(),
-                monai.transforms.EnsureTyped(all_keys,device=args.dev),
+                monai.transforms.EnsureTyped(all_keys),
                 LabelOperatord(
                     [label_key],args.possible_labels,
                     mode=label_mode,positive_labels=args.positive_labels,
@@ -357,16 +363,26 @@ if __name__ == "__main__":
     else:
         collate_fn = safe_collate
 
-    if args.n_folds > 1:
-        fold_generator = KFold(
-            args.n_folds,shuffle=True,random_state=args.seed).split(all_pids)
+    if args.folds is None:
+        if args.n_folds > 1:
+            fold_generator = KFold(
+                args.n_folds,shuffle=True,random_state=args.seed).split(all_pids)
+        else:
+            fold_generator = iter(
+                [train_test_split(range(len(all_pids)),test_size=0.2)])
     else:
-        fold_generator = iter(
-            [train_test_split(range(len(all_pids)),test_size=0.2)])
+        args.n_folds = len(args.folds)
+        folds = []
+        for val_ids in args.folds:
+            val_ids = val_ids.split(',')
+            train_idxs = [i for i,x in enumerate(all_pids) if x not in val_ids]
+            val_idxs = [i for i,x in enumerate(all_pids) if x in val_ids]
+            folds.append([train_idxs,val_idxs])
+        fold_generator = iter(folds)
 
     for val_fold in range(args.n_folds):
         train_idxs,val_idxs = next(fold_generator)
-        train_idxs,train_val_idxs = train_test_split(train_idxs,test_size=0.2)
+        train_idxs,train_val_idxs = train_test_split(train_idxs,test_size=0.1)
         if args.pre_load == False:
             train_pids = [all_pids[i] for i in train_idxs]
             train_val_pids = [all_pids[i] for i in train_val_idxs]
@@ -410,7 +426,7 @@ if __name__ == "__main__":
             return monai.data.ThreadDataLoader(
                 train_dataset,batch_size=args.batch_size,
                 num_workers=0,generator=g,
-                collate_fn=collate_fn,pin_memory=True)
+                collate_fn=collate_fn)
 
         train_loader = train_loader_call()
         train_val_loader = monai.data.ThreadDataLoader(

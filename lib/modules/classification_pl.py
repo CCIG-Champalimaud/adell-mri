@@ -145,8 +145,7 @@ class ClassNetPL(pl.LightningModule):
             self.parameters(),lr=self.learning_rate,
             weight_decay=self.weight_decay,amsgrad=True)
         lr_schedulers = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer,patience=5,cooldown=5,min_lr=1e-6,factor=0.25,
-            verbose=True)
+            optimizer,patience=5,min_lr=1e-6,factor=0.5)
 
         return {"optimizer":optimizer,
                 "lr_scheduler":lr_schedulers,
@@ -316,7 +315,7 @@ class SegCatNetPL(SegCatNet,pl.LightningModule):
             self.parameters(),lr=self.learning_rate,
             weight_decay=self.weight_decay)
         lr_schedulers = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer,patience=5,min_lr=1e-6,factor=0.2)
+            optimizer,patience=5,min_lr=1e-6,factor=0.5)
 
         return {"optimizer":optimizer,
                 "lr_scheduler":lr_schedulers,
@@ -349,7 +348,8 @@ class SegCatNetPL(SegCatNet,pl.LightningModule):
         self.test_metrics = torch.nn.ModuleDict({})
         md = {"Pr":torchmetrics.Precision,
               "F1":torchmetrics.FBetaScore,
-              "Re":torchmetrics.Recall}
+              "Re":torchmetrics.Recall,
+              "AUC":torchmetrics.AUROC}
         for k in md:
             if k == "IoU":
                 m,C = "macro",C_1
@@ -358,8 +358,11 @@ class SegCatNetPL(SegCatNet,pl.LightningModule):
 
             if k in ["F1"]:
                 self.train_metrics[k] = md[k](
-                    C,mdmc_average=A,average=m,ignore_index=I).to(self.device)
+                    num_classes=C,mdmc_average=A,average=m,ignore_index=I).to(
+                        self.device)
                 self.val_metrics["V_"+k] = md[k](
-                    C,mdmc_average=A,average=m,ignore_index=I).to(self.device)
+                    num_classes=C,mdmc_average=A,average=m,ignore_index=I).to(
+                        self.device)
             self.test_metrics["T_"+k] = md[k](
-                C,mdmc_average=A,average=m,ignore_index=I).to(self.device)
+                num_classes=C,mdmc_average=A,average=m,ignore_index=I).to(
+                    self.device)

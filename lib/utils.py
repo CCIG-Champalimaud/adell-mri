@@ -7,7 +7,6 @@ import itk
 from pandas import Categorical
 import torch
 import torch.nn.functional as F
-import torchio
 import monai
 from glob import glob
 from itertools import product

@@ -188,7 +188,7 @@ class UNetPL(UNet,pl.LightningModule):
             self.parameters(),lr=self.learning_rate,
             weight_decay=self.weight_decay)
         lr_schedulers = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer,patience=5,min_lr=1e-6,factor=0.2)
+            optimizer,patience=3,min_lr=1e-6,factor=0.5)
 
         return {"optimizer":optimizer,
                 "lr_scheduler":lr_schedulers,
@@ -441,7 +441,7 @@ class UNetPlusPlusPL(UNetPlusPlus,pl.LightningModule):
             self.parameters(),lr=self.learning_rate,
             weight_decay=self.weight_decay)
         lr_schedulers = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer,patience=5,min_lr=1e-6,factor=0.2)
+            optimizer,patience=3,min_lr=1e-6,factor=0.5)
 
         return {"optimizer":optimizer,
                 "lr_scheduler":lr_schedulers,

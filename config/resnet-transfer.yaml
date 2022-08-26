@@ -13,6 +13,6 @@ prediction_head_args:
   structure: [512,256]
 batch_size: 4
 norm_fn: "batch"
-act_fn: "relu"
+act_fn: "swish"
 weight_decay: 0.001
 learning_rate: 0.005

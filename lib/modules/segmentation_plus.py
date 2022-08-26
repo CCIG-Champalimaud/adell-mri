@@ -162,17 +162,19 @@ class UNetPlusPlus(UNet):
         o = self.depth[0]
         self.final_layer = torch.nn.Sequential(
             self.conv_op_dec(o,o,3,padding="same"),
+            self.conv_op_dec(o,o,1,padding="same"),
             self.conv_op_dec(o,nc,1))
         S = [o+ex for _ in self.depth[:-1]]
         S[-1] = S[-1] - ex
         self.final_layer_aux = torch.nn.ModuleList(
             [torch.nn.Sequential(
                 self.conv_op_dec(s,s-ex,3,padding="same"),
+                self.conv_op_dec(s-ex,s-ex,1,padding="same"),
                 self.conv_op_dec(s-ex,nc,1))
              for s in S])
 
     def forward(self,X:torch.Tensor,return_aux=False,
-                X_final_layer:torch.Tensor=None,
+                X_skip_layer:torch.Tensor=None,
                 return_features=False)->torch.Tensor:
         """Forward pass for this class.
 
@@ -183,9 +185,9 @@ class UNetPlusPlus(UNet):
             torch.Tensor
         """
         # check if channel dim is available and if not include it 
-        if X_final_layer is not None:
-            if len(X_final_layer.shape) < len(X.shape):
-                X_final_layer = X_final_layer.unsqueeze(1)
+        if X_skip_layer is not None:
+            if len(X_skip_layer.shape) < len(X.shape):
+                X_skip_layer = X_skip_layer.unsqueeze(1)
 
         encoding_out = []
         curr = X
@@ -203,9 +205,9 @@ class UNetPlusPlus(UNet):
                 lo = link_outputs[-1][:-1]
             else:
                 lo = None
-            if X_final_layer is not None:
+            if X_skip_layer is not None:
                 S = encoding_out[-i-2].shape[2:]
-                xfl = F.interpolate(X_final_layer,S,mode='nearest')
+                xfl = F.interpolate(X_skip_layer,S,mode='nearest')
                 link_op_input = torch.cat([encoding_out[-i-2],xfl],axis=1)
             else:
                 link_op_input = encoding_out[-i-2]
@@ -233,8 +235,8 @@ class UNetPlusPlus(UNet):
         if return_aux == True:
             curr_aux = []
             for op,x in zip(self.final_layer_aux,link_outputs[-1][1:-1]):
-                if X_final_layer is not None:
-                    x = torch.cat([x,X_final_layer],axis=1)
+                if X_skip_layer is not None:
+                    x = torch.cat([x,X_skip_layer],axis=1)
                 curr_aux.append(self.final_act(op(x)))
         else:
             curr_aux = None

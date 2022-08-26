@@ -524,6 +524,7 @@ class UNet(torch.nn.Module):
         if self.n_classes > 2:
             self.final_layer = torch.nn.Sequential(
                 self.conv_op_dec(o,o,3,padding="same"),
+                self.conv_op_dec(o,o,1,padding="same"),
                 self.conv_op_dec(o,self.n_classes,1),
                 torch.nn.Softmax(dim=1))
         else:
@@ -531,6 +532,7 @@ class UNet(torch.nn.Module):
             # to a multiclass problem with two classes
             self.final_layer = torch.nn.Sequential(
                 self.conv_op_dec(o,o,3,padding="same"),
+                self.conv_op_dec(o,o,1,padding="same"),
                 self.conv_op_dec(o,1,1),
                 torch.nn.Sigmoid())
 
@@ -549,7 +551,8 @@ class UNet(torch.nn.Module):
 
     def forward(self,X:torch.Tensor,
                 X_skip_layer:torch.Tensor=None,
-                return_features=False)->torch.Tensor:
+                return_features=False,
+                return_bottleneck=False)->torch.Tensor:
         """Forward pass for this class.
 
         Args:
@@ -570,6 +573,8 @@ class UNet(torch.nn.Module):
             encoding_out.append(curr)
             curr = op_ds(curr)
         bottleneck = curr
+        if return_bottleneck == True:
+            return None,None,bottleneck
         for i in range(len(self.decoding_operations)):
             op = self.decoding_operations[i]
             link_op = self.link_ops[i]

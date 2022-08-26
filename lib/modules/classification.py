@@ -206,7 +206,7 @@ class SegCatNet(torch.nn.Module):
     def init_bottleneck_classification(self):
         d = self.n_features_backbone
         out_size = self.resnet_prediction_args["structure"][-1]
-        self.bottleneck_prediction_structure = [d*2,d*2,out_size]
+        self.bottleneck_prediction_structure = [d,d*2,d*4,d*2,d,out_size]
         
         self.bottleneck_classifier = ProjectionHead(
             d,self.bottleneck_prediction_structure,
@@ -228,7 +228,6 @@ class SegCatNet(torch.nn.Module):
             d,self.classifier_structure,
             adn_fn=get_adn_fn(1,"batch","swish",0.1))
 
-
     def forward(self,X,**kwargs):
         times = {}
         times['a'] = time.time()
@@ -242,8 +241,8 @@ class SegCatNet(torch.nn.Module):
         times['c'] = time.time()
         class_bn = self.bottleneck_classifier(bottleneck)
         times['d'] = time.time()
-        classification = self.classifier(
-            torch.cat([class_fl,class_bn],axis=1))
+        features = torch.cat([class_fl,class_bn],axis=1)
+        classification = self.classifier(features)
         times['e'] = time.time()
         
         return classification

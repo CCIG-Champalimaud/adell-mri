@@ -22,12 +22,13 @@ dataset_information = {
         "T2W":"dataset_information/size.T2W.PICAI",
         "DWI":"dataset_information/size.HBV.PICAI"}}
 size_div = {"T2W":2,"DWI":1}
+s = 0
 for k in dataset_information:
     for kk in dataset_information[k]:
         di = open(dataset_information[k][kk]).read().strip().split(',')
         di = [float(x) for x in di]
         if k == "crop_size":
-            di = [di[0]/size_div[kk],di[1]/size_div[kk],di[2]]
+            di = [di[0]/size_div[kk]+s,di[1]/size_div[kk]+s,di[2]]
         dataset_information[k][kk] = di
 
 model_types = ["unet",
@@ -35,7 +36,7 @@ model_types = ["unet",
                ]
 spatial_dims = ["3d"]
 combinations = [
-    ["image"],["image_1"],["image_2"],
+    #["image"],["image_1"],["image_2"],
     ["image_1","image_2"],
     ["image","image_1","image_2"]]
 anatomies = ["lesion"]
@@ -50,11 +51,11 @@ inv_comb_match = {
     "DWI":"image_2"}
 possible_labels = [0,1,2,3,4,5]
 positive_labels = [1,2,3,4,5]
-loss_gamma = 2.0
+loss_gamma = 1.0
 max_epochs = 100
-n_folds = 3
+n_folds = 5
 class_weights = {"gland":10,"lesion":250}
-early_stopping = 20
+early_stopping = 15
 adc_factor = 1/3
 adc_image_keys = ["image_1"]
 n_devices = 2
@@ -168,7 +169,6 @@ rule train_models:
             --image_keys {params.image_keys} \
             --mask_keys {params.mask_keys} \
             --target_spacing {params.spacing}  \
-            --input_size {params.size} \
             --crop_size {params.crop_size} \
             --possible_labels {possible_labels} \
             --positive_labels {positive_labels} \
@@ -181,7 +181,6 @@ rule train_models:
             --max_epochs {max_epochs} \
             --n_folds {n_folds} \
             --class_weights {params.cw} \
-            --pre_load \
             --swa \
             --checkpoint_dir {params.checkpoint_dir} \
             --checkpoint_name {params.identifier} \
@@ -228,7 +227,6 @@ rule train_models_scratch:
             --image_keys {params.image_keys} \
             --mask_keys {params.mask_keys} \
             --target_spacing {params.spacing}  \
-            --input_size {params.size} \
             --crop_size {params.crop_size} \
             --possible_labels {possible_labels} \
             --positive_labels {positive_labels} \
@@ -241,7 +239,6 @@ rule train_models_scratch:
             --max_epochs {max_epochs} \
             --n_folds {n_folds} \
             --class_weights {params.cw} \
-            --pre_load \
             --swa \
             --checkpoint_dir {params.checkpoint_dir} \
             --checkpoint_name {params.identifier} \
@@ -291,7 +288,6 @@ rule train_models_prior:
             --image_keys {params.image_keys} \
             --mask_keys {params.mask_keys} \
             --target_spacing {params.spacing}  \
-            --input_size {params.size} \
             --crop_size {params.crop_size} \
             --possible_labels {possible_labels} \
             --positive_labels {positive_labels} \
@@ -304,7 +300,6 @@ rule train_models_prior:
             --max_epochs {max_epochs} \
             --n_folds {n_folds} \
             --class_weights {params.cw} \
-            --pre_load \
             --swa \
             --checkpoint_dir {params.checkpoint_dir} \
             --checkpoint_name {params.identifier} \
@@ -320,6 +315,8 @@ rule train_models_prior:
             --res_config_file {input.config_resnet} \
             --res_checkpoint {input.ssl_checkpoint} \
             --skip_mask_key {params.prior_key} \
+            --input_size {params.size} \
+            --resize_keys {params.prior_key} \
             {params.pp}
         """
 
@@ -354,7 +351,6 @@ rule train_models_scratch_prior:
             --image_keys {params.image_keys} \
             --mask_keys {params.mask_keys} \
             --target_spacing {params.spacing}  \
-            --input_size {params.size} \
             --crop_size {params.crop_size} \
             --possible_labels {possible_labels} \
             --positive_labels {positive_labels} \
@@ -367,7 +363,6 @@ rule train_models_scratch_prior:
             --max_epochs {max_epochs} \
             --n_folds {n_folds} \
             --class_weights {params.cw} \
-            --pre_load \
             --swa \
             --checkpoint_dir {params.checkpoint_dir} \
             --checkpoint_name {params.identifier} \
@@ -382,5 +377,7 @@ rule train_models_scratch_prior:
             --n_devices {n_devices} \
             --res_config_file {input.config_resnet} \
             --skip_mask_key {params.prior_key} \
+            --input_size {params.size} \
+            --resize_keys {params.prior_key} \
             {params.pp}
         """

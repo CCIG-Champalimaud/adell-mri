@@ -1,6 +1,9 @@
 import os
+import json
+from sklearn.model_selection import KFold
 
-json_file="dataset_information/bb.pi-cai.nc.json"
+json_file = "dataset_information/bb.pi-cai.json"
+folds_file = "folds-ids.csv"
 checkpoint_path = "models"
 summary_path = "summaries"
 metric_path = "metrics"
@@ -28,9 +31,8 @@ for k in dataset_information:
             di = [di[0]/size_div[kk],di[1]/size_div[kk],di[2]]
         dataset_information[k][kk] = di
 
-model_types = ["unet_simsiam",
-               #"unetpp"
-               ]
+# general training parameters
+model_types = ["unet_simsiam",]
 spatial_dims = ["3d"]
 combinations = [
     ["image","image_1","image_2"]]
@@ -46,14 +48,32 @@ inv_comb_match = {
     "DWI":"image_2"}
 possible_labels = [0,1,2,3,4,5]
 positive_labels = [1,2,3,4,5]
-loss_gamma = 2.0
+loss_gamma = 1.0
 max_epochs = 100
-n_folds = 3
-class_weights = {"gland":10,"lesion":250}
-early_stopping = 20
+n_folds = 5
+class_weights = {"gland":1,"lesion":5}
+early_stopping = 10
 adc_factor = 1/3
 adc_image_keys = ["image_1"]
-n_devices = 2
+n_devices = 1
+batch_size = 16
+seed = 42
+
+# defining folds
+folds = [
+    x.strip().split(',') 
+    for x in open(folds_file,'r').readlines()]
+n_folds = len(folds)
+ids_in_folds = []
+for f in folds:
+    ids_in_folds.extend(f)
+all_ids = json.load(open(json_file)).keys()
+all_other_ids = [x for x in all_ids if x not in ids_in_folds]
+fold_idxs = KFold(n_folds,shuffle=True,random_state=seed).split(all_other_ids)
+for i in range(n_folds):
+    f = folds[i]
+    f.extend([all_other_ids[idx] for idx in next(fold_idxs)[1]])
+    folds[i] = ','.join(f)
 
 def get_combs(wc):
     x = [inv_comb_match[x] for x in wc.combs.split(':')]
@@ -160,12 +180,11 @@ rule train_models_prior:
             --positive_labels {positive_labels} \
             --unet_config_file {input.config} \
             --dev cuda \
-            --seed 42 \
+            --seed {seed} \
             --n_workers 8 \
             --max_epochs {max_epochs} \
-            --n_folds {n_folds} \
+            --folds {folds} \
             --class_weights {params.cw} \
-            --pre_load \
             --swa \
             --checkpoint_dir {params.checkpoint_dir} \
             --checkpoint_name {params.identifier} \
@@ -174,6 +193,7 @@ rule train_models_prior:
             --project_name {project_name} \
             --metric_path {output.metrics} \
             --augment \
+            --batch_size {batch_size} \
             --early_stopping {early_stopping} \
             --adc_factor {adc_factor} \
             --adc_image_keys {adc_image_keys} \
@@ -220,12 +240,11 @@ rule train_models_scratch_prior:
             --positive_labels {positive_labels} \
             --unet_config_file {input.config} \
             --dev cuda \
-            --seed 42 \
+            --seed {seed} \
             --n_workers 8 \
             --max_epochs {max_epochs} \
-            --n_folds {n_folds} \
+            --folds {folds} \
             --class_weights {params.cw} \
-            --pre_load \
             --swa \
             --checkpoint_dir {params.checkpoint_dir} \
             --checkpoint_name {params.identifier} \
@@ -234,6 +253,7 @@ rule train_models_scratch_prior:
             --project_name {project_name} \
             --metric_path {output.metrics} \
             --augment \
+            --batch_size {batch_size} \
             --early_stopping {early_stopping} \
             --adc_factor {adc_factor} \
             --adc_image_keys {adc_image_keys} \

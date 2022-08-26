@@ -123,7 +123,7 @@ if __name__ == "__main__":
         '--summary_name',dest='summary_name',type=str,default=None,
         help='Summary name.')
     parser.add_argument(
-        '--project_name',dest='project_name',type=str,default="summaries",
+        '--project_name',dest='project_name',type=str,default=None,
         help='Project name for wandb.')
     parser.add_argument(
         '--metric_path',dest='metric_path',type=str,default="metrics.csv",
@@ -223,8 +223,8 @@ if __name__ == "__main__":
             return [
                 monai.transforms.LoadImaged(all_keys),
                 monai.transforms.AddChanneld(all_keys),
-                *rs,
                 monai.transforms.Orientationd(all_keys,"RAS"),
+                *rs,
                 *resize,
                 *crop_op,
                 *scaling_ops,
@@ -396,7 +396,7 @@ if __name__ == "__main__":
                 args.checkpoint_name + "_fold" + str(val_fold) + "_last"
             callbacks.append(ckpt_callback)
         
-        if args.summary_name is not None:
+        if args.summary_name is not None and args.project_name is not None:
             wandb.finish()
             run_name = args.summary_name.replace(':','_') + "_fold_{}".format(val_fold)
             logger = WandbLogger(
