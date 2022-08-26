@@ -215,7 +215,8 @@ class UNet(torch.nn.Module):
         kernel_sizes: list=[3,3,3],
         strides: list=[2,2,2],
         bottleneck_classification: bool=False,
-        skip_conditioning: int=None) -> torch.nn.Module:
+        skip_conditioning: int=None,
+        feature_conditioning: int=None) -> torch.nn.Module:
         """Standard U-Net [1] implementation. Features some useful additions 
         such as residual links, different upsampling types, normalizations 
         (batch or instance) and ropouts (dropout and U-out). This version of 
@@ -265,11 +266,15 @@ class UNet(torch.nn.Module):
             bottleneck_classification (bool, optional): sets up a 
                 classification task using the channel-wise maximum of the 
                 bottleneck layer. Defaults to False.
-            skip_conditioning (int, optional): assumes that the final 
-                layer (before prediction) will be conditioned by an image 
-                provided as the second argument of forward. This parameter
-                specifies the number of channels in that image. Useful if 
-                any priors (additional segmentation masks) are available.
+            skip_conditioning (int, optional): assumes that the skip 
+                layers will be conditioned by an image provided as the 
+                second argument of forward. This parameter specifies the 
+                number of channels in that image. Useful if any priors 
+                (complementary segmentation masks) are available.
+            feature_conditioning (int,optional): linearly transforms tabular 
+                features and adds them to each channel of the skip connections.
+                Useful to include tabular features in the prediction algorithm.
+                Defaults to None.
 
         [1] https://www.nature.com/articles/s41592-018-0261-2
         [2] https://openaccess.thecvf.com/content_CVPR_2019/papers/Li_Understanding_the_Disharmony_Between_Dropout_and_Batch_Normalization_by_Variance_CVPR_2019_paper.pdf
@@ -297,6 +302,7 @@ class UNet(torch.nn.Module):
         self.strides = strides
         self.bottleneck_classification = bottleneck_classification
         self.skip_conditioning = skip_conditioning
+        self.feature_conditioning = feature_conditioning
         
         # initialize all layers
         self.get_norm_op()
@@ -313,6 +319,8 @@ class UNet(torch.nn.Module):
         self.init_final_layer()
         if self.bottleneck_classification == True:
             self.init_bottleneck_classifier()
+        if self.feature_conditioning is not None:
+            self.init_feature_conditioning_operations()
 
         self.loss_accumulator = 0.
         self.loss_accumulator_d = 0.
@@ -537,11 +545,21 @@ class UNet(torch.nn.Module):
                 torch.nn.Sigmoid())
 
     def init_bottleneck_classifier(self):
+        """Initiates the layers for bottleneck classification.
+        """
         nc = self.n_classes if self.n_classes > 2 else 1
         self.bottleneck_classifier = torch.nn.Linear(
             self.depth[-1],nc)
 
     def adn_fn(self,s:int)->torch.Tensor:
+        """Convenience wrapper for ADN function.
+
+        Args:
+            s (int): number of layers.
+
+        Returns:
+            torch.Tensor: ActDropNorm module
+        """
         return ActDropNorm(
             in_channels=s,ordering='NDA',
             norm_fn=self.norm_op,
@@ -549,8 +567,25 @@ class UNet(torch.nn.Module):
             dropout_fn=self.drop_op,
             dropout_param=self.dropout_param)
 
+    def init_feature_conditioning_operations(self):
+        self.feature_conditioning_ops = torch.nn.ModuleList([])
+        for d in self.depth:
+            op = torch.nn.Sequential(
+                torch.nn.Linear(self.feature_conditioning,d),
+                get_adn_fn(1,self.norm_type,"swish",self.dropout_param))
+            self.feature_conditioning_ops.append(op)
+
+    def unsqueeze_to_dim(self,X:torch.Tensor,
+                         target:torch.Tensor)->torch.Tensor:
+        n = len(target.shape) - X.shape
+        if n > 0:
+            for _ in range(n):
+                X.unsqueeze(-1)
+        return X
+
     def forward(self,X:torch.Tensor,
                 X_skip_layer:torch.Tensor=None,
+                X_feature_conditioning:torch.Tensor=None,
                 return_features=False,
                 return_bottleneck=False)->torch.Tensor:
         """Forward pass for this class.
@@ -586,6 +621,12 @@ class UNet(torch.nn.Module):
             else:
                 link_op_input = encoding_out[-i-2]
             encoded = link_op(link_op_input)
+            if X_feature_conditioning is not None:
+                op = self.feature_conditioning_ops[i]
+                transformed_features = op(X_feature_conditioning)
+                encoded = torch.multiply(
+                    encoded,
+                    self.unsqueeze_to_dim(transformed_features,encoded))
             curr = up(curr)
             sh = list(curr.shape)[2:]
             sh2 = list(encoded.shape)[2:]
