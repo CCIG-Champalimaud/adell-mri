@@ -21,7 +21,7 @@ from lib.utils import (
     SlicesToFirst,
     CombineBinaryLabelsd,
     ConditionalRescalingd,
-    FastResample,
+    PrintShaped,
     safe_collate)
 from lib.modules.layers import ResNet
 from lib.modules.segmentation_pl import UNetPL,UNetPlusPlusPL
@@ -70,6 +70,10 @@ if __name__ == "__main__":
         '--adc_image_keys',dest='adc_image_keys',type=str,nargs='+',
         help="Keys corresponding to input images which are ADC maps \
             (normalized differently)",
+        default=None)
+    parser.add_argument(
+        '--feature_keys',dest='feature_keys',type=str,nargs='+',
+        help="Keys corresponding to tabular features in the JSON dataset",
         default=None)
     parser.add_argument(
         '--adc_factor',dest='adc_factor',type=float,default=1/3,
@@ -151,6 +155,12 @@ if __name__ == "__main__":
         '--n_folds',dest="n_folds",
         help="Number of validation folds",default=5,type=int)
     parser.add_argument(
+        '--folds',dest="folds",
+        help="Specifies the comma separated IDs for each fold (overrides\
+            n_folds)",
+        default=None,
+        type=str,nargs='+')
+    parser.add_argument(
         '--checkpoint_dir',dest='checkpoint_dir',type=str,default="models",
         help='Path to directory where checkpoints will be saved.')
     parser.add_argument(
@@ -189,8 +199,6 @@ if __name__ == "__main__":
     g = torch.Generator()
     g.manual_seed(args.seed)
 
-    output_file = open(args.metric_path,'w')
-
     if args.possible_labels == 2 or args.positive_labels is not None:
         n_classes = 2
     else:
@@ -208,6 +216,8 @@ if __name__ == "__main__":
         args.skip_mask_key = []
     if args.resize_keys is None:
         args.resize_keys = []
+    if args.feature_keys is None:
+        args.feature_keys = []
     aux_keys = args.skip_key
     aux_mask_keys = args.skip_mask_key
     all_aux_keys = aux_keys + aux_mask_keys
@@ -234,6 +244,7 @@ if __name__ == "__main__":
     intp_resampling_augmentations.extend(["bilinear"]*len(aux_keys))
     intp_resampling_augmentations.extend(["nearest"]*len(aux_mask_keys))
     all_keys = [*keys,*label_keys,*aux_keys,*aux_mask_keys]
+    all_keys_t = [*all_keys,*args.feature_keys]
     if args.input_size is not None:
         args.input_size = [round(x) for x in args.input_size]
 
@@ -241,7 +252,11 @@ if __name__ == "__main__":
     data_dict = {
         k:data_dict[k] for k in data_dict
         if len(set.intersection(set(data_dict[k]),
-                                set(all_keys))) == len(all_keys)}
+                                set(all_keys_t))) == len(all_keys_t)}
+    for kk in args.feature_keys:
+        data_dict = {
+            k:data_dict[k] for k in data_dict
+            if np.isnan(data_dict[k][kk]) == False}
     if args.subsample_size is not None:
         ss = np.random.choice(
             list(data_dict.keys()),args.subsample_size,replace=False)
@@ -305,9 +320,21 @@ if __name__ == "__main__":
                     all_aux_keys,aux_key_net)]
             else:
                 aux_concat = []
+            if len(args.feature_keys) > 0:
+                feature_concat = [
+                    monai.transforms.EnsureTyped(
+                        args.feature_keys,dtype=np.float32),
+                    monai.transforms.Lambdad(
+                        args.feature_keys,
+                        func=lambda x:np.reshape(x,[1])),
+                    monai.transforms.ConcatItemsd(
+                        args.feature_keys,"tabular_features")]
+            else:
+                feature_concat = []
             return [
                 monai.transforms.ConcatItemsd(keys,"image"),
                 *aux_concat,
+                *feature_concat,
                 monai.transforms.ToTensord(["image","mask"])]
 
     def get_augmentations(augment):
@@ -373,12 +400,24 @@ if __name__ == "__main__":
     else:
         collate_fn = safe_collate
 
-    if args.n_folds > 1:
-        fold_generator = KFold(
-            args.n_folds,shuffle=True,random_state=args.seed).split(all_pids)
+    if args.folds is None:
+        if args.n_folds > 1:
+            fold_generator = KFold(
+                args.n_folds,shuffle=True,random_state=args.seed).split(all_pids)
+        else:
+            fold_generator = iter(
+                [train_test_split(range(len(all_pids)),test_size=0.2)])
     else:
-        fold_generator = iter(
-            [train_test_split(range(len(all_pids)),test_size=0.2)])
+        args.n_folds = len(args.folds)
+        folds = []
+        for val_ids in args.folds:
+            val_ids = val_ids.split(',')
+            train_idxs = [i for i,x in enumerate(all_pids) if x not in val_ids]
+            val_idxs = [i for i,x in enumerate(all_pids) if x in val_ids]
+            folds.append([train_idxs,val_idxs])
+        fold_generator = iter(folds)
+
+    output_file = open(args.metric_path,'w')
 
     for val_fold in range(args.n_folds):
         train_idxs,val_idxs = next(fold_generator)
@@ -417,14 +456,31 @@ if __name__ == "__main__":
                 val_list,
                 monai.transforms.Compose(transforms_val))
 
+        # calculate the mean/std of tabular features
+        if args.feature_keys is not None:
+            all_params = {"mean":[],"std":[]}
+            for kk in args.feature_keys:
+                f = np.array([x[kk] for x in train_list])
+                all_params["mean"].append(np.mean(f))
+                all_params["std"].append(np.std(f))
+            all_params["mean"] = torch.as_tensor(
+                all_params["mean"],dtype=torch.float32,device=args.dev)
+            all_params["std"] = torch.as_tensor(
+                all_params["std"],dtype=torch.float32,device=args.dev)
+        else:
+            all_params = None
+            
+        # weights to tensor
         weights = torch.as_tensor(
             np.array(args.class_weights),dtype=torch.float32,
             device=args.dev)
         
+        # get loss function parameters
         loss_params = get_loss_param_dict(
             weights=weights,gamma=args.loss_gamma,
             comb=args.loss_comb)[loss_key]
 
+        # include some constant label images
         if args.constant_ratio is not None:
             cl = []
             for x in train_dataset:
@@ -442,7 +498,7 @@ if __name__ == "__main__":
                 train_dataset,batch_size=network_config["batch_size"],
                 num_workers=args.n_workers,generator=g,sampler=sampler,
                 collate_fn=collate_fn,pin_memory=True,
-                persistent_workers=True)
+                persistent_workers=True,drop_last=True)
 
         train_loader = train_loader_call()
         train_val_loader = monai.data.ThreadDataLoader(
@@ -495,6 +551,9 @@ if __name__ == "__main__":
                 bottleneck_classification=args.bottleneck_classification,
                 skip_conditioning=len(all_aux_keys),
                 skip_conditioning_key=aux_key_net,
+                feature_conditioning=len(args.feature_keys),
+                feature_conditioning_params=all_params,
+                feature_conditioning_key="tabular_features",
                 **network_config)
         else:
             unet = UNetPL(
@@ -505,6 +564,9 @@ if __name__ == "__main__":
                 bottleneck_classification=args.bottleneck_classification,
                 skip_conditioning=len(all_aux_keys),
                 skip_conditioning_key=aux_key_net,
+                feature_conditioning=len(args.feature_keys),
+                feature_conditioning_params=all_params,
+                feature_conditioning_key="tabular_features",
                 **network_config)
 
         if args.from_checkpoint is not None:

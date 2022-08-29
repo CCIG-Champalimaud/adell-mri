@@ -21,12 +21,13 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-
     data_dict = json.load(open(args.dataset_json,'r'))
-    data_dict = {
-        k:data_dict[k] for k in data_dict
-        if len(set.intersection(set(data_dict[k]),
-                                set(args.all_keys))) == len(args.all_keys)}
+    for k in args.all_keys:
+        nd = {}
+        for kk in data_dict:
+            if k in data_dict[kk]:
+                nd[kk] = data_dict[kk]
+        data_dict = nd
 
     all_pids = [k for k in data_dict]
 

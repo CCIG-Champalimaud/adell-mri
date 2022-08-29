@@ -28,7 +28,8 @@ class UNetPlusPlus(UNet):
         strides: list=[2,2,2],
         bottleneck_classification: bool=False,
         skip_conditioning: int=None,
-        feature_conditioning: int=None) -> torch.nn.Module:
+        feature_conditioning: int=None,
+        feature_conditioning_params: Dict[str,torch.Tensor]=None) -> torch.nn.Module:
         """Standard U-Net++ [1] implementation. Features some useful additions 
         such as residual links, different upsampling types, normalizations 
         (batch or instance) and ropouts (dropout and U-out). This version of 
@@ -83,6 +84,10 @@ class UNetPlusPlus(UNet):
                 features and adds them to each channel of the skip connections.
                 Useful to include tabular features in the prediction algorithm.
                 Defaults to None.
+            feature_conditioning_params (Dict[str,torch.Tensor], optional): 
+                dictionary with keys "mean" and "std" to normalize the tabular 
+                features. Must be present if feature conditioning is used. 
+                Defaults to None.
 
         [1] https://www.nature.com/articles/s41592-018-0261-2
         [2] https://openaccess.thecvf.com/content_CVPR_2019/papers/Li_Understanding_the_Disharmony_Between_Dropout_and_Batch_Normalization_by_Variance_CVPR_2019_paper.pdf
@@ -108,7 +113,8 @@ class UNetPlusPlus(UNet):
             strides=strides,
             bottleneck_classification=bottleneck_classification,
             skip_conditioning=skip_conditioning,
-            feature_conditioning=feature_conditioning)
+            feature_conditioning=feature_conditioning,
+            feature_conditioning_params=feature_conditioning_params)
 
         # initialize all layers
         self.get_norm_op()
@@ -198,6 +204,11 @@ class UNetPlusPlus(UNet):
         if X_skip_layer is not None:
             if len(X_skip_layer.shape) < len(X.shape):
                 X_skip_layer = X_skip_layer.unsqueeze(1)
+
+        # normalise features
+        if X_feature_conditioning is not None:
+            X_feature_conditioning = X_feature_conditioning - self.f_mean
+            X_feature_conditioning = X_feature_conditioning / self.f_std
 
         encoding_out = []
         curr = X

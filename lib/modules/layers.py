@@ -79,6 +79,8 @@ def get_adn_fn(spatial_dim,norm_fn="batch",
             norm_fn = torch.nn.InstanceNorm2d
         elif spatial_dim == 3:
             norm_fn = torch.nn.InstanceNorm3d
+    elif norm_fn == "identity":
+        norm_fn = torch.nn.Identity
     act_fn = activation_factory[act_fn]
     def adn_fn(s):
         return ActDropNorm(

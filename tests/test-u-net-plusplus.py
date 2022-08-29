@@ -47,7 +47,7 @@ for D in depths:
                 strides=S,kernel_sizes=K,conv_type=conv_type,
                 bottleneck_classification=True,
                 skip_conditioning=1)
-            o,o_aux,bb = a(i,return_aux=True,X_final_layer=i_skip)
+            o,o_aux,bb = a(i,return_aux=True,X_skip_layer=i_skip)
             print("\tOutput shape:")
             print("\t\t{}".format(o.shape))
             print("\tAux. output shape:")

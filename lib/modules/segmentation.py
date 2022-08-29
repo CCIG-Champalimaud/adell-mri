@@ -216,7 +216,8 @@ class UNet(torch.nn.Module):
         strides: list=[2,2,2],
         bottleneck_classification: bool=False,
         skip_conditioning: int=None,
-        feature_conditioning: int=None) -> torch.nn.Module:
+        feature_conditioning: int=None,
+        feature_conditioning_params: Dict[str,torch.Tensor]=None) -> torch.nn.Module:
         """Standard U-Net [1] implementation. Features some useful additions 
         such as residual links, different upsampling types, normalizations 
         (batch or instance) and ropouts (dropout and U-out). This version of 
@@ -275,6 +276,10 @@ class UNet(torch.nn.Module):
                 features and adds them to each channel of the skip connections.
                 Useful to include tabular features in the prediction algorithm.
                 Defaults to None.
+            feature_conditioning_params (Dict[str,torch.Tensor], optional): 
+                dictionary with keys "mean" and "std" to normalize the tabular 
+                features. Must be present if feature conditioning is used. 
+                Defaults to None.
 
         [1] https://www.nature.com/articles/s41592-018-0261-2
         [2] https://openaccess.thecvf.com/content_CVPR_2019/papers/Li_Understanding_the_Disharmony_Between_Dropout_and_Batch_Normalization_by_Variance_CVPR_2019_paper.pdf
@@ -303,6 +308,7 @@ class UNet(torch.nn.Module):
         self.bottleneck_classification = bottleneck_classification
         self.skip_conditioning = skip_conditioning
         self.feature_conditioning = feature_conditioning
+        self.feature_conditioning_params = feature_conditioning_params
         
         # initialize all layers
         self.get_norm_op()
@@ -568,19 +574,32 @@ class UNet(torch.nn.Module):
             dropout_param=self.dropout_param)
 
     def init_feature_conditioning_operations(self):
+        depths = self.depth[-2::-1]
         self.feature_conditioning_ops = torch.nn.ModuleList([])
-        for d in self.depth:
+        if self.feature_conditioning_params is not None:
+            self.f_mean = torch.nn.parameter.Parameter(
+                self.feature_conditioning_params["mean"],requires_grad=False)
+            self.f_std = torch.nn.parameter.Parameter(
+                self.feature_conditioning_params["std"],requires_grad=False)
+        else:
+            self.f_mean = torch.nn.parameter.Parameter(
+                torch.zeros([self.feature_conditioning],requires_grad=False))
+            self.f_std = torch.nn.parameter.Parameter(
+                torch.ones([self.feature_conditioning],requires_grad=False))
+        for d in depths:
             op = torch.nn.Sequential(
                 torch.nn.Linear(self.feature_conditioning,d),
-                get_adn_fn(1,self.norm_type,"swish",self.dropout_param))
+                get_adn_fn(1,"batch","swish",self.dropout_param)(d),
+                torch.nn.Linear(d,d),
+                get_adn_fn(1,"batch","sigmoid",self.dropout_param)(d))
             self.feature_conditioning_ops.append(op)
 
     def unsqueeze_to_dim(self,X:torch.Tensor,
                          target:torch.Tensor)->torch.Tensor:
-        n = len(target.shape) - X.shape
+        n = len(target.shape) - len(X.shape)
         if n > 0:
             for _ in range(n):
-                X.unsqueeze(-1)
+                X = X.unsqueeze(-1)
         return X
 
     def forward(self,X:torch.Tensor,
@@ -600,6 +619,12 @@ class UNet(torch.nn.Module):
         if X_skip_layer is not None:
             if len(X_skip_layer.shape) < len(X.shape):
                 X_skip_layer = X_skip_layer.unsqueeze(1)
+
+        # normalise features
+        
+        if X_feature_conditioning is not None:
+            X_feature_conditioning = X_feature_conditioning - self.f_mean
+            X_feature_conditioning = X_feature_conditioning / self.f_std
 
         encoding_out = []
         curr = X
@@ -622,11 +647,12 @@ class UNet(torch.nn.Module):
                 link_op_input = encoding_out[-i-2]
             encoded = link_op(link_op_input)
             if X_feature_conditioning is not None:
-                op = self.feature_conditioning_ops[i]
-                transformed_features = op(X_feature_conditioning)
+                feat_op = self.feature_conditioning_ops[i]
+                transformed_features = feat_op(X_feature_conditioning)
+                transformed_features = self.unsqueeze_to_dim(
+                    transformed_features,encoded)
                 encoded = torch.multiply(
-                    encoded,
-                    self.unsqueeze_to_dim(transformed_features,encoded))
+                    encoded,transformed_features)
             curr = up(curr)
             sh = list(curr.shape)[2:]
             sh2 = list(encoded.shape)[2:]
