@@ -111,6 +111,8 @@ for model_type in model_types:
             metric_path,model_type,spatial_dim,ssl_model_id)
         output_folder_clinical = "{}/{}-{}-{}-clinical".format(
             metric_path,model_type,spatial_dim,ssl_model_id)
+        output_folder_scratch_clinical = "{}/{}-{}-{}-scratch-clinical".format(
+            metric_path,model_type,spatial_dim,ssl_model_id)
         os.makedirs(output_folder,exist_ok=True)
         for combination in combinations:
             for anatomy in anatomies:
@@ -124,24 +126,31 @@ for model_type in model_types:
                     output_folder_scratch,comb_str,anatomy,spatial_dim,dataset_id)
                 output_metrics_scratch_prior_path = "{}/{}.{}.{}.{}.prior.csv".format(
                     output_folder_scratch,comb_str,anatomy,spatial_dim,dataset_id)
-                output_metrics_clinical_path = "{}/{}.{}.{}.{}.clinical.csv".format(
+                output_metrics_clinical_path = "{}/{}.{}.{}.{}.csv".format(
                     output_folder_clinical,comb_str,anatomy,spatial_dim,dataset_id)
-                output_metrics_prior_clinical_path = "{}/{}.{}.{}.{}.prior.clinical.csv".format(
+                output_metrics_prior_clinical_path = "{}/{}.{}.{}.{}.prior.csv".format(
                     output_folder_clinical,comb_str,anatomy,spatial_dim,dataset_id)
+                output_metrics_scratch_clinical_path = "{}/{}.{}.{}.{}.csv".format(
+                    output_folder_scratch_clinical,comb_str,anatomy,spatial_dim,dataset_id)
+                output_metrics_scratch_prior_clinical_path = "{}/{}.{}.{}.{}.prior.csv".format(
+                    output_folder_scratch_clinical,comb_str,anatomy,spatial_dim,dataset_id)
 
                 metrics.append(output_metrics_path)
                 metrics.append(output_metrics_scratch_path)
                 metrics.append(output_metrics_clinical_path)
+                metrics.append(output_metrics_scratch_clinical_path)
                 if anatomy == "lesion":
                     metrics.append(output_metrics_prior_path)
                     metrics.append(output_metrics_scratch_prior_path)
                     metrics.append(output_metrics_prior_clinical_path)
+                    metrics.append(output_metrics_scratch_prior_clinical_path)
 
 wildcard_constraints:
     anatomy="[a-zA-Z0-9]+",
     dataset_id="[a-zA-Z0-9]+",
     spatial_dim="(2d|3d)",
-    model_id="(unet|unetpp)"
+    model_id="(unet|unetpp)",
+    ssl_model_id="(simsiam|byol)"
 
 rule all:
     input:
@@ -299,7 +308,7 @@ rule train_models_clinical:
     output:
         metrics=os.path.join(
             metric_path,"{model_id}-{spatial_dim}-{ssl_model_id}-clinical",
-            "{combs}.{anatomy}.{spatial_dim}.{dataset_id}.clinical.csv")
+            "{combs}.{anatomy}.{spatial_dim}.{dataset_id}.csv")
     params:
         identifier="{model_id}_{ssl_model_id}.{combs}.{anatomy}.{spatial_dim}.{dataset_id}.clinical",
         image_keys=get_combs,
@@ -360,7 +369,7 @@ rule train_models_prior_clinical:
     output:
         metrics=os.path.join(
             metric_path,"{model_id}-{spatial_dim}-{ssl_model_id}-clinical",
-            "{combs}.{anatomy}.{spatial_dim}.{dataset_id}.prior.clinical.csv")
+            "{combs}.{anatomy}.{spatial_dim}.{dataset_id}.prior.csv")
     params:
         identifier="{model_id}_{ssl_model_id}.{combs}.{anatomy}.{spatial_dim}.{dataset_id}.prior.clinical",
         image_keys=get_combs,
@@ -504,6 +513,129 @@ rule train_models_scratch_prior:
         """
         python3 u-net-train.py \
             --dataset_json {input.json_file} \
+            --image_keys {params.image_keys} \
+            --mask_keys {params.mask_keys} \
+            --target_spacing {params.spacing}  \
+            --crop_size {params.crop_size} \
+            --possible_labels {possible_labels} \
+            --positive_labels {positive_labels} \
+            --config_file {input.config} \
+            --dev cuda \
+            --seed 42 \
+            --n_workers 8 \
+            --loss_gamma {loss_gamma} \
+            --loss_comb 0.5 \
+            --max_epochs {max_epochs} \
+            --folds $(cat {input.folds} | tr '\n' ' ') \
+            --class_weights {params.cw} \
+            --swa \
+            --checkpoint_dir {params.checkpoint_dir} \
+            --checkpoint_name {params.identifier} \
+            --summary_dir {params.summary_dir} \
+            --summary_name {params.identifier} \
+            --project_name {project_name} \
+            --metric_path {output.metrics} \
+            --augment \
+            --early_stopping {early_stopping} \
+            --adc_factor {adc_factor} \
+            --adc_image_keys {adc_image_keys} \
+            --n_devices {n_devices} \
+            --res_config_file {input.config_resnet} \
+            --skip_mask_key {params.prior_key} \
+            --input_size {params.size} \
+            --resize_keys {params.prior_key} \
+            {params.pp}
+        """
+
+rule train_models_scratch_clinical:
+    input:
+        json_file=json_file,
+        config="config/u-net-{spatial_dim}.yaml",
+        config_resnet="config/resnet-transfer.yaml",
+        folds="dataset_information/folds-ids.csv"
+    output:
+        metrics=os.path.join(
+            metric_path,"{model_id}-{spatial_dim}-{ssl_model_id}-scratch-clinical",
+            "{combs}.{anatomy}.{spatial_dim}.{dataset_id}.csv")
+    params:
+        identifier="{model_id}_{ssl_model_id}.{combs}.{anatomy}.{spatial_dim}.{dataset_id}.scratch.clinical",
+        image_keys=get_combs,
+        mask_keys=get_masks,
+        checkpoint_dir=os.path.join(
+            checkpoint_path,"{model_id}-{ssl_model_id}-{spatial_dim}"),
+        summary_dir=os.path.join(
+            summary_path,"{model_id}-{ssl_model_id}-{spatial_dim}"),
+        cw=lambda wc: class_weights[wc.anatomy],
+        spacing=get_spacing,
+        size=get_size,
+        crop_size=get_crop_size,
+        pp=get_pp
+    shell:
+        """
+        python3 u-net-train.py \
+            --dataset_json {input.json_file} \
+            --feature_keys {all_clinical_keys} \
+            --image_keys {params.image_keys} \
+            --mask_keys {params.mask_keys} \
+            --target_spacing {params.spacing}  \
+            --crop_size {params.crop_size} \
+            --possible_labels {possible_labels} \
+            --positive_labels {positive_labels} \
+            --config_file {input.config} \
+            --dev cuda \
+            --seed 42 \
+            --n_workers 8 \
+            --loss_gamma {loss_gamma} \
+            --loss_comb 0.5 \
+            --max_epochs {max_epochs} \
+            --folds $(cat {input.folds} | tr '\n' ' ') \
+            --class_weights {params.cw} \
+            --swa \
+            --checkpoint_dir {params.checkpoint_dir} \
+            --checkpoint_name {params.identifier} \
+            --summary_dir {params.summary_dir} \
+            --summary_name {params.identifier} \
+            --project_name {project_name} \
+            --metric_path {output.metrics} \
+            --augment \
+            --early_stopping {early_stopping} \
+            --adc_factor {adc_factor} \
+            --adc_image_keys {adc_image_keys} \
+            --n_devices {n_devices} \
+            --res_config_file {input.config_resnet} \
+            {params.pp} 
+        """
+
+rule train_models_scratch_prior_clinical:
+    input:
+        json_file=json_file,
+        config="config/u-net-{spatial_dim}.yaml",
+        config_resnet="config/resnet-transfer.yaml",
+        folds="dataset_information/folds-ids.csv"
+    output:
+        metrics=os.path.join(
+            metric_path,"{model_id}-{spatial_dim}-{ssl_model_id}-scratch-clinical",
+            "{combs}.{anatomy}.{spatial_dim}.{dataset_id}.prior.csv")
+    params:
+        identifier="{model_id}_{ssl_model_id}.{combs}.{anatomy}.{spatial_dim}.{dataset_id}.prior.scratch.clinical",
+        image_keys=get_combs,
+        prior_key="gland",
+        mask_keys=get_masks,
+        checkpoint_dir=os.path.join(
+            checkpoint_path,"{model_id}-{ssl_model_id}-{spatial_dim}"),
+        summary_dir=os.path.join(
+            summary_path,"{model_id}-{ssl_model_id}-{spatial_dim}"),
+        config="config/u-net-{spatial_dim}.yaml",
+        cw=lambda wc: class_weights[wc.anatomy],
+        spacing=get_spacing,
+        size=get_size,
+        crop_size=get_crop_size,
+        pp=get_pp
+    shell:
+        """
+        python3 u-net-train.py \
+            --dataset_json {input.json_file} \
+            --feature_keys {all_clinical_keys} \
             --image_keys {params.image_keys} \
             --mask_keys {params.mask_keys} \
             --target_spacing {params.spacing}  \
