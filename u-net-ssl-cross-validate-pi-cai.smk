@@ -38,13 +38,13 @@ model_types = ["unet"]
 spatial_dims = ["3d"]
 combinations = [
     ["image_1","image_2"],
+    ["image","image_1"],
     ["image","image_1","image_2"]]
 anatomies = ["lesion"]
 comb_match = {
     "image":"T2W",
     "image_1":"ADC",
-    "image_2":"DWI"
-}
+    "image_2":"DWI"}
 inv_comb_match = {
     "T2W":"image",
     "ADC":"image_1",

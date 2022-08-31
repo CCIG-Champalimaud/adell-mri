@@ -37,6 +37,7 @@ spatial_dims = ["3d"]
 combinations = [
     ["image"],["image_1"],["image_2"],
     ["image","image_1","image_2"],
+    ["image","image_1"],
     ["image_1","image_2"]
     ]
 comb_match = {
