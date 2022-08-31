@@ -3,8 +3,6 @@ import os
 import json
 import numpy as np
 import SimpleITK as sitk
-import itk
-from pandas import Categorical
 import torch
 import torch.nn.functional as F
 import monai
