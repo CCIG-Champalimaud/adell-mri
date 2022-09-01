@@ -36,6 +36,10 @@ loss_factory = {
         "weighted_mse":weighted_mse
     }}
 
+def split(x,n_splits,dim):
+        size = int(x.shape[dim]//n_splits)
+        return torch.split(x,size,dim)
+
 def get_prostatex_path_dictionary(base_path:str)->PathDict:
     """Builds a path dictionary (a dictionary where each key is a patient
     ID and each value is a dictionary containing a modality-to-MRI scan path
