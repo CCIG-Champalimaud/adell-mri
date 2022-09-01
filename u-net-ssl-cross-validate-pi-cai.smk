@@ -10,6 +10,7 @@ project_name = "picai_segmentation"
 ssl_checkpoint_base = "models/{ssl_model_id}/{ssl_model_id}.{combs}.picai_fold{fold}_last.ckpt"
 best_folds_ssl = {
     "T2W":0,"ADC":0,"DWI":0,
+    "T2W:ADC":0,
     "ADC:DWI":0,"T2W:ADC:DWI":0}
 dataset_information = {
     "spacing":{
