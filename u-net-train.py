@@ -225,6 +225,10 @@ if __name__ == "__main__":
         aux_key_net = "aux_key"
     else:
         aux_key_net = None
+    if len(args.feature_keys) > 0:
+        feature_key_net = "tabular_features"
+    else:
+        feature_key_net = None
 
     args.adc_image_keys = [k for k in args.adc_image_keys if k in keys]
     intp = []
@@ -328,7 +332,7 @@ if __name__ == "__main__":
                         args.feature_keys,
                         func=lambda x:np.reshape(x,[1])),
                     monai.transforms.ConcatItemsd(
-                        args.feature_keys,"tabular_features")]
+                        args.feature_keys,feature_key_net)]
             else:
                 feature_concat = []
             return [
@@ -553,7 +557,7 @@ if __name__ == "__main__":
                 skip_conditioning_key=aux_key_net,
                 feature_conditioning=len(args.feature_keys),
                 feature_conditioning_params=all_params,
-                feature_conditioning_key="tabular_features",
+                feature_conditioning_key=feature_key_net,
                 **network_config)
         else:
             unet = UNetPL(
@@ -566,7 +570,7 @@ if __name__ == "__main__":
                 skip_conditioning_key=aux_key_net,
                 feature_conditioning=len(args.feature_keys),
                 feature_conditioning_params=all_params,
-                feature_conditioning_key="tabular_features",
+                feature_conditioning_key=feature_key_net,
                 **network_config)
 
         if args.from_checkpoint is not None:
