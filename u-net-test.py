@@ -89,7 +89,7 @@ if __name__ == "__main__":
         help="Labels that should be considered positive (binarizes labels)",
         default=None)
 
-    # network + training
+    # network + interence
     parser.add_argument(
         '--config_file',dest="config_file",
         help="Path to network configuration file (yaml)",
@@ -102,13 +102,10 @@ if __name__ == "__main__":
         help="Uses a ResNet as a backbone (depths are inferred from this). \
             This config file is then used to parameterise the ResNet.")
     parser.add_argument(
-        '--res_checkpoint',dest='res_checkpoint',action="store",default=None,
-        help="Checkpoint for SSL backbone (if --res_config_file is specified.")
-    parser.add_argument(
-        '--from_checkpoint',dest='from_checkpoint',action="store",
-        help="Uses this checkpoint as a starting point for the network")
-    
-    # training
+        '--tta',dest='tta',action="store_true",
+        help="Use test-time augmentations",default=False)
+
+    # inference
     parser.add_argument(
         '--dev',dest='dev',type=str,
         help="Device for PyTorch training",choices=["cuda","cpu"])
@@ -314,11 +311,6 @@ if __name__ == "__main__":
                 if k in network_config_ssl:
                     del network_config_ssl[k]
             res_net = ResNet(**network_config_ssl)
-            if args.res_checkpoint is not None:
-                res_state_dict = torch.load(
-                    args.res_checkpoint)['state_dict']
-                mismatched = res_net.load_state_dict(
-                    res_state_dict,strict=False)
             backbone = res_net.backbone
             network_config['depth'] = [
                 backbone.structure[0][0],
@@ -327,12 +319,6 @@ if __name__ == "__main__":
             network_config['strides'] = [2 for _ in network_config['depth']]
             res_ops = [backbone.input_layer,*backbone.operations]
             res_pool_ops = [backbone.first_pooling,*backbone.pooling_operations]
-            if args.res_checkpoint is not None:
-                # freezes training for resnet encoder
-                for res_op in res_ops:
-                    for param in res_op.parameters():
-                        pass
-                        #param.requires_grad = False
             encoding_operations = torch.nn.ModuleList(
                 [torch.nn.ModuleList([a,b]) 
                  for a,b in zip(res_ops,res_pool_ops)])
@@ -355,6 +341,7 @@ if __name__ == "__main__":
                 feature_conditioning=len(args.feature_keys),
                 feature_conditioning_params=all_params,
                 feature_conditioning_key=feature_key_net,
+                tta=args.tta,
                 **network_config)
         else:
             unet = UNetPL(
@@ -367,6 +354,7 @@ if __name__ == "__main__":
                 feature_conditioning=len(args.feature_keys),
                 feature_conditioning_params=all_params,
                 feature_conditioning_key=feature_key_net,
+                tta=args.tta,
                 **network_config)
 
         state_dict = torch.load(
@@ -377,9 +365,7 @@ if __name__ == "__main__":
             accelerator="gpu" if args.dev=="cuda" else "cpu",
             logger=None,enable_checkpointing=False)
         
-        print("Validating...")
-        test_metrics = trainer.test(
-            unet,validation_loader)[0]
+        test_metrics = trainer.test(unet,validation_loader)[0]
         for k in test_metrics:
             out = test_metrics[k]
             if n_classes == 2:

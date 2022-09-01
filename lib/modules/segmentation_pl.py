@@ -1,3 +1,4 @@
+from pyexpat.errors import XML_ERROR_INCOMPLETE_PE
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -8,6 +9,10 @@ from copy import deepcopy
 
 from .segmentation import UNet
 from .segmentation_plus import UNetPlusPlus
+
+def split(x,n_splits,dim):
+    size = int(x.shape[dim]//n_splits)
+    return torch.split(x,size,dim)
 
 class UNetPL(UNet,pl.LightningModule):
     def __init__(
@@ -21,7 +26,8 @@ class UNetPL(UNet,pl.LightningModule):
         weight_decay: float=0.005,
         training_dataloader_call: Callable=None,
         loss_fn: Callable=torch.nn.functional.binary_cross_entropy,
-        loss_params: dict={},*args,**kwargs) -> torch.nn.Module:
+        loss_params: dict={},
+        tta: bool=False,*args,**kwargs) -> torch.nn.Module:
         """Standard U-Net [1] implementation for Pytorch Lightning.
 
         Args:
@@ -44,6 +50,7 @@ class UNetPL(UNet,pl.LightningModule):
                 Defaults to torch.nn.functional.binary_cross_entropy.
             loss_params (dict, optional): additional parameters for the loss
                 function. Defaults to {}.
+            tta (bool, optional): test-time augmentation. Defaults to False.
             args: arguments for UNet class.
             kwargs: keyword arguments for UNet class.
 
@@ -65,6 +72,7 @@ class UNetPL(UNet,pl.LightningModule):
         self.training_dataloader_call = training_dataloader_call
         self.loss_fn = loss_fn
         self.loss_params = loss_params
+        self.tta = tta
         
         self.loss_fn_class = torch.nn.BCEWithLogitsLoss()
         self.setup_metrics()
@@ -97,8 +105,15 @@ class UNetPL(UNet,pl.LightningModule):
 
     def loss_wrapper(self,x,y,y_class,x_cond,x_fc):
         y = torch.round(y)
-        prediction,pred_class = self.forward(
-            x,X_skip_layer=x_cond,X_feature_conditioning=x_fc)
+        if self.tta == True:
+            prediction,pred_class = self.forward(
+                torch.cat([x,x[:,:,::-1]]),
+                X_skip_layer=torch.cat([x_cond,x_cond[:,:,::-1]]),
+                X_feature_conditioning=torch.cat([x_fc,x_fc]))
+            prediction = sum(split(prediction,2,0)/2)
+        else:
+            prediction,pred_class = self.forward(
+                x,X_skip_layer=x_cond,X_feature_conditioning=x_fc)
         prediction = torch.squeeze(prediction,1)
         y = torch.squeeze(y,1)
         batch_size = int(prediction.shape[0])
@@ -279,7 +294,8 @@ class UNetPlusPlusPL(UNetPlusPlus,pl.LightningModule):
         weight_decay: float=0.005,
         training_dataloader_call: Callable=None,
         loss_fn: Callable=torch.nn.functional.binary_cross_entropy,
-        loss_params: dict={},*args,**kwargs) -> torch.nn.Module:
+        loss_params: dict={},
+        tta: bool=False,*args,**kwargs) -> torch.nn.Module:
         """Standard U-Net++ [1] implementation for Pytorch Lightning.
 
         Args:
@@ -302,6 +318,7 @@ class UNetPlusPlusPL(UNetPlusPlus,pl.LightningModule):
                 Defaults to torch.nn.functional.binary_cross_entropy.
             loss_params (dict, optional): additional parameters for the loss
                 function. Defaults to {}.
+            tta (bool, optional): test-time augmentation. Defaults to False.
             args: arguments for UNet class.
             kwargs: keyword arguments for UNet class.
 
@@ -323,6 +340,7 @@ class UNetPlusPlusPL(UNetPlusPlus,pl.LightningModule):
         self.training_dataloader_call = training_dataloader_call
         self.loss_fn = loss_fn
         self.loss_params = loss_params
+        self.tta = tta
         
         self.loss_fn_class = torch.nn.BCEWithLogitsLoss()
         self.setup_metrics()
@@ -343,9 +361,18 @@ class UNetPlusPlusPL(UNetPlusPlus,pl.LightningModule):
     
     def loss_wrapper(self,x,y,y_class,x_cond,x_fc):
         y = torch.round(y)
-        prediction,pred_class = self.forward(
-            x,X_skip_layer=x_cond,X_feature_conditioning=x_fc,
-            return_aux=True)
+        if self.tta == True:
+            prediction,prediction_aux,pred_class = self.forward(
+                torch.cat([x,x[:,:,::-1]]),
+                X_skip_layer=torch.cat([x_cond,x_cond[:,:,::-1]]),
+                X_feature_conditioning=torch.cat([x_fc,x_fc]),
+                return_aux=True)
+            prediction = sum(split(prediction,2,0)/2)
+            prediction_aux = [sum(split(x,2,0)/2) for x in prediction_aux]
+        else:
+            prediction,prediction_aux,pred_class = self.forward(
+                x,X_skip_layer=x_cond,X_feature_conditioning=x_fc,
+                return_aux=True)
         prediction = torch.squeeze(prediction,1)
         prediction_aux = [torch.squeeze(x,1) for x in prediction_aux]
         y = torch.squeeze(y,1)
