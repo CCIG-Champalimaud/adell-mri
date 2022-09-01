@@ -1,142 +1,305 @@
+import re
 import os
 import argparse
-import yaml
+import random
+import json
 import numpy as np
 import torch
 import monai
+import SimpleITK as sitk
+from skimage import filters
 from tqdm import tqdm
 
 from lib.utils import (
-    activation_factory,
-    collate_last_slice,
-    get_prostatex_path_dictionary,
-    get_size_spacing_dict,
-    SlicesToFirst,
-    Index,PrintShaped)
-from lib.modules.segmentation_pl import UNetPL
+    ConditionalRescalingd,split)
+from lib.modules.layers import ResNet
+from lib.modules.segmentation import UNet,UNetPlusPlus
+from lib.modules.config_parsing import parse_config_unet,parse_config_ssl
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     # data
     parser.add_argument(
-        '--input_path',dest='input_path',type=str,nargs='+',
-        help="Path(s) to MRI scan(s)",required=True)
+        '--image_paths',dest='image_paths',type=str,
+        help="Paths to input images (if more than one input sequence, these \
+            should be comma-separated)",required=True)
     parser.add_argument(
-        '--index',dest='index',type=int,default=None,
-        help="Index for image (in case >3D)")
+        '--resize_keys',dest='resize_keys',type=str,nargs='+',default=None,
+        help="Keys that will be resized to input size")
     parser.add_argument(
-        '--mod',dest='mod',type=str,choices=["T2WAx","DWI"],
-        help="Key to be used",required=True)
+        '--target_spacing',dest='target_spacing',action="store",default=None,
+        help="Resamples all images to target spacing",nargs='+',type=float)
     parser.add_argument(
-        '--prostate_x_path',dest='prostate_x_path',type=str,
-        help="Path to folder with training data",required=True)
+        '--input_idx',dest='input_idx',type=str,nargs='+',
+        help="Indices for images which will be input",
+        required=True)
     parser.add_argument(
-        '--output_path',dest='output_path',type=str,
-        help="Path to output folder",required=True)
+        '--skip_idx',dest='skip_idx',type=str,default=None,
+        nargs='+',
+        help="Indices for images used for skip connection conditioning.")
+    parser.add_argument(
+        '--mask_idx',dest='mask_idx',type=str,nargs='+',
+        help="Indices for images which are masks (changes interpolation)",
+        default=None)
+    parser.add_argument(
+        '--adc_image_idx',dest='adc_image_idx',type=str,nargs='+',
+        help="Indices for ADC images (normalized differently)",
+        default=None)
+    parser.add_argument(
+        '--features',dest='features',type=str,nargs='+',
+        help="Comma-separated features used in conditioning",
+        default=None)
+    parser.add_argument(
+        '--input_size',dest='input_size',type=float,nargs='+',default=None,
+        help="Input size for network")
+    parser.add_argument(
+        '--crop_size',dest='crop_size',action="store",
+        default=None,type=float,nargs='+',
+        help="Size of central crop after resizing (if none is specified then\
+            no cropping is performed).")
+    parser.add_argument(
+        '--adc_factor',dest='adc_factor',type=float,default=1/3,
+        help="Multiplies ADC images by this factor.")
 
-    # network + training
+    # network
     parser.add_argument(
         '--config_file',dest="config_file",
-        help="Path to network configuration file (yaml)",required=True)
+        help="Path to network configuration file (yaml)",
+        required=True)
     parser.add_argument(
-        '--checkpoint_path',dest="checkpoint_path",
-        help="Path to U-Net checkpoint",required=True)
-
-    # inference specific
+        '--unet_pp',dest='unet_pp',action="store_true",
+        help="Uses U-Net++ rather than U-Net")
+    parser.add_argument('n_classes',dest='n_classes',type=int,
+        help='Number of classes')
     parser.add_argument(
-        '--dev',dest='dev',choices=["cuda","cpu"],type=str,
-        help="Device for PyTorch training")
+        '--res_config_file',dest='res_config_file',action="store",default=None,
+        help="Uses a ResNet as a backbone (depths are inferred from this). \
+            This config file is then used to parameterise the ResNet.")
+    parser.add_argument(
+        '--checkpoint',dest='checkpoint',action="store",
+        help="Checkpoint for network")
+    
+    # inference
+    parser.add_argument(
+        '--dev',dest='dev',type=str,
+        help="Device for PyTorch training",choices=["cuda","cpu"])
     parser.add_argument(
         '--n_workers',dest='n_workers',
-        help="No. of workers",default=1,type=int)
+        help="Number of workers",default=1,type=int)
     parser.add_argument(
-        '--downsample_rate',dest='downsample_rate',type=float,default=1.0,
-        help="Resizes images with downsample rate")
+        '--tta',dest='tta',action="store_true",
+        help="Use test-time augmentations",default=False)
+    parser.add_argument(
+        '--output_dir',dest='output_dir',
+        help='Output directory for predictions')
+    parser.add_argument(
+        '--output_regex',dest='output_regex',
+        help='Regex used on images to get an ID which will be used as the \
+            file name',default='[0-9]+_[0-9]+')
 
     args = parser.parse_args()
 
-    n_classes = 2
-    
-    path_dictionary = get_prostatex_path_dictionary(args.prostate_x_path)
-    fpd = {}
-    for pid in path_dictionary:
-        if all([k in path_dictionary[pid] for k in [args.mod]]):
-            fpd[pid] = {k:path_dictionary[pid][k] for k in [args.mod]}
-    path_dictionary = fpd
-    size_dict,spacing_dict = get_size_spacing_dict(path_dictionary,[args.mod])
+    torch.manual_seed(args.seed)
+    random.seed(args.seed)
+    np.random.seed(args.seed)
+    g = torch.Generator()
+    g.manual_seed(args.seed)
 
-    for k in size_dict:
-        mm = np.median(np.array(size_dict[k]),axis=0)
-        # downsample only non-depth dimensions
-        mm[0] = mm[0]*args.downsample_rate
-        mm[1] = mm[1]*args.downsample_rate
-        size_dict[k] = np.int32(np.round(mm))
-        spacing_dict[k] = np.median(np.array(spacing_dict[k]),axis=0)
+    n_classes = args.n_classes
 
-    with open(args.config_file,'r') as o:
-        network_config = yaml.safe_load(o)
+    data_dict = {}
+    keys = []
+    feature_keys = []
+    interpolation = []
+    interpolation_resample = []
+    for image_set,feature_set in zip(args.image_paths,args.features):
+        image_set = image_set.split(',')
+        identifier = re.search(args.output_regex,image_set[0]).group()
+        data_dict[identifier] = {}
+        for i,im in enumerate(image_set):
+            k = "image_{}".format(i)
+            data_dict[identifier][k] = im
+            if k not in keys:
+                keys.append(k)
+                if i in args.mask_idx:
+                    interpolation.append("nearest")
+                    interpolation_resample.append("nearest")
+                else:
+                    interpolation.append("area")
+                    interpolation_resample.append("bilinear")
+        for i,im in enumerate(feature_set):
+            if k not in feature_keys:
+                feature_keys.append(k)
+            data_dict[identifier]["feature_{}".format(i)] = im
 
-    if "activation_fn" in network_config:
-        network_config["activation_fn"] = activation_factory[
-            network_config["activation_fn"]]
-
-    if "spatial_dimensions" not in network_config:
-        network_config["spatial_dimensions"] = 3
-
-    if "batch_size" not in network_config:
-        network_config["batch_size"] = 1
-
-    intp = ["area"]
-
-    transforms = [
-        monai.transforms.LoadImaged(["image"]),
-        Index(["image"],args.index,-1),
-        monai.transforms.AddChanneld(["image"]),
-        monai.transforms.Orientationd(["image"],"RAS"),
-        monai.transforms.EnsureTyped(["image"]),
-        monai.transforms.Spacingd(
-            ["image"],tuple(spacing_dict[args.mod]),mode="bilinear"),
-        monai.transforms.Resized(
-            ["image"],tuple(size_dict[args.mod]),mode=intp),
-        monai.transforms.ScaleIntensityd(["image"],0,1),
-        monai.transforms.EnsureTyped(["image"])]
-
-    if network_config["spatial_dimensions"] == 2:
-        transforms.append(
-            SlicesToFirst(["image"]))
-        collate_fn = collate_last_slice
+    input_keys = [x for i,x in enumerate(keys) if i in args.input_idx]
+    aux_keys = [x for i,x in enumerate(keys) if i in args.skip_idx]
+    if len(aux_keys) > 0:
+        aux_key_net = "aux_key"
     else:
-        collate_fn = None
+        aux_key_net = None
+    adc_input_keys = [x for i,x in enumerate(keys) if i in args.adc_idx]
+    non_adc_keys = [x for i,x in enumerate(keys) if i not in args.adc_idx]
 
-    unet = UNetPL(image_key="image",n_classes=n_classes,**network_config)
-    state_dict = torch.load(
-        args.checkpoint_path,map_location=args.dev)['state_dict']
-    inc = unet.load_state_dict(state_dict)
-    print("Incompatible keys:",inc)
+    if args.input_size is not None:
+        args.input_size = [round(x) for x in args.input_size]
 
-    unet = unet.to(args.dev)
-    unet.eval()
+    network_config,loss_key = parse_config_unet(
+        args.config_file,len(keys),n_classes)
 
-    print("Predicting...")
-    try: os.makedirs(args.output_path)
-    except: pass
-    transforms = monai.transforms.Compose(transforms)
-    for path in tqdm(args.input_path):
-        image = transforms({"image":path})
-        # introduce batch dim
-        if collate_fn is not None:
-            image = collate_fn((image,))['image']
+    def get_transforms(x,label_mode=None):
+        if args.target_spacing is not None:
+            rs = [
+                monai.transforms.Spacingd(
+                    keys=keys,pixdim=args.target_spacing,
+                    mode=interpolation_resample)]
         else:
-            image = torch.unsqueeze(image['image'],0)
-        root_name = os.path.split(path)[-1].split('.')[0]
-        output_path = os.path.join(args.output_path,root_name+'.npy')
-        pred = unet(image.to(args.dev))
-        # uniformize everything to [c,h,w,d], where c = 1 for binary classification
+            rs = []
+        scaling_ops = []
+        if len(non_adc_keys) > 0:
+            scaling_ops.append(
+                monai.transforms.ScaleIntensityd(non_adc_keys,0,1))
+        if len(adc_input_keys) > 0:
+            scaling_ops.append(
+                ConditionalRescalingd(adc_input_keys,1000,0.001))
+            scaling_ops.append(
+                monai.transforms.ScaleIntensityd(
+                    adc_input_keys,None,None,1-args.adc_factor))
+        if args.input_size is not None and len(args.resize_keys) > 0:
+            intp_ = [k for k,kk in zip(interpolation,keys) 
+                     if kk in args.resize_keys]
+            resize = [monai.transforms.Resized(
+                args.resize_keys,tuple(args.input_size),mode=intp_)]
+        else:
+            resize = []
+        if args.crop_size is not None:
+            crop_op = [
+                monai.transforms.CenterSpatialCropd(
+                    keys,[int(j) for j in args.crop_size]),
+                monai.transforms.SpatialPadd(
+                    keys,[int(j) for j in args.crop_size])]
+        else:
+            crop_op = []
+
+        if len(aux_keys) > 0:
+            aux_concat = [monai.transforms.ConcatItemsd(aux_keys,aux_key_net)]
+        else:
+            aux_concat = []
+
+        if len(feature_keys) > 0:
+            feature_concat = [
+                monai.transforms.EnsureTyped(
+                    feature_keys,dtype=np.float32),
+                monai.transforms.Lambdad(
+                    feature_keys,
+                    func=lambda x:np.reshape(x,[1])),
+                monai.transforms.ConcatItemsd(
+                    feature_keys,"tabular_features")]
+        return [
+                monai.transforms.LoadImaged(keys),
+                monai.transforms.AddChanneld(keys),
+                monai.transforms.Orientationd(keys,"RAS"),
+                *rs,
+                *resize,
+                *crop_op,
+                *scaling_ops,
+                monai.transforms.EnsureTyped(keys),
+                monai.transforms.ConcatItemsd(keys,"image"),
+                *aux_concat,
+                *feature_concat,
+                monai.transforms.ToTensord(["image"])]
+
+    label_mode = "binary" if n_classes == 2 else "cat"
+    all_pids = [k for k in data_dict]
+
+    print("Setting up networks...")
+    if args.res_config_file is not None:
+        _,network_config_ssl = parse_config_ssl(
+            args.res_config_file,0.,len(keys),network_config["batch_size"])
+        for k in ['weight_decay','learning_rate','batch_size']:
+            if k in network_config_ssl:
+                del network_config_ssl[k]
+        res_net = ResNet(**network_config_ssl)
+        backbone = res_net.backbone
+        network_config['depth'] = [
+            backbone.structure[0][0],
+            *[x[0] for x in backbone.structure]]
+        network_config['kernel_sizes'] = [3 for _ in network_config['depth']]
+        network_config['strides'] = [2 for _ in network_config['depth']]
+        res_ops = [backbone.input_layer,*backbone.operations]
+        res_pool_ops = [backbone.first_pooling,*backbone.pooling_operations]
+        encoding_operations = torch.nn.ModuleList(
+            [torch.nn.ModuleList([a,b]) 
+                for a,b in zip(res_ops,res_pool_ops)])
+    else:
+        encoding_operations = None
+    
+    if len(feature_keys) > 0:
+        all_params = {
+            "mean":torch.zeros([len(feature_keys)]),
+            "std":torch.ones([len(feature_keys)])}
+
+    if args.unet_pp == True:
+        unet = UNetPlusPlus(
+            encoding_operations=encoding_operations,
+            n_classes=n_classes,
+            bottleneck_classification=False,
+            skip_conditioning=len(aux_keys),
+            feature_conditioning=len(args.feature_keys),
+            feature_conditioning_params=all_params,
+            **network_config)
+    else:
+        unet = UNet(
+            encoding_operations=encoding_operations,
+            n_classes=n_classes,
+            bottleneck_classification=False,
+            skip_conditioning=len(aux_keys),
+            feature_conditioning=len(args.feature_keys),
+            feature_conditioning_params=all_params,
+            **network_config)
+
+    state_dict = torch.load(
+        args.checkpoint,map_location=args.dev)['state_dict']
+    inc = unet.load_state_dict(state_dict)
+    
+    print(inc)
+
+    print("Setting up data...")
+    transforms = get_transforms()
+                
+    for k in tqdm(data_dict):
+        d = transforms(data_dict[k])
+
+        X = torch.unsqueeze(d["image"],0)
+        x_cond = None
+        x_fc = None
+        if len(aux_keys) is not None:
+            x_cond = torch.unsqueeze(d[aux_key_net],0)
+        if len(feature_keys) is not None:
+            x_fc = torch.unsqueeze(d["tabular_features"],0)            
+
+        if args.tta == True:
+            X = torch.cat([X,X[:,:,::-1]])
+            x_cond = torch.cat([x_cond,x_cond[:,:,::-1]])
+
+        output = unet.forward(
+            X,X_skip_layer=x_cond,X_feature_conditioning=x_fc)
+        if args.tta == True:
+            output = split(output,2,0)
+            output = (output[0] + output[1])/2
+        output = output.squeeze(0)
+        output = output.detach().cpu().numpy()
         if n_classes == 2:
-            pred = pred.unsqueeze(-1).swapaxes(0,-1).squeeze(0)
-        elif n_classes == 3:
-            pred = pred.squeeze(0)
-        pred = pred.detach().to("cpu").numpy()
-        o = np.array([path,image.numpy(),pred],dtype=object)
-        np.save(output_path,o,allow_pickle=True)
+            output = filters.apply_hysteresis_threshold(
+                output,0.45, 0.5)[0]
+        else:
+            output = np.argmax(output,axis=0)
+        
+        target_image = sitk.ReadImage(data_dict[k]["image"])
+        output = sitk.GetImageFromArray(output)
+        output.CopyInformation(target_image)
+        output = sitk.Cast(output,sitk.sitkInt16)
+        sitk.WriteImage(
+            output,
+            os.path.join(args.output_path,"{}.mha".format(k)))
