@@ -344,6 +344,12 @@ if __name__ == "__main__":
     def get_augmentations(augment):
         if augment == True:
             return [
+                monai.transforms.RandGaussianNoised(
+                    keys,prob=0.1),
+                monai.transforms.RandAdjustContrastd(
+                    keys,prob=0.1),
+                monai.transforms.RandGibbsNoised(
+                    keys,prob=0.1),
                 monai.transforms.RandAffined(
                     all_keys,
                     scale_range=[0.1,0.1,0.1],
