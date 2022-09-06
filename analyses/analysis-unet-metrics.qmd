@@ -1,0 +1,296 @@
+---
+title: "Analysis of the performance of different U-Net models"
+format: html
+authors:
+    - José Guilherme de Almeida
+bibliography: references.bib
+---
+
+# Introduction
+
+Here, we set out to analyse how different factors contribute to the performance of U-Net models in the task of lesion segmentation using prostate mpMRI. we have, in particular, investigated some specific aspects of these models, particularly:
+
+1. How using a clinical prior (in the form of gland masks) could inform prediction (Gland prior vs. No gland prior)
+2. How pre-training using SimSiam could assist in prediction (Pre-trained vs. Not pre-trained)
+3. How the use of clinical data - particularly PSA, prostate volume and age - can be used to improve results.
+
+## Technical details
+
+### Training
+
+All models were implemented from scratch and the general architecture is a U-Net @Falk2018-oi with a ResNet encoder @He2015-uu. MONAI @MONAI_Consortium2022-wb and TorchIO @Perez-Garcia2021-tt were both used for I/O operations and data transformations, whereas training was coordinated with the PyTorch Lightning library @NEURIPS2019_9015. Each model was trained for a maximum of 100 epochs and training would stop when no improvement to the validation loss was detected for over 15 epochs. If training reached 80 epochs, stochastic weight averaging (SWA) was triggered for the remainder of the 100 epochs @Izmailov2018-uf. Both strategies - early stopping and SWA - help in generalization, with the latter being also helpful in reaching convergence.
+
+5-fold cross validation was used to train, where a dataset of >400 mpMRI studies from PI-CAI (those containing annotations) was resampled to a common space and orientation and split into 5 different and non-overlapping validation sets. The remainder of the data for each fold was used in training (training set). Within each training set, a small percentage of the data (15%) was used to routinely check for convergence (training validation set).
+
+### Gland mask (clinical prior)
+
+we use the masks for the prostate gland as additional inputs for the skip connection operations (here parameterised as residual connections). By doing so, we can use pretrained encoders without having to retrain them with these masks. The scheme below (in @gland-mask-u-net) illustrates how these clinical priors work.
+
+```{dot}
+#| label: gland-mask-u-net
+#| fig-cap: "Graphical representation of U-Net and where prostate gland priors are used."
+
+digraph {
+    ordering="out";
+    rankdir=LR;
+    subgraph cluster_encoder {
+        rankdir=TB;
+        label="Encoder";
+        {rank=same; down_conv1, down_conv2; down_conv3}
+    }
+    subgraph cluster_decoder {
+        label="Decoder";
+        {rank=same; up_conv1; up_conv2; up_conv3}
+    }
+    subgraph cluster_res {
+        label="Skip operations";
+        {rank=same; res_op1; res_op2; res_op3}
+    }
+
+    bottleneck [rank=max];
+    input [rank=1 ,shape="box"];
+    output [rank=max; shape="box"];
+
+    input -> down_conv1;
+    down_conv1 -> down_conv2;
+    down_conv2 -> down_conv3;
+    down_conv3 -> bottleneck [constraint=false];
+    bottleneck -> up_conv1;
+    up_conv1 -> up_conv2;
+    up_conv2 -> up_conv3;
+    up_conv3 -> output;
+
+    pre_res_op1 [shape=point,width=0.01,height=0.01];
+    pre_res_op2 [shape=point,width=0.01,height=0.01];
+    pre_res_op3 [shape=point,width=0.01,height=0.01];
+
+    down_conv1 -> pre_res_op1 [dir=none]
+    pre_res_op1 -> res_op1 -> up_conv3;
+    down_conv2 -> pre_res_op2 [dir=none]
+    pre_res_op2 -> res_op2 -> up_conv2;
+    down_conv3 -> pre_res_op3 [dir=none]
+    pre_res_op3 -> res_op3 -> up_conv1;
+
+    prior [shape=doublecircle; style=dashed]
+    edge [style=dashed; dir=none];
+    prior -> pre_res_op1;
+    prior -> pre_res_op2;
+    prior -> pre_res_op3;
+}
+```
+
+### Pre-training
+
+Using a setup similar to SimSiam @chen2020simsiam, we trained networks that would minimise the cosine distance between two distinct vectors obtained after applying different transforms to the same set of images. This is, in essence, a self-supervised method that seeks to minimise this distance. An important caveat is that images, in our case, are remarkably similar and the relevant differences (lesions) are oftentimes quite small. For this reason, this setup may not be ideal.
+
+### Feature conditioning (tabular clinical features)
+
+Segmentation - as most tasks involving convolutions - is a task which is not prepared to use clinical features. The main reason for this is that tabular features are usually used as part of a prediction vector (1-dimensional tensors), whereas segmentation tasks operate on $n$-dimensional tensors, where $n$ is either 2 or 3 in our case. The most immediate application of these features would be to append them to the last layer, right before predictions. This would make the final feature map have $p + f$ channels, where $p$ is the number of convolutional channels and $f$ is the number of features. However, clinical decision algorithms and trees typically consider the interactions between different clinical findings, and this method only allows for a more linear combination of features. 
+
+For this reason, we devised a different approach, where the output of each residual skip connection with $p$ channels is weighted by a $p$-length vector $\mathrm{f},\forall \mathrm{f}_i \in [0,1]$ corresponding to a non-linear transformation of the clinical features. This, in essence, simulates the following: "how would having knowledge on these clinical features affect how each feature in the skip connection layer is used?". In @features-u-net we present a schematic representation of this.
+
+```{dot}
+#| label: features-u-net
+#| fig-cap: "Graphical representation of U-Net and where clinical features are used."
+
+digraph {
+    ordering="out";
+    rankdir=LR;
+    subgraph cluster_encoder {
+        rankdir=TB;
+        label="Encoder";
+        {rank=same; down_conv1, down_conv2; down_conv3}
+    }
+    subgraph cluster_decoder {
+        label="Decoder";
+        {rank=same; up_conv1; up_conv2; up_conv3}
+    }
+    subgraph cluster_res {
+        label="Skip operations";
+        {rank=same; res_op1; res_op2; res_op3}
+    }
+
+    subgraph cluster_transf {
+        style="rounded";
+        bgcolor="#EEE0E5";
+        label="Tabular feature transforms";
+        {rank=same; transf1; transf2; transf3}
+    }
+
+    bottleneck [rank=max];
+    input [rank=1 ,shape="box"];
+    output [rank=max; shape="box"];
+
+    input -> down_conv1;
+    down_conv1 -> down_conv2;
+    down_conv2 -> down_conv3;
+    down_conv3 -> bottleneck [constraint=false];
+    bottleneck -> up_conv1;
+    up_conv1 -> up_conv2;
+    up_conv2 -> up_conv3;
+    up_conv3 -> output;
+
+    down_conv1 -> res_op1 -> up_conv3;
+    down_conv2 -> res_op2 -> up_conv2;
+    down_conv3 -> res_op3 -> up_conv1;
+
+    cf [label="Clinical features"; shape=doublecircle; style=dashed]
+    edge [style=dashed];
+    cf -> transf1 -> res_op1;
+    cf -> transf2 -> res_op2;
+    cf -> transf3 -> res_op3;
+}
+```
+
+# Results
+
+## Download data
+
+Given that we used wandb @wandb, we simply download the relevant runs with the appropriate project address (`josegcpa/picai_segmentation`) and store them in `metrics/all_metrics.csv`.
+
+```{python download_data}
+import wandb
+import pandas as pd
+
+input_path = "josegcpa/picai_ssl_seg"
+output_path = "../metrics/all_metrics.csv"
+
+api = wandb.Api()
+runs = api.runs(input_path)
+summary_list, config_list, name_list = [], [], []
+
+for run in runs: 
+    # .summary contains the output keys/values for metrics like accuracy.
+    #  We call ._json_dict to omit large files 
+    summary_list.append(run.summary._json_dict)
+
+    # .config contains the hyperparameters.
+    #  We remove special values that start with _.
+    config_list.append(
+        {k: v for k,v in run.config.items()
+        if not k.startswith('_')})
+
+    # .name is the human-readable name of the run.
+    name_list.append(run.name)
+
+o = {"name":[],"key":[],"value":[]}
+for c,n in zip(summary_list,name_list):
+    for k in c:
+        o["name"].append(n)
+        o["key"].append(k)
+        o["value"].append(c[k])
+runs_df = pd.DataFrame.from_dict(o)
+
+runs_df.to_csv(output_path)
+```
+
+## Loading and transforming data
+
+```{r load_data}
+library(tidyverse)
+metric_data <- read_csv("metrics/all_metrics.csv")[,-1] %>%
+    mutate(
+        fold = str_match(str_match(name,"fold_[0-9]+"),"[0-9]"),
+        clinical = ifelse(grepl("clinical",name),"Clinical data","No clinical data"),
+        pretrained = ifelse(!grepl("scratch",name),"Pre-trained","Not pre-trained"),
+        prior = ifelse(grepl("prior",name),"Gland prior","No gland prior"),
+        sequences = gsub("\\.","",str_match(name,"\\.[A-Z0-9_]+"))) %>%
+    mutate(value = as.numeric(value)) %>%
+    mutate(sequences = factor(
+        sequences,
+        c("T2W","ADC","DWI",
+          "ADC_DWI","T2W_ADC",
+          "T2W_ADC_DWI"),
+        c("T2W","ADC","DWI",
+          "ADC+DWI","T2W+ADC",
+          "T2W+ADC+DWI"),)) %>%
+    mutate(categories = paste(prior,pretrained,sep = " + "))
+
+iou_data <- metric_data %>% 
+    subset(key == "T_IoU") 
+pr_data <- metric_data %>% 
+    subset(key == "T_Pr") 
+```
+
+## Initial result visualization
+
+Here we can inspect how different combinations of training methodologies lead to distinct results. Particularly, it should be relatively clear that the use of clinical tabular features leads to decrease result variability in most cases and also improved performance. This highlights the usefulness of conditioning skip connection features with clinical information and point towards some non-redundancy between both sources of data (clinical information and mpMRI).
+
+Additionally, using all sequences (T2W + ADC + DWI) leads to a striking boost in performance. Other aspects, while not as evident, appear to play a relevant role:
+
+* Pre-training does not appear to lead to any consistent findings. Indeed, under no circumstance does it lead to concrete improvements to the performance. As mentioned earlier, the cause for this may be the minor changes that lesions imply in MRI images in general, rendering the relevant signal for self-supervised pre-training too obscure and hard to detect.
+
+* Gland priors do not appear to lead to improved performance. It is worth noting that the gland priors used here were derived by an artificial intelligence and, while the results are generally good, they may be insufficient to provide an informative set of features. However, it may just be that using these gland priors in such a way (as conditioning the residual connections) is not particularly effective. More investigations into this are necessary.
+
+```{r visualise, dpi=300,fig.height = 3,fig.width = 3}
+median_iqr <- function(x) {
+    return(
+        data.frame(
+            y = median(x),
+            ymin = quantile(x,0.25),
+            ymax = quantile(x,0.75)))}
+
+iou_data %>%
+    #subset(!(sequences %in% c("T2W","ADC","DWI"))) %>%
+    ggplot(
+        aes(x = sequences,y = value,
+            colour = categories,group = categories)) +
+    geom_hline(yintercept = 0,size = 0.25) +
+    stat_summary(geom = "linerange",fun.data = median_hilow,
+                 size = 0.25, position = position_dodge(0.7)) +
+    stat_summary(geom = "linerange",fun.data = median_iqr,
+                 size = 0.5, position = position_dodge(0.7)) +
+    stat_summary(geom = "point",fun = median,colour = "black",
+                 size = 1,
+                 position = position_dodge(0.7)) +
+    stat_summary(geom = "point",fun = median,
+                 size = 0.5,
+                 position = position_dodge(0.7)) +
+    coord_flip() +
+    theme_minimal(base_size = 6) +
+    scale_colour_brewer(type="qual",palette=2,name = NULL) +
+    theme(legend.position = "bottom",
+          legend.key.size = unit(0.4,"cm")) +
+    guides(color = guide_legend(nrow = 4)) + 
+    facet_wrap(~ clinical,ncol = 1) +
+    xlab("") +
+    ylab("IoU")
+```
+
+## Statistical analysis of scores
+
+To assess the differential impact of each modelling decision, I produce some simple linear models where the modelling decisions are the independent variables and the scores (IoU, precision) are the dependent variables. Here we use both as the IoU gives us a general measure of the overlap, whereas the precision gives us the ratio of correct positives out of all positives.
+
+An analysis such as this does not come without its caveats - even when considering interactions between different modelling decisions, we are only able to capture the effect of interactions whose contribution to the metric of interest is linear and relatively independent from other factors. Additionally, trying to capture all interactions - 2 (clinical features vs. no clinical features) * 2 (gland prior vs. no gland prior) * 2 (pre-trained vs. not pre-trained) * 3 (T2W + ADC + HBV vs. ADC + HBV vs. T2W + ADC) - would yield a total of $2 + 2 + 2 + 3 + 2 * 2 * 2 * 3 = 33$ effects, a considerable number for a relatively restricted set of experiments and whose individual contributions would be hard to assess. For this reason, we first exclude any and all interactions to identify the cases where each modelling decision performs better than others, only then calculating the relative of specific interactions within each group.
+
+```{r linear_models_iou}
+format_coefs <- function(SS) {
+  data_coef <- as.data.frame(SS$coefficients)
+  data_coef <- data.frame(
+    CoefficientName = rownames(data_coef),
+    apply(data_coef,2,format,digits=2),
+    Significant = cut(data_coef$`Pr(>|t|)`,c(0,0.001,0.01,0.05,1),c("***","**","*","n.s.")))
+  colnames(data_coef) <- c("CoefficientName","Estimate","Std. error","t-value","p-value","Significant")
+  rownames(data_coef) <- NULL
+  return(data_coef)
+}
+
+glm(value ~ clinical + prior + pretrained + sequences,
+    data = iou_data) %>%
+    summary() %>%
+    format_coefs() %>%
+    knitr::kable()
+```
+
+```{r linear_models_pr}
+glm(value ~ clinical + pretrained + prior + sequences,
+    data = pr_data) %>%
+    summary() %>%
+    format_coefs() %>%
+    knitr::kable()
+```
+
+# References
+
+::: {#refs}
+:::
