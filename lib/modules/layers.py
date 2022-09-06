@@ -89,6 +89,13 @@ def get_adn_fn(spatial_dim,norm_fn="batch",
 
     return adn_fn
 
+def unsqueeze_to_target(x:torch.Tensor,target:torch.Tensor):
+    cur,tar = len(x.shape),len(target.shape)
+    if cur < tar:
+        for _ in range(tar-cur):
+            x = x.unsqueeze(-1)
+    return x
+
 class ActDropNorm(torch.nn.Module):
     def __init__(self,in_channels:int=None,ordering:str='NDA',
                  norm_fn: torch.nn.Module=torch.nn.BatchNorm2d,
@@ -1999,3 +2006,57 @@ class UOut(torch.nn.Module):
             return X
         else:
             return X
+
+class BatchEnsemble(torch.nn.Module):
+    def __init__(self,n:int,mod:torch.nn.Module,
+                 in_channels:int,out_channels:int):
+        super().__init__()
+        self.n = n
+        self.mod = mod
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        
+        self.initialize_weights()
+
+    def initialize_weights(self):
+        self.all_weights = torch.nn.ParameterDict({
+            "pre":torch.nn.Parameter(
+                torch.as_tensor(np.random.normal(
+                    1,0.1,size=[self.n,self.in_channels]),
+                dtype=torch.float32)
+            ),
+            "post":torch.nn.Parameter(
+                torch.as_tensor(np.random.normal(
+                    1,0.1,size=[self.n,self.out_channels]),
+                dtype=torch.float32)
+            )})
+
+    def forward(self,X:torch.Tensor,idx:int=None):
+        b = X.shape[0]
+        if idx is not None:
+            pre = torch.unsqueeze(self.all_weights['pre'][idx],0)
+            post = torch.unsqueeze(self.all_weights['post'][idx],0)
+            X = torch.multiply(
+                self.mod(X * unsqueeze_to_target(pre,X)),
+                unsqueeze_to_target(post,X))
+            return X
+        if self.training == True:
+            idxs = np.random.randint(self.n,size=b)
+            pre = torch.stack(
+                [self.all_weights['pre'][idx] for idx in idxs])
+            post = torch.stack(
+                [self.all_weights['post'][idx] for idx in idxs])
+            X = unsqueeze_to_target(pre,X) * X
+            X = self.mod(X)
+            X = unsqueeze_to_target(post,X) * X
+        else:
+            all_outputs = []
+            for idx in range(self.n):
+                pre = torch.unsqueeze(self.all_weights['pre'][idx],0)
+                post = torch.unsqueeze(self.all_weights['post'][idx],0)
+                o = torch.multiply(
+                    self.mod(X * unsqueeze_to_target(pre,X)),
+                    unsqueeze_to_target(post,X))
+                all_outputs.append(o)
+            all_outputs = torch.stack(all_outputs).mean(0)
+        return X
