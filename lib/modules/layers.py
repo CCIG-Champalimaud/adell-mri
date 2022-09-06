@@ -2008,17 +2008,41 @@ class UOut(torch.nn.Module):
             return X
 
 class BatchEnsemble(torch.nn.Module):
-    def __init__(self,n:int,mod:torch.nn.Module,
-                 in_channels:int,out_channels:int):
+    def __init__(self,spatial_dim:int,n:int,
+                 in_channels:int,out_channels:int,
+                 adn_fn:Callable=torch.nn.Identity,
+                 op_kwargs:dict=None):
         super().__init__()
+        self.spatial_dim = spatial_dim
         self.n = n
-        self.mod = mod
         self.in_channels = in_channels
         self.out_channels = out_channels
+        self.adn_fn = adn_fn
+        self.op_kwargs = op_kwargs
         
-        self.initialize_weights()
+        self.correct_kwargs()
+        self.initialize_layers()
 
-    def initialize_weights(self):
+    def correct_kwargs(self):
+        if self.op_kwargs is None:
+            if self.spatial_dim == 0:
+                self.op_kwargs = {}
+            else:
+                self.op_kwargs = {"kernel_size":3}
+
+    def initialize_layers(self):
+        if self.spatial_dim == 0:
+            self.mod = torch.nn.Linear(
+                self.in_channels,self.out_channels,**self.op_kwargs)
+        elif self.spatial_dim == 1:
+            self.mod = torch.nn.Conv1d(
+                self.in_channels,self.out_channels,**self.op_kwargs)
+        elif self.spatial_dim == 2:
+            self.mod = torch.nn.Conv2d(
+                self.in_channels,self.out_channels,**self.op_kwargs)
+        elif self.spatial_dim == 3:
+            self.mod = torch.nn.Conv3d(
+                self.in_channels,self.out_channels,**self.op_kwargs)
         self.all_weights = torch.nn.ParameterDict({
             "pre":torch.nn.Parameter(
                 torch.as_tensor(np.random.normal(
@@ -2030,6 +2054,7 @@ class BatchEnsemble(torch.nn.Module):
                     1,0.1,size=[self.n,self.out_channels]),
                 dtype=torch.float32)
             )})
+        self.adn_op = self.adn_fn(self.out_channels)
 
     def forward(self,X:torch.Tensor,idx:int=None):
         b = X.shape[0]
@@ -2039,8 +2064,7 @@ class BatchEnsemble(torch.nn.Module):
             X = torch.multiply(
                 self.mod(X * unsqueeze_to_target(pre,X)),
                 unsqueeze_to_target(post,X))
-            return X
-        if self.training == True:
+        elif self.training == True:
             idxs = np.random.randint(self.n,size=b)
             pre = torch.stack(
                 [self.all_weights['pre'][idx] for idx in idxs])
@@ -2058,5 +2082,5 @@ class BatchEnsemble(torch.nn.Module):
                     self.mod(X * unsqueeze_to_target(pre,X)),
                     unsqueeze_to_target(post,X))
                 all_outputs.append(o)
-            all_outputs = torch.stack(all_outputs).mean(0)
-        return X
+            X = torch.stack(all_outputs).mean(0)
+        return self.adn_op(X)
