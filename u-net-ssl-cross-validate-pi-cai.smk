@@ -6,7 +6,7 @@ summary_path = "summaries"
 metric_path = "metrics"
 dataset_id = "picai"
 ssl_model_id = "simsiam"
-project_name = "picai_segmentation"
+project_name = "picai_ssl_seg"
 ssl_checkpoint_base = "models/{ssl_model_id}/{ssl_model_id}.{combs}.picai_fold{fold}_last.ckpt"
 best_folds_ssl = {
     "T2W":0,"ADC":0,"DWI":0,
@@ -38,6 +38,7 @@ all_clinical_keys = ["patient_age","psa","prostate_volume"]
 model_types = ["unet"]
 spatial_dims = ["3d"]
 combinations = [
+    ["image"],["image_1"],["image_2"],
     ["image_1","image_2"],
     ["image","image_1"],
     ["image","image_1","image_2"]]
@@ -294,8 +295,6 @@ rule train_models_prior:
             --res_config_file {input.config_resnet} \
             --res_checkpoint {input.ssl_checkpoint} \
             --skip_mask_key {params.prior_key} \
-            --input_size {params.size} \
-            --resize_keys {params.prior_key} \
             {params.pp}
         """
 
@@ -422,8 +421,6 @@ rule train_models_prior_clinical:
             --res_config_file {input.config_resnet} \
             --res_checkpoint {input.ssl_checkpoint} \
             --skip_mask_key {params.prior_key} \
-            --input_size {params.size} \
-            --resize_keys {params.prior_key} \
             {params.pp}
         """
 
@@ -543,8 +540,6 @@ rule train_models_scratch_prior:
             --n_devices {n_devices} \
             --res_config_file {input.config_resnet} \
             --skip_mask_key {params.prior_key} \
-            --input_size {params.size} \
-            --resize_keys {params.prior_key} \
             {params.pp}
         """
 
@@ -666,7 +661,5 @@ rule train_models_scratch_prior_clinical:
             --n_devices {n_devices} \
             --res_config_file {input.config_resnet} \
             --skip_mask_key {params.prior_key} \
-            --input_size {params.size} \
-            --resize_keys {params.prior_key} \
             {params.pp}
         """
