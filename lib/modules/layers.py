@@ -5,30 +5,7 @@ import torch
 import torch.nn.functional as F
 from math import floor
 from ..types import *
-
-activation_factory = {
-    "elu": torch.nn.ELU,
-    "hard_shrink": torch.nn.Hardshrink,
-    "hard_tanh": torch.nn.Hardtanh,
-    "leaky_relu": torch.nn.LeakyReLU,
-    "logsigmoid": torch.nn.LogSigmoid,
-    "prelu": torch.nn.PReLU,
-    "relu": torch.nn.ReLU,
-    "relu6": torch.nn.ReLU6,
-    "rrelu": torch.nn.RReLU,
-    "selu": torch.nn.SELU,
-    "celu": torch.nn.CELU,
-    "sigmoid": torch.nn.Sigmoid,
-    "softplus": torch.nn.Softplus,
-    "softshrink": torch.nn.Softshrink,
-    "softsign": torch.nn.Softsign,
-    "tanh": torch.nn.Tanh,
-    "tanhshrink": torch.nn.Tanhshrink,
-    "threshold": torch.nn.Threshold,
-    "softmin": torch.nn.Softmin,
-    "softmax": torch.nn.Softmax,
-    "logsoftmax": torch.nn.LogSoftmax,
-    "swish": torch.nn.SiLU}
+from .activations import *
 
 def split_int_into_n(i,n):
     r = i % n
@@ -2012,6 +1989,25 @@ class BatchEnsemble(torch.nn.Module):
                  in_channels:int,out_channels:int,
                  adn_fn:Callable=torch.nn.Identity,
                  op_kwargs:dict=None):
+        """Batch ensemble layer. Instantiates a linear/convolutional layer
+        (depending on spatial_dim) and, given a forward pass, scales the 
+        channels before and after the application of the linear/convolutional
+        layer. Details in [1].
+
+        [1] https://arxiv.org/abs/2002.06715
+
+        Args:
+            spatial_dim (int): number of spatial dimensions (has to be 0, 1, 2
+                or 3).
+            n (int): size of the ensemble.
+            in_channels (int): number of input channels.
+            out_channels (int): number of output channels.
+            adn_fn (Callable, optional): function applied after 
+                linear/convolutional operations takes the number of channels
+                as input. Defaults to torch.nn.Identity.
+            op_kwargs (dict, optional): keyword arguments for 
+                linear/convolutional operation. Defaults to None.
+        """
         super().__init__()
         self.spatial_dim = spatial_dim
         self.n = n
