@@ -39,7 +39,7 @@ def binary_cross_entropy(pred:torch.Tensor,
         pred (torch.Tensor): prediction probabilities.
         target (torch.Tensor): target class.
         weight (float, optional): weight for the positive
-        class. Defaults to 1.
+            class. Defaults to 1.
 
     Returns:
         torch.Tensor: a tensor with size equal to the batch size (first 
@@ -47,9 +47,9 @@ def binary_cross_entropy(pred:torch.Tensor,
     """
     pred = torch.flatten(pred,start_dim=1)
     target = torch.flatten(target,start_dim=1)
-    a = -weight*target*torch.log(pred+EPS)
-    b = -(1-weight)*(1-target)*torch.log(1-pred+EPS)
-    return torch.mean(a+b,dim=1)
+    a = weight*target*torch.log(pred+EPS)
+    b = (1-target)*torch.log(1-pred+EPS)
+    return -torch.mean(a+b,dim=1)
 
 def binary_focal_loss(pred:torch.Tensor,
                       target:torch.Tensor,
@@ -157,7 +157,8 @@ def weighted_mse(pred:torch.Tensor,
 
 def generalized_dice_loss(pred:torch.Tensor,
                           target:torch.Tensor,
-                          weight:float=1)->torch.Tensor:
+                          weight:float=1.,
+                          smooth:float=1.)->torch.Tensor:
     """Dice loss adapted to cases of very high class imbalance. In essence
     it adds class weights to the calculation of the Dice loss [1]. If 
     `weights=1` it defaults to the regular Dice loss. This implementation 
@@ -168,8 +169,9 @@ def generalized_dice_loss(pred:torch.Tensor,
     Args:
         pred (torch.Tensor): prediction probabilities.
         target (torch.Tensor): target class.
-        weight (float, optional): class weights. Defaults 
-        to 1.
+        weight (float, optional): class weights. Defaults to 1.
+        smooth (float, optional): term preventing the loss from being
+            undefined.
 
     Returns:
          torch.Tensor: a tensor with size equal to the batch size (first 
@@ -179,13 +181,11 @@ def generalized_dice_loss(pred:torch.Tensor,
 
     if pred.shape != target.shape:
         target = classes_to_one_hot(target)
-    I = torch.flatten(pred*target,start_dim=2)
-    U = torch.flatten(pred+target,start_dim=2)
     if isinstance(weight,torch.Tensor) == True:
-        weight = unsqueeze_to_shape(weight,I.shape,1)
-    I = torch.sum(I*weight,dim=-1).sum(-1)
-    U = torch.sum(U*weight,dim=-1).sum(-1)
-    return 1-2*I/U
+        weight = unsqueeze_to_shape(weight,target.shape,1)
+    I = torch.flatten(weight*target*pred,start_dim=2).sum(-1).sum(-1)
+    U = torch.flatten(weight*target+pred,start_dim=2).sum(-1).sum(-1)
+    return 1. - 2.*(I+smooth)/(U+smooth)
 
 def binary_focal_tversky_loss(pred:torch.Tensor,
                               target:torch.Tensor,
@@ -653,7 +653,6 @@ def ordinal_sigmoidal_loss(pred:torch.Tensor,
         pred,target_ordinal.float(),reduction="none")
     loss = loss.flatten(start_dim=1).sum(1)
     if weight is not None:
-        print(weight,target)
         weight_sample = weight[target]
         loss = loss * weight_sample
     
