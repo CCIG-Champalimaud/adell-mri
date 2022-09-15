@@ -88,6 +88,10 @@ if __name__ == "__main__":
         help="Predicts the maximum class in the output using the bottleneck \
             features.")
     parser.add_argument(
+        '--deep_supervision',dest='deep_supervision',
+        action="store_true",
+        help="Triggers deep supervision.")
+    parser.add_argument(
         '--possible_labels',dest='possible_labels',type=int,nargs='+',
         help="All the possible labels in the data.",
         required=True)
@@ -206,18 +210,14 @@ if __name__ == "__main__":
 
     keys = args.image_keys
     label_keys = args.mask_keys
-    if args.mask_image_keys is None:
-        args.mask_image_keys = []
-    if args.adc_image_keys is None:
-        args.adc_image_keys = []
-    if args.skip_key is None:
-        args.skip_key = []
-    if args.skip_mask_key is None:
-        args.skip_mask_key = []
-    if args.resize_keys is None:
-        args.resize_keys = []
-    if args.feature_keys is None:
-        args.feature_keys = []
+
+    if args.mask_image_keys is None: args.mask_image_keys = []
+    if args.adc_image_keys is None: args.adc_image_keys = []
+    if args.skip_key is None: args.skip_key = []
+    if args.skip_mask_key is None: args.skip_mask_key = []
+    if args.resize_keys is None: args.resize_keys = []
+    if args.feature_keys is None: args.feature_keys = []
+    
     aux_keys = args.skip_key
     aux_mask_keys = args.skip_mask_key
     all_aux_keys = aux_keys + aux_mask_keys
@@ -263,9 +263,11 @@ if __name__ == "__main__":
             if np.isnan(data_dict[k][kk]) == False}
     if args.subsample_size is not None:
         ss = np.random.choice(
-            list(data_dict.keys()),args.subsample_size,replace=False)
+            sorted(list(data_dict.keys())),args.subsample_size,replace=False)
         data_dict = {k:data_dict[k] for k in ss}
-    
+
+    all_pids = [k for k in data_dict]
+
     network_config,loss_key = parse_config_unet(
         args.config_file,len(keys),n_classes)
 
@@ -296,11 +298,12 @@ if __name__ == "__main__":
         else:
             resize = []
         if args.crop_size is not None:
+            crop_size = [int(args.crop_size[0]),
+                         int(args.crop_size[1]),
+                         int(args.crop_size[2])]
             crop_op = [
-                monai.transforms.CenterSpatialCropd(
-                    all_keys,[int(j) for j in args.crop_size]),
-                monai.transforms.SpatialPadd(
-                    all_keys,[int(j) for j in args.crop_size])]
+                monai.transforms.CenterSpatialCropd(all_keys,crop_size),
+                monai.transforms.SpatialPadd(all_keys,crop_size)]
         else:
             crop_op = []
 
@@ -309,10 +312,10 @@ if __name__ == "__main__":
                 monai.transforms.LoadImaged(all_keys),
                 monai.transforms.AddChanneld(all_keys),
                 monai.transforms.Orientationd(all_keys,"RAS"),
+                *scaling_ops,
                 *rs,
                 *resize,
                 *crop_op,
-                *scaling_ops,
                 monai.transforms.EnsureTyped(all_keys),
                 CombineBinaryLabelsd(label_keys,"any","mask"),
                 LabelOperatorSegmentationd(
@@ -344,25 +347,22 @@ if __name__ == "__main__":
     def get_augmentations(augment):
         if augment == True:
             return [
-                monai.transforms.RandGaussianNoised(
-                    keys,prob=0.1),
-                monai.transforms.RandAdjustContrastd(
-                    keys,prob=0.1),
+                monai.transforms.RandRicianNoised(
+                    keys,std=0.1,prob=0.5),
                 monai.transforms.RandGibbsNoised(
-                    keys,prob=0.1),
+                    keys,prob=0.5,alpha=(0.2,0.8)),
                 monai.transforms.RandAffined(
                     all_keys,
                     scale_range=[0.1,0.1,0.1],
                     rotate_range=[np.pi/8,np.pi/8,np.pi/16],
                     translate_range=[10,10,1],
-                    prob=0.2,mode=intp_resampling_augmentations),
+                    prob=0.5,mode=intp_resampling_augmentations),
                 monai.transforms.RandFlipd(
-                    all_keys,spatial_axis=[0,1,2])]
+                    all_keys,prob=0.5,spatial_axis=[0,1,2])]
         else:
             return []
 
     label_mode = "binary" if n_classes == 2 else "cat"
-    all_pids = [k for k in data_dict]
     if args.pre_load == False:
         transforms_train = [
             *get_transforms("pre",label_mode),
@@ -401,7 +401,7 @@ if __name__ == "__main__":
 
     if network_config["spatial_dimensions"] == 2:
         transforms_train.append(
-            RandomSlices(["image","mask"],"mask",8,base=0.001))
+            RandomSlices(["image","mask"],"mask",8,base=0.05))
         transforms_train_val.append(
             SlicesToFirst(["image","mask"]))
         transforms_val.append(
@@ -428,7 +428,6 @@ if __name__ == "__main__":
         fold_generator = iter(folds)
 
     output_file = open(args.metric_path,'w')
-
     for val_fold in range(args.n_folds):
         train_idxs,val_idxs = next(fold_generator)
         train_idxs,train_val_idxs = train_test_split(train_idxs,test_size=0.2)
@@ -564,6 +563,7 @@ if __name__ == "__main__":
                 feature_conditioning=len(args.feature_keys),
                 feature_conditioning_params=all_params,
                 feature_conditioning_key=feature_key_net,
+                n_epochs=args.max_epochs,
                 **network_config)
         else:
             unet = UNetPL(
@@ -577,6 +577,8 @@ if __name__ == "__main__":
                 feature_conditioning=len(args.feature_keys),
                 feature_conditioning_params=all_params,
                 feature_conditioning_key=feature_key_net,
+                deep_supervision=args.deep_supervision,
+                n_epochs=args.max_epochs,
                 **network_config)
 
         if args.from_checkpoint is not None:
@@ -610,7 +612,7 @@ if __name__ == "__main__":
         else:
             ckpt = False
         
-        if args.summary_name is not None:
+        if args.summary_name is not None and args.project_name is not None:
             wandb.finish()
             run_name = args.summary_name.replace(':','_') + "_fold_{}".format(val_fold)
             logger = WandbLogger(
