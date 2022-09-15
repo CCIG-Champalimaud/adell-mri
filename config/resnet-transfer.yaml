@@ -2,8 +2,8 @@
 backbone_args: 
   spatial_dim: 3
   in_channels: 1
-  structure: [[32,128,5,2],[64,128,3,2],[128,256,3,2],[256,256,3,2]]
-  maxpool_structure: [[2,2,2],[2,2,2],[2,2,2],[2,2,2]]
+  structure: [[32,32,5,2],[64,64,3,2],[128,128,3,2],[256,256,3,2],[512,512,3,2]]
+  maxpool_structure: [[2,2,1],[2,2,1],[2,2,2],[2,2,2],[2,2,1]]
   res_type: "resnet"
 projection_head_args:
   in_channels: 256
