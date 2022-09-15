@@ -58,7 +58,8 @@ def get_adn_fn(spatial_dim,norm_fn="batch",
             norm_fn = torch.nn.InstanceNorm3d
     elif norm_fn == "identity":
         norm_fn = torch.nn.Identity
-    act_fn = activation_factory[act_fn]
+    if isinstance(act_fn,str):
+        act_fn = activation_factory[act_fn]
     def adn_fn(s):
         return ActDropNorm(
             s,norm_fn=norm_fn,act_fn=act_fn,
@@ -66,11 +67,11 @@ def get_adn_fn(spatial_dim,norm_fn="batch",
 
     return adn_fn
 
-def unsqueeze_to_target(x:torch.Tensor,target:torch.Tensor):
+def unsqueeze_to_target(x:torch.Tensor,target:torch.Tensor,dim=-1):
     cur,tar = len(x.shape),len(target.shape)
     if cur < tar:
         for _ in range(tar-cur):
-            x = x.unsqueeze(-1)
+            x = x.unsqueeze(dim)
     return x
 
 class ActDropNorm(torch.nn.Module):
@@ -1309,7 +1310,7 @@ class PyramidSpatialPooling3d(torch.nn.Module):
 class DepthWiseSeparableConvolution2d(torch.nn.Module):
     def __init__(self,in_channels:int,out_channels:int,
                  kernel_size:int=3,padding:int=1,
-                 act_fn:torch.nn.Module=torch.nn.ReLU):
+                 adn_fn:torch.nn.Module=torch.nn.Identity):
         """Depthwise separable convolution [1] for 2d inputs. Very lightweight
         version of a standard convolutional operation with a relatively small
         drop in performance. 
@@ -1321,15 +1322,15 @@ class DepthWiseSeparableConvolution2d(torch.nn.Module):
             out_channels (int): number of output channels
             kernel_size (int, optional): kernel size. Defaults to 3.
             padding (int, optional): amount of padding. Defaults to 1.
-            act_fn (torch.nn.Module, optional): activation function applied
-            after convolution. Defaults to torch.nn.ReLU.
+            adn_fn (torch.nn.Module, optional): ADN function applied after
+                convolutions. Defaults to torch.nn.Identity.
         """
         super().__init__()
         self.input_channels = in_channels
         self.output_channels = out_channels
         self.kernel_size = kernel_size
         self.padding = padding
-        self.act_fn = act_fn
+        self.adn_fn = adn_fn
 
         self.init_layers()
 
@@ -1341,7 +1342,7 @@ class DepthWiseSeparableConvolution2d(torch.nn.Module):
         self.pointwise_op = torch.nn.Conv2d(
             self.input_channels,self.output_channels,
             kernel_size=1)
-        self.act_op = self.act_fn()
+        self.act_op = self.adn_fn(self.output_channels)
 
     def forward(self,X:torch.Tensor)->torch.Tensor:
         X = self.depthwise_op(X)
@@ -1352,7 +1353,7 @@ class DepthWiseSeparableConvolution2d(torch.nn.Module):
 class DepthWiseSeparableConvolution3d(torch.nn.Module):
     def __init__(self,in_channels:int,out_channels:int,
                  kernel_size:int=3,padding:int=1,
-                 act_fn:torch.nn.Module=torch.nn.ReLU):
+                 adn_fn:torch.nn.Module=torch.nn.Identity):
         """Depthwise separable convolution [1] for 3d inputs. Very lightweight
         version of a standard convolutional operation with a relatively small
         drop in performance. 
@@ -1364,15 +1365,15 @@ class DepthWiseSeparableConvolution3d(torch.nn.Module):
             out_channels (int): number of output channels
             kernel_size (int, optional): kernel size. Defaults to 3.
             padding (int, optional): amount of padding. Defaults to 1.
-            act_fn (torch.nn.Module, optional): activation function applied
-            after convolution. Defaults to torch.nn.ReLU.
+            adn_fn (torch.nn.Module, optional): ADN function applied after
+                convolutions. Defaults to torch.nn.Identity.
         """
         super().__init__()
         self.input_channels = in_channels
         self.output_channels = out_channels
         self.kernel_size = kernel_size
         self.padding = padding
-        self.act_fn = act_fn
+        self.adn_fn = adn_fn
 
         self.init_layers()
 
@@ -1384,7 +1385,7 @@ class DepthWiseSeparableConvolution3d(torch.nn.Module):
         self.pointwise_op = torch.nn.Conv3d(
             self.input_channels,self.output_channels,
             kernel_size=1)
-        self.act_op = self.act_fn()
+        self.act_op = self.adn_fn(self.output_channels)
 
     def forward(self,X:torch.Tensor)->torch.Tensor:
         X = self.depthwise_op(X)
@@ -1395,7 +1396,7 @@ class DepthWiseSeparableConvolution3d(torch.nn.Module):
 class SpatialPyramidPooling2d(torch.nn.Module):
     def __init__(self,in_channels:int,out_channels:int,
                  filter_sizes:List[int],
-                 act_fn:torch.nn.Module=torch.nn.ReLU):
+                 adn_fn:torch.nn.Module=torch.nn.Identity):
         """Spatial pyramid pooling for 2d inputs. Applies a set of differently
         sized filters to an input and then concatenates the output of each 
         filter.
@@ -1408,14 +1409,14 @@ class SpatialPyramidPooling2d(torch.nn.Module):
             filter_sizes (List[int], optional): list of kernel sizes. Defaults
             to 3.
             padding (int, optional): amount of padding. Defaults to 1.
-            act_fn (torch.nn.Module, optional): activation function applied
-            after convolution. Defaults to torch.nn.ReLU.
+            adn_fn (torch.nn.Module, optional): ADN function applied after
+                convolutions. Defaults to torch.nn.Identity.
         """
         super().__init__()
         self.in_channels = in_channels
         self.out_channels = out_channels
         self.filter_size = filter_sizes
-        self.act_fn = act_fn
+        self.adn_fn = adn_fn
 
     def init_layers(self):
         self.layers = torch.nn.ModuleList([])
@@ -1424,11 +1425,11 @@ class SpatialPyramidPooling2d(torch.nn.Module):
                 torch.nn.Conv2d(
                     self.in_channels,self.out_channels,
                     kernel_size=filter_size,padding="same"),
-                self.act_fn(),
+                self.adn_fn(self.out_channels),
                 DepthWiseSeparableConvolution2d(
                     self.out_channels,self.out_channels,
                     kernel_size=filter_size,padding="same"),
-                self.act_fn())
+                self.adn_fn(self.out_channels))
             self.layers.append(op)
     
     def forward(self,X:torch.Tensor)->torch.Tensor:
@@ -1441,7 +1442,7 @@ class SpatialPyramidPooling2d(torch.nn.Module):
 class SpatialPyramidPooling3d(torch.nn.Module):
     def __init__(self,in_channels:int,out_channels:int,
                  filter_sizes:List[int],
-                 act_fn:torch.nn.Module=torch.nn.ReLU):
+                 adn_fn:torch.nn.Module=torch.nn.Identity):
         """Spatial pyramid pooling for 3d inputs. Applies a set of differently
         sized filters to an input and then concatenates the output of each 
         filter.
@@ -1453,14 +1454,14 @@ class SpatialPyramidPooling3d(torch.nn.Module):
             out_channels (int): number of output channels
             filter_sizes (List[int], optional): list of kernel sizes. Defaults
             to 3.
-            act_fn (torch.nn.Module, optional): activation function applied
-            after convolution. Defaults to torch.nn.ReLU.
+            adn_fn (torch.nn.Module, optional): ADN function applied after
+                convolutions. Defaults to torch.nn.Identity.
         """
         super().__init__()
         self.in_channels = in_channels
         self.out_channels = out_channels
         self.filter_sizes = filter_sizes
-        self.act_fn = act_fn
+        self.adn_fn = adn_fn
 
         self.init_layers()
 
@@ -1471,11 +1472,11 @@ class SpatialPyramidPooling3d(torch.nn.Module):
                 torch.nn.Conv3d(
                     self.in_channels,self.out_channels,
                     kernel_size=filter_size,padding="same"),
-                self.act_fn(),
+                self.adn_fn(self.out_channels),
                 DepthWiseSeparableConvolution3d(
                     self.out_channels,self.out_channels,
                     kernel_size=filter_size,padding="same"),
-                self.act_fn())
+                self.adn_fn(self.out_channels))
             self.layers.append(op)
     
     def forward(self,X:torch.Tensor)->torch.Tensor:
@@ -1487,7 +1488,7 @@ class SpatialPyramidPooling3d(torch.nn.Module):
 
 class AtrousSpatialPyramidPooling2d(torch.nn.Module):
     def __init__(self,in_channels:int,out_channels:int,rates:List[int],
-                 act_fn:torch.nn.Module=torch.nn.ReLU):
+                 adn_fn:torch.nn.Module=torch.nn.Identity):
         """Atrous spatial pyramid pooling for 2d inputs. Applies a set of 
         differently sized dilated filters to an input and then concatenates
         the output of each  filter. Similar to SpatialPyramidPooling2d but 
@@ -1499,29 +1500,30 @@ class AtrousSpatialPyramidPooling2d(torch.nn.Module):
             in_channels (int): number of input channels
             out_channels (int): number of output channels
             rates (List[int], optional): list dilation rates. 
-            act_fn (torch.nn.Module, optional): activation function applied
-            after convolution. Defaults to torch.nn.ReLU.
+            adn_fn (torch.nn.Module, optional): ADN function applied after
+                convolutions. Defaults to torch.nn.Identity.
         """
         super().__init__()
         self.in_channels = in_channels
         self.out_channels = out_channels
         self.rates = rates
-        self.act_fn = act_fn
+        self.adn_fn = adn_fn
 
+        self.n_channels = split_int_into_n(self.out_channels,len(self.rates))
+        
         self.init_layers()
 
     def init_layers(self):
         self.layers = torch.nn.ModuleList([])
-        for rate in self.rates:
+        for rate,c in zip(self.rates,self.n_channels):
             op = torch.nn.Sequential(
                 torch.nn.Conv2d(
-                    self.in_channels,self.out_channels,
+                    self.in_channels,c,kernel_size=3,
                     dilation=rate,padding="same"),
-                self.act_fn(),
+                self.adn_fn(c),
                 DepthWiseSeparableConvolution2d(
-                    self.out_channels,self.out_channels,
-                    kernel_size=3,padding="same"),
-                self.act_fn())
+                    c,c,kernel_size=3,padding="same"),
+                self.adn_fn(c))
             self.layers.append(op)
 
     def forward(self,X:torch.Tensor)->torch.Tensor:
@@ -1533,7 +1535,7 @@ class AtrousSpatialPyramidPooling2d(torch.nn.Module):
 
 class AtrousSpatialPyramidPooling3d(torch.nn.Module):
     def __init__(self,in_channels:int,out_channels:int,rates:List[int],
-                 act_fn:torch.nn.Module=torch.nn.ReLU):
+                 adn_fn:torch.nn.Module=torch.nn.Identity):
         """Atrous spatial pyramid pooling for 3d inputs. Applies a set of 
         differently sized dilated filters to an input and then concatenates
         the output of each  filter. Similar to SpatialPyramidPooling3d but 
@@ -1545,29 +1547,30 @@ class AtrousSpatialPyramidPooling3d(torch.nn.Module):
             in_channels (int): number of input channels
             out_channels (int): number of output channels
             rates (List[int], optional): list dilation rates. 
-            act_fn (torch.nn.Module, optional): activation function applied
-            after convolution. Defaults to torch.nn.ReLU.
+            adn_fn (torch.nn.Module, optional): ADN function applied after
+                convolutions. Defaults to torch.nn.Identity.
         """
         super().__init__()
         self.in_channels = in_channels
         self.out_channels = out_channels
         self.rates = rates
-        self.act_fn = act_fn
+        self.adn_fn = adn_fn
 
+        self.n_channels = split_int_into_n(self.out_channels,len(self.rates))
+        
         self.init_layers()
 
     def init_layers(self):
         self.layers = torch.nn.ModuleList([])
-        for rate in self.rates:
+        for rate,c in zip(self.rates,self.n_channels):
             op = torch.nn.Sequential(
                 torch.nn.Conv3d(
-                    self.in_channels,self.out_channels,kernel_size=3,
+                    self.in_channels,c,kernel_size=3,
                     dilation=rate,padding="same"),
-                self.act_fn(),
+                self.adn_fn(c),
                 DepthWiseSeparableConvolution3d(
-                    self.out_channels,self.out_channels,
-                    kernel_size=3,padding="same"),
-                self.act_fn())
+                    c,c,kernel_size=3,padding="same"),
+                self.adn_fn(c))
             self.layers.append(op)
 
     def forward(self,X:torch.Tensor)->torch.Tensor:
@@ -1580,7 +1583,7 @@ class AtrousSpatialPyramidPooling3d(torch.nn.Module):
 class ReceptiveFieldBlock2d(torch.nn.Module):
     def __init__(self,in_channels:int,out_channels:int,
                  rates:List[int],
-                 act_fn:torch.nn.Module=torch.nn.ReLU):
+                 adn_fn:torch.nn.Module=torch.nn.Identity):
         """Receptive field block for 2d inputs [1]. A mid ground between a 
         residual operator and AtrousSpatialPyramidPooling2d - a series of 
         dilated convolutions is applied to the input, the output of these 
@@ -1592,14 +1595,14 @@ class ReceptiveFieldBlock2d(torch.nn.Module):
             in_channels (int): input channels.
             out_channels (int): output channels.
             rates (List[int]): dilation rates.
-            act_fn (torch.nn.Module, optional): activation function. Defaults 
-            to torch.nn.ReLU.
+            adn_fn (torch.nn.Module, optional): ADN function applied after
+                convolutions. Defaults to torch.nn.Identity.
         """
         super().__init__()
         self.in_channels = in_channels
         self.out_channels = out_channels
         self.rates = rates
-        self.act_fn = act_fn
+        self.adn_fn = adn_fn
 
         self.out_c_list = split_int_into_n(
             self.out_channels,len(self.rates))
@@ -1613,19 +1616,19 @@ class ReceptiveFieldBlock2d(torch.nn.Module):
                 op = torch.nn.Sequential(
                     torch.nn.Conv2d(
                         self.in_channels,o,kernel_size=1,padding="same"),
-                    self.act_fn(),
+                    self.adn_fn(o),
                     torch.nn.Conv2d(o,o,kernel_size=3,padding="same"),
-                    self.act_fn())
+                    self.adn_fn(o))
             else:
                 op = torch.nn.Sequential(
                     torch.nn.Conv2d(
                         self.in_channels,o,kernel_size=1,padding="same"),
-                    self.act_fn(),
+                    self.adn_fn(o),
                     torch.nn.Conv2d(o,o,kernel_size=rate,padding="same"),
-                    self.act_fn(),
+                    self.adn_fn(o),
                     torch.nn.Conv2d(o,o,dilation=rate,kernel_size=3,
                                     padding="same"),
-                    self.act_fn())
+                    self.adn_fn(o))
             self.layers.append(op)
         self.final_op = torch.nn.Conv2d(
             self.out_channels,self.out_channels,1)
@@ -1642,7 +1645,7 @@ class ReceptiveFieldBlock2d(torch.nn.Module):
 class ReceptiveFieldBlock3d(torch.nn.Module):
     def __init__(self,in_channels:int,bottleneck_channels:int,
                  rates:List[int],
-                 act_fn:torch.nn.Module=torch.nn.ReLU):
+                 adn_fn:torch.nn.Module=torch.nn.Identity):
         """Receptive field block for 3d inputs [1]. A mid ground between a 
         residual operator and AtrousSpatialPyramidPooling3d - a series of 
         dilated convolutions is applied to the input, the output of these 
@@ -1654,14 +1657,14 @@ class ReceptiveFieldBlock3d(torch.nn.Module):
             in_channels (int): input channels.
             bottleneck_channels (int): number of channels in bottleneck.
             rates (List[int]): dilation rates.
-            act_fn (torch.nn.Module, optional): activation function. Defaults 
-            to torch.nn.ReLU.
+            adn_fn (torch.nn.Module, optional): ADN function applied after
+                convolutions. Defaults to torch.nn.Identity.
         """
         super().__init__()
         self.in_channels = in_channels
         self.bottleneck_channels = bottleneck_channels
         self.rates = rates
-        self.act_fn = act_fn
+        self.adn_fn = adn_fn
 
         self.out_c_list = split_int_into_n(
             self.bottleneck_channels,len(self.rates))
@@ -1675,19 +1678,19 @@ class ReceptiveFieldBlock3d(torch.nn.Module):
                 op = torch.nn.Sequential(
                     torch.nn.Conv3d(
                         self.in_channels,o,kernel_size=1,padding="same"),
-                    self.act_fn(),
+                    self.adn_fn(o),
                     torch.nn.Conv3d(o,o,kernel_size=3,padding="same"),
-                    self.act_fn())
+                    self.adn_fn(o))
             else:
                 op = torch.nn.Sequential(
                     torch.nn.Conv3d(
                         self.in_channels,o,kernel_size=1,padding="same"),
-                    self.act_fn(),
+                    self.adn_fn(o),
                     torch.nn.Conv3d(o,o,kernel_size=rate,padding="same"),
-                    self.act_fn(),
+                    self.adn_fn(o),
                     torch.nn.Conv3d(o,o,dilation=rate,kernel_size=3,
                                     padding="same"),
-                    self.act_fn())
+                    self.adn_fn(o))
             self.layers.append(op)
         self.final_op = torch.nn.Conv3d(
             self.bottleneck_channels,self.in_channels,1)
@@ -1773,10 +1776,11 @@ class ChannelSqueezeAndExcite(torch.nn.Module):
             torch.nn.Sigmoid())
     
     def forward(self,X:torch.Tensor)->torch.Tensor:
+        n = X.dim()
         channel_average = torch.flatten(X,start_dim=2).mean(-1)
         channel_squeeze = self.op(channel_average)
         channel_squeeze = channel_squeeze.reshape(
-            *channel_squeeze.shape,1,1,1)
+            *channel_squeeze.shape,*[1 for _ in range(n-2)])
         X = X * channel_squeeze
         return X
 
@@ -2080,3 +2084,60 @@ class BatchEnsemble(torch.nn.Module):
                 all_outputs.append(o)
             X = torch.stack(all_outputs).mean(0)
         return self.adn_op(X)
+
+class GaussianProcessLayer(torch.nn.Module):
+    def __init__(self,in_channels:int,out_channels:int,m:float=0.999):
+        super().__init__()
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.m = m
+
+        self.initialize_params()
+
+    def initialize_params(self):
+        i = self.in_channels
+        o = self.out_channels
+        self.scaling_term = torch.sqrt(torch.as_tensor(2./i))
+        self.W = torch.nn.Parameter(
+            torch.normal(torch.zeros([1,o,i]),torch.ones([1,o,i])).float(),
+            requires_grad=False)
+        self.b = torch.nn.Parameter(
+            torch.rand([1,o]).float()*torch.pi,
+            requires_grad=False)
+        self.weights = torch.nn.Parameter(
+            torch.normal(torch.zeros([1,o]),torch.ones([1,o])).float(),
+            requires_grad=True)
+        self.inv_conv = torch.nn.Parameter(
+            torch.eye(o,o).unsqueeze(0).float(),
+            requires_grad=False)
+    
+    def update_inv_cov(self,X,y):
+        y = y.unsqueeze(-1)
+        phi = self.calculate_phi(X)
+        phi,phi_t = phi.unsqueeze(-2),phi.unsqueeze(-1)
+        K = torch.matmul(phi_t,phi)
+        if len(K.shape) > 3:
+            K = K.flatten(start_dim=1,end_dim=-3)
+            K = K.mean(1)
+        update_term = y*(1-y) * K
+        self.inv_conv.data = torch.add(
+            self.inv_conv * self.m,
+            (1-self.m) * update_term.sum(0))
+
+    def get_cov(self):
+        self.cov = torch.linalg.inv(self.inv_conv)
+
+    def calculate_phi(self,X):
+        X = X.swapaxes(1,-1)
+        X = X.unsqueeze(-1)
+        W = unsqueeze_to_target(self.W,X,1)
+        mm = torch.matmul(-W,X).squeeze(-1)
+        return self.scaling_term*torch.cos(mm+self.b)
+    
+    def forward(self,X):
+        phi = self.calculate_phi(X)
+        output = phi * self.weights
+        if len(output.shape) > 2:
+            output = output.swapaxes(1,-1)
+        return output
+    
