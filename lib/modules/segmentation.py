@@ -217,7 +217,8 @@ class UNet(torch.nn.Module):
         bottleneck_classification: bool=False,
         skip_conditioning: int=None,
         feature_conditioning: int=None,
-        feature_conditioning_params: Dict[str,torch.Tensor]=None) -> torch.nn.Module:
+        feature_conditioning_params: Dict[str,torch.Tensor]=None,
+        deep_supervision: bool=False) -> torch.nn.Module:
         """Standard U-Net [1] implementation. Features some useful additions 
         such as residual links, different upsampling types, normalizations 
         (batch or instance) and ropouts (dropout and U-out). This version of 
@@ -232,8 +233,9 @@ class UNet(torch.nn.Module):
                 Must be a list where each element is a list containing a 
                 convolutional operation and a downsampling operation.
             conv_type (str, optional): types of base convolutional operations.
-                For now it only supports convolutions ("regular"). Defaults to 
-                "regular".
+                For now it supports regular convolutions ("regular"), residual
+                convolutions ("resnet") and convolutions followed by squeeze
+                and excite modules ("sae"). Defaults to "regular".
             link_type (str, optional): link type for the skip connections.
                 Can be a regular convolution ("conv"), residual block ("residual) or
                 the identity ("identity"). Defaults to "identity".
@@ -280,7 +282,8 @@ class UNet(torch.nn.Module):
                 dictionary with keys "mean" and "std" to normalize the tabular 
                 features. Must be present if feature conditioning is used. 
                 Defaults to None.
-
+            deep_supervision (bool, optional): forward method returns 
+                segmentation predictions obtained from each decoder block.
         [1] https://www.nature.com/articles/s41592-018-0261-2
         [2] https://openaccess.thecvf.com/content_CVPR_2019/papers/Li_Understanding_the_Disharmony_Between_Dropout_and_Batch_Normalization_by_Variance_CVPR_2019_paper.pdf
 
@@ -309,6 +312,7 @@ class UNet(torch.nn.Module):
         self.skip_conditioning = skip_conditioning
         self.feature_conditioning = feature_conditioning
         self.feature_conditioning_params = feature_conditioning_params
+        self.deep_supervision = deep_supervision
         
         # initialize all layers
         self.get_norm_op()
@@ -366,15 +370,29 @@ class UNet(torch.nn.Module):
         if self.spatial_dimensions == 2:
             if self.conv_type == "regular":
                 self.conv_op_enc = torch.nn.Conv2d
+                self.conv_op_dec = torch.nn.Conv2d
             elif self.conv_type == "resnet":
                 self.conv_op_enc = self.res_block_conv_2d
-            self.conv_op_dec = torch.nn.Conv2d
+                self.conv_op_dec = torch.nn.Conv2d
+            elif self.conv_type == "sae":
+                self.conv_op_enc = torch.nn.Conv2d
+                self.conv_op_dec = self.sae_2d
+            elif self.conv_type == "asp":
+                self.conv_op_enc = self.asp_2d
+                self.conv_op_dec = self.sae_2d
         if self.spatial_dimensions == 3:
             if self.conv_type == "regular":
                 self.conv_op_enc = torch.nn.Conv3d
+                self.conv_op_dec = torch.nn.Conv3d
             elif self.conv_type == "resnet":
                 self.conv_op_enc = self.res_block_conv_3d
-            self.conv_op_dec = torch.nn.Conv3d
+                self.conv_op_dec = torch.nn.Conv3d
+            elif self.conv_type == "sae":
+                self.conv_op_enc = torch.nn.Conv3d
+                self.conv_op_dec = self.sae_3d
+            elif self.conv_type == "asp":
+                self.conv_op_enc = self.asp_3d
+                self.conv_op_dec = self.sae_3d
     
     def res_block_conv_2d(self,in_d,out_d,kernel_size,
                           stride=None,padding=None):
@@ -397,6 +415,28 @@ class UNet(torch.nn.Module):
             inter_d = None
         return ResidualBlock3d(
             in_d,kernel_size,inter_d,out_d,adn_fn=self.adn_fn)
+
+    def sae_2d(self,in_d,out_d,kernel_size,stride=1,padding=0):
+        return torch.nn.Sequential(
+            torch.nn.Conv2d(in_d,out_d,kernel_size=kernel_size,
+                            stride=stride,padding=padding),
+            ConcurrentSqueezeAndExcite2d(out_d))
+
+    def sae_3d(self,in_d,out_d,kernel_size,stride=None,padding=None):
+        return torch.nn.Sequential(
+            torch.nn.Conv3d(in_d,out_d,kernel_size=kernel_size,
+                            stride=stride,padding=padding),
+            ConcurrentSqueezeAndExcite3d(out_d))
+
+    def asp_2d(self,in_d,out_d,kernel_size,stride=1,padding=0):
+        return AtrousSpatialPyramidPooling2d(
+            in_d,out_d,[1,2],get_adn_fn(2,"instance",
+            self.activation_fn,self.dropout_param))
+
+    def asp_3d(self,in_d,out_d,kernel_size,stride=None,padding=None):
+        return AtrousSpatialPyramidPooling3d(
+            in_d,out_d,[1,2],get_adn_fn(3,"instance",
+            self.activation_fn,self.dropout_param))
 
     def init_upscale_ops(self):
         """Initializes upscaling operations.
@@ -520,6 +560,7 @@ class UNet(torch.nn.Module):
         self.decoding_operations = torch.nn.ModuleList([])
         depths = self.depth[-2::-1]
         kernel_sizes = self.kernel_sizes[-2::-1]
+        self.deep_supervision_ops = torch.nn.ModuleList([])
         for i in range(len(depths)):
             d,k = depths[i],kernel_sizes[i]
             op = torch.nn.Sequential(
@@ -530,25 +571,42 @@ class UNet(torch.nn.Module):
                                  padding=self.padding),
                 self.adn_fn(d))
             self.decoding_operations.append(op)
-            
-    def init_final_layer(self):
-        """Initializes the classification layer (simple linear layer).
+            if self.deep_supervision == True:
+                self.deep_supervision_ops.append(self.get_final_layer(d))
+
+    def get_final_layer(self,d:int)->torch.nn.Module:
+        """Returns the final layer.
+
+        Args:
+            d (int): depth.
+
+        Returns:
+            torch.nn.Module: final classification layer.
         """
-        o = self.depth[0]
+        if self.spatial_dimensions == 2:
+            op = torch.nn.Conv2d
+        elif self.spatial_dimensions == 3:
+            op = torch.nn.Conv3d
         if self.n_classes > 2:
-            self.final_layer = torch.nn.Sequential(
-                self.conv_op_dec(o,o,3,padding="same"),
-                self.conv_op_dec(o,o,1,padding="same"),
-                self.conv_op_dec(o,self.n_classes,1),
+            return torch.nn.Sequential(
+                op(d,d,3,padding=1),self.adn_fn(d),
+                op(d,d,1),self.adn_fn(d),
+                op(d,self.n_classes,1),
                 torch.nn.Softmax(dim=1))
         else:
             # coherces to a binary classification problem rather than
             # to a multiclass problem with two classes
-            self.final_layer = torch.nn.Sequential(
-                self.conv_op_dec(o,o,3,padding="same"),
-                self.conv_op_dec(o,o,1,padding="same"),
-                self.conv_op_dec(o,1,1),
+            return torch.nn.Sequential(
+                op(d,d,3,padding=1),self.adn_fn(d),
+                op(d,d,1),self.adn_fn(d),
+                op(d,1,1),
                 torch.nn.Sigmoid())
+
+    def init_final_layer(self):
+        """Initializes the classification layer (simple linear layer).
+        """
+        o = self.depth[0]
+        self.final_layer = self.get_final_layer(o)
 
     def init_bottleneck_classifier(self):
         """Initiates the layers for bottleneck classification.
@@ -621,7 +679,6 @@ class UNet(torch.nn.Module):
                 X_skip_layer = X_skip_layer.unsqueeze(1)
 
         # normalise features
-        
         if X_feature_conditioning is not None:
             X_feature_conditioning = X_feature_conditioning - self.f_mean
             X_feature_conditioning = X_feature_conditioning / self.f_std
@@ -635,6 +692,8 @@ class UNet(torch.nn.Module):
         bottleneck = curr
         if return_bottleneck == True:
             return None,None,bottleneck
+        
+        deep_outputs = []
         for i in range(len(self.decoding_operations)):
             op = self.decoding_operations[i]
             link_op = self.link_ops[i]
@@ -662,6 +721,7 @@ class UNet(torch.nn.Module):
                 curr = crop_to_size(curr,sh2)
             curr = torch.concat((curr,encoded),dim=1)
             curr = op(curr)
+            deep_outputs.append(curr)
 
         final_features = curr
 
@@ -674,5 +734,12 @@ class UNet(torch.nn.Module):
             bn_out = self.bottleneck_classifier(bottleneck)
         else:
             bn_out = None
-                
+        
+        if self.deep_supervision == True:
+            for i in range(len(deep_outputs)):
+                o = deep_outputs[i]
+                op = self.deep_supervision_ops[i]
+                deep_outputs[i] = op(o)
+            return curr,bn_out,deep_outputs
+
         return curr,bn_out
