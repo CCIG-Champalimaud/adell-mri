@@ -5,6 +5,7 @@ import torch.nn.functional as F
 from ..types import *
 
 activation_factory = {
+    "identity": torch.nn.Identity,
     "elu": torch.nn.ELU,
     "hard_shrink": torch.nn.Hardshrink,
     "hard_tanh": torch.nn.Hardtanh,
