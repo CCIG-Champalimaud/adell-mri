@@ -277,6 +277,35 @@ def load_anchors(path:str)->np.ndarray:
     lines = [[float(y) for y in x.strip().split(',')] for x in lines]
     return np.array(lines)
 
+def resample_image(sitk_image,out_spacing=[1.0, 1.0, 1.0],
+                   out_size=None,is_label=False):
+    spacing = sitk_image.GetSpacing()
+    size = sitk_image.GetSize()
+
+    if out_size is None:
+        out_size = [
+            int(np.round(size * (sin / sout)))
+            for size, sin, sout in zip(size, spacing, out_spacing)]
+
+    pad_value = sitk_image.GetPixelIDValue()
+
+    resample = sitk.ResampleImageFilter()
+    resample.SetOutputSpacing(list(out_spacing))
+    resample.SetSize(out_size)
+    resample.SetOutputDirection(sitk_image.GetDirection())
+    resample.SetOutputOrigin(sitk_image.GetOrigin())
+    resample.SetTransform(sitk.Transform())
+    resample.SetDefaultPixelValue(pad_value)
+    if is_label:
+        resample.SetInterpolator(sitk.sitkNearestNeighbor)
+    else:
+        resample.SetInterpolator(sitk.sitkBSpline)
+
+    # perform resampling
+    sitk_image = resample.Execute(sitk_image)
+
+    return sitk_image
+
 class ConvertToOneHot(monai.transforms.Transform):
     def __init__(self,keys:str,out_key:str,
                  priority_key:str,bg:bool=True)->monai.transforms.Transform:
@@ -1110,3 +1139,18 @@ class FastResample(monai.transforms.Transform):
                 self.ensure_tensor(X[k]),
                 size=output_shape.tolist(),mode=intp).squeeze(1)
         return X
+
+class PolynomialDecayRate(torch.optim.lr_scheduler._LRScheduler):
+    def __init__(self, optimizer, gamma, last_epoch, verbose=False):
+        self.gamma = gamma
+        super(PolynomialDecayRate, self).__init__(optimizer,last_epoch,verbose)
+
+    def get_lr(self):
+        if self.last_epoch == 0:
+            return [group['lr'] for group in self.optimizer.param_groups]
+        return [group['lr'] * self.gamma
+                for group in self.optimizer.param_groups]
+
+    def _get_closed_form_lr(self):
+        return [base_lr * self.gamma ** self.last_epoch
+                for base_lr in self.base_lrs]
