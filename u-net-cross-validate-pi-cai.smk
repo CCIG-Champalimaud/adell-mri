@@ -24,7 +24,7 @@ for k in dataset_information:
 model_types = ["unet","unetpp"]
 spatial_dims = [
     "2d",
-    #"3d"
+    "3d"
     ]
 combinations = [
     ["image"],["image_1"],["image_2"],
