@@ -329,7 +329,9 @@ if __name__ == "__main__":
             all_params = {
                 "mean":torch.zeros([len(args.feature_keys)]),
                 "std":torch.ones([len(args.feature_keys)])}
-
+        else:
+            all_params = None
+            
         if args.unet_pp == True:
             unet = UNetPlusPlusPL(
                 encoding_operations=encoding_operations,
