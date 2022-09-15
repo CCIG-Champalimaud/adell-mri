@@ -23,6 +23,7 @@ class UNetPL(UNet,pl.LightningModule):
         feature_conditioning_key: str=None,
         learning_rate: float=0.001,
         batch_size: int=4,
+        n_epochs: int=100,
         weight_decay: float=0.005,
         training_dataloader_call: Callable=None,
         loss_fn: Callable=torch.nn.functional.binary_cross_entropy,
@@ -42,6 +43,7 @@ class UNetPL(UNet,pl.LightningModule):
                 conditioning.
             learning_rate (float, optional): learning rate. Defaults to 0.001.
             batch_size (int, optional): batch size. Defaults to 4.
+            n_epochs (int, optional): number of epochs. Defaults to 100.
             weight_decay (float, optional): weight decay for optimizer. Defaults 
                 to 0.005.
             training_dataloader_call (Callable, optional): call for the 
@@ -68,6 +70,7 @@ class UNetPL(UNet,pl.LightningModule):
         self.feature_conditioning_key = feature_conditioning_key
         self.learning_rate = learning_rate
         self.batch_size = batch_size
+        self.n_epochs = n_epochs
         self.weight_decay = weight_decay
         self.training_dataloader_call = training_dataloader_call
         self.loss_fn = loss_fn
@@ -105,15 +108,13 @@ class UNetPL(UNet,pl.LightningModule):
 
     def loss_wrapper(self,x,y,y_class,x_cond,x_fc):
         y = torch.round(y)
-        if self.tta == True:
-            prediction,pred_class = self.forward(
-                torch.cat([x,x[:,:,::-1]]),
-                X_skip_layer=torch.cat([x_cond,x_cond[:,:,::-1]]),
-                X_feature_conditioning=torch.cat([x_fc,x_fc]))
-            prediction = sum(split(prediction,2,0)/2)
+        output = self.forward(
+            x,X_skip_layer=x_cond,X_feature_conditioning=x_fc)
+        if self.deep_supervision == False:
+            prediction,pred_class = output
         else:
-            prediction,pred_class = self.forward(
-                x,X_skip_layer=x_cond,X_feature_conditioning=x_fc)
+            prediction,pred_class,deep_outputs = output
+            deep_outputs = [torch.squeeze(o,1) for o in deep_outputs]
         prediction = torch.squeeze(prediction,1)
         y = torch.squeeze(y,1)
         batch_size = int(prediction.shape[0])
@@ -122,12 +123,22 @@ class UNetPL(UNet,pl.LightningModule):
         y = torch.squeeze(y,1)
 
         loss = self.calculate_loss(prediction,y)
+        if self.deep_supervision == True:
+            t = len(deep_outputs)
+            additional_losses = torch.zeros_like(loss)
+            for i,o in enumerate(deep_outputs):
+                S = o.shape[-self.spatial_dimensions:]
+                y_small = F.interpolate(torch.unsqueeze(y,1),S,mode="nearest")
+                y_small = torch.squeeze(y_small,1)
+                l = self.calculate_loss(o,y_small).mean()/(2**(t-i))/t
+                additional_losses = additional_losses + l
+            loss = loss + additional_losses
         if self.bottleneck_classification == True:
             class_loss = self.calculate_loss_class(pred_class,y_class)
             output_loss = loss + class_loss * self.bn_mult
         else:
             class_loss = None
-            output_loss = loss
+            output_loss = loss                
         return prediction,pred_class,loss,class_loss,output_loss
 
     def training_step(self,batch,batch_idx):
@@ -176,10 +187,7 @@ class UNetPL(UNet,pl.LightningModule):
         pred_final,pred_class,loss,class_loss,output_loss = self.loss_wrapper(
             x,y,y_class,x_cond,x_fc)
 
-        self.loss_accumulator += loss
-        if self.bottleneck_classification == True:
-            self.loss_accumulator_class += class_loss
-        self.loss_accumulator_d += 1.
+        self.log("val_loss",loss,prog_bar=True,on_epoch=True)
         try: y = torch.round(y).int()
         except: pass
         self.update_metrics(
@@ -223,32 +231,18 @@ class UNetPL(UNet,pl.LightningModule):
         optimizer = torch.optim.AdamW(
             self.parameters(),lr=self.learning_rate,
             weight_decay=self.weight_decay)
-        lr_schedulers = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer,patience=3,min_lr=1e-6,factor=0.5)
+        lr_schedulers = torch.optim.lr_scheduler.CosineAnnealingLR(
+            optimizer,self.n_epochs)
 
         return {"optimizer":optimizer,
                 "lr_scheduler":lr_schedulers,
                 "monitor":"val_loss"}
     
     def on_validation_epoch_end(self):
-        for k in self.val_metrics:
-            self.val_metrics[k].reset()
-        D = self.loss_accumulator_d
-        if D > 0:
-            val_loss = self.loss_accumulator/D
-            if self.bottleneck_classification == True:
-                val_loss_class = self.loss_accumulator_class/D
-                self.log("val_cl_loss",val_loss_class,prog_bar=True)
-        else:
-            val_loss = np.nan
-        self.log("val_loss",val_loss,prog_bar=True)
         sch = self.lr_schedulers().state_dict()
         lr = self.learning_rate
         last_lr = sch['_last_lr'][0] if '_last_lr' in sch else lr
-        self.log("lr",last_lr)
-        self.loss_accumulator = 0.
-        self.loss_accumulator_class = 0.
-        self.loss_accumulator_d = 0.
+        self.log("lr",last_lr,prog_bar=True)
 
     def setup_metrics(self):
         if self.n_classes == 2:
@@ -261,26 +255,33 @@ class UNetPL(UNet,pl.LightningModule):
         self.test_metrics = torch.nn.ModuleDict({})
         md = {"IoU":torchmetrics.JaccardIndex,
               "Pr":torchmetrics.Precision,
-              "F1":torchmetrics.FBetaScore}
+              "F1":torchmetrics.FBetaScore,
+              "Dice":torchmetrics.Dice}
         if self.bottleneck_classification == True:
             md["cl:F1"] = torchmetrics.FBetaScore
             md["cl:Re"] = torchmetrics.Recall
         for k in md:
             if k == "IoU":
                 m,C = "macro",C_1
+            elif k == "Dice":
+                m,C = "micro",C_2
             else:
                 m,C = M,C_2
             if k in ["cl:Re","cl:F1"]:
                 I_ = None
             else:
                 I_ = I
-            if k in ["IoU","cl:F1"]:
+            print(k,C,A,m,I_)
+            if k in ["IoU","cl:F1","Pr"]:
                 self.train_metrics[k] = md[k](
-                    C,mdmc_average=A,average=m,ignore_index=I_).to(self.device)
+                    num_classes=C,mdmc_average=A,average=m,
+                    ignore_index=I_).to(self.device)
                 self.val_metrics["V_"+k] = md[k](
-                    C,mdmc_average=A,average=m,ignore_index=I_).to(self.device)
+                    num_classes=C,mdmc_average=A,average=m,
+                    ignore_index=I_).to(self.device)
             self.test_metrics["T_"+k] = md[k](
-                C,mdmc_average=A,average=m,ignore_index=I_).to(self.device)
+                num_classes=C,mdmc_average=A,average=m,
+                ignore_index=I_).to(self.device)
 
 class UNetPlusPlusPL(UNetPlusPlus,pl.LightningModule):
     def __init__(
@@ -291,6 +292,7 @@ class UNetPlusPlusPL(UNetPlusPlus,pl.LightningModule):
         feature_conditioning_key: str=None,
         learning_rate: float=0.001,
         batch_size: int=4,
+        n_epochs: int=100,
         weight_decay: float=0.005,
         training_dataloader_call: Callable=None,
         loss_fn: Callable=torch.nn.functional.binary_cross_entropy,
@@ -310,6 +312,7 @@ class UNetPlusPlusPL(UNetPlusPlus,pl.LightningModule):
                 conditioning.
             learning_rate (float, optional): learning rate. Defaults to 0.001.
             batch_size (int, optional): batch size. Defaults to 4.
+            n_epochs (int, optional): number of epochs. Defaults to 100.
             weight_decay (float, optional): weight decay for optimizer. Defaults 
                 to 0.005.
             training_dataloader_call (Callable, optional): call for the 
@@ -336,6 +339,7 @@ class UNetPlusPlusPL(UNetPlusPlus,pl.LightningModule):
         self.feature_conditioning_key = feature_conditioning_key
         self.learning_rate = learning_rate
         self.batch_size = batch_size
+        self.n_epochs = n_epochs
         self.weight_decay = weight_decay
         self.training_dataloader_call = training_dataloader_call
         self.loss_fn = loss_fn
@@ -460,10 +464,8 @@ class UNetPlusPlusPL(UNetPlusPlus,pl.LightningModule):
         pred_final,pred_class,output_loss,loss,class_loss = self.loss_wrapper(
             x,y,y_class,x_cond,x_fc)
 
-        self.loss_accumulator += loss
-        if self.bottleneck_classification == True:
-            self.loss_accumulator_class += class_loss
-        self.loss_accumulator_d += 1.
+        self.log("val_loss",loss,prog_bar=True,on_epoch=True)
+        self.log("val_loss_cl",class_loss,prog_bar=True,on_epoch=True)
         try: y = torch.round(y).int()
         except: pass
         self.update_metrics(
@@ -506,25 +508,18 @@ class UNetPlusPlusPL(UNetPlusPlus,pl.LightningModule):
         optimizer = torch.optim.AdamW(
             self.parameters(),lr=self.learning_rate,
             weight_decay=self.weight_decay)
-        lr_schedulers = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer,patience=3,min_lr=1e-6,factor=0.5)
+        lr_schedulers = torch.optim.lr_scheduler.CosineAnnealingLR(
+            optimizer,self.n_epochs)
 
         return {"optimizer":optimizer,
                 "lr_scheduler":lr_schedulers,
                 "monitor":"val_loss"}
     
     def on_validation_epoch_end(self):
-        if self.loss_accumulator_d > 0:
-            val_loss = self.loss_accumulator/self.loss_accumulator_d
-        else:
-            val_loss = np.nan
         sch = self.lr_schedulers().state_dict()
         lr = self.learning_rate
         last_lr = sch['_last_lr'][0] if '_last_lr' in sch else lr
-        self.log("lr",last_lr)
-        self.log("val_loss",val_loss,prog_bar=True)
-        self.loss_accumulator = 0.
-        self.loss_accumulator_d = 0.
+        self.log("lr",last_lr,prog_bar=True)
 
     def setup_metrics(self):
         if self.n_classes == 2:
