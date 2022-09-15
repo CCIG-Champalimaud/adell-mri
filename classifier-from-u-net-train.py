@@ -76,6 +76,10 @@ if __name__ == "__main__":
             (normalized differently)",
         default=None)
     parser.add_argument(
+        '--feature_keys',dest='feature_keys',type=str,nargs='+',
+        help="Keys corresponding to tabular features in the JSON dataset",
+        default=None)
+    parser.add_argument(
         '--adc_factor',dest='adc_factor',type=float,default=1/3,
         help="Multiplies ADC images by this factor.")
     parser.add_argument(
@@ -190,14 +194,13 @@ if __name__ == "__main__":
 
     keys = args.image_keys
     label_key = args.label_key
-    if args.mask_image_keys is None:
-        args.mask_image_keys = []
-    if args.adc_image_keys is None:
-        args.adc_image_keys = []
-    if args.skip_key is None:
-        args.skip_key = []
-    if args.skip_mask_key is None:
-        args.skip_mask_key = []
+    
+    if args.mask_image_keys is None: args.mask_image_keys = []
+    if args.adc_image_keys is None: args.adc_image_keys = []
+    if args.skip_key is None: args.skip_key = []
+    if args.skip_mask_key is None: args.skip_mask_key = []
+    if args.feature_keys is None: args.feature_keys = []
+
     aux_keys = args.skip_key
     aux_mask_keys = args.skip_mask_key
     all_aux_keys = aux_keys + aux_mask_keys
@@ -205,6 +208,10 @@ if __name__ == "__main__":
         aux_key_net = "aux_key"
     else:
         aux_key_net = None
+    if len(args.feature_keys) > 0:
+        feature_key_net = "tabular_features"
+    else:
+        feature_key_net = None
 
     args.adc_image_keys = [k for k in args.adc_image_keys if k in keys]
     intp = []
@@ -222,6 +229,7 @@ if __name__ == "__main__":
     intp_resampling_augmentations.extend(["bilinear"]*len(aux_keys))
     intp_resampling_augmentations.extend(["nearest"]*len(aux_mask_keys))
     all_keys = [*keys,*aux_keys,*aux_mask_keys]
+    all_keys_t = [*all_keys,*args.feature_keys]
     if args.input_size is not None:
         if args.resize is None:
             R = [1 for _ in args.input_size]
@@ -235,6 +243,10 @@ if __name__ == "__main__":
         k:data_dict[k] for k in data_dict
         if len(set.intersection(set(data_dict[k]),
                                 set(all_keys))) == len(all_keys)}
+    for kk in args.feature_keys:
+        data_dict = {
+            k:data_dict[k] for k in data_dict
+            if np.isnan(data_dict[k][kk]) == False}
     if args.subsample_size is not None:
         ss = np.random.choice(
             list(data_dict.keys()),args.subsample_size,replace=False)
@@ -247,11 +259,9 @@ if __name__ == "__main__":
     def get_transforms(x,label_mode=None):
         if args.target_spacing is not None:
             rs = [
-                FastResample(keys=all_keys,target=args.target_spacing,
-                             mode=intp)]
-            rs = [
-                rs[0]
-            ]
+                monai.transforms.Spacingd(
+                    keys=all_keys,pixdim=args.target_spacing,
+                    mode=intp_resampling_augmentations)]
         else:
             rs = []
         scaling_ops = []
@@ -296,9 +306,22 @@ if __name__ == "__main__":
                     all_aux_keys,aux_key_net)]
             else:
                 aux_concat = []
+            if len(args.feature_keys) > 0:
+                feature_concat = [
+                    monai.transforms.EnsureTyped(
+                        args.feature_keys,dtype=np.float32),
+                    monai.transforms.Lambdad(
+                        args.feature_keys,
+                        func=lambda x:np.reshape(x,[1])),
+                    monai.transforms.ConcatItemsd(
+                        args.feature_keys,feature_key_net)]
+            else:
+                feature_concat = []
             return [
                 monai.transforms.ConcatItemsd(keys,"image"),
-                *aux_concat]
+                *aux_concat,
+                *feature_concat,
+                monai.transforms.ToTensord(["image"])]
 
     def get_augmentations(augment):
         if augment == True:
@@ -417,7 +440,20 @@ if __name__ == "__main__":
                 val_list,
                 monai.transforms.Compose(transforms_val))
 
-        print("Calculating class weights...")        
+        if args.feature_keys is not None:
+            all_params = {"mean":[],"std":[]}
+            for kk in args.feature_keys:
+                f = np.array([x[kk] for x in train_list])
+                all_params["mean"].append(np.mean(f))
+                all_params["std"].append(np.std(f))
+            all_params["mean"] = torch.as_tensor(
+                all_params["mean"],dtype=torch.float32,device=args.dev)
+            all_params["std"] = torch.as_tensor(
+                all_params["std"],dtype=torch.float32,device=args.dev)
+        else:
+            all_params = None
+
+        # weights to tensor
         weights = torch.as_tensor(
             np.array(args.class_weights),dtype=torch.float32,
             device=args.dev)
@@ -425,17 +461,17 @@ if __name__ == "__main__":
         def train_loader_call(): 
             return monai.data.ThreadDataLoader(
                 train_dataset,batch_size=args.batch_size,
-                num_workers=0,generator=g,
+                num_workers=8,generator=g,
                 collate_fn=collate_fn)
 
         train_loader = train_loader_call()
         train_val_loader = monai.data.ThreadDataLoader(
             train_dataset_val,batch_size=args.batch_size,
-            shuffle=False,num_workers=0,generator=g,
+            shuffle=False,num_workers=8,generator=g,
             collate_fn=collate_fn)
         validation_loader = monai.data.ThreadDataLoader(
             validation_dataset,batch_size=1,
-            shuffle=False,num_workers=0,generator=g,
+            shuffle=False,num_workers=8,generator=g,
             collate_fn=collate_fn)
 
         print("Setting up training...")
@@ -471,12 +507,14 @@ if __name__ == "__main__":
                 encoding_operations=encoding_operations,
                 n_classes=n_classes,
                 skip_conditioning=len(all_aux_keys),
+                feature_conditioning=len(args.feature_keys),
                 **network_config_unet)
         else:
             unet = UNet(
                 encoding_operations=encoding_operations,
                 n_classes=n_classes,
                 skip_conditioning=len(all_aux_keys),
+                feature_conditioning=len(args.feature_keys),
                 **network_config_unet)
 
         if len(args.unet_checkpoints) == args.n_folds:
@@ -485,6 +523,8 @@ if __name__ == "__main__":
             ckpt = args.unet_checkpoints[0]
         state_dict = torch.load(ckpt)['state_dict']
         mismatched = unet.load_state_dict(state_dict)
+
+        print(mismatched)
 
         for param in unet.parameters():
             param.requires_grad = False
@@ -496,7 +536,7 @@ if __name__ == "__main__":
                                   n_features_final_layer=network_config['depth'][0],
                                   n_classes=n_classes,
                                   batch_size=args.batch_size,
-                                  learning_rate=0.01,
+                                  learning_rate=0.001,
                                   weight_decay=0.005,
                                   training_dataloader_call=train_loader_call,
                                   loss_params={"weight":weights})
@@ -527,7 +567,7 @@ if __name__ == "__main__":
         else:
             ckpt = False
         
-        if args.summary_name is not None:
+        if args.summary_name is not None and args.project_name is not None:
             wandb.finish()
             run_name = args.summary_name.replace(':','_') + "_fold_{}".format(val_fold)
             logger = WandbLogger(
