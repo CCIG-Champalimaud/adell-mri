@@ -195,6 +195,7 @@ class SegCatNetPL(SegCatNet,pl.LightningModule):
                  image_key: str="image",
                  label_key: str="label",
                  skip_conditioning_key: str=None,
+                 feature_conditioning_key: str=None,
                  learning_rate: float=0.001,
                  batch_size: int=4,
                  weight_decay: float=0.005,
@@ -208,6 +209,7 @@ class SegCatNetPL(SegCatNet,pl.LightningModule):
         self.image_key = image_key
         self.label_key = label_key
         self.skip_conditioning_key = skip_conditioning_key
+        self.feature_conditioning_key = feature_conditioning_key
         self.learning_rate = learning_rate
         self.batch_size = batch_size
         self.weight_decay = weight_decay
@@ -241,14 +243,19 @@ class SegCatNetPL(SegCatNet,pl.LightningModule):
 
     def update_metrics(self,metrics,pred,y,**kwargs):
         y = y.long()
+        if self.n_classes == 2:
+            pred = F.sigmoid(pred)
+        else:
+            pred = F.softmax(pred,-1)
         for k in metrics:
             metrics[k].update(pred,y)
             self.log(k,metrics[k],**kwargs)
 
-    def loss_wrapper(self,x,y,x_cond):
+    def loss_wrapper(self,x,y,x_cond,x_fc):
         try: y = torch.round(y)
         except: y = torch.round(y.float())
-        prediction = self.forward(x,X_skip_layer=x_cond)
+        prediction = self.forward(
+            x,X_skip_layer=x_cond,X_feature_conditioning=x_fc)
         prediction = torch.squeeze(prediction,1)
         if len(y.shape) > 1:
             y = torch.squeeze(y,1)
@@ -265,7 +272,12 @@ class SegCatNetPL(SegCatNet,pl.LightningModule):
             x_cond = batch[self.skip_conditioning_key]
         else:
             x_cond = None
-        pred_final,loss = self.loss_wrapper(x,y,x_cond)
+        if self.feature_conditioning_key is not None:
+            x_fc = batch[self.feature_conditioning_key]
+        else:
+            x_fc = None
+
+        pred_final,loss = self.loss_wrapper(x,y,x_cond,x_fc)
 
         self.log("train_loss", loss)
         try: y = torch.round(y).int()
@@ -281,7 +293,12 @@ class SegCatNetPL(SegCatNet,pl.LightningModule):
             x_cond = batch[self.skip_conditioning_key]
         else:
             x_cond = None
-        pred_final,loss = self.loss_wrapper(x,y,x_cond)
+        if self.feature_conditioning_key is not None:
+            x_fc = batch[self.feature_conditioning_key]
+        else:
+            x_fc = None
+
+        pred_final,loss = self.loss_wrapper(x,y,x_cond,x_fc)
 
         self.loss_accumulator += loss
         self.loss_accumulator_d += 1.
@@ -298,7 +315,12 @@ class SegCatNetPL(SegCatNet,pl.LightningModule):
             x_cond = batch[self.skip_conditioning_key]
         else:
             x_cond = None
-        pred_final,loss = self.loss_wrapper(x,y,x_cond)
+        if self.feature_conditioning_key is not None:
+            x_fc = batch[self.feature_conditioning_key]
+        else:
+            x_fc = None
+
+        pred_final,loss = self.loss_wrapper(x,y,x_cond,x_fc)
 
         try: y = torch.round(y).int()
         except: pass
@@ -315,15 +337,13 @@ class SegCatNetPL(SegCatNet,pl.LightningModule):
             self.parameters(),lr=self.learning_rate,
             weight_decay=self.weight_decay)
         lr_schedulers = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer,patience=5,min_lr=1e-6,factor=0.5)
+            optimizer,patience=10,min_lr=1e-6,factor=0.5)
 
         return {"optimizer":optimizer,
                 "lr_scheduler":lr_schedulers,
                 "monitor":"val_loss"}
     
     def on_validation_epoch_end(self):
-        for k in self.val_metrics:
-            self.val_metrics[k].reset()
         D = self.loss_accumulator_d
         if D > 0:
             val_loss = self.loss_accumulator/D

@@ -177,18 +177,21 @@ class SegCatNet(torch.nn.Module):
         self.n_features_final_layer = n_features_final_layer
         self.n_classes = n_classes
 
+        if self.n_classes == 2: self.nc = 1
+        else: self.nc = self.n_classes
+
         self.init_final_layer_classification()
         self.init_bottleneck_classification()
-        self.init_classification_layer()
+        self.init_weighted_average()
 
     def init_final_layer_classification(self):
         d = self.n_features_final_layer
-        input_d = d + self.n_input_channels
+        input_d = d
         inter_d = self.n_features_final_layer * 2
         structure = [[input_d,inter_d,3,2],
                      [d*2,d*2,3,2],
                      [d*4,d*4,3,2]]
-        prediction_structure = [d*4,d*4]
+        prediction_structure = [d*4,d*4,d*4]
         self.resnet_backbone_args = {
             "spatial_dim":self.spatial_dim,
             "in_channels":input_d,
@@ -200,33 +203,23 @@ class SegCatNet(torch.nn.Module):
             "in_channels":structure[-1][0],
             "structure":prediction_structure,
             "adn_fn":get_adn_fn(1,"batch","swish",0.1)}
-        self.final_layer_classifier = ResNet(
-            self.resnet_backbone_args,self.resnet_prediction_args)
+        self.final_layer_classifier = torch.nn.Sequential(
+            ResNet(
+                self.resnet_backbone_args,self.resnet_prediction_args),
+            torch.nn.Linear(d*4,self.nc,bias=False))
     
     def init_bottleneck_classification(self):
         d = self.n_features_backbone
-        out_size = self.resnet_prediction_args["structure"][-1]
-        self.bottleneck_prediction_structure = [d,d*2,d*4,d*2,d,out_size]
+        self.bottleneck_prediction_structure = [d,d*2,d*4,d*2,d]
         
-        self.bottleneck_classifier = ProjectionHead(
-            d,self.bottleneck_prediction_structure,
-            adn_fn=get_adn_fn(1,"batch","swish",0.1))
+        self.bottleneck_classifier = torch.nn.Sequential(
+            ProjectionHead(
+                d,self.bottleneck_prediction_structure,
+                adn_fn=get_adn_fn(1,"batch","swish",0.1)),
+            torch.nn.Linear(d,self.nc,bias=False))
     
-    def init_classification_layer(self):
-        d1 = self.resnet_prediction_args["structure"][-1]
-        d2 = self.bottleneck_prediction_structure[-1]
-        d = d1+d2
-        if self.n_classes == 2:
-            nc = 1
-            self.final_act = torch.nn.Sigmoid()
-        else:
-            nc = self.n_classes
-            self.final_act = torch.nn.Softmax(dim=1)
-
-        self.classifier_structure = [d,d//2,d//4,nc]
-        self.classifier = ProjectionHead(
-            d,self.classifier_structure,
-            adn_fn=get_adn_fn(1,"batch","swish",0.1))
+    def init_weighted_average(self):
+        self.weighted_average = torch.nn.Linear(self.nc*2,self.nc,bias=False)
 
     def forward(self,X,**kwargs):
         times = {}
@@ -237,12 +230,12 @@ class SegCatNet(torch.nn.Module):
         times['b'] = time.time()
 
         class_fl = self.final_layer_classifier(
-            torch.cat([X,final_layer],axis=1))
+            torch.cat([final_layer],axis=1))
         times['c'] = time.time()
         class_bn = self.bottleneck_classifier(bottleneck)
         times['d'] = time.time()
         features = torch.cat([class_fl,class_bn],axis=1)
-        classification = self.classifier(features)
+        classification = self.weighted_average(features)
         times['e'] = time.time()
         
         return classification
