@@ -1,23 +1,54 @@
+from cmath import inf
 import torch
-import torch.functional as F
-from collections import OrderedDict
+import torch.nn.functional as F
 from copy import deepcopy
 
 from ..types import *
 
+# TODO: finish debugging VICREGL loss
+
 def cos_sim(x:torch.Tensor,y:torch.Tensor)->torch.Tensor:
+    """Calculates the cosine similarity between x and y.
+
+    Args:
+        x (torch.Tensor): tensor
+        y (torch.Tensor): tensor, must be of same shape to x
+
+    Returns:
+        torch.Tensor: cosine similarity between x and y
+    """
     x,y = x.flatten(start_dim=1),y.flatten(start_dim=1)
     x,y = x.unsqueeze(1),y.unsqueeze(0)
     n = torch.sum(x*y,axis=-1)
     d = torch.multiply(torch.norm(x,2,-1),torch.norm(y,2,-1))
     return n/d
 
-def standardize(x:torch.Tensor)->torch.Tensor:
+def standardize(x:torch.Tensor,d:int=0)->torch.Tensor:
+    """Standardizes x (subtracts mean and divides by std) according to 
+    dimension d.
+
+    Args:
+        x (torch.Tensor): tensor
+        d (int, optional): dimension along which x will be standardized. 
+            Defaults to 0
+        
+    Returns:
+        torch.Tensor: standardized x along dimension d
+    """
     return torch.divide(
-        x - torch.mean(x,0,keepdim=True),
-        torch.std(x,0,keepdim=True))
+        x - torch.mean(x,d,keepdim=True),
+        torch.std(x,d,keepdim=True))
 
 def pearson_corr(x:torch.Tensor,y:torch.Tensor)->torch.Tensor:
+    """Calculates Pearson correlation between x and y
+
+    Args:
+        x (torch.Tensor): tensor
+        y (torch.Tensor): tensor
+
+    Returns:
+        torch.Tensor: Pearson correlation between x and y
+    """
     x,y = x.flatten(start_dim=1),y.flatten(start_dim=1)
     x,y = standardize(x),standardize(y)
     x,y = x.unsqueeze(1),y.unsqueeze(0)
@@ -26,9 +57,35 @@ def pearson_corr(x:torch.Tensor,y:torch.Tensor)->torch.Tensor:
     return n/d
 
 def cos_dist(x:torch.Tensor,y:torch.Tensor,center)->torch.Tensor:
+    """Calculates the cosine distance between x and y.
+
+    Args:
+        x (torch.Tensor): tensor
+        y (torch.Tensor): tensor, must be of same shape to x
+
+    Returns:
+        torch.Tensor: cosine distance between x and y
+    """
     return 1 - cos_sim(x,y,center)
 
-def barlow_twins_loss(x:torch.Tensor,y:torch.Tensor,l:float=0.02)->torch.Tensor:
+def barlow_twins_loss(x:torch.Tensor,
+                      y:torch.Tensor,
+                      l:float=0.02)->torch.Tensor:
+    """Calculates the Barlow twins loss between x and y. This loss is composed
+    of two terms: the invariance term, which maximises the Pearson correlation
+    with views belonging to the same image (invariance term) and minimises the
+    correlation between different images (reduction term) to promote greater
+    feature diversity.
+
+    Args:
+        x (torch.Tensor): tensor
+        y (torch.Tensor): tensor
+        l (float, optional): term that scales the reduction term. Defaults to 
+            0.02.
+
+    Returns:
+        torch.Tensor: Barlow twins loss
+    """
     diag_idx = torch.arange(0,x.shape)
     n = x.shape[0]
     C = pearson_corr(x,y)
@@ -41,75 +98,395 @@ def barlow_twins_loss(x:torch.Tensor,y:torch.Tensor,l:float=0.02)->torch.Tensor:
     return loss
 
 def simsiam_loss(x1:torch.Tensor,x2:torch.Tensor)->torch.Tensor:
-    x1 = x1/F.norm(x1,2,-1).unsqueeze(1)
-    x2 = x2/F.norm(x2,2,-1).unsqueeze(1)
+    """Loss for the SimSiam protocol.
+
+    Args:
+        x1 (torch.Tensor): tensor
+        x2 (torch.Tensor): tensor
+
+    Returns:
+        torch.Tensor: SimSiam loss
+    """
+    x1 = x1/torch.functional.norm(x1,2,-1).unsqueeze(1)
+    x2 = x2/torch.functional.norm(x2,2,-1).unsqueeze(1)
     return -torch.sum(x1*x2,1).mean()
 
 def byol_loss(x1:torch.Tensor,x2:torch.Tensor)->torch.Tensor:
+    """Loss for the BYOL (bootstrap your own latent) protocol.
+
+    Args:
+        x1 (torch.Tensor): tensor
+        x2 (torch.Tensor): tensor
+
+    Returns:
+        torch.Tensor: BYOL loss
+    """
     return 2*simsiam_loss(x1,x2)+2
 
-class ExponentialMovingAverage(torch.nn.Module):
-    def __init__(self,decay:float,final_decay:float=None,n_steps=None):
-        """Exponential moving average for model weights. The weight-averaged
-        model is kept as `self.shadow` and each iteration of self.update leads
-        to weight updating. This implementation is heavily based on that 
-        available in https://www.zijianhu.com/post/pytorch/ema/.
+def unravel_index(
+    indices: torch.LongTensor,
+    shape: Tuple[int, ...]) -> torch.LongTensor:
+    """Converts flat indices into unraveled coordinates in a target shape.
 
-        Essentially, self.update(model) is called, a shadow version of the 
-        model (i.e. self.shadow) is updated using the exponential moving 
-        average formula such that $v'=(1-decay)*(v_{shadow}-v)$, where
-        $v$ is the new parameter value, $v'$ is the updated value and 
-        $v_{shadow}$ is the exponential moving average value (i.e. the shadow).
+    This is a `torch` implementation of `numpy.unravel_index`.
+
+    Args:
+        indices: A tensor of indices, (*, N).
+        shape: The targeted shape, (D,).
+
+    Returns:
+        unravel coordinates, (*, N, D).
+    """
+    # from https://github.com/pytorch/pytorch/issues/35674#issuecomment-739492875
+
+    shape = torch.tensor(shape)
+    indices = indices % shape.prod()  # prevent out-of-bounds indices
+
+    coord = torch.zeros(indices.size() + shape.size(), dtype=int)
+
+    for i, dim in enumerate(reversed(shape)):
+        coord[..., i] = indices % dim
+        indices = torch.div(indices,dim,rounding_mode="floor")
+
+    return coord.flip(-1)
+
+class VICRegLoss(torch.nn.Module):
+    def __init__(self,
+                 min_var: float=1.,
+                 eps: float=1e-4,
+                 lam: float=1.,
+                 mu: float=1.,
+                 nu: float=1./25.):
+        """Implementation of the VICReg loss from [1].
+        
+        [1] https://arxiv.org/abs/2105.04906
 
         Args:
-            decay (float): decay for the exponential moving average.
-            final_decay (float, optional): final value for decay. Defaults to
-                None (same as initial decay).
-            n_steps (float, optional): number of updates until `decay` becomes
-                `final_decay` with linear scaling. Defaults to None.
+            min_var (float, optional): minimum variance of the features. 
+                Defaults to 1..
+            eps (float, optional): epsilon term to avoid errors due to floating
+                point imprecisions. Defaults to 1e-4.
+            lam (float, optional): invariance term.
+            mu (float, optional): variance term.
+            nu (float, optional): covariance term.
         """
         super().__init__()
-        self.decay = decay
-        self.final_decay = final_decay
-        self.n_steps = n_steps
-        self.shadow = None
-        self.step = 0
+        self.min_var = min_var
+        self.eps = eps
+        self.lam = lam
+        self.mu = mu
+        self.nu = nu
 
-        if self.final_decay is None:
-            self.final_decay = self.decay
-        self.slope = (self.final_decay - self.decay)/self.n_steps
-        self.intercept = self.decay
+    def off_diagonal(self,x):
+        # from https://github.com/facebookresearch/vicreg/blob/a73f567660ae507b0667c68f685945ae6e2f62c3/main_vicreg.py
+        n, m = x.shape
+        assert n == m
+        return x.flatten()[:-1].view(n - 1, n + 1)[:, 1:].flatten()
 
-    def set_requires_grad_false(self,model):
-        for k,p in model.named_parameters():
-            if p.requires_grad == True:
-                p.requires_grad = False
+    def variance_loss(self,X:torch.Tensor)->torch.Tensor:
+        """Calculates the VICReg variance loss (a Hinge loss for the variance
+        which keeps it above `self.min_var`)
 
-    @torch.no_grad()
-    def update(self,model:torch.nn.Module):
-        if self.shadow is None:
-            # this effectively skips the first epoch
-            self.shadow = deepcopy(model)
-            self.shadow.training = False
-            self.set_requires_grad_false(self.shadow)
+        Args:
+            X (torch.Tensor): input tensor
+
+        Returns:
+            torch.Tensor: variance loss
+        """
+        reg_std = torch.sqrt(torch.var(X,0)+self.eps)
+        # only needs to be initialised once assuming the number of 
+        # dimensions does not change
+        zeros = torch.zeros_like(reg_std).to(reg_std.device)
+        return torch.maximum(zeros,self.min_var - reg_std).mean()
+    
+    def covariance_loss(self,X:torch.Tensor)->torch.Tensor:
+        """Calculates the covariance loss for VICReg (minimises the L2 norm of
+        the off diagonal elements belonging to the covariance matrix of the 
+        features).
+
+        Args:
+            X (torch.Tensor): input tensor
+
+        Returns:
+            torch.Tensor: covariance loss.
+        """
+        X_mean = X.mean(0)
+        X_centred = X - X_mean
+        cov = (X_centred.T @ X_centred) / (X.shape[0]-1)
+        return self.off_diagonal(cov).pow_(2).sum()/X.shape[1]
+
+    def invariance_loss(self,X1:torch.Tensor,X2:torch.Tensor)->torch.Tensor:
+        """Calculates the invariance loss for VICReg (minimises the MSE 
+        between the features calculated from two views of the same image).
+
+        Args:
+            X1 (torch.Tensor): input tensor from view 1
+            X2 (torch.Tensor): input tensor from view 2
+
+        Returns:
+            torch.Tensor: invariance loss
+        """
+        return F.mse_loss(X1,X2)
+    
+    def vicreg_loss(self,X1:torch.Tensor,X2:torch.Tensor)->torch.Tensor:
+        """Wrapper for the three components of the VICReg loss.
+
+        Args:
+            X1 (torch.Tensor): input tensor from view 1
+            X2 (torch.Tensor): input tensor from view 2
+
+        Returns:
+            torch.Tensor: invariance loss
+        """
+        var_loss = torch.add(
+            self.variance_loss(X1),
+            self.variance_loss(X2))
+        cov_loss = torch.add(
+            self.covariance_loss(X1),
+            self.covariance_loss(X2))
+        inv_loss = self.invariance_loss(X1,X2)
+        return var_loss,cov_loss,inv_loss
+    
+    def flatten_if_necessary(self,x):
+        if len(x.shape) > 2:
+            return x.flatten(start_dim=2).mean(-1).values
+        return x
+    
+    def forward(self,
+                X1:torch.Tensor,X2:torch.Tensor)->Tuple[torch.Tensor,
+                                                        torch.Tensor,
+                                                        torch.Tensor]:
+        """Forward method for VICReg loss.
+
+        Args:
+            X1 (torch.Tensor): (B,C,H,W,(D)) tensor corresponding to the first
+                transform.
+            X2 (torch.Tensor): (B,C,H,W,(D)) tensor corresponding to the second
+                transform.
+
+        Returns:
+            var_loss (torch.Tensor)
+            cov_loss (torch.Tensor)
+            inv_loss (torch.Tensor)
+        """
+
+        flat_max_X1 = self.flatten_if_necessary(X1)
+        flat_max_X2 = self.flatten_if_necessary(X2)
+        var_loss,cov_loss,inv_loss = self.vicreg_loss(
+            flat_max_X1,flat_max_X2)
+        return self.lam*inv_loss,self.mu*var_loss,self.nu*cov_loss
+
+class VICRegLocalLoss(VICRegLoss):
+    def __init__(self,
+                 min_var: float=1.,
+                 eps: float=1e-4,
+                 lam: float=1.,
+                 mu: float=1.,
+                 nu: float=1./25.,
+                 gamma: int=10):
+        """Local VICRegL loss from [2]. This is, in essence, a version of
+        VICReg which leads to better downstream solutions for segmentation 
+        tasks and other tasks requiring pixel- or superpixel-level inference.
+        Default values are according to the paper.
+        
+        [2] https://arxiv.org/pdf/2210.01571v1.pdf
+
+        Args:
+            min_var (float, optional): minimum variance of the features. 
+                Defaults to 1..
+            eps (float, optional): epsilon term to avoid errors due to floating
+                point imprecisions. Defaults to 1e-4.
+            lam (float, optional): invariance term.
+            mu (float, optional): variance term.
+            nu (float, optional): covariance term.
+            gamma (int, optional): the local loss term is calculated only for 
+                the top-gamma feature matches between input images. Defaults 
+                to 20.
+        """
+        super().__init__()
+        self.min_var = min_var
+        self.eps = eps
+        self.lam = lam
+        self.mu = mu
+        self.nu = nu
+        self.gamma = gamma
+
+        self.alpha = 0.9
+        self.zeros = None
+        self.sparse_coords_1 = None
+        self.sparse_coords_2 = None
+    
+    def transform_coords(self,
+                         coords:torch.Tensor,
+                         box:torch.Tensor)->torch.Tensor:
+        """Takes a set of coords and addapts them to a new coordinate space
+        defined by box (0,0 becomes the top left corner of the bounding box).
+
+        Args:
+            coords (torch.Tensor): pixel coordinates (x,y)
+            box (torch.Tensor): coordinates for a given bounding box 
+                (x1,y1,x2,y2)
+
+        Returns:
+            torch.Tensor: transformed coordinates
+        """
+        ndim = box.shape[-1]//2
+        a,b = (torch.unsqueeze(box[:,:ndim],1),
+               torch.unsqueeze(box[:,ndim:],1))
+        size = b - a
+        return coords.unsqueeze(0) * size + a
+
+    def location_local_loss(self,
+                            X1:torch.Tensor,
+                            X2:torch.Tensor,
+                            box_X1:torch.Tensor,
+                            box_X2:torch.Tensor)->torch.Tensor:
+        """Given two views of the same image X1 and X2 and their bounding box
+        coordinates in the original image space (box_X1 and box_X2), this loss
+        function minimises the distance between nearby pixels in both images.
+        It does not calculate it for *all* pixels but only for the 
+        top-self.gamma pixels.
+
+        Args:
+            X1 (torch.Tensor): input tensor from view 1
+            X2 (torch.Tensor): input tensor from view 2
+            box_X1 (torch.Tensor): box containing X1 view
+            box_X2 (torch.Tensor): box containing X2 view
+
+        Returns:
+            torch.Tensor: local loss for location
+        """
+        assert X1.shape[0] == X2.shape[0],"X1 and X2 need to have the same batch size"
+        g = self.gamma
+        coords_X1 = self.transform_coords(self.sparse_coords_1,box_X1)
+        coords_X2 = self.transform_coords(self.sparse_coords_2,box_X2)
+        loss_acc = torch.zeros([3])
+        all_dists = torch.cdist(coords_X1,
+                                coords_X2)
+        for b in range(X1.shape[0]):
+            dist = all_dists[b]
+            top_gamma = unravel_index(
+                torch.topk(
+                    dist.flatten(),
+                    g,largest=False).indices,
+                dist.shape)
+            f1 = torch.zeros([g,X1.shape[1]])
+            f2 = torch.zeros([g,X2.shape[1]])
+            sc1 = self.sparse_coords_1[top_gamma[:,0]].long()
+            sc2 = self.sparse_coords_2[top_gamma[:,1]].long()
+            for tg in range(g):
+                f1[tg,:] = X1[(b,slice(0,X1.shape[1]),*sc1[tg])]
+                f2[tg,:] = X2[(b,slice(0,X2.shape[1]),*sc2[tg])]
+            loss_acc = loss_acc + torch.as_tensor(self.vicreg_loss(f1,f2))/g
+        return loss_acc/b
+
+    def feature_local_loss(self,X1:torch.Tensor,X2:torch.Tensor):
+        """Given two views of the same image X1 and X2, this loss
+        function minimises the distance between the top-self.gamma closest
+        pixels in feature space.
+
+        Args:
+            X1 (torch.Tensor): input tensor from view 1
+            X2 (torch.Tensor): input tensor from view 2
+
+        Returns:
+            torch.Tensor: local loss for features
+        """
+        g = self.gamma
+        flat_X1 = X1.flatten(start_dim=2).swapaxes(1,2)
+        flat_X2 = X2.flatten(start_dim=2).swapaxes(1,2)
+        loss_acc = 0.
+        all_dists = torch.cdist(flat_X1,flat_X2)
+        for b in range(X1.shape[0]):
+            dist = all_dists[b]
+            top_gamma = unravel_index(
+                torch.topk(
+                    dist.flatten(),
+                    g,largest=False).indices,
+                dist.shape)
+            f1 = torch.zeros([g,X1.shape[1]])
+            f2 = torch.zeros([g,X2.shape[1]])
+            sc1 = self.sparse_coords_1[top_gamma[:,0]].long()
+            sc2 = self.sparse_coords_2[top_gamma[:,1]].long()
+            for tg in range(g):
+                f1[tg,:] = X1[(b,slice(0,X1.shape[1]),*sc1[tg])]
+                f2[tg,:] = X2[(b,slice(0,X2.shape[1]),*sc2[tg])]
+            loss_acc = loss_acc + torch.as_tensor(self.vicreg_loss(f1,f2))/g
+        return loss_acc/b
+
+    def get_sparse_coords(self,X):
+        return torch.stack(
+            [x.flatten() for x in torch.meshgrid(
+                *[torch.arange(0,i) for i in X.shape[2:]],indexing="ij")],
+            axis=1).float().to(X.device)
+
+    def forward(self,
+                X1:torch.Tensor,X2:torch.Tensor,
+                box_X1:torch.Tensor,box_X2:torch.Tensor)->Tuple[torch.Tensor,
+                                                                torch.Tensor,
+                                                                torch.Tensor,
+                                                                torch.Tensor]:
+        """Forward method for local VICReg loss.
+
+        Args:
+            X1 (torch.Tensor): (B,C,H,W,(D)) tensor corresponding to the first
+                transform.
+            X2 (torch.Tensor): (B,C,H,W,(D)) tensor corresponding to the second
+                transform.
+            box_X1 (torch.Tensor): coordinates for X1 in the original image
+            box_X2 (torch.Tensor): coordinates for X2 in the original image
+
+        Returns:
+            var_loss (torch.Tensor)
+            cov_loss (torch.Tensor)
+            inv_loss (torch.Tensor)
+            local_loss (torch.Tensor)
+        """
+
+        flat_max_X1 = X1.flatten(start_dim=2).mean(-1)
+        flat_max_X2 = X2.flatten(start_dim=2).mean(-1)
+
+        # these steps calculating sparse coordinates and storing them as a class
+        # variable assume that image shape remains the same. if this is not the 
+        # case, then these variables are redefined
+
+        if self.sparse_coords_1 is None:
+            self.sparse_coords_1 = self.get_sparse_coords(X1)
+            self.shape_1 = X1.shape
         else:
-            model_params = OrderedDict(model.named_parameters())
-            shadow_params = OrderedDict(self.shadow.named_parameters())
+            if self.shape_1 != X1.shape:
+                self.sparse_coords_1 = self.get_sparse_coords(X1)
+                self.shape_1 = X1.shape
 
-            shadow_params_keys = list(shadow_params.keys())
+        if self.sparse_coords_2 is None:
+            self.sparse_coords_2 = self.get_sparse_coords(X2)
+            self.shape_2 = X2.shape
+        else:
+            if self.shape_2 != X2.shape:
+                self.sparse_coords_2 = self.get_sparse_coords(X2)
+                self.shape_2 = X2.shape
 
-            different_params = set.difference(
-                set(shadow_params_keys),
-                set(model_params.keys()))
-            assert len(different_params) == 0
-
-            for name, param in model_params.items():
-                if 'shadow' not in name:
-                    shadow_params[name].sub_(
-                       (1.-self.decay) * (shadow_params[name]-param))
-            
-            self.decay = self.step*self.slope + self.intercept
-            self.step += 1
+        var_loss,cov_loss,inv_loss = self.vicreg_loss(
+            flat_max_X1,flat_max_X2)
+        
+        # location and feature local losses are non-symmetric so this 
+        # symmetrises them
+        short_range_local_loss = torch.add(
+            self.location_local_loss(
+                X1,X2,box_X1,box_X2),
+            self.location_local_loss(
+                X2,X1,box_X2,box_X1))
+        long_range_local_loss = torch.add(
+            self.feature_local_loss(X1,X2),
+            self.feature_local_loss(X2,X1)) / 2
+                
+        local_loss = torch.add(
+            short_range_local_loss.sum(),
+            long_range_local_loss.sum()) * (1-self.alpha)
+        return (self.lam*inv_loss * self.alpha,
+                self.mu*var_loss * self.alpha,
+                self.nu*cov_loss * self.alpha,
+                local_loss)
 
 class ContrastiveDistanceLoss(torch.nn.Module):
     def __init__(self,dist_p=2,random_sample=False,margin=1,
