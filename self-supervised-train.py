@@ -7,11 +7,11 @@ import numpy as np
 import torch
 import monai
 import wandb
-from sklearn.model_selection import KFold,train_test_split
 
 from pytorch_lightning import Trainer
 from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.callbacks.model_checkpoint import ModelCheckpoint
+from pytorch_lightning.callbacks import RichProgressBar
 
 from lib.utils import (
     CopyEntryd,
@@ -21,10 +21,11 @@ from lib.utils import (
     SlicesToFirst,
     ConditionalRescalingd,
     FastResample,
+    ExposeTransformKeyd,
     safe_collate)
 from lib.modules.augmentations import *
-from lib.modules.self_supervised_pl import BootstrapYourOwnLatentPL
-from lib.modules.self_supervised import ExponentialMovingAverage
+from lib.modules.self_supervised_pl import NonContrastiveSelfSLPL
+from lib.utils import ExponentialMovingAverage
 from lib.modules.config_parsing import parse_config_ssl
 
 torch.backends.cudnn.benchmark = True
@@ -35,8 +36,11 @@ def force_cudnn_initialization():
     """
     s = 16
     dev = torch.device('cuda')
-    torch.nn.functional.conv2d(torch.zeros(s, s, s, s, device=dev), 
+    torch.nn.functional.conv2d(torch.zeros(s,s,s,s,device=dev), 
                                torch.zeros(s,s,s,s,device=dev))
+
+def flatten_box(box):
+    return np.array(box).T.reshape(-1).astype(np.float32)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -46,16 +50,18 @@ if __name__ == "__main__":
         '--dataset_json',dest='dataset_json',type=str,
         help="JSON containing dataset information",required=True)
     parser.add_argument(
-        '--input_size',dest='input_size',type=float,nargs='+',default=None,
-        help="Input size for network")
-    parser.add_argument(
-        '--resize',dest='resize',type=float,nargs='+',default=None,
-        help="Scales the input size by a float")
+        '--train_pids',dest='train_pids',action="store",
+        default=None,type=str,nargs='+',
+        help="IDs in dataset_json used for training")
     parser.add_argument(
         '--crop_size',dest='crop_size',action="store",
         default=None,type=float,nargs='+',
         help="Size of central crop after resizing (if none is specified then\
             no cropping is performed).")
+    parser.add_argument(
+        '--random_crop_size',dest='random_crop_size',action="store",
+        default=None,type=float,nargs='+',
+        help="Size of crop with random centre.")
     parser.add_argument(
         '--target_spacing',dest='target_spacing',action="store",default=None,
         help="Resamples all images to target spacing",nargs='+',type=float)
@@ -75,6 +81,10 @@ if __name__ == "__main__":
         '--subsample_size',dest='subsample_size',type=int,
         help="Subsamples data to a given size",
         default=None)
+    parser.add_argument(
+        '--precision',dest='precision',type=str,
+        help="Floating point precision",choices=["16","32","bf16"],
+        default="32")
 
     # network + training
     parser.add_argument(
@@ -91,7 +101,7 @@ if __name__ == "__main__":
     # training
     parser.add_argument(
         '--dev',dest='dev',type=str,
-        help="Device for PyTorch training",choices=["cuda","cpu"])
+        help="Device for PyTorch training")
     parser.add_argument(
         '--seed',dest='seed',help="Random seed",default=42,type=int)
     parser.add_argument(
@@ -101,15 +111,8 @@ if __name__ == "__main__":
         '--n_devices',dest='n_devices',
         help="Number of devices",default=1,type=int)
     parser.add_argument(
-        '--pre_load',dest='pre_load',action="store_true",
-        help="Load and process data to memory at the beginning of training",
-        default=False)
-    parser.add_argument(
         '--max_epochs',dest="max_epochs",
         help="Maximum number of training epochs",default=100,type=int)
-    parser.add_argument(
-        '--n_folds',dest="n_folds",
-        help="Number of validation folds",default=5,type=int)
     parser.add_argument(
         '--checkpoint_dir',dest='checkpoint_dir',type=str,default="models",
         help='Path to directory where checkpoints will be saved.')
@@ -118,7 +121,7 @@ if __name__ == "__main__":
         help='Checkpoint ID.')
     parser.add_argument(
         '--summary_dir',dest='summary_dir',type=str,default="summaries",
-        help='Path to summary directory (for tensorboard).')
+        help='Path to summary directory (for wandb).')
     parser.add_argument(
         '--summary_name',dest='summary_name',type=str,default=None,
         help='Summary name.')
@@ -131,6 +134,15 @@ if __name__ == "__main__":
     parser.add_argument(
         '--dropout_param',dest='dropout_param',type=float,
         help="Parameter for dropout.",default=0.1)
+    parser.add_argument(
+        '--vicreg',dest='vicreg',action="store_true",
+        help="Use VICReg loss")
+    parser.add_argument(
+        '--vicregl',dest='vicregl',action="store_true",
+        help="Use VICRegL loss")
+    parser.add_argument(
+        '--resume_from_last',dest='resume_from_last',action="store_true",
+        help="Resumes training from last checkpoint.")
 
     args = parser.parse_args()
 
@@ -155,13 +167,6 @@ if __name__ == "__main__":
         intp_resampling_augmentations.append("bilinear")
     non_adc_keys = [k for k in keys if k not in args.adc_image_keys]
     all_keys = [*keys]
-    if args.input_size is not None:
-        if args.resize is None:
-            R = [1 for _ in args.input_size]
-        else:
-            R = args.resize
-        args.input_size = [
-            int(x*y) for x,y in zip(args.input_size,R)]
 
     data_dict = json.load(open(args.dataset_json,'r'))
     data_dict = {
@@ -188,12 +193,17 @@ if __name__ == "__main__":
     else:
         ema = None
 
-    print("Setting up transforms...")
+    if args.random_crop_size is None:
+        roi_size = [64,64,8]
+    else:
+        roi_size = [int(x) for x in args.random_crop_size]
+
     def get_transforms(x):
         if args.target_spacing is not None:
             rs = [
-                FastResample(keys=all_keys,target=args.target_spacing,
-                             mode=intp)]
+                monai.transforms.Spacingd(
+                    keys=all_keys,pixdim=args.target_spacing,
+                    mode=intp_resampling_augmentations)]
         else:
             rs = []
         scaling_ops = []
@@ -205,12 +215,7 @@ if __name__ == "__main__":
                 ConditionalRescalingd(args.adc_image_keys,1000,0.001))
             scaling_ops.append(
                 monai.transforms.ScaleIntensityd(
-                    args.adc_image_keys,None,None,1-args.adc_factor))
-        if args.input_size is not None:
-            resize = [monai.transforms.Resized(
-                all_keys,tuple(args.input_size),mode=intp)]
-        else:
-            resize = []
+                    args.adc_image_keys,None,None,-(1-args.adc_factor)))
         if args.crop_size is not None:
             crop_op = [
                 monai.transforms.CenterSpatialCropd(
@@ -225,7 +230,6 @@ if __name__ == "__main__":
                 monai.transforms.AddChanneld(all_keys),
                 monai.transforms.Orientationd(all_keys,"RAS"),
                 *rs,
-                *resize,
                 *crop_op,
                 *scaling_ops,
                 monai.transforms.EnsureTyped(all_keys),
@@ -239,204 +243,172 @@ if __name__ == "__main__":
 
     def get_augmentations():
         aug_list = generic_augments+mri_specific_augments+spatial_augments
+        if len(roi_size) == 0:
+            cropping_strategy = []
+        if args.vicregl == True:
+            cropping_strategy = [
+                monai.transforms.RandSpatialCropd(
+                    all_keys,roi_size=roi_size,random_size=False),
+                monai.transforms.RandSpatialCropd(
+                    copied_keys,roi_size=roi_size,random_size=False),
+                ExposeTransformKeyd(all_keys[0]+"_transforms",
+                                    "RandSpatialCropd",["extra_info","slices"],
+                                    "box_1"),
+                ExposeTransformKeyd(copied_keys[0]+"_transforms",
+                                    "RandSpatialCropd",["extra_info","slices"],
+                                    "box_2"),
+                monai.transforms.Lambdad(["box_1","box_2"],flatten_box),
+            ]
+        else:
+            cropping_strategy = [
+                monai.transforms.RandSpatialCropd(
+                    all_keys+copied_keys,roi_size=roi_size,random_size=False)
+                ]
         return [
+            *cropping_strategy,
             AugmentationWorkhorsed(
                 augmentations=aug_list,
                 keys=all_keys,mask_keys=[],max_mult=0.5,N=3),
             AugmentationWorkhorsed(
                 augmentations=aug_list,
-                keys=copied_keys,mask_keys=[],max_mult=0.5,N=3)]
+                keys=copied_keys,mask_keys=[],max_mult=0.5,N=3),
+            ]
 
     all_pids = [k for k in data_dict]
-    if args.pre_load == False:
-        transforms_train = [
-            *get_transforms("pre"),
-            *get_augmentations(),
-            *get_transforms("post")]
-
-        transforms_train_val = [
-            *get_transforms("pre"),
-            *get_augmentations(),
-            *get_transforms("post")]
-
-        transforms_val = [
-            *get_transforms("pre"),
-            *get_augmentations(),
-            *get_transforms("post")]
-    else:
-        transforms_train = [
-            *get_augmentations(),
-            *get_transforms("post")]
-
-        transforms_train_val = [
-            *get_augmentations(),
-            *get_transforms("post")]
-
-        transforms_val = [
-            *get_augmentations(),
-            *get_transforms("post")]
-        
-        transform_all_data = get_transforms("pre")
-
-        path_list = [data_dict[k] for k in all_pids]
-        # load using cache dataset because it handles parallel processing
-        # and then convert to list
-        dataset_full = monai.data.CacheDataset(
-            path_list,
-            monai.transforms.Compose(transform_all_data),
-            num_workers=args.n_workers)
-        dataset_full_ = []
-        all_pids = []
-        for x in dataset_full:
-            dataset_full_.append({k:x[k] for k in x if "transforms" not in k})
-            all_pids.append(x["pid"])
-        dataset_full = dataset_full_
+    
+    transforms = [
+        *get_transforms("pre"),
+        *get_augmentations(),
+        *get_transforms("post")]
 
     if network_config["backbone_args"]["spatial_dim"] == 2:
-        transforms_train.append(
+        transforms.append(
             RandomSlices(["image"],None,8,base=0.001))
-        transforms_train_val.append(
-            SlicesToFirst(["image"]))
-        transforms_val.append(
-            SlicesToFirst(["image"]))
         collate_fn = collate_last_slice
     else:
         collate_fn = safe_collate
 
-    if args.n_folds > 1:
-        fold_generator = KFold(
-            args.n_folds,shuffle=True,random_state=args.seed).split(all_pids)
+    if args.train_pids is not None:
+        train_pids = args.train_pids
     else:
-        fold_generator = iter(
-            [train_test_split(range(len(all_pids)),test_size=0.2)])
+        train_pids = [pid for pid in data_dict]
+    train_list = [data_dict[pid] for pid in data_dict
+                  if pid in train_pids]
 
-    for val_fold in range(args.n_folds):
-        train_idxs,val_idxs = next(fold_generator)
-        train_idxs,train_val_idxs = train_test_split(train_idxs,test_size=0.15)
-        if args.pre_load == False:
-            train_pids = [all_pids[i] for i in train_idxs]
-            train_val_pids = [all_pids[i] for i in train_val_idxs]
-            val_pids = [all_pids[i] for i in val_idxs]
-            train_list = [data_dict[pid] for pid in train_pids]
-            train_val_list = [data_dict[pid] for pid in train_val_pids]
-            val_list = [data_dict[pid] for pid in val_pids]
-            train_dataset = monai.data.CacheDataset(
-                train_list,
-                monai.transforms.Compose(transforms_train),
-                num_workers=args.n_workers)
-            train_dataset_val = monai.data.CacheDataset(
-                train_val_list,
-                monai.transforms.Compose(transforms_train_val),
-                num_workers=args.n_workers)
-            validation_dataset = monai.data.CacheDataset(
-                val_list,
-                monai.transforms.Compose(transforms_val),
-                num_workers=args.n_workers)
+    train_dataset = monai.data.CacheDataset(
+        train_list,
+        monai.transforms.Compose(transforms),
+        num_workers=args.n_workers)
 
-        else:
-            train_pids = [all_pids[i] for i in train_idxs]
-            train_val_pids = [all_pids[i] for i in train_val_idxs]
-            val_pids = [all_pids[i] for i in val_idxs]
-            train_list = [dataset_full[i] for i in train_idxs]
-            train_val_list = [dataset_full[i] for i in train_val_idxs]
-            val_list = [dataset_full[i] for i in val_idxs]
-            train_dataset = monai.data.Dataset(
-                train_list,
-                monai.transforms.Compose(transforms_train))
-            train_dataset_val = monai.data.Dataset(
-                train_val_list,
-                monai.transforms.Compose(transforms_train_val))
-            validation_dataset = monai.data.Dataset(
-                val_list,
-                monai.transforms.Compose(transforms_val))
+    def train_loader_call(batch_size): 
+        return monai.data.ThreadDataLoader(
+            train_dataset,batch_size=batch_size,
+            shuffle=True,num_workers=args.n_workers,generator=g,
+            collate_fn=collate_fn,pin_memory=True,
+            persistent_workers=True,drop_last=True)
 
-        def train_loader_call(): 
-            return monai.data.ThreadDataLoader(
-                train_dataset,batch_size=network_config["batch_size"],
-                shuffle=True,num_workers=args.n_workers,generator=g,
-                collate_fn=collate_fn,pin_memory=True,
-                persistent_workers=True,drop_last=True)
+    train_loader = train_loader_call(network_config["batch_size"])
+    validation_loader = monai.data.ThreadDataLoader(
+        train_dataset,batch_size=network_config["batch_size"],
+        shuffle=False,num_workers=args.n_workers,generator=g,
+        collate_fn=collate_fn,persistent_workers=True,
+        drop_last=True)
 
-        train_loader = train_loader_call()
-        train_val_loader = monai.data.ThreadDataLoader(
-            train_dataset_val,batch_size=network_config["batch_size"],
-            shuffle=False,num_workers=args.n_workers,generator=g,
-            collate_fn=collate_fn,persistent_workers=True,
-            drop_last=True)
-        validation_loader = monai.data.ThreadDataLoader(
-            validation_dataset,batch_size=1,
-            shuffle=False,num_workers=args.n_workers,generator=g,
-            collate_fn=collate_fn,persistent_workers=True,
-            drop_last=True)
+    force_cudnn_initialization()
+    ssl = NonContrastiveSelfSLPL(
+        training_dataloader_call=train_loader_call,
+        aug_image_key_1="augmented_image_1",
+        aug_image_key_2="augmented_image_2",
+        box_key_1="box_1",
+        box_key_2="box_2",
+        n_epochs=args.max_epochs,
+        vic_reg=args.vicreg,
+        vic_reg_local=args.vicregl,
+        ema=ema,
+        **network_config_correct)
+    if args.from_checkpoint is not None:
+        state_dict = torch.load(
+            args.from_checkpoint,map_location=args.dev)['state_dict']
+        inc = ssl.load_state_dict(state_dict)
+    
+    callbacks = [RichProgressBar()]
 
-        print("Setting up training...")
-        force_cudnn_initialization()
-        ssl = BootstrapYourOwnLatentPL(
-            training_dataloader_call=train_loader_call,
-            aug_image_key_1="augmented_image_1",
-            aug_image_key_2="augmented_image_2",
-            n_epochs=args.max_epochs,
-            ema=ema,**network_config_correct)
-        if args.from_checkpoint is not None:
-            state_dict = torch.load(
-                args.from_checkpoint,map_location=args.dev)['state_dict']
-            inc = ssl.load_state_dict(state_dict)
-        
-        callbacks = []
+    ckpt_path = None
+    if args.checkpoint_name is not None:
+        ckpt_name = args.checkpoint_name
+        ckpt_name = ckpt_name + "_{epoch:03d}"
+        ckpt_name = ckpt_name + "_{val_loss:.3f}"
+        ckpt_callback = ModelCheckpoint(
+            dirpath=args.checkpoint_dir,
+            filename=ckpt_name,monitor="val_loss",
+            save_last=True,save_top_k=1,mode="min")
+        ckpt_last = args.checkpoint_name + "_last"
+        ckpt_callback.CHECKPOINT_NAME_LAST = ckpt_last
+        callbacks.append(ckpt_callback)
+        ckpt_last_full = os.path.join(
+            args.checkpoint_dir,ckpt_last+'.ckpt')
+        if os.path.exists(ckpt_last_full) and args.resume_from_last == True:
+            ckpt_path = ckpt_last_full
+            epoch = torch.load(ckpt_path)["epoch"]
+            if epoch >= (args.max_epochs-1):
+                print("Training has finished, exiting")
+                exit()
+            else:
+                print("Resuming training from checkpoint in {} (epoch={})".format(
+                    ckpt_path,epoch))
+        ckpt = True
+    else:
+        ckpt = False
+    
+    if args.summary_name is not None and args.project_name is not None:
+        wandb.finish()
+        run_name = args.summary_name.replace(':','_')
+        logger = WandbLogger(
+            save_dir=args.summary_dir,project=args.project_name,
+            name=run_name,version=run_name,reinit=True)
+    else:
+        logger = None
 
-        if args.checkpoint_name is not None:
-            ckpt_name = args.checkpoint_name + "_fold" + str(val_fold)
-            ckpt_name = ckpt_name + "_{epoch:03d}"
-            ckpt_name = ckpt_name + "_{val_loss:.3f}"
-            ckpt_callback = ModelCheckpoint(
-                dirpath=args.checkpoint_dir,
-                filename=ckpt_name,monitor="val_loss",
-                save_last=True,save_top_k=1,mode="min")
-            ckpt_callback.CHECKPOINT_NAME_LAST = \
-                args.checkpoint_name + "_fold" + str(val_fold) + "_last"
-            callbacks.append(ckpt_callback)
-        
-        if args.summary_name is not None and args.project_name is not None:
-            wandb.finish()
-            run_name = args.summary_name.replace(':','_') + "_fold_{}".format(val_fold)
-            logger = WandbLogger(
-                save_dir=args.summary_dir,project=args.project_name,
-                name=run_name,version=run_name,reinit=True)
-        else:
-            logger = None
+    if ":" in args.dev:
+        devices = args.dev.split(":")[-1].split(",")
+        devices = [int(i) for i in devices]
+    else:
+        devices = args.n_devices
 
-        trainer = Trainer(
-            accelerator="gpu" if args.dev=="cuda" else "cpu",
-            devices=args.n_devices,logger=logger,callbacks=callbacks,
-            strategy='ddp' if args.n_devices > 1 else None,
-            max_epochs=args.max_epochs,
-            check_val_every_n_epoch=1,log_every_n_steps=10)
-
-        trainer.fit(ssl, train_loader, train_val_loader)
-        
-        print("Validating...")
-        test_metrics = trainer.test(ssl,validation_loader)[0]
-        for k in test_metrics:
-            out = test_metrics[k]
-            try:
-                value = float(out.detach().numpy())
-            except:
-                value = float(out)
-            x = "{},{},{},{}".format(k,val_fold,0,value)
-            output_file.write(x+'\n')
-            print(x)
-        x = "{},{},{},{}".format(
-            "train_ids",val_fold,0,':'.join(train_pids))
+    precision = {"16":16,"32":32,"bf16":"bf16"}[args.precision]
+    torch.autograd.set_detect_anomaly(True)
+    trainer = Trainer(
+        accelerator="gpu" if "cuda" in args.dev else "cpu",
+        devices=devices,logger=logger,callbacks=callbacks,
+        strategy='ddp' if args.n_devices > 1 else None,
+        max_epochs=args.max_epochs,enable_checkpointing=ckpt,
+        check_val_every_n_epoch=5,precision=precision,
+        resume_from_checkpoint=ckpt_path,
+        sync_batchnorm=len(devices)>1,
+        auto_scale_batch_size=True)
+    bs = trainer.tune(ssl)
+    torch.cuda.empty_cache()
+    
+    trainer.fit(ssl,val_dataloaders=validation_loader)
+    
+    print("Validating...")
+    test_metrics = trainer.test(ssl,validation_loader)[0]
+    for k in test_metrics:
+        out = test_metrics[k]
+        try:
+            value = float(out.detach().numpy())
+        except:
+            value = float(out)
+        x = "{},{},{},{}".format(k,0,0,value)
         output_file.write(x+'\n')
         print(x)
-        x = "{},{},{},{}".format(
-            "train_val_ids",val_fold,0,':'.join(train_val_pids))
-        output_file.write(x+'\n')
-        x = "{},{},{},{}".format(
-            "val_ids",val_fold,0,':'.join(val_pids))
-        output_file.write(x+'\n')
+    x = "{},{},{},{}".format(
+        "train_ids",0,0,':'.join(train_pids))
+    output_file.write(x+'\n')
+    print(x)
+    output_file.write(x+'\n')
 
-        # just in case
-        torch.cuda.empty_cache()
+    # just in case
+    torch.cuda.empty_cache()
 
     output_file.close()
