@@ -24,7 +24,18 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
+    total_voxels = {}
     for path in tqdm(glob(os.path.join(args.input_path,args.pattern))):
         path_sub = path.split(os.sep)[-1]
         image = sitk.GetArrayFromImage(sitk.ReadImage(path))
-        print(path_sub+','+':'.join([str(x) for x in np.unique(image)]))
+        un,co = np.unique(image,return_counts=True)
+        for u,c in zip(un,co):
+            if u not in total_voxels:
+                total_voxels[u] = []
+            total_voxels[u].append(c)
+
+    total_im = sum([len(total_voxels[u]) for u in total_voxels])
+    total_vo = sum([np.sum(total_voxels[u]) for u in total_voxels])
+    for u in total_voxels:
+        print(u,len(total_voxels[u]),np.sum(total_voxels[u]),
+              len(total_voxels[u])/total_im,np.sum(total_voxels[u])/total_vo)
