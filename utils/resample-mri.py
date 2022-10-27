@@ -32,6 +32,24 @@ def resample_image(sitk_image,out_spacing=[1.0, 1.0, 1.0],is_label=False):
 
     return output
 
+def crop_image(sitk_image,size):
+    size = np.array(size)
+    curr_size = np.array(sitk_image.GetSize())
+    # pad in case image is too small
+    if any(curr_size < size):
+        total_padding = np.maximum((0,0,0),size-curr_size)
+        lower = np.int16(total_padding // 2)
+        upper = np.int16(total_padding - lower)
+        sitk_image = sitk.ConstantPad(
+            sitk_image,lower.tolist(),upper.tolist(),0.0)
+    curr_size = np.array(sitk_image.GetSize())
+    total_crop = np.maximum((0,0,0),curr_size - size)
+    lower = np.int16(total_crop // 2)
+    upper = np.int16((total_crop - lower))
+
+    sitk_image = sitk.Crop(sitk_image,lower.tolist(),upper.tolist())
+    return sitk_image
+
 desc = """
 Resamples an image to a target spacing.
 """
@@ -47,6 +65,9 @@ if __name__ == "__main__":
     parser.add_argument(
         '--spacing',dest='spacing',required=True,nargs='+',
         type=float,help="Target spacing")
+    parser.add_argument(
+        '--crop_size',dest='crop_size',default=None,nargs='+',
+        type=float,help="Center crops to specified size")
     parser.add_argument(
         '--is_label',dest='is_label',action="store_true",
         default=False,help="Image is label map (uses NN interpolation)")
@@ -65,4 +86,8 @@ if __name__ == "__main__":
     # resampling to common space
 
     output_image = resample_image(fixed_image,args.spacing,args.is_label)
+    if args.crop_size is not None:
+        output_image = crop_image(output_image,args.crop_size)
+    if args.is_label == True:
+        output_image = sitk.Cast(output_image,sitk.sitkInt16)
     sitk.WriteImage(output_image,args.output_path)
