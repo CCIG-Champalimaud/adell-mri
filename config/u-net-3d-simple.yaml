@@ -1,6 +1,6 @@
 ---
 spatial_dimensions: 3
-conv_type: "sae"
+conv_type: "regular"
 link_type: "residual"
 upscale_type: "transpose"
 norm_type: "batch"
@@ -11,8 +11,8 @@ activation_fn: "swish"
 n_channels: 1
 depth: [16,32,64,128,256,512]
 kernel_sizes: [3,3,3,3,3,3]
-strides: [[2,2,1],[2,2,1],[2,2,2],[2,2,2],[2,2,1],[2,2,1]]
+strides: [[2,2,2],[2,2,1],[2,2,2],[2,2,2],[2,2,1],[2,2,2]]
 learning_rate: 0.001
-batch_size: 5
+batch_size: 6
 weight_decay: 0.0005
 loss_fn: "focal"
