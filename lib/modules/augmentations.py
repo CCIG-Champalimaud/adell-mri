@@ -9,7 +9,8 @@ n_dim = 3
 
 generic_augments = ['gaussian_noise','shift_intensity','scale_intensity','contrast',
                     'gaussian_smooth_x', 'gaussian_smooth_y', 'gaussian_smooth_z',
-                    'gaussian_sharpen_x', 'gaussian_sharpen_y', 'gaussian_sharpen_z']
+                    'gaussian_sharpen_x', 'gaussian_sharpen_y', 'gaussian_sharpen_z',
+                    'coarse_dropout']
 mri_specific_augments = ['rbf','gibbs_noise', 'spike_noise', 'rician_noise']
 spatial_augments = ['rotate_x', 'rotate_y', 'rotate_z',
                     'translate_x', 'translate_y', 'translate_z', 
@@ -28,6 +29,7 @@ AUG_DICT = {
     "gaussian_sharpen_x":monai.transforms.RandGaussianSharpen,
     "gaussian_sharpen_y":monai.transforms.RandGaussianSharpen,
     "gaussian_sharpen_z":monai.transforms.RandGaussianSharpen,
+    "coarse_dropout":monai.transforms.RandCoarseDropout,
     "gibbs_noise":monai.transforms.RandGibbsNoise,
     "spike_noise":monai.transforms.RandKSpaceSpikeNoise,
     "rician_noise":monai.transforms.RandRicianNoise,
@@ -57,6 +59,7 @@ AUG_DICT_DICT = {
     "gaussian_sharpen_x":monai.transforms.RandGaussianSharpend,
     "gaussian_sharpen_y":monai.transforms.RandGaussianSharpend,
     "gaussian_sharpen_z":monai.transforms.RandGaussianSharpend,
+    "coarse_dropout":monai.transforms.RandCoarseDropoutd,
     "gibbs_noise":monai.transforms.RandGibbsNoised,
     "spike_noise":monai.transforms.RandKSpaceSpikeNoised,
     "rician_noise":monai.transforms.RandRicianNoised,
@@ -86,14 +89,16 @@ AUG_PARAM_DICT = {
     "gaussian_sharpen_x":{"sigma1_x":0.3},
     "gaussian_sharpen_y":{"sigma1_y":0.3},
     "gaussian_sharpen_z":{"sigma1_z":0.3},
-    "gibbs_noise":{"alpha":0.9},
-    "spike_noise":{"intensity_range":0.25},
-    "rician_noise":{"std":2.}
+    "gibbs_noise":{"alpha":1.0},
+    "spike_noise":{"intensity_range":0.5},
+    "rician_noise":{"std":0.5},
+    "coarse_dropout":{"holes":16},
 }
 for i,c in enumerate(["x","y","z"]):
     # these have to be updated 
-    AUG_PARAM_DICT["rotate_"+c] = {"rotate_range":np.pi/3}
-    AUG_PARAM_DICT["translate_"+c] = {"translate_range":30}
+    t = 30 if c != "z" else 5
+    AUG_PARAM_DICT["rotate_"+c] = {"rotate_range":np.pi/6}
+    AUG_PARAM_DICT["translate_"+c] = {"translate_range":t}
     AUG_PARAM_DICT["shear_"+c] = {"shear_range":0.5}
     AUG_PARAM_DICT["scale_"+c] = {"scale_range":0.3}
 
@@ -131,7 +136,8 @@ AUG_PARAM_CORRECTION = {
 def get_transform_d(keys:List[str],
                     transform_str:str,
                     aug_param_dict:dict=AUG_PARAM_DICT,
-                    mask_keys:List[str]=[]):
+                    mask_keys:List[str]=[],
+                    dropout_size:Tuple[int]=(32,32,2)):
     transform = AUG_DICT_DICT[transform_str]
     params = aug_param_dict[transform_str]
     if transform_str in AUG_PARAM_CORRECTION:
@@ -142,6 +148,11 @@ def get_transform_d(keys:List[str],
         mode = ["bilinear" if k not in mask_keys else "nearest" 
                 for k in keys]
         other_args["mode"] = mode
+        other_args["padding_mode"] = "zeros"
+    if transform_str == "coarse_dropout":
+        if "holes" in params:
+            params["holes"] = int(params["holes"])
+        other_args["spatial_size"] = dropout_size
     return transform(keys,**params,**other_args,prob=1.0)
 
 class AugmentationWorkhorsed(monai.transforms.RandomizableTransform):
