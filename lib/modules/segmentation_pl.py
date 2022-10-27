@@ -6,9 +6,12 @@ import torchmetrics
 import pytorch_lightning as pl
 from typing import Callable
 from copy import deepcopy
+from picai_eval import evaluate
 
 from .segmentation import UNet
 from .segmentation_plus import UNetPlusPlus
+from .learning_rate import polynomial_lr_decay
+from .extract_lesion_candidates import extract_lesion_candidates
 
 def split(x,n_splits,dim):
     size = int(x.shape[dim]//n_splits)
@@ -79,11 +82,12 @@ class UNetPL(UNet,pl.LightningModule):
         
         self.loss_fn_class = torch.nn.BCEWithLogitsLoss()
         self.setup_metrics()
+
+        # for metrics which require a list of predictions + gt
+        self.all_pred = []
+        self.all_true = []
         
-        self.loss_accumulator = 0.
-        self.loss_accumulator_class = 0.
-        self.loss_accumulator_d = 0.
-        self.bn_mult = 0.01
+        self.bn_mult = 0.1
    
     def calculate_loss(self,prediction,y):
         loss = self.loss_fn(prediction,y,**self.loss_params)
@@ -101,10 +105,14 @@ class UNetPL(UNet,pl.LightningModule):
             y_class = y_class.long()
         for k in metrics:
             if 'cl:' in k:
+                if self.n_classes == 2:
+                    pred_class = F.sigmoid(pred_class)
+                else:
+                    pred_class = F.softmax(pred_class,1)
                 metrics[k].update(pred_class,y_class)
             else:    
                 metrics[k].update(pred,y)
-            self.log(k,metrics[k],**kwargs)
+            self.log(k,metrics[k],**kwargs,batch_size=y.shape[0])
 
     def loss_wrapper(self,x,y,y_class,x_cond,x_fc):
         y = torch.round(y)
@@ -138,7 +146,8 @@ class UNetPL(UNet,pl.LightningModule):
             output_loss = loss + class_loss * self.bn_mult
         else:
             class_loss = None
-            output_loss = loss                
+            output_loss = loss
+
         return prediction,pred_class,loss,class_loss,output_loss
 
     def training_step(self,batch,batch_idx):
@@ -158,10 +167,10 @@ class UNetPL(UNet,pl.LightningModule):
 
         pred_final,pred_class,loss,class_loss,output_loss = self.loss_wrapper(
             x,y,y_class,x_cond,x_fc)
-
-        self.log("train_loss", loss)
+        
+        self.log("train_loss", loss,batch_size=y.shape[0])
         if class_loss is not None:
-            self.log("train_cl_loss",class_loss)
+            self.log("train_cl_loss",class_loss,batch_size=y.shape[0])
         try: y = torch.round(y).int()
         except: pass
         self.update_metrics(
@@ -186,8 +195,14 @@ class UNetPL(UNet,pl.LightningModule):
 
         pred_final,pred_class,loss,class_loss,output_loss = self.loss_wrapper(
             x,y,y_class,x_cond,x_fc)
+        
+        for s_p,s_y in zip(pred_final.detach().cpu().numpy(),
+                           y.squeeze(1).detach().cpu().numpy()):
+            self.all_pred.append(s_p)
+            self.all_true.append(s_y)
 
-        self.log("val_loss",loss,prog_bar=True,on_epoch=True)
+        self.log("val_loss",loss,prog_bar=True,
+                 on_epoch=True,batch_size=y.shape[0])
         try: y = torch.round(y).int()
         except: pass
         self.update_metrics(
@@ -213,10 +228,11 @@ class UNetPL(UNet,pl.LightningModule):
         pred_final,pred_class,loss,class_loss,output_loss = self.loss_wrapper(
             x,y,y_class,x_cond,x_fc)
 
-        self.loss_accumulator += loss
-        if self.bottleneck_classification == True:
-            self.loss_accumulator_class += class_loss
-        self.loss_accumulator_d += 1.
+        for s_p,s_y in zip(pred_final.detach().cpu().numpy(),
+                           y.squeeze(1).detach().cpu().numpy()):
+            self.all_pred.append(s_p)
+            self.all_true.append(s_y)
+
         try: y = torch.round(y).int()
         except: pass
         self.update_metrics(
@@ -231,18 +247,44 @@ class UNetPL(UNet,pl.LightningModule):
         optimizer = torch.optim.AdamW(
             self.parameters(),lr=self.learning_rate,
             weight_decay=self.weight_decay)
-        lr_schedulers = torch.optim.lr_scheduler.CosineAnnealingLR(
-            optimizer,self.n_epochs)
 
         return {"optimizer":optimizer,
-                "lr_scheduler":lr_schedulers,
                 "monitor":"val_loss"}
     
-    def on_validation_epoch_end(self):
-        sch = self.lr_schedulers().state_dict()
-        lr = self.learning_rate
-        last_lr = sch['_last_lr'][0] if '_last_lr' in sch else lr
+    def on_train_epoch_end(self):
+        # updating the lr here rather than as a PL lr_scheduler... 
+        # basically the lr_scheduler (as I was using it at least)
+        # is not terribly compatible with starting and stopping training
+        opt = self.optimizers()
+        polynomial_lr_decay(opt,self.current_epoch,initial_lr=self.learning_rate,
+                            max_decay_steps=self.n_epochs,end_lr=1e-6,power=0.9)
+        try:
+            last_lr = [x["lr"] for x in opt.param_groups][-1]
+        except:
+            last_lr = self.learning_rate
         self.log("lr",last_lr,prog_bar=True)
+
+    def on_validation_epoch_end(self):
+        picai_eval_metrics = evaluate(
+            y_det=self.all_pred,y_true=self.all_true,
+            y_det_postprocess_func=lambda pred: extract_lesion_candidates(pred)[0],
+            num_parallel_calls=8)
+        self.log("V_AP",picai_eval_metrics.AP,prog_bar=True)
+        self.log("V_R",picai_eval_metrics.score,prog_bar=True)
+        self.log("V_AUC",picai_eval_metrics.auroc,prog_bar=True)
+        self.all_pred = []
+        self.all_true = []
+
+    def on_test_epoch_end(self):
+        picai_eval_metrics = evaluate(
+            y_det=self.all_pred,y_true=self.all_true,
+            y_det_postprocess_func=lambda pred: extract_lesion_candidates(pred)[0],
+            num_parallel_calls=8)
+        self.log("T_AP",picai_eval_metrics.AP,prog_bar=True)
+        self.log("T_R",picai_eval_metrics.score,prog_bar=True)
+        self.log("T_AUC",picai_eval_metrics.auroc,prog_bar=True)
+        self.all_pred = []
+        self.all_true = []
 
     def setup_metrics(self):
         if self.n_classes == 2:
@@ -258,8 +300,7 @@ class UNetPL(UNet,pl.LightningModule):
               "F1":torchmetrics.FBetaScore,
               "Dice":torchmetrics.Dice}
         if self.bottleneck_classification == True:
-            md["cl:F1"] = torchmetrics.FBetaScore
-            md["cl:Re"] = torchmetrics.Recall
+            md["AUC_bn"] = torchmetrics.AUROC
         for k in md:
             if k == "IoU":
                 m,C = "macro",C_1
@@ -267,15 +308,15 @@ class UNetPL(UNet,pl.LightningModule):
                 m,C = "micro",C_2
             else:
                 m,C = M,C_2
-            if k in ["cl:Re","cl:F1"]:
+            if "bn" in k:
                 I_ = None
             else:
                 I_ = I
-            print(k,C,A,m,I_)
-            if k in ["IoU","cl:F1","Pr"]:
+            if k in []:
                 self.train_metrics[k] = md[k](
                     num_classes=C,mdmc_average=A,average=m,
                     ignore_index=I_).to(self.device)
+            if k in ["IoU","AUC_bn"]:
                 self.val_metrics["V_"+k] = md[k](
                     num_classes=C,mdmc_average=A,average=m,
                     ignore_index=I_).to(self.device)
@@ -349,10 +390,11 @@ class UNetPlusPlusPL(UNetPlusPlus,pl.LightningModule):
         self.loss_fn_class = torch.nn.BCEWithLogitsLoss()
         self.setup_metrics()
 
-        self.loss_accumulator = 0.
-        self.loss_accumulator_class = 0.
-        self.loss_accumulator_d = 0.
-        self.bn_mult = 0.01
+        # for metrics which require a list of predictions + gt
+        self.all_pred = []
+        self.all_true = []
+
+        self.bn_mult = 0.1
    
     def calculate_loss(self,prediction,prediction_aux,y):
         loss = self.loss_fn(prediction,y,**self.loss_params)
@@ -393,6 +435,8 @@ class UNetPlusPlusPL(UNetPlusPlus,pl.LightningModule):
             class_loss = None
             output_loss = loss
 
+        print(loss,class_loss)
+
         n = len(prediction_aux)
         D = [1/(2**(n-i+1)) for i in range(n)]
         pred_final = torch.add(
@@ -413,10 +457,14 @@ class UNetPlusPlusPL(UNetPlusPlus,pl.LightningModule):
             y_class = y_class.long()
         for k in metrics:
             if 'cl:' in k:
+                if self.n_classes == 2:
+                    pred_class = F.sigmoid(pred_class)
+                else:
+                    pred_class = F.softmax(pred_class,1)
                 metrics[k].update(pred_class,y_class)
-            else:    
+            else:
                 metrics[k].update(pred,y)
-            self.log(k,metrics[k],**kwargs)
+            self.log(k,metrics[k],**kwargs,batch_size=y.shape[0])
 
     def training_step(self,batch,batch_idx):
         x, y = batch[self.image_key],batch[self.label_key]
@@ -437,8 +485,8 @@ class UNetPlusPlusPL(UNetPlusPlus,pl.LightningModule):
             x,y,y_class,x_cond,x_fc)
 
         if class_loss is not None:
-            self.log("train_cl_loss",class_loss)
-        self.log("train_loss", loss)
+            self.log("train_cl_loss",class_loss,batch_size=y.shape[0])
+        self.log("train_loss", loss,batch_size=y.shape[0])
         try: y = torch.round(y).int()
         except: pass
         self.update_metrics(
@@ -464,8 +512,16 @@ class UNetPlusPlusPL(UNetPlusPlus,pl.LightningModule):
         pred_final,pred_class,output_loss,loss,class_loss = self.loss_wrapper(
             x,y,y_class,x_cond,x_fc)
 
-        self.log("val_loss",loss,prog_bar=True,on_epoch=True)
-        self.log("val_loss_cl",class_loss,prog_bar=True,on_epoch=True)
+        for s_p,s_y in zip(pred_final.detach().cpu().numpy(),
+                           y.squeeze(1).detach().cpu().numpy()):
+            self.all_pred.append(s_p)
+            self.all_true.append(s_y)
+
+        self.log("val_loss",loss,prog_bar=True,on_epoch=True,
+                  batch_size=y.shape[0])
+        if class_loss is not None:
+            self.log("val_loss_cl",class_loss,prog_bar=True,on_epoch=True,
+                     batch_size=y.shape[0])
         try: y = torch.round(y).int()
         except: pass
         self.update_metrics(
@@ -490,60 +546,24 @@ class UNetPlusPlusPL(UNetPlusPlus,pl.LightningModule):
             
         pred_final,pred_class,output_loss,loss,class_loss = self.loss_wrapper(
             x,y,y_class,x_cond,x_fc)
+        
+        for s_p,s_y in zip(pred_final.detach().cpu().numpy(),
+                           y.squeeze(1).detach().cpu().numpy()):
+            self.all_pred.append(s_p)
+            self.all_true.append(s_y)
 
-        self.loss_accumulator += loss
-        if self.bottleneck_classification == True:
-            self.loss_accumulator_class += class_loss
-        self.loss_accumulator_d += 1.
         try: y = torch.round(y).int()
         except: pass
         self.update_metrics(
             self.test_metrics,pred_final,y,pred_class,y_class)
         return output_loss
         
-    def train_dataloader(self) -> torch.utils.data.DataLoader:
-        return self.training_dataloader_call()
-
     def configure_optimizers(self):
-        optimizer = torch.optim.AdamW(
+        optimizer = torch.optim.Adam(
             self.parameters(),lr=self.learning_rate,
             weight_decay=self.weight_decay)
-        lr_schedulers = torch.optim.lr_scheduler.CosineAnnealingLR(
-            optimizer,self.n_epochs)
+        lr_schedulers = PolynomialLRDecay(optimizer,self.n_epochs,1e-6,0.9)
 
         return {"optimizer":optimizer,
                 "lr_scheduler":lr_schedulers,
                 "monitor":"val_loss"}
-    
-    def on_validation_epoch_end(self):
-        sch = self.lr_schedulers().state_dict()
-        lr = self.learning_rate
-        last_lr = sch['_last_lr'][0] if '_last_lr' in sch else lr
-        self.log("lr",last_lr,prog_bar=True)
-
-    def setup_metrics(self):
-        if self.n_classes == 2:
-            C_1,C_2,A,M,I = 2,None,None,"micro",0
-        else:
-            C_1,C_2,A,M,I = [
-                self.n_classes,self.n_classes,"samplewise","macro",None]
-        self.train_metrics = torch.nn.ModuleDict({})
-        self.val_metrics = torch.nn.ModuleDict({})
-        self.test_metrics = torch.nn.ModuleDict({})
-        md = {"IoU":torchmetrics.JaccardIndex,
-              "Pr":torchmetrics.Precision,
-              "F1":torchmetrics.FBetaScore}
-        if self.bottleneck_classification == True:
-            md["cl:F1"] = torchmetrics.FBetaScore
-            md["cl:Re"] = torchmetrics.Recall
-        for k in md:
-            if k == "IoU":
-                m,C = "macro",C_1
-            else:
-                m,C = M,C_2
-            self.train_metrics[k] = md[k](
-                C,mdmc_average=A,average=m,ignore_index=I).to(self.device)
-            self.val_metrics["V_"+k] = md[k](
-                C,mdmc_average=A,average=m,ignore_index=I).to(self.device)
-            self.test_metrics["T_"+k] = md[k](
-                C,mdmc_average=A,average=m,ignore_index=I).to(self.device)
