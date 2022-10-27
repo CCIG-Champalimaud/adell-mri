@@ -49,7 +49,7 @@ def binary_cross_entropy(pred:torch.Tensor,
     target = torch.flatten(target,start_dim=1)
     a = weight*target*torch.log(pred+EPS)
     b = (1-target)*torch.log(1-pred+EPS)
-    return -torch.mean(a+b,dim=1)
+    return -torch.sum(a+b,dim=1)
 
 def binary_focal_loss(pred:torch.Tensor,
                       target:torch.Tensor,
@@ -81,11 +81,13 @@ def binary_focal_loss(pred:torch.Tensor,
     gamma = torch.as_tensor(gamma).type_as(pred)
 
     p = pt(pred,target,threshold)
+    w = torch.where(target>0,alpha*torch.ones_like(p),torch.ones_like(p))
     p = torch.flatten(p,start_dim=1)
+    w = torch.flatten(w,start_dim=1)
     bce = -torch.log(p+EPS)
     
-    x = alpha*((1-p+EPS)**gamma)
-    return torch.mean(x*bce,dim=-1)
+    x = w * ((1-p+EPS)**gamma)
+    return torch.sum(x*bce,dim=-1)
 
 def binary_focal_loss_(pred:torch.Tensor,
                        target:torch.Tensor,
@@ -124,7 +126,7 @@ def binary_focal_loss_(pred:torch.Tensor,
     alpha_factor = target_bin*alpha + (1-target_bin)*(1-alpha)
     modulating_factor = torch.pow(torch.abs(target - pred)+EPS,gamma)
     loss *= alpha_factor * modulating_factor
-    return loss.mean(1)
+    return loss.sum(1)
 
 def weighted_mse(pred:torch.Tensor,
                  target:torch.Tensor,
@@ -158,7 +160,7 @@ def weighted_mse(pred:torch.Tensor,
 def generalized_dice_loss(pred:torch.Tensor,
                           target:torch.Tensor,
                           weight:float=1.,
-                          smooth:float=1.)->torch.Tensor:
+                          smooth:float=0.)->torch.Tensor:
     """Dice loss adapted to cases of very high class imbalance. In essence
     it adds class weights to the calculation of the Dice loss [1]. If 
     `weights=1` it defaults to the regular Dice loss. This implementation 
@@ -181,8 +183,12 @@ def generalized_dice_loss(pred:torch.Tensor,
 
     if pred.shape != target.shape:
         target = classes_to_one_hot(target)
-    if isinstance(weight,torch.Tensor) == True:
         weight = unsqueeze_to_shape(weight,target.shape,1)
+    else:
+        weight = torch.where(
+            target>0.5,
+            torch.ones_like(target)*weight,
+            torch.ones_like(target))
     I = torch.flatten(weight*target*pred,start_dim=2).sum(-1).sum(-1)
     U = torch.flatten(weight*target+pred,start_dim=2).sum(-1).sum(-1)
     return 1. - 2.*(I+smooth)/(U+smooth)
@@ -231,7 +237,8 @@ def binary_focal_tversky_loss(pred:torch.Tensor,
 def combo_loss(pred:torch.Tensor,
                target:torch.Tensor,
                alpha:float=0.5,
-               beta:float=1)->torch.Tensor:
+               beta:float=1,
+               gamma:float=1.)->torch.Tensor:
     """Combo loss. Simply put, it is a weighted combination of the Dice loss
     and the weighted cross entropy [1]. `alpha` is the weight for each loss 
     and beta is the weight for the binary cross entropy.
@@ -242,19 +249,19 @@ def combo_loss(pred:torch.Tensor,
         pred (torch.Tensor): prediction probabilities.
         target (torch.Tensor): target class.
         alpha (float, optional): weight term for both losses. Binary cross 
-        entropy is scaled by `alpha` and the Dice score is scaled by 
-        `1-alpha`. Defaults to 0.5.
+            entropy is scaled by `alpha` and the Dice score is scaled by 
+            `1-alpha`. Defaults to 0.5.
         beta (float, optional): weight for the cross entropy. Defaults to 1.
 
     Returns:
-         torch.Tensor: a tensor with size equal to the batch size (first 
-        dimension of `pred`).
+        torch.Tensor: a tensor with size equal to the batch size (first 
+            dimension of `pred`).
     """
     alpha = torch.as_tensor(alpha).type_as(pred)
     beta = torch.as_tensor(beta).type_as(pred)
 
-    bdl = generalized_dice_loss(pred,target)
-    bce = binary_cross_entropy(pred,target,beta)
+    bdl = generalized_dice_loss(pred,target,beta)
+    bce = binary_focal_loss(pred,target,beta,gamma)
     return (alpha)*bce + (1-alpha)*bdl
 
 def hybrid_focal_loss(pred:torch.Tensor,
@@ -403,7 +410,7 @@ def cat_cross_entropy(pred:torch.Tensor,
         weight = unsqueeze_to_shape(weight,pred.shape,1)
     out = -target*torch.log(pred+EPS)
     out = torch.flatten(out*weight,start_dim=1)
-    return torch.mean(out,dim=1)
+    return torch.sum(out,dim=1)
 
 def mc_focal_loss(pred:torch.Tensor,
                   target:torch.Tensor,
@@ -436,7 +443,7 @@ def mc_focal_loss(pred:torch.Tensor,
     p = mc_pt(pred,target)
     ce = -target*torch.log(pred+EPS)
     out = torch.flatten(alpha*((1-p+EPS)**gamma)*ce,start_dim=1)
-    return torch.mean(out,dim=1)
+    return torch.sum(out,dim=1)
 
 def mc_focal_tversky_loss(pred:torch.Tensor,
                           target:torch.Tensor,
