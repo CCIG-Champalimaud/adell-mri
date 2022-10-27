@@ -57,6 +57,9 @@ if __name__ == "__main__":
     parser.add_argument(
         '--output_json',dest="output_json",required=True,
         help="Path for output JSON file")
+    parser.add_argument(
+        '--strict',dest="strict",action="store_true",
+        help="Only includes images with a corresponding mask")
     
     args = parser.parse_args()
 
@@ -78,8 +81,7 @@ if __name__ == "__main__":
                 class_dict_csv[identifier] = cl
     mask_paths = glob(os.path.join(args.mask_path,args.mask_pattern))
     for file_path in tqdm(all_paths[args.patterns[0]]):
-        image_id = file_path.split(os.sep)[-1]
-        image_id = re.match(args.id_pattern,image_id).group()
+        image_id = re.search(args.id_pattern,file_path).group()
         alt_file_paths = []
         for k in args.patterns[1:]:
             paths = all_paths[k]
@@ -87,14 +89,18 @@ if __name__ == "__main__":
                 if image_id in alt_path:
                     alt_file_paths.append(alt_path)
         mask_path = [p for p in mask_paths if image_id in p]
+        if len(mask_path) == 0 and args.strict == True:
+            continue
+        
+        bb_dict[image_id] = {
+            "image":file_path}
+        if len(alt_file_paths) > 0:
+            for i,p in enumerate(alt_file_paths):
+                bb_dict[image_id]["image_"+str(i+1)] = p
+
         if len(mask_path) > 0:
             mask_path = mask_path[0]
-            bb_dict[image_id] = {
-                "image":file_path,
-                args.mask_key:mask_path}
-            if len(alt_file_paths) > 0:
-                for i,p in enumerate(alt_file_paths):
-                    bb_dict[image_id]["image_"+str(i+1)] = p
+            bb_dict[image_id][args.mask_key] = mask_path
             bb_dict[image_id]["boxes"] = []
             bb_dict[image_id]["shape"] = ""
             bb_dict[image_id]["labels"] = []
