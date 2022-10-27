@@ -8,8 +8,9 @@ import torch.nn.functional as F
 import monai
 from glob import glob
 from itertools import product
+from collections import OrderedDict
 
-from typing import Dict,List,Tuple
+from typing import Dict,List,Tuple,Any
 from .modules.losses import *
 from .modules.layers import activation_factory
 from .types import *
@@ -144,19 +145,24 @@ def get_loss_param_dict(
         key refers to a loss function and each value is keyword dictionary for
         different losses. 
     """
+    def invert_weights(w):
+        if torch.any(w >= 1):
+            return torch.ones_like(w)
+        else:
+            return torch.ones_like(w) - w
     weights = torch.as_tensor(weights)
     gamma = torch.as_tensor(gamma)
     comb = torch.as_tensor(comb)
     
     loss_param_dict = {
         "cross_entropy":{"weight":weights},
-        "focal":{"alpha":weights,"gamma":gamma,"threshold":threshold},
+        "focal":{"alpha":weights,"gamma":gamma},
         "focal_alt":{"alpha":weights,"gamma":gamma},
         "dice":{"weight":weights},
         "tversky_focal":{
-            "alpha":weights,"beta":1-weights,"gamma":gamma},
+            "alpha":invert_weights(weights),"beta":weights,"gamma":gamma},
         "combo":{
-            "alpha":comb,"beta":weights},
+            "alpha":comb,"beta":weights,"gamma":gamma},
         "unified_focal":{
             "delta":weights,"gamma":gamma,
             "lam":comb,"threshold":threshold},
@@ -375,9 +381,25 @@ class PrintSumd(monai.transforms.Transform):
     """Convenience MONAI transform that prints the sum of elements in a 
     dictionary of tensors. Used for debugging.
     """
+    def __init__(self,prefix=""):
+        self.prefix = prefix
+
     def __call__(self,X):
         for k in X:
-            try: print(k,X[k].sum())
+            try: print(self.prefix,k,X[k].sum())
+            except: pass
+        return X
+    
+class PrintRanged(monai.transforms.Transform):
+    """Convenience MONAI transform that prints the sum of elements in a 
+    dictionary of tensors. Used for debugging.
+    """
+    def __init__(self,prefix=""):
+        self.prefix = prefix
+
+    def __call__(self,X):
+        for k in X:
+            try: print(self.prefix,k,X[k].min(),X[k].max())
             except: pass
         return X
 
@@ -1139,18 +1161,171 @@ class FastResample(monai.transforms.Transform):
                 self.ensure_tensor(X[k]),
                 size=output_shape.tolist(),mode=intp).squeeze(1)
         return X
+    
+class ExponentialMovingAverage(torch.nn.Module):
+    def __init__(self,decay:float,final_decay:float=None,n_steps=None):
+        """Exponential moving average for model weights. The weight-averaged
+        model is kept as `self.shadow` and each iteration of self.update leads
+        to weight updating. This implementation is heavily based on that 
+        available in https://www.zijianhu.com/post/pytorch/ema/.
 
-class PolynomialDecayRate(torch.optim.lr_scheduler._LRScheduler):
-    def __init__(self, optimizer, gamma, last_epoch, verbose=False):
-        self.gamma = gamma
-        super(PolynomialDecayRate, self).__init__(optimizer,last_epoch,verbose)
+        Essentially, self.update(model) is called, a shadow version of the 
+        model (i.e. self.shadow) is updated using the exponential moving 
+        average formula such that $v'=(1-decay)*(v_{shadow}-v)$, where
+        $v$ is the new parameter value, $v'$ is the updated value and 
+        $v_{shadow}$ is the exponential moving average value (i.e. the shadow).
 
-    def get_lr(self):
-        if self.last_epoch == 0:
-            return [group['lr'] for group in self.optimizer.param_groups]
-        return [group['lr'] * self.gamma
-                for group in self.optimizer.param_groups]
+        Args:
+            decay (float): decay for the exponential moving average.
+            final_decay (float, optional): final value for decay. Defaults to
+                None (same as initial decay).
+            n_steps (float, optional): number of updates until `decay` becomes
+                `final_decay` with linear scaling. Defaults to None.
+        """
+        super().__init__()
+        self.decay = decay
+        self.final_decay = final_decay
+        self.n_steps = n_steps
+        self.shadow = None
+        self.step = 0
 
-    def _get_closed_form_lr(self):
-        return [base_lr * self.gamma ** self.last_epoch
-                for base_lr in self.base_lrs]
+        if self.final_decay is None:
+            self.final_decay = self.decay
+        self.slope = (self.final_decay - self.decay)/self.n_steps
+        self.intercept = self.decay
+
+    def set_requires_grad_false(self,model):
+        for k,p in model.named_parameters():
+            if p.requires_grad == True:
+                p.requires_grad = False
+
+    @torch.no_grad()
+    def update(self,model:torch.nn.Module):
+        if self.shadow is None:
+            # this effectively skips the first epoch
+            self.shadow = deepcopy(model)
+            self.shadow.training = False
+            self.set_requires_grad_false(self.shadow)
+        else:
+            model_params = OrderedDict(model.named_parameters())
+            shadow_params = OrderedDict(self.shadow.named_parameters())
+
+            shadow_params_keys = list(shadow_params.keys())
+
+            different_params = set.difference(
+                set(shadow_params_keys),
+                set(model_params.keys()))
+            assert len(different_params) == 0
+
+            for name, param in model_params.items():
+                if 'shadow' not in name:
+                    shadow_params[name].sub_(
+                       (1.-self.decay) * (shadow_params[name]-param))
+            
+            self.decay = self.step*self.slope + self.intercept
+            self.step += 1
+
+class ExposeTransformKeyd(monai.transforms.Transform):
+    def __init__(self,
+                 transform_key: str,
+                 transform_class: str,
+                 nested_pattern: List[str],
+                 output_key: str=None):
+        self.transform_key = transform_key
+        self.transform_class = transform_class
+        self.nested_pattern = nested_pattern
+        self.output_key = output_key
+    
+    def __call__(self,X):
+        if self.output_key is None:
+            self.output_key = self.nested_pattern[-1]
+        for t in X[self.transform_key]:
+            if t["class"] == self.transform_class:
+                curr = t
+                for k in self.nested_pattern:
+                    curr = curr[k]
+                X[self.output_key] = curr
+        return X
+    
+class Dropout(monai.transforms.Transform):
+    def __init__(self,
+                 channel:int,
+                 dim:int=0):
+        self.channel = channel
+        self.dim = dim
+
+    def __call__(self,X):
+        keep_idx = torch.ones(X.shape[self.dim]).to(X.device)
+        keep_idx[self.channel] = 0.
+        reshape_sh = torch.ones(len(X.shape))
+        reshape_sh[self.dim] = -1
+        keep_idx = keep_idx.reshape(reshape_sh)
+        return X * keep_idx
+    
+class Dropoutd(monai.transforms.Transform):
+    def __init__(self,
+                 keys:Union[str,List[str]],
+                 channel:Union[int,List[int]],
+                 dim:Union[int,List[int]]=0):
+        self.keys = keys
+        self.channel = channel
+        self.dim = dim
+        
+        if isinstance(self.channel,int):
+            self.channel = [self.channel for _ in self.keys]
+
+        if isinstance(self.dim,int):
+            self.dim = [self.dim for _ in self.keys]
+            
+        self.transforms = {}
+        for k,c,d in zip(self.keys,self.channel,self.dim):
+            self.transforms[k] = Dropout(c,d)
+
+    def __call__(self,X):
+        for k in zip(self.keys):
+            X = self.transforms[k](X[k])
+        return X
+    
+class RandomDropout(monai.transforms.RandomizableTransform):
+    def __init__(self,
+                 dim:int=0,
+                 prob:float=0.1):
+        super().__init__(self, prob)
+        self.prob = prob
+        self.dim = dim
+
+    def randomize(self,data:Optional[Any]=None) -> None:
+        super().randomize(None)
+        if not self._do_transform:
+            return None
+        self.channel = self.R.uniform(low=0,high=1)
+
+    def __call__(self,img:torch.Tensor,randomize:bool=True):
+        if randomize:
+            self.randomize()
+        if not self._do_transform:
+            return img
+        return Dropout(int(self.channel*img.shape[self.dim]),
+                       self.dim)(img)
+        
+class RandomDropout(monai.transforms.RandomizableTransform):
+    def __init__(self,
+                 keys:Union[str,List[str]],
+                 dim:Union[int,List[int]]=0,
+                 prob:float=0.1):
+        super().__init__(self, prob)
+        self.keys = keys
+        self.dim = dim
+        self.prob = prob
+
+        if isinstance(self.dim,int):
+            self.dim = [self.dim for _ in self.keys]
+            
+        self.transforms = {}
+        for k,d in zip(self.keys,self.dim):
+            self.transforms[k] = RandomDropout(d,self.prob)
+
+    def __call__(self,X):
+        for k in zip(self.keys):
+            X = self.transforms[k](X[k])
+        return X
