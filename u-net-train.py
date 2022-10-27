@@ -1,11 +1,14 @@
 import argparse
 import random
 import json
+import os
 import numpy as np
 import torch
 import monai
 import wandb
+from copy import deepcopy
 from sklearn.model_selection import KFold,train_test_split
+from tqdm import tqdm
 
 from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import EarlyStopping,StochasticWeightAveraging
@@ -22,10 +25,18 @@ from lib.utils import (
     CombineBinaryLabelsd,
     ConditionalRescalingd,
     PrintShaped,
+    PrintRanged,
     safe_collate)
 from lib.modules.layers import ResNet
 from lib.modules.segmentation_pl import UNetPL,UNetPlusPlusPL
 from lib.modules.config_parsing import parse_config_unet,parse_config_ssl
+
+torch.backends.cudnn.benchmark = True
+
+def if_none_else(x,obj):
+    if x is None:
+        return obj
+    return x
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -124,13 +135,20 @@ if __name__ == "__main__":
         '--res_checkpoint',dest='res_checkpoint',action="store",default=None,
         help="Checkpoint for SSL backbone (if --res_config_file is specified.")
     parser.add_argument(
-        '--from_checkpoint',dest='from_checkpoint',action="store",
-        help="Uses this checkpoint as a starting point for the network")
+        '--from_checkpoint',dest='from_checkpoint',action="store",nargs="+",
+        default=None,
+        help="Uses this space-separated list of checkpoints as a starting\
+            points for the network at each fold. If no checkpoint is provided\
+            for a given fold, the network is initialized randomly.")
+    parser.add_argument(
+        '--resume_from_last',dest='resume_from_last',action="store_true",
+        default=None,
+        help="Resumes from the last checkpoint stored for a given fold.")
     
     # training
     parser.add_argument(
         '--dev',dest='dev',type=str,
-        help="Device for PyTorch training",choices=["cuda","cpu"])
+        help="Device for PyTorch training")
     parser.add_argument(
         '--seed',dest='seed',help="Random seed",default=42,type=int)
     parser.add_argument(
@@ -153,8 +171,15 @@ if __name__ == "__main__":
         '--loss_comb',dest="loss_comb",
         help="Relative weight for combined losses",default=0.5,type=float)
     parser.add_argument(
+        '--learning_rate',dest="learning_rate",
+        help="Learning rate (overrides the lr specified in network_config)",
+        default=None,type=float)
+    parser.add_argument(
         '--max_epochs',dest="max_epochs",
         help="Maximum number of training epochs",default=100,type=int)
+    parser.add_argument(
+        '--precision',dest='precision',type=str,default="32",
+        help="Floating point precision",choices=["16","32","bf16"])
     parser.add_argument(
         '--n_folds',dest="n_folds",
         help="Number of validation folds",default=5,type=int)
@@ -162,8 +187,16 @@ if __name__ == "__main__":
         '--folds',dest="folds",
         help="Specifies the comma separated IDs for each fold (overrides\
             n_folds)",
-        default=None,
-        type=str,nargs='+')
+        default=None,type=str,nargs='+')
+    parser.add_argument(
+        '--use_val_as_train_val',dest='use_val_as_train_val',action="store_true",
+        help="Use validation set as training validation set.",default=False)
+    parser.add_argument(
+        '--check_val_every_n_epoch',dest='check_val_every_n_epoch',type=int,
+        default=1,help="Epoch frequency of validation.")
+    parser.add_argument(
+        '--accumulate_grad_batches',dest='accumulate_grad_batches',type=int,
+        default=1,help="Accumulate batches to calculate gradients.")
     parser.add_argument(
         '--checkpoint_dir',dest='checkpoint_dir',type=str,default="models",
         help='Path to directory where checkpoints will be saved.')
@@ -189,11 +222,8 @@ if __name__ == "__main__":
         '--swa',dest='swa',action="store_true",
         help="Use stochastic gradient averaging.",default=False)
     parser.add_argument(
-        '--class_weights',dest='class_weights',type=float,nargs='+',
+        '--class_weights',dest='class_weights',type=str,nargs='+',
         help="Class weights (by alphanumeric order).",default=1.)
-    parser.add_argument(
-        '--dropout_param',dest='dropout_param',type=float,
-        help="Parameter for dropout.",default=0.1)
 
     args = parser.parse_args()
 
@@ -210,37 +240,35 @@ if __name__ == "__main__":
 
     keys = args.image_keys
     label_keys = args.mask_keys
-
-    if args.mask_image_keys is None: args.mask_image_keys = []
-    if args.adc_image_keys is None: args.adc_image_keys = []
-    if args.skip_key is None: args.skip_key = []
-    if args.skip_mask_key is None: args.skip_mask_key = []
-    if args.resize_keys is None: args.resize_keys = []
-    if args.feature_keys is None: args.feature_keys = []
     
-    aux_keys = args.skip_key
-    aux_mask_keys = args.skip_mask_key
+    mask_image_keys = if_none_else(args.mask_image_keys,[])
+    adc_image_keys = if_none_else(args.adc_image_keys,[])
+    aux_keys = if_none_else(args.skip_key,[])
+    aux_mask_keys = if_none_else(args.skip_mask_key,[])
+    resize_keys = if_none_else(args.resize_keys,[])
+    feature_keys = if_none_else(args.feature_keys,[])
+    
     all_aux_keys = aux_keys + aux_mask_keys
     if len(all_aux_keys) > 0:
         aux_key_net = "aux_key"
     else:
         aux_key_net = None
-    if len(args.feature_keys) > 0:
+    if len(feature_keys) > 0:
         feature_key_net = "tabular_features"
     else:
         feature_key_net = None
 
-    args.adc_image_keys = [k for k in args.adc_image_keys if k in keys]
+    adc_image_keys = [k for k in adc_image_keys if k in keys]
     intp = []
     intp_resampling_augmentations = []
     for k in keys:
-        if k in args.mask_image_keys:
+        if k in mask_image_keys:
             intp.append("nearest")
             intp_resampling_augmentations.append("nearest")
         else:
             intp.append("area")
             intp_resampling_augmentations.append("bilinear")
-    non_adc_keys = [k for k in keys if k not in args.adc_image_keys]
+    non_adc_keys = [k for k in keys if k not in adc_image_keys]
     intp.extend(["nearest"]*len(label_keys))
     intp.extend(["area"]*len(aux_keys))
     intp.extend(["nearest"]*len(aux_mask_keys))
@@ -248,7 +276,7 @@ if __name__ == "__main__":
     intp_resampling_augmentations.extend(["bilinear"]*len(aux_keys))
     intp_resampling_augmentations.extend(["nearest"]*len(aux_mask_keys))
     all_keys = [*keys,*label_keys,*aux_keys,*aux_mask_keys]
-    all_keys_t = [*all_keys,*args.feature_keys]
+    all_keys_t = [*all_keys,*feature_keys]
     if args.input_size is not None:
         args.input_size = [round(x) for x in args.input_size]
 
@@ -257,7 +285,7 @@ if __name__ == "__main__":
         k:data_dict[k] for k in data_dict
         if len(set.intersection(set(data_dict[k]),
                                 set(all_keys_t))) == len(all_keys_t)}
-    for kk in args.feature_keys:
+    for kk in feature_keys:
         data_dict = {
             k:data_dict[k] for k in data_dict
             if np.isnan(data_dict[k][kk]) == False}
@@ -270,8 +298,9 @@ if __name__ == "__main__":
 
     network_config,loss_key = parse_config_unet(
         args.config_file,len(keys),n_classes)
-
-    print("Setting up transforms...")
+    if args.learning_rate is not None:
+        network_config["learning_rate"] = args.learning_rate
+    
     def get_transforms(x,label_mode=None):
         if args.target_spacing is not None:
             rs = [
@@ -284,17 +313,17 @@ if __name__ == "__main__":
         if len(non_adc_keys) > 0:
             scaling_ops.append(
                 monai.transforms.ScaleIntensityd(non_adc_keys,0,1))
-        if len(args.adc_image_keys) > 0:
+        if len(adc_image_keys) > 0:
             scaling_ops.append(
-                ConditionalRescalingd(args.adc_image_keys,1000,0.001))
+                ConditionalRescalingd(adc_image_keys,1000,0.001))
             scaling_ops.append(
                 monai.transforms.ScaleIntensityd(
-                    args.adc_image_keys,None,None,1-args.adc_factor))
-        if args.input_size is not None and len(args.resize_keys) > 0:
+                    adc_image_keys,None,None,-(1-args.adc_factor)))
+        if args.input_size is not None and len(resize_keys) > 0:
             intp_ = [k for k,kk in zip(intp,all_keys) 
-                     if kk in args.resize_keys]
+                     if kk in resize_keys]
             resize = [monai.transforms.Resized(
-                args.resize_keys,tuple(args.input_size),mode=intp_)]
+                resize_keys,tuple(args.input_size),mode=intp_)]
         else:
             resize = []
         if args.crop_size is not None:
@@ -309,11 +338,11 @@ if __name__ == "__main__":
 
         if x == "pre":
             return [
-                monai.transforms.LoadImaged(all_keys),
-                monai.transforms.AddChanneld(all_keys),
+                monai.transforms.LoadImaged(
+                    all_keys,ensure_channel_first=True),
                 monai.transforms.Orientationd(all_keys,"RAS"),
-                *scaling_ops,
                 *rs,
+                *scaling_ops,
                 *resize,
                 *crop_op,
                 monai.transforms.EnsureTyped(all_keys),
@@ -327,15 +356,15 @@ if __name__ == "__main__":
                     all_aux_keys,aux_key_net)]
             else:
                 aux_concat = []
-            if len(args.feature_keys) > 0:
+            if len(feature_keys) > 0:
                 feature_concat = [
                     monai.transforms.EnsureTyped(
-                        args.feature_keys,dtype=np.float32),
+                        feature_keys,dtype=np.float32),
                     monai.transforms.Lambdad(
-                        args.feature_keys,
+                        feature_keys,
                         func=lambda x:np.reshape(x,[1])),
                     monai.transforms.ConcatItemsd(
-                        args.feature_keys,feature_key_net)]
+                        feature_keys,feature_key_net)]
             else:
                 feature_concat = []
             return [
@@ -347,16 +376,21 @@ if __name__ == "__main__":
     def get_augmentations(augment):
         if augment == True:
             return [
+                monai.transforms.RandBiasFieldd(keys,degree=2,prob=0.1),
+                monai.transforms.RandAdjustContrastd(keys,prob=0.25),
                 monai.transforms.RandRicianNoised(
-                    keys,std=0.1,prob=0.5),
+                    keys,std=0.05,prob=0.25),
                 monai.transforms.RandGibbsNoised(
-                    keys,prob=0.5,alpha=(0.2,0.8)),
+                    keys,alpha=(0.0,0.6),prob=0.25),
+                monai.transforms.RandGaussianSmoothd(keys,prob=0.25),
                 monai.transforms.RandAffined(
                     all_keys,
                     scale_range=[0.1,0.1,0.1],
                     rotate_range=[np.pi/8,np.pi/8,np.pi/16],
                     translate_range=[10,10,1],
-                    prob=0.5,mode=intp_resampling_augmentations),
+                    shear_range=((0.9,1.1),(0.9,1.1),(0.9,1.1)),
+                    prob=0.5,mode=intp_resampling_augmentations,
+                    padding_mode="zeros"),
                 monai.transforms.RandFlipd(
                     all_keys,prob=0.5,spatial_axis=[0,1,2])]
         else:
@@ -429,8 +463,49 @@ if __name__ == "__main__":
 
     output_file = open(args.metric_path,'w')
     for val_fold in range(args.n_folds):
+        print("="*80)
+        print("Starting fold={}".format(val_fold))
+        callbacks = []
+
+        ckpt_path = None
+
+        if args.checkpoint_name is not None:
+            ckpt_name = args.checkpoint_name + "_fold" + str(val_fold)
+            ckpt_name = ckpt_name + "_best"
+            ckpt_callback = ModelCheckpoint(
+                dirpath=args.checkpoint_dir,
+                filename=ckpt_name,monitor="val_loss",
+                save_last=True,save_top_k=1,mode="min")
+            ckpt_last = \
+                args.checkpoint_name + "_fold" + str(val_fold) + "_last"
+            ckpt_callback.CHECKPOINT_NAME_LAST = ckpt_last
+            ckpt_last_full = os.path.join(
+                args.checkpoint_dir,ckpt_last+'.ckpt')
+            if os.path.exists(ckpt_last_full) and args.resume_from_last == True:
+                ckpt_path = ckpt_last_full
+                epoch = torch.load(ckpt_path)["epoch"]
+                if epoch >= (args.max_epochs-1):
+                    print("Training has finished for this fold, skipping")
+                    continue
+                else:
+                    print("Resuming training from checkpoint in {} (epoch={})".format(
+                        ckpt_path,epoch))
+            callbacks.append(ckpt_callback)
+
+            ckpt = True
+        else:
+            ckpt = False
+
+        if args.from_checkpoint is not None:
+            if len(args.from_checkpoint) >= (val_fold+1):
+                ckpt_path = args.from_checkpoint[val_fold]
+                print("Resuming training from checkpoint in {}".format(ckpt_path))
+
         train_idxs,val_idxs = next(fold_generator)
-        train_idxs,train_val_idxs = train_test_split(train_idxs,test_size=0.2)
+        if args.use_val_as_train_val == False:
+            train_idxs,train_val_idxs = train_test_split(train_idxs,test_size=0.15)
+        else:
+            train_val_idxs = val_idxs
         if args.pre_load == False:
             train_pids = [all_pids[i] for i in train_idxs]
             train_val_pids = [all_pids[i] for i in train_val_idxs]
@@ -466,9 +541,9 @@ if __name__ == "__main__":
                 monai.transforms.Compose(transforms_val))
 
         # calculate the mean/std of tabular features
-        if args.feature_keys is not None:
+        if feature_keys is not None:
             all_params = {"mean":[],"std":[]}
-            for kk in args.feature_keys:
+            for kk in feature_keys:
                 f = np.array([x[kk] for x in train_list])
                 all_params["mean"].append(np.mean(f))
                 all_params["std"].append(np.std(f))
@@ -479,28 +554,40 @@ if __name__ == "__main__":
         else:
             all_params = None
             
+        # include some constant label images
+        sampler = None
+        if args.constant_ratio is not None or args.class_weights[0] == "adaptive":
+            cl = []
+            with tqdm(train_list) as t:
+                t.set_description("Setting up partially random sampler")
+                for x in t:
+                    masks = monai.transforms.LoadImaged(keys=label_keys)(x)
+                    total = []
+                    for k in label_keys:
+                        for u in np.unique(masks[k]):
+                            if u not in total:
+                                total.append(u)
+                    if len(total) > 1:
+                        cl.append(1)
+                    else:
+                        cl.append(0)
+            adaptive_weights = len(cl)/np.sum(cl)
+            if args.constant_ratio is not None:
+                sampler = PartiallyRandomSampler(
+                    cl,non_keep_ratio=args.constant_ratio,seed=args.seed)
+
         # weights to tensor
-        weights = torch.as_tensor(
-            np.array(args.class_weights),dtype=torch.float32,
-            device=args.dev)
+        if args.class_weights[0] != "adaptive":
+            weights = torch.as_tensor(
+                np.float32(np.array(args.class_weights)),dtype=torch.float32,
+                device=args.dev)
+        else:
+            weights = adaptive_weights
         
         # get loss function parameters
         loss_params = get_loss_param_dict(
             weights=weights,gamma=args.loss_gamma,
             comb=args.loss_comb)[loss_key]
-
-        # include some constant label images
-        if args.constant_ratio is not None:
-            cl = []
-            for x in train_dataset:
-                if len(np.unique(x["mask"])) > 1:
-                    cl.append(1)
-                else:
-                    cl.append(0)
-            sampler = PartiallyRandomSampler(
-                cl,non_keep_ratio=args.constant_ratio,seed=args.seed)
-        else:
-            sampler = None
 
         def train_loader_call(): 
             return monai.data.ThreadDataLoader(
@@ -519,7 +606,6 @@ if __name__ == "__main__":
             shuffle=False,num_workers=args.n_workers,generator=g,
             collate_fn=collate_fn,persistent_workers=True)
 
-        print("Setting up training...")
         if args.res_config_file is not None:
             _,network_config_ssl = parse_config_ssl(
                 args.res_config_file,0.,len(keys),network_config["batch_size"])
@@ -560,7 +646,7 @@ if __name__ == "__main__":
                 bottleneck_classification=args.bottleneck_classification,
                 skip_conditioning=len(all_aux_keys),
                 skip_conditioning_key=aux_key_net,
-                feature_conditioning=len(args.feature_keys),
+                feature_conditioning=len(feature_keys),
                 feature_conditioning_params=all_params,
                 feature_conditioning_key=feature_key_net,
                 n_epochs=args.max_epochs,
@@ -574,20 +660,13 @@ if __name__ == "__main__":
                 bottleneck_classification=args.bottleneck_classification,
                 skip_conditioning=len(all_aux_keys),
                 skip_conditioning_key=aux_key_net,
-                feature_conditioning=len(args.feature_keys),
+                feature_conditioning=len(feature_keys),
                 feature_conditioning_params=all_params,
                 feature_conditioning_key=feature_key_net,
                 deep_supervision=args.deep_supervision,
                 n_epochs=args.max_epochs,
                 **network_config)
-
-        if args.from_checkpoint is not None:
-            state_dict = torch.load(
-                args.from_checkpoint,map_location=args.dev)['state_dict']
-            inc = unet.load_state_dict(state_dict)
         
-        callbacks = []
-
         if args.early_stopping is not None:
             early_stopping = EarlyStopping(
                 'val_loss',patience=args.early_stopping,
@@ -596,37 +675,31 @@ if __name__ == "__main__":
         if args.swa == True:
             swa_callback = StochasticWeightAveraging()
             callbacks.append(swa_callback)
-
-        if args.checkpoint_name is not None:
-            ckpt_name = args.checkpoint_name + "_fold" + str(val_fold)
-            ckpt_name = ckpt_name + "_{epoch:03d}"
-            ckpt_name = ckpt_name + "_{val_loss:.3f}"
-            ckpt_callback = ModelCheckpoint(
-                dirpath=args.checkpoint_dir,
-                filename=ckpt_name,monitor="val_loss",
-                save_last=True,save_top_k=1,mode="min")
-            ckpt_callback.CHECKPOINT_NAME_LAST = \
-                args.checkpoint_name + "_fold" + str(val_fold) + "_last"
-            callbacks.append(ckpt_callback)
-            ckpt = True
-        else:
-            ckpt = False
-        
+                
         if args.summary_name is not None and args.project_name is not None:
             wandb.finish()
             run_name = args.summary_name.replace(':','_') + "_fold_{}".format(val_fold)
             logger = WandbLogger(
                 save_dir=args.summary_dir,project=args.project_name,
-                name=run_name,version=run_name,reinit=True)
+                name=run_name,version=run_name,reinit=True,resume="allow")
         else:
             logger = None
 
+        # correctly assign devices
+        if ":" in args.dev:
+            devices = args.dev.split(":")[-1].split(",")
+            devices = [int(i) for i in devices]
+        else:
+            devices = args.n_devices
+
         trainer = Trainer(
-            accelerator="gpu" if args.dev=="cuda" else "cpu",
-            devices=args.n_devices,logger=logger,callbacks=callbacks,
+            accelerator="gpu" if "cuda" in args.dev else "cpu",
+            devices=devices,logger=logger,callbacks=callbacks,
             strategy='ddp' if args.n_devices > 1 else None,
             max_epochs=args.max_epochs,enable_checkpointing=ckpt,
-            check_val_every_n_epoch=1,log_every_n_steps=10)
+            accumulate_grad_batches=3,resume_from_checkpoint=ckpt_path,
+            check_val_every_n_epoch=args.check_val_every_n_epoch,
+            log_every_n_steps=10,precision=args.precision)
 
         trainer.fit(unet,train_loader,train_val_loader)
         
@@ -648,3 +721,4 @@ if __name__ == "__main__":
                     x = "{},{},{},{}".format(k,val_fold,i,v)
                     output_file.write(x+'\n')
                     print(x)
+        print("="*80)
