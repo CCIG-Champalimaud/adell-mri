@@ -31,12 +31,12 @@ class CatNet(torch.nn.Module):
                  spatial_dimensions: int=3,
                  n_channels: int=1,
                  n_classes: int=2,
-                 dev: str="cuda",
                  feature_extraction: torch.nn.Module=None,
                  resnet_structure: List[Tuple[int,int,int,int]]=resnet_default,
                  maxpool_structure: List[Tuple[int,int,int]]=maxpool_default,
                  adn_fn: torch.nn.Module=None,
-                 res_type: str="resnet"):
+                 res_type: str="resnet",
+                 batch_ensemble: bool=False):
         """Case class for standard categorical classification. Defaults to 
         feature extraction using ResNet.
 
@@ -46,8 +46,6 @@ class CatNet(torch.nn.Module):
             n_channels (int, optional): number of input channels. Defaults to 
                 1.
             n_classes (int, optional): number of classes. Defaults to 2.
-            dev (str, optional): device for memory allocation. Defaults to 
-                "cuda".
             feature_extraction (torch.nn.Module, optional): module to use for
                 feature extraction. Defaults to None (builds a ResNet using
                 `resnet_structure` and `maxpool_structure`).
@@ -67,6 +65,8 @@ class CatNet(torch.nn.Module):
                 Defaults to None (batch normalization).
             res_type (str, optional): type of residual operation, can be either
                 "resnet" or "resnext". Defaults to "resnet".
+            batch_ensemble (bool, optional): uses batch ensemble layers. 
+                Defaults to False.
         """
         super().__init__()
         self.spatial_dim = spatial_dimensions
@@ -77,7 +77,7 @@ class CatNet(torch.nn.Module):
         self.maxpool_structure = maxpool_structure
         self.adn_fn = adn_fn
         self.res_type = res_type
-        self.dev = dev
+        self.batch_ensemble = batch_ensemble
 
         if self.adn_fn is None:
             if self.spatial_dim == 2:
@@ -87,6 +87,7 @@ class CatNet(torch.nn.Module):
                 self.adn_fn = lambda s:ActDropNorm(
                     s,norm_fn=torch.nn.BatchNorm3d)
 
+    def __post_init__(self):
         self.init_layers()
         self.init_classification_layer()
 
@@ -95,13 +96,13 @@ class CatNet(torch.nn.Module):
             self.res_net = ResNetBackbone(
                 self.spatial_dim,self.in_channels,self.resnet_structure,
                 adn_fn=self.adn_fn,maxpool_structure=self.maxpool_structure,
-                res_type=self.res_type)
+                res_type=self.res_type,batch_ensemble=self.batch_ensemble)
             self.feature_extraction = self.res_net
             self.last_size = self.resnet_structure[-1][0]
         else:
             input_shape = [2,self.in_channels,128,128]
             if self.spatial_dim == 3:
-                input_shape.append(64)
+                input_shape.append(32)
             example_tensor = torch.ones(input_shape)
             self.last_size = self.feature_extraction(example_tensor).shape[1]
 
@@ -117,6 +118,10 @@ class CatNet(torch.nn.Module):
             torch.nn.Linear(self.last_size,self.last_size),
             torch.nn.ReLU(),
             torch.nn.Linear(self.last_size,final_n))
+        if self.batch_ensemble > 0:
+            self.classification_layer = BatchEnsembleWrapper(
+                self.classification_layer,self.batch_ensemble,self.last_size,
+                final_n,torch.nn.Identity)
     
     def forward(self,X:torch.Tensor)->torch.Tensor:
         features = self.feature_extraction(X)
@@ -239,3 +244,84 @@ class SegCatNet(torch.nn.Module):
         times['e'] = time.time()
         
         return classification
+
+class EnsembleNet(torch.nn.Module):
+    def __init__(self,
+                 cat_net_args:Union[Dict[str,int],List[Dict[str,int]]]):
+        """Creates an ensemble of networks which can be trained online. The 
+        input of each network can be different and the forward method supports
+        predictions with missing data (as the average of all networks)
+
+        Args:
+            cat_net_args (Union[Dict[str,int],List[Dict[str,int]]], optional): _description_. Defaults to .
+        """
+        super().__init__()
+        self.cat_net_args = cat_net_args
+        
+        self.coerce_cat_net_args_if_necessary()
+        self.check_args()
+        self.init_networks()
+        self.define_final_activation()
+
+    def check_args(self):
+        n_classes = []
+        for d in self.cat_net_args_:
+            for k in d:
+                if k == "n_classes":
+                    n_classes.append(d[k])
+        unique_classes = np.unique(n_classes)
+        if len(unique_classes) != 1:
+            raise Exception("Classes should be identical across CatNets")
+        elif unique_classes[0] == 1:
+            raise Exception("n_classes == 1 not supported. If the problem is \
+                binary set n_classes == 2")
+        else:
+            self.n_classes_ = unique_classes[0]
+
+    def coerce_cat_net_args_if_necessary(self):
+        # coerce cat_net_args if necessary
+        if isinstance(self.cat_net_args,dict):
+            self.cat_net_args_ = [self.input_structure]
+        elif isinstance(self.cat_net_args,list):
+            self.cat_net_args_ = self.cat_net_args
+        else:
+            raise TypeError("cat_net_args must be dict or list of dicts")
+
+    def init_networks(self):
+        self.networks = torch.nn.ModuleList([])
+        for c_n_a in zip(self.cat_net_args_):
+            self.networks.append(CatNet(**c_n_a))
+            
+    def define_final_activation(self):
+        if self.n_classes_ == 2:
+            self.final_activation = torch.nn.Sigmoid()
+        else:
+            self.final_activation = torch.nn.Softmax(self.n_classes_,1)
+        
+    def forward(self,X:List[torch.Tensor]):
+        predictions = []
+        for n,x in zip(self.networks,X):
+            if x is not None:
+                predictions.append(self.final_activation(n(x)))
+        return sum(predictions) / len(predictions)
+
+class BatchEnsembleNet(CatNet):
+    """Creates an ensemble network whose method of ensemble is through
+    batch ensembling (linear transforms to the input and output of its 
+    layers). Compared to EnsembleNet this trains only a small fraction of
+    the weights while still working *approximately* as an ensemble method.
+    """
+    
+    def __post_init__(self):
+        assert self.batch_ensemble > 0,"batch_ensemble has to be > 0"
+        self.init_layers()
+        self.init_classification_layer()
+
+    def forward(self,X:List[torch.Tensor]):
+        predictions = []
+        for i,x in enumerate(X):
+            if x is not None:
+                features = self.feature_extraction(X,i)
+                classification = self.classification_layer(features,i)
+                predictions.append(classification)
+        return sum(predictions) / len(predictions)

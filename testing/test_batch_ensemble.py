@@ -3,14 +3,14 @@ import os
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 
 import torch
-from lib.modules.layers import BatchEnsemble,get_adn_fn
+from lib.modules.layers import BatchEnsemble, BatchEnsembleWrapper,get_adn_fn
 
 c,h,w,d = [16,32,32,16]
 adn_fn = {0:get_adn_fn(1),
           1:get_adn_fn(1),
           2:get_adn_fn(2),
           3:get_adn_fn(3)}
-n = 5
+n = 10
 out_channels = 16
 
 op_kwargs_0d = {}
@@ -72,3 +72,50 @@ def test_3d():
     D.training = False
     out = D(input_tensor)
     assert list(out.shape) == size, "testing forward failed"
+
+def test_3d_red():
+    op_kwargs = {"kernel_size":3}
+    i = 3
+    size = size_list[0:(i+2)]
+    D = BatchEnsemble(i,n,c,out_channels,adn_fn[i],op_kwargs,res_blocks=True)
+    input_tensor = torch.rand(size=size)
+    out = D(input_tensor)
+    assert list(out.shape) == size, "normal forward failed"
+    out = D(input_tensor,1)
+    assert list(out.shape) == size, "indexed forward failed"
+    D.training = False
+    out = D(input_tensor)
+    assert list(out.shape) == size, "testing forward failed"
+
+def test_3d_wrapper():
+    i = 3
+    size = size_list[0:(i+2)]
+    mod = torch.nn.Conv3d(c,out_channels,3,padding="same")
+    D = BatchEnsembleWrapper(
+        mod,n,c,out_channels,adn_fn[i])
+    input_tensor = torch.rand(size=size)
+    out = D(input_tensor)
+    assert list(out.shape) == size, "normal forward failed"
+    out = D(input_tensor,1)
+    assert list(out.shape) == size, "indexed forward failed"
+    D.training = False
+    out = D(input_tensor)
+    assert list(out.shape) == size, "testing forward failed"
+    
+def test_3d_wrapper_with_idx_list():
+    i = 3
+    size = size_list[0:(i+2)]
+    mod = torch.nn.Conv3d(c,out_channels,3,padding="same")
+    D = BatchEnsembleWrapper(
+        mod,n,c,out_channels,adn_fn[i])
+    input_tensor = torch.rand(size=size)
+    out = D(input_tensor)
+    assert list(out.shape) == size, "normal forward failed"
+    out = D(input_tensor,1)
+    assert list(out.shape) == size, "indexed forward failed"
+    out = D(input_tensor,[0,1])
+    assert list(out.shape) == size, "indexed forward failed"
+    D.training = False
+    out = D(input_tensor)
+    assert list(out.shape) == size, "testing forward failed"
+
