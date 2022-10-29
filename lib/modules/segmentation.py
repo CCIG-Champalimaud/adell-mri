@@ -827,9 +827,31 @@ class BrUNet(UNet,torch.nn.Module):
                     [ConcurrentSqueezeAndExcite3d(d)
                      for _ in range(self.n_input_branches)])
                 for d in self.depth])
-        
+    
+    @staticmethod
+    def fix_input(X:List[List[torch.Tensor]]):
+        shapes = [[] for _ in X]
+        for i,l in enumerate(X):
+            for x in l:
+                if x is not None:
+                    shapes[i].append(x.shape)
+        shapes = [list(set(sh)) for sh in shapes]
+        assert all(
+            [len(sh) == 1 
+             for sh in shapes]),"all tensors must have the same shape"
+        shapes = [sh[0] for sh in shapes]
+        weights = [torch.ones(len(X[0])) for _ in X]
+        for i in range(len(X)):
+            for j in range(len(X[i])):
+                if X[i][j] is None:
+                    X[i][j] = torch.zeros(shapes[i])
+                    weights[i][j] = 0.
+        X = [torch.stack(x,0) for x in X]
+        return X,weights
+    
     def forward(self,
                 X:List[torch.Tensor],
+                X_weights:List[torch.Tensor],
                 X_skip_layer:torch.Tensor=None,
                 X_feature_conditioning:torch.Tensor=None,
                 return_features=False,
@@ -837,17 +859,20 @@ class BrUNet(UNet,torch.nn.Module):
         """Forward pass for this class.
 
         Args:
-            X (List[torch.Tensor]): list of tensors. If one of them is none
-                then this tensor is excluded from the computation.
+            X (List[torch.Tensor]): list of tensors.
+            X_weights (List[torch.Tensor]): should be the same size as X and 
+                each element of X_weights should have size b, where b is the
+                batch size of each element of X.
 
         Returns:
             torch.Tensor
         """
-        are_none = [x is None for x in X]
-        assert all(are_none) == False,"one of the inputs should has to be not None"
+        assert len(X) == len(X_weights),"X and X_weights should have identical length"
+        assert all([x.shape[0] == xw.shape[0] for x,xw in zip(X,X_weights)]),\
+            "The elements of X and X_weights should have identical batch sizes"
         # check if channel dim is available and if not include it 
         if X_skip_layer is not None:
-            if len(X_skip_layer.shape) < len(X[np.argmin(are_none)].shape):
+            if len(X_skip_layer.shape) < len(X[0].shape):
                 X_skip_layer = X_skip_layer.unsqueeze(1)
 
         # normalise features
@@ -858,28 +883,21 @@ class BrUNet(UNet,torch.nn.Module):
         encoding_out_pre_merge = [[] for _ in self.encoders]
         bottleneck_features_pre_merge = []
         for i in range(self.n_input_branches):
-            if X[i] is not None:
-                curr = X[i]
-                encoding_operations = self.encoders[i]
-                for op,op_ds in encoding_operations:
-                    curr = op(curr)
-                    encoding_out_pre_merge[i].append(curr)
-                    curr = op_ds(curr)
-                bottleneck_features_pre_merge.append(curr)
-            else:
-                # set to None for forward computations
-                encoding_out_pre_merge[i] = [None for _ in range(len(encoding_operations))]
-                bottleneck_features_pre_merge.append(None)
-        complete_input = sum(
-            [1 for x in encoding_out_pre_merge
-             if x is not None])
+            curr = X[i]
+            w = self.unsqueeze_to_dim(X_weights[i],curr)
+            encoding_operations = self.encoders[i]
+            for op,op_ds in encoding_operations:
+                curr = op(curr)
+                encoding_out_pre_merge[i].append(curr*w)
+                curr = op_ds(curr)
+            bottleneck_features_pre_merge.append(curr*w)
+        w_sum = self.unsqueeze_to_dim(sum(X_weights),X[0])
         
         # start by merging bottleneck with the last merge operation and 
         # redefine curr
         bottleneck = sum([
-            self.merge_ops[-1][j](bottleneck_features_pre_merge[j]) / complete_input
-            for j in range(self.n_input_branches)
-            if bottleneck_features_pre_merge[j] is not None])
+            self.merge_ops[-1][j](bottleneck_features_pre_merge[j]) / w_sum
+            for j in range(self.n_input_branches)])
         curr = bottleneck
         if return_bottleneck == True:
             return None,None,bottleneck
@@ -892,9 +910,8 @@ class BrUNet(UNet,torch.nn.Module):
         for i,tensors in enumerate(zip(*encoding_out_pre_merge)):
             merge_op = self.merge_ops[i]
             merged_tensor = sum([
-                merge_op[j](tensors[j]) / self.n_input_branches
-                for j in range(self.n_input_branches)
-                if tensors[j] is not None])
+                merge_op[j](tensors[j]) / w_sum
+                for j in range(self.n_input_branches)])
             encoding_out.append(merged_tensor)
 
         deep_outputs = []

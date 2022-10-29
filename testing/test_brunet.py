@@ -27,7 +27,8 @@ def unet_base(D,sd,conv_type,strides="regular"):
         output_size = [1,1,h,w,d]
     a = BrUNet(sd,n_input,depth=D,upscale_type="transpose",padding=1,
                strides=S,kernel_sizes=K,conv_type=conv_type,link_type="identity")
-    o,bb = a(i)
+    weights = [torch.ones([1]) for _ in range(n_input)]
+    o,bb = a(i,weights)
     assert list(o.shape) == output_size
 
 def unet_base_missing(D,sd,conv_type,strides="regular"):
@@ -40,14 +41,16 @@ def unet_base_missing(D,sd,conv_type,strides="regular"):
     else:
         S = [2 for _ in D]
     if sd == 2:
-        i = [torch.rand(size=[1,c,h,w]),None]
-        output_size = [1,1,h,w]
+        i = [[torch.rand(size=[c,h,w]),None],[None,torch.rand(size=[c,h,w])]]
+        output_size = [2,1,h,w]
     elif sd == 3:
-        i = [torch.rand(size=[1,c,h,w,d]),None]
-        output_size = [1,1,h,w,d]
+        i = [[torch.rand(size=[c,h,w,d]),None],
+             [None,torch.rand(size=[c,h,w,d])]]
+        output_size = [2,1,h,w,d]
     a = BrUNet(sd,n_input,depth=D,upscale_type="transpose",padding=1,
                strides=S,kernel_sizes=K,conv_type=conv_type,link_type="identity")
-    o,bb = a(i)
+    i,weights = BrUNet.fix_input(i)
+    o,bb = a(i,weights)
     assert list(o.shape) == output_size
 
 def unet_skip(D,sd,conv_type):
@@ -64,7 +67,8 @@ def unet_skip(D,sd,conv_type):
     a = BrUNet(sd,n_input,depth=D,upscale_type="transpose",padding=1,
                strides=S,kernel_sizes=K,skip_conditioning=1,
                link_type="conv",conv_type=conv_type)
-    o,bb = a(i,X_skip_layer=i_skip)
+    weights = [torch.ones([1]) for _ in range(n_input)]
+    o,bb = a(i,weights,X_skip_layer=i_skip)
     assert list(o.shape) == output_size
 
 def unet_skip_feature(D,sd,conv_type):
@@ -88,7 +92,8 @@ def unet_skip_feature(D,sd,conv_type):
                    "mean":torch.zeros_like(i_feat),
                    "std":torch.ones_like(i_feat)},
                link_type="conv")
-    o,bb = a(i,X_feature_conditioning=i_feat,X_skip_layer=i_skip)
+    weights = [torch.ones([2]) for _ in range(n_input)]
+    o,bb = a(i,weights,X_feature_conditioning=i_feat,X_skip_layer=i_skip)
     assert list(o.shape) == output_size
 
 def test_unet_2d():
@@ -150,3 +155,5 @@ def test_unet_3d_skip_feature():
     for D in depths:
         for conv_type in ["regular","resnet"]:
             unet_skip_feature(D,3,conv_type)
+
+unet_base_missing(depths[0],3,"regular")
