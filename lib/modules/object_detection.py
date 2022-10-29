@@ -234,16 +234,15 @@ class YOLONet3d(torch.nn.Module):
         self.feature_extraction = self.res_net 
         last_size = self.resnet_structure[-1][0]
         
-        self.feature_extraction = torch.nn.Sequential(
-            self.feature_extraction,
+        self.pyramidal_feature_extraction = torch.nn.Sequential(
             self.adn_fn(last_size),
             AtrousSpatialPyramidPooling3d(
                 last_size,last_size,self.pyramid_layers,
-                act_fn=lambda: torch.nn.Identity()),
-            self.adn_fn(last_size * (len(self.pyramid_layers))),
-            ConcurrentSqueezeAndExcite3d(last_size * (len(self.pyramid_layers))),
-            self.adn_fn(last_size * (len(self.pyramid_layers))))
-        last_size = last_size * (len(self.pyramid_layers))
+                adn_fn=lambda s: torch.nn.Identity()),
+            self.adn_fn(last_size),
+            ConcurrentSqueezeAndExcite3d(last_size),
+            self.adn_fn(last_size))
+        last_size = last_size
         self.bb_size_layer = torch.nn.Sequential(
             torch.nn.Conv3d(last_size,last_size,1),
             self.adn_fn(last_size),
@@ -273,6 +272,7 @@ class YOLONet3d(torch.nn.Module):
     
     def forward(self,X:torch.Tensor)->torch.Tensor:
         features = self.feature_extraction(X)
+        features = self.pyramidal_feature_extraction(features)
         # size prediction
         bb_size_pred = self.bb_size_layer(features)
         # center prediction
@@ -454,7 +454,7 @@ class CoarseDetector3d(torch.nn.Module):
             self.adn_fn(last_size),
             AtrousSpatialPyramidPooling3d(
                 last_size,last_size,self.pyramid_layers,
-                act_fn=lambda: torch.nn.Identity()),
+                adn_fn=lambda s: torch.nn.Identity()),
             self.adn_fn(last_size * (len(self.pyramid_layers))),
             ConcurrentSqueezeAndExcite3d(last_size * (len(self.pyramid_layers))),
             self.adn_fn(last_size * (len(self.pyramid_layers))))
