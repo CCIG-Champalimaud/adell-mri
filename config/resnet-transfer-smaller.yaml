@@ -11,7 +11,7 @@ projection_head_args:
 prediction_head_args:
   in_channels: 256
   structure: [512,256]
-batch_size: 16
+batch_size: 28
 norm_fn: "batch"
 act_fn: "swish"
 weight_decay: 0.001
