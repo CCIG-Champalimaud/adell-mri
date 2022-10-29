@@ -1329,3 +1329,17 @@ class RandomDropout(monai.transforms.RandomizableTransform):
         for k in zip(self.keys):
             X = self.transforms[k](X[k])
         return X
+    
+class CreateImageAndWeightsd(monai.transforms.Transform):
+    def __init__(self,keys,shape):
+        self.keys = keys
+        self.shape = shape
+    
+    def __call__(self,X):
+        for k in self.keys:
+            if k not in X:
+                X[k] = torch.zeros(self.shape)
+                X["{}_weight".format(k)] = 0.
+            else:
+                X["{}_weight".format(k)] = 1.
+        return X
