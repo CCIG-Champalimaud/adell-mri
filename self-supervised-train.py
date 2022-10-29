@@ -1,3 +1,4 @@
+from copy import deepcopy
 import os
 import argparse
 import random
@@ -113,6 +114,10 @@ if __name__ == "__main__":
     parser.add_argument(
         '--max_epochs',dest="max_epochs",
         help="Maximum number of training epochs",default=100,type=int)
+    parser.add_argument(
+        '--accumulate_grad_batches',dest="accumulate_grad_batches",
+        help="Number batches to accumulate before backpropgating gradient",
+        default=1,type=int)
     parser.add_argument(
         '--checkpoint_dir',dest='checkpoint_dir',type=str,default="models",
         help='Path to directory where checkpoints will be saved.')
@@ -300,19 +305,17 @@ if __name__ == "__main__":
         monai.transforms.Compose(transforms),
         num_workers=args.n_workers)
 
-    def train_loader_call(batch_size): 
+    def train_loader_call(batch_size,shuffle=True): 
         return monai.data.ThreadDataLoader(
             train_dataset,batch_size=batch_size,
-            shuffle=True,num_workers=args.n_workers,generator=g,
-            collate_fn=collate_fn,pin_memory=True,
+            shuffle=shuffle,num_workers=args.n_workers,generator=g,
+            pin_memory=True,collate_fn=collate_fn,
             persistent_workers=True,drop_last=True)
 
-    train_loader = train_loader_call(network_config["batch_size"])
-    validation_loader = monai.data.ThreadDataLoader(
-        train_dataset,batch_size=network_config["batch_size"],
-        shuffle=False,num_workers=args.n_workers,generator=g,
-        collate_fn=collate_fn,persistent_workers=True,
-        drop_last=True)
+    train_loader = train_loader_call(
+        network_config["batch_size"])
+    validation_loader = train_loader_call(
+        network_config["batch_size"],False)
 
     force_cudnn_initialization()
     ssl = NonContrastiveSelfSLPL(
@@ -372,21 +375,30 @@ if __name__ == "__main__":
     if ":" in args.dev:
         devices = args.dev.split(":")[-1].split(",")
         devices = [int(i) for i in devices]
+        if len(devices) > 1:
+            strategy = "ddp"
+        else:
+            strategy = None
     else:
         devices = args.n_devices
+        if len(devices) > 1:
+            strategy = "ddp"
+        else:
+            strategy = None
 
     precision = {"16":16,"32":32,"bf16":"bf16"}[args.precision]
     torch.autograd.set_detect_anomaly(True)
     trainer = Trainer(
         accelerator="gpu" if "cuda" in args.dev else "cpu",
         devices=devices,logger=logger,callbacks=callbacks,
-        strategy='ddp' if args.n_devices > 1 else None,
-        max_epochs=args.max_epochs,enable_checkpointing=ckpt,
-        check_val_every_n_epoch=5,precision=precision,
-        resume_from_checkpoint=ckpt_path,
-        sync_batchnorm=len(devices)>1,
-        auto_scale_batch_size=True)
-    bs = trainer.tune(ssl)
+        strategy=strategy,max_epochs=args.max_epochs,
+        sync_batchnorm=True if strategy is not None else False,
+        enable_checkpointing=ckpt,check_val_every_n_epoch=5,
+        precision=precision,resume_from_checkpoint=ckpt_path,
+        auto_scale_batch_size=True,
+        accumulate_grad_batches=args.accumulate_grad_batches)
+    if strategy is None:
+        bs = trainer.tune(ssl)
     torch.cuda.empty_cache()
     
     trainer.fit(ssl,val_dataloaders=validation_loader)

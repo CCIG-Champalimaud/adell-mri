@@ -41,7 +41,7 @@ class BarlowTwinsPL(ResNet,pl.LightningModule):
             if log == True:
                 self.log(
                     k,metrics[k],on_epoch=True,
-                    on_step=False,prog_bar=True)
+                    on_step=False,prog_bar=True,sync_dist=True)
 
     def training_step(self,batch,batch_idx):
         x1,x2 = batch[self.image_key],batch[self.augmented_image_key]
@@ -59,7 +59,7 @@ class BarlowTwinsPL(ResNet,pl.LightningModule):
 
         loss = self.calculate_loss(y1,y2,False)
         
-        self.log("val_loss", loss,prob_bar=True)
+        self.log("val_loss", loss,prob_bar=True,sync_dist=True)
         self.update_metrics(y1,y2,self.val_metrics)
         return loss
 
@@ -231,7 +231,7 @@ class NonContrastiveSelfSLPL(ResNet,pl.LightningModule):
             if log == True:
                 self.log(
                     k,metrics[k],on_epoch=True,batch_size=y1.shape[0],
-                    on_step=False,prog_bar=True)
+                    on_step=False,prog_bar=True,sync_dist=True)
 
     def forward_ema_stop_grad(self,x,ret):
         if self.ema is not None:
@@ -281,7 +281,8 @@ class NonContrastiveSelfSLPL(ResNet,pl.LightningModule):
 
         loss = self.safe_sum(losses)
         self.log(loss_str,loss,batch_size=x1.shape[0],
-                 on_epoch=True,on_step=False,prog_bar=True)
+                 on_epoch=True,on_step=False,prog_bar=True,
+                 sync_dist=True)
         
         if self.vic_reg_local == True:
             loss_str_list = self.loss_str_dict["vicregl"]
@@ -295,7 +296,8 @@ class NonContrastiveSelfSLPL(ResNet,pl.LightningModule):
             else:
                 sub_loss_str = loss_str
             self.log(sub_loss_str,l,batch_size=x1.shape[0],
-                     on_epoch=True,on_step=False,prog_bar=True)
+                     on_epoch=True,on_step=False,prog_bar=True,
+                     sync_dist=True)
 
         return loss
 
@@ -338,7 +340,7 @@ class NonContrastiveSelfSLPL(ResNet,pl.LightningModule):
         sch = self.lr_schedulers().state_dict()
         lr = self.learning_rate
         last_lr = sch['_last_lr'][0] if '_last_lr' in sch else lr
-        self.log("lr",last_lr)
+        self.log("lr",last_lr,sync_dist=True)
 
     def setup_metrics(self):
         metric_dict = {

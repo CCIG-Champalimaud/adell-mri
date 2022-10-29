@@ -5,8 +5,6 @@ from copy import deepcopy
 
 from ..types import *
 
-# TODO: finish debugging VICREGL loss
-
 def cos_sim(x:torch.Tensor,y:torch.Tensor)->torch.Tensor:
     """Calculates the cosine similarity between x and y.
 
@@ -154,9 +152,9 @@ class VICRegLoss(torch.nn.Module):
     def __init__(self,
                  min_var: float=1.,
                  eps: float=1e-4,
-                 lam: float=1.,
-                 mu: float=1.,
-                 nu: float=1./25.):
+                 lam: float=25.,
+                 mu: float=25.,
+                 nu: float=0.1):
         """Implementation of the VICReg loss from [1].
         
         [1] https://arxiv.org/abs/2105.04906
@@ -194,10 +192,7 @@ class VICRegLoss(torch.nn.Module):
             torch.Tensor: variance loss
         """
         reg_std = torch.sqrt(torch.var(X,0)+self.eps)
-        # only needs to be initialised once assuming the number of 
-        # dimensions does not change
-        zeros = torch.zeros_like(reg_std).to(reg_std.device)
-        return torch.maximum(zeros,self.min_var - reg_std).mean()
+        return F.relu(self.min_var - reg_std).mean()
     
     def covariance_loss(self,X:torch.Tensor)->torch.Tensor:
         """Calculates the covariance loss for VICReg (minimises the L2 norm of
@@ -236,20 +231,22 @@ class VICRegLoss(torch.nn.Module):
             X2 (torch.Tensor): input tensor from view 2
 
         Returns:
-            torch.Tensor: invariance loss
+            var_loss (torch.Tensor) variance loss
+            cov_loss (torch.Tensor) covariance loss
+            inv_loss (torch.Tensor) invariance loss
         """
         var_loss = torch.add(
             self.variance_loss(X1),
-            self.variance_loss(X2))
+            self.variance_loss(X2)) / 2
         cov_loss = torch.add(
             self.covariance_loss(X1),
-            self.covariance_loss(X2))
+            self.covariance_loss(X2)) / 2
         inv_loss = self.invariance_loss(X1,X2)
         return var_loss,cov_loss,inv_loss
     
     def flatten_if_necessary(self,x):
         if len(x.shape) > 2:
-            return x.flatten(start_dim=2).mean(-1).values
+            return x.flatten(start_dim=2).mean(-1)
         return x
     
     def forward(self,
@@ -265,9 +262,9 @@ class VICRegLoss(torch.nn.Module):
                 transform.
 
         Returns:
-            var_loss (torch.Tensor)
-            cov_loss (torch.Tensor)
-            inv_loss (torch.Tensor)
+            inv_loss (torch.Tensor) weighted invariance loss
+            cov_loss (torch.Tensor) weighted covariance loss
+            var_loss (torch.Tensor) weighted variance loss
         """
 
         flat_max_X1 = self.flatten_if_necessary(X1)
@@ -280,9 +277,9 @@ class VICRegLocalLoss(VICRegLoss):
     def __init__(self,
                  min_var: float=1.,
                  eps: float=1e-4,
-                 lam: float=1.,
-                 mu: float=1.,
-                 nu: float=1./25.,
+                 lam: float=25.,
+                 mu: float=25.,
+                 nu: float=0.1,
                  gamma: int=10):
         """Local VICRegL loss from [2]. This is, in essence, a version of
         VICReg which leads to better downstream solutions for segmentation 
