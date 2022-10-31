@@ -1,5 +1,6 @@
-import os, sys
-sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
+import sys
+import os
+sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)),'..'))
 
 import torch
 from lib.modules.segmentation import BrUNet
@@ -26,7 +27,8 @@ def unet_base(D,sd,conv_type,strides="regular"):
         i = [torch.rand(size=[1,c,h,w,d]) for _ in range(n_input)]
         output_size = [1,1,h,w,d]
     a = BrUNet(sd,n_input,depth=D,upscale_type="transpose",padding=1,
-               strides=S,kernel_sizes=K,conv_type=conv_type,link_type="identity")
+               strides=S,kernel_sizes=K,conv_type=conv_type,
+               link_type="identity")
     weights = [torch.ones([1]) for _ in range(n_input)]
     o,bb = a(i,weights)
     assert list(o.shape) == output_size

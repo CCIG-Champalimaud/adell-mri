@@ -42,22 +42,26 @@ def crop_to_size(X: torch.Tensor,output_size: list) -> torch.Tensor:
 
 def get_adn_fn(spatial_dim,norm_fn="batch",
                act_fn="swish",dropout_param=0.1):
-    if norm_fn == "batch":
-        if spatial_dim == 1:
-            norm_fn = torch.nn.BatchNorm1d
-        elif spatial_dim == 2:
-            norm_fn = torch.nn.BatchNorm2d
-        elif spatial_dim == 3:
-            norm_fn = torch.nn.BatchNorm3d
-    elif norm_fn == "instance":
-        if spatial_dim == 1:
-            norm_fn = torch.nn.InstanceNorm1d
-        elif spatial_dim == 2:
-            norm_fn = torch.nn.InstanceNorm2d
-        elif spatial_dim == 3:
-            norm_fn = torch.nn.InstanceNorm3d
-    elif norm_fn == "identity":
-        norm_fn = torch.nn.Identity
+    norm_fn_dict = {
+        "batch":{
+            1:torch.nn.BatchNorm1d,
+            2:torch.nn.BatchNorm2d,
+            3:torch.nn.BatchNorm3d,
+        },
+        "instance":{
+            1:torch.nn.InstanceNorm1d,
+            2:torch.nn.InstanceNorm2d,
+            3:torch.nn.InstanceNorm3d,
+        },
+        "identity":{
+            1:torch.nn.Identity,
+            2:torch.nn.Identity,
+            3:torch.nn.Identity
+        }
+    }
+    if norm_fn not in norm_fn_dict:
+        raise "norm_fn must be one of {}".format(norm_fn_dict)
+    norm_fn = norm_fn_dict[norm_fn][spatial_dim]
     if isinstance(act_fn,str):
         act_fn = activation_factory[act_fn]
     
