@@ -2,6 +2,7 @@ import argparse
 import random
 import json
 import os
+
 import numpy as np
 import torch
 import monai
@@ -14,21 +15,19 @@ from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import EarlyStopping,StochasticWeightAveraging
 from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.callbacks.model_checkpoint import ModelCheckpoint
+from pytorch_lightning.callbacks import RichProgressBar
 
 from lib.utils import (
     PartiallyRandomSampler,
-    LabelOperatorSegmentationd,
     get_loss_param_dict,
     collate_last_slice,
     RandomSlices,
     SlicesToFirst,
-    CombineBinaryLabelsd,
-    ConditionalRescalingd,
-    PrintShaped,
-    PrintRanged,
     safe_collate)
+from lib.monai_transforms import get_transforms_unet as get_transforms
+from lib.monai_transforms import get_augmentations_unet as get_augmentations
 from lib.modules.layers import ResNet
-from lib.modules.segmentation_pl import UNetPL,UNetPlusPlusPL
+from lib.modules.segmentation_pl import UNetPL,UNetPlusPlusPL,BrUNetPL
 from lib.modules.config_parsing import parse_config_unet,parse_config_ssl
 
 torch.backends.cudnn.benchmark = True
@@ -128,12 +127,19 @@ if __name__ == "__main__":
         '--unet_pp',dest='unet_pp',action="store_true",
         help="Uses U-Net++ rather than U-Net")
     parser.add_argument(
+        '--brunet',dest='brunet',action="store_true",
+        help="Uses BrU-Net rather than U-Net")
+    parser.add_argument(
         '--res_config_file',dest='res_config_file',action="store",default=None,
         help="Uses a ResNet as a backbone (depths are inferred from this). \
             This config file is then used to parameterise the ResNet.")
     parser.add_argument(
-        '--res_checkpoint',dest='res_checkpoint',action="store",default=None,
-        help="Checkpoint for SSL backbone (if --res_config_file is specified.")
+        '--encoder_checkpoint',dest='encoder_checkpoint',action="store",default=None,
+        nargs="+",
+        help="Checkpoint for encoder backbone checkpoint")
+    parser.add_argument(
+        '--lr_encoder',dest='lr_encoder',action="store",default=None,type=float,
+        help="Sets learning rate for encoder.")
     parser.add_argument(
         '--from_checkpoint',dest='from_checkpoint',action="store",nargs="+",
         default=None,
@@ -223,7 +229,7 @@ if __name__ == "__main__":
         help="Use stochastic gradient averaging.",default=False)
     parser.add_argument(
         '--class_weights',dest='class_weights',type=str,nargs='+',
-        help="Class weights (by alphanumeric order).",default=1.)
+        help="Class weights (by alphanumeric order).",default=[1.])
 
     args = parser.parse_args()
 
@@ -281,10 +287,23 @@ if __name__ == "__main__":
         args.input_size = [round(x) for x in args.input_size]
 
     data_dict = json.load(open(args.dataset_json,'r'))
-    data_dict = {
-        k:data_dict[k] for k in data_dict
-        if len(set.intersection(set(data_dict[k]),
-                                set(all_keys_t))) == len(all_keys_t)}
+    if args.brunet == True:
+        obl_keys = [*aux_keys,*aux_mask_keys,*feature_keys]
+        opt_keys = keys
+        data_dict = {
+            k:data_dict[k] for k in data_dict
+            if len(set.intersection(set(data_dict[k]),
+                                    set(obl_keys))) == len(obl_keys)}
+        data_dict = {
+            k:data_dict[k] for k in data_dict
+            if len(set.intersection(set(data_dict[k]),
+                                    set(opt_keys))) > 0}
+
+    else:
+        data_dict = {
+            k:data_dict[k] for k in data_dict
+            if len(set.intersection(set(data_dict[k]),
+                                    set(all_keys_t))) == len(all_keys_t)}
     for kk in feature_keys:
         data_dict = {
             k:data_dict[k] for k in data_dict
@@ -301,127 +320,59 @@ if __name__ == "__main__":
     if args.learning_rate is not None:
         network_config["learning_rate"] = args.learning_rate
     
-    def get_transforms(x,label_mode=None):
-        if args.target_spacing is not None:
-            rs = [
-                monai.transforms.Spacingd(
-                    keys=all_keys,pixdim=args.target_spacing,
-                    mode=intp_resampling_augmentations)]
-        else:
-            rs = []
-        scaling_ops = []
-        if len(non_adc_keys) > 0:
-            scaling_ops.append(
-                monai.transforms.ScaleIntensityd(non_adc_keys,0,1))
-        if len(adc_image_keys) > 0:
-            scaling_ops.append(
-                ConditionalRescalingd(adc_image_keys,1000,0.001))
-            scaling_ops.append(
-                monai.transforms.ScaleIntensityd(
-                    adc_image_keys,None,None,-(1-args.adc_factor)))
-        if args.input_size is not None and len(resize_keys) > 0:
-            intp_ = [k for k,kk in zip(intp,all_keys) 
-                     if kk in resize_keys]
-            resize = [monai.transforms.Resized(
-                resize_keys,tuple(args.input_size),mode=intp_)]
-        else:
-            resize = []
-        if args.crop_size is not None:
-            crop_size = [int(args.crop_size[0]),
-                         int(args.crop_size[1]),
-                         int(args.crop_size[2])]
-            crop_op = [
-                monai.transforms.CenterSpatialCropd(all_keys,crop_size),
-                monai.transforms.SpatialPadd(all_keys,crop_size)]
-        else:
-            crop_op = []
-
-        if x == "pre":
-            return [
-                monai.transforms.LoadImaged(
-                    all_keys,ensure_channel_first=True),
-                monai.transforms.Orientationd(all_keys,"RAS"),
-                *rs,
-                *scaling_ops,
-                *resize,
-                *crop_op,
-                monai.transforms.EnsureTyped(all_keys),
-                CombineBinaryLabelsd(label_keys,"any","mask"),
-                LabelOperatorSegmentationd(
-                    ["mask"],args.possible_labels,
-                    mode=label_mode,positive_labels=args.positive_labels)]
-        elif x == "post":
-            if len(all_aux_keys) > 0:
-                aux_concat = [monai.transforms.ConcatItemsd(
-                    all_aux_keys,aux_key_net)]
-            else:
-                aux_concat = []
-            if len(feature_keys) > 0:
-                feature_concat = [
-                    monai.transforms.EnsureTyped(
-                        feature_keys,dtype=np.float32),
-                    monai.transforms.Lambdad(
-                        feature_keys,
-                        func=lambda x:np.reshape(x,[1])),
-                    monai.transforms.ConcatItemsd(
-                        feature_keys,feature_key_net)]
-            else:
-                feature_concat = []
-            return [
-                monai.transforms.ConcatItemsd(keys,"image"),
-                *aux_concat,
-                *feature_concat,
-                monai.transforms.ToTensord(["image","mask"])]
-
-    def get_augmentations(augment):
-        if augment == True:
-            return [
-                monai.transforms.RandBiasFieldd(keys,degree=2,prob=0.1),
-                monai.transforms.RandAdjustContrastd(keys,prob=0.25),
-                monai.transforms.RandRicianNoised(
-                    keys,std=0.05,prob=0.25),
-                monai.transforms.RandGibbsNoised(
-                    keys,alpha=(0.0,0.6),prob=0.25),
-                monai.transforms.RandGaussianSmoothd(keys,prob=0.25),
-                monai.transforms.RandAffined(
-                    all_keys,
-                    scale_range=[0.1,0.1,0.1],
-                    rotate_range=[np.pi/8,np.pi/8,np.pi/16],
-                    translate_range=[10,10,1],
-                    shear_range=((0.9,1.1),(0.9,1.1),(0.9,1.1)),
-                    prob=0.5,mode=intp_resampling_augmentations,
-                    padding_mode="zeros"),
-                monai.transforms.RandFlipd(
-                    all_keys,prob=0.5,spatial_axis=[0,1,2])]
-        else:
-            return []
-
     label_mode = "binary" if n_classes == 2 else "cat"
+    transform_arguments = {
+        "all_keys": all_keys,
+        "image_keys": keys,
+        "label_keys": label_keys,
+        "non_adc_keys": non_adc_keys,
+        "adc_image_keys": adc_image_keys,
+        "target_spacing": args.target_spacing,
+        "intp": intp,
+        "intp_resampling_augmentations": intp_resampling_augmentations,
+        "possible_labels": args.possible_labels,
+        "positive_labels": args.positive_labels,
+        "adc_factor": args.adc_factor,
+        "all_aux_keys": all_aux_keys,
+        "resize_keys": resize_keys,
+        "feature_keys": feature_keys,
+        "aux_key_net": aux_key_net,
+        "feature_key_net": feature_key_net,
+        "input_size": args.input_size,
+        "crop_size": args.crop_size,
+        "label_mode": label_mode,
+        "fill_missing": args.brunet,
+        "brunet": args.brunet}
+    augment_arguments = {
+        "all_keys":all_keys,
+        "image_keys":keys,
+        "intp_resampling_augmentations":intp_resampling_augmentations}
+    
     if args.pre_load == False:
         transforms_train = [
-            *get_transforms("pre",label_mode),
-            *get_augmentations(args.augment),
-            *get_transforms("post",label_mode)]
+            *get_transforms("pre",**transform_arguments),
+            *get_augmentations(args.augment,**augment_arguments),
+            *get_transforms("post",**transform_arguments)]
 
         transforms_train_val = [
-            *get_transforms("pre",label_mode),
-            *get_transforms("post",label_mode)]
+            *get_transforms("pre",**transform_arguments),
+            *get_transforms("post",**transform_arguments)]
 
         transforms_val = [
-            *get_transforms("pre",label_mode),
-            *get_transforms("post",label_mode)]
+            *get_transforms("pre",**transform_arguments),
+            *get_transforms("post",**transform_arguments)]
     else:
         transforms_train = [
-            *get_augmentations(args.augment),
-            *get_transforms("post",label_mode)]
+            *get_augmentations(args.augment,**augment_arguments),
+            *get_transforms("post",**transform_arguments)]
 
         transforms_train_val = [
-            *get_transforms("post",label_mode)]
+            *get_transforms("post",**transform_arguments)]
 
         transforms_val = [
-            *get_transforms("post",label_mode)]
+            *get_transforms("post",**transform_arguments)]
         
-        transform_all_data = get_transforms("pre",label_mode)
+        transform_all_data = get_transforms("pre",**transform_arguments)
 
         path_list = [data_dict[k] for k in all_pids]
         # load using cache dataset because it handles parallel processing
@@ -465,7 +416,9 @@ if __name__ == "__main__":
     for val_fold in range(args.n_folds):
         print("="*80)
         print("Starting fold={}".format(val_fold))
-        callbacks = []
+        callbacks = [
+            #RichProgressBar()
+            ]
 
         ckpt_path = None
 
@@ -540,6 +493,23 @@ if __name__ == "__main__":
                 val_list,
                 monai.transforms.Compose(transforms_val))
 
+        # correctly assign devices
+        if ":" in args.dev:
+            devices = args.dev.split(":")[-1].split(",")
+            devices = [int(i) for i in devices]
+            dev = args.dev.split(":")[0]
+            if len(devices) > 1:
+                strategy = "ddp"
+            else:
+                strategy = None
+        else:
+            devices = args.n_devices
+            dev = args.dev
+            if devices > 1:
+                strategy = "ddp"
+            else:
+                strategy = None
+
         # calculate the mean/std of tabular features
         if feature_keys is not None:
             all_params = {"mean":[],"std":[]}
@@ -548,9 +518,9 @@ if __name__ == "__main__":
                 all_params["mean"].append(np.mean(f))
                 all_params["std"].append(np.std(f))
             all_params["mean"] = torch.as_tensor(
-                all_params["mean"],dtype=torch.float32,device=args.dev)
+                all_params["mean"],dtype=torch.float32,device=dev)
             all_params["std"] = torch.as_tensor(
-                all_params["std"],dtype=torch.float32,device=args.dev)
+                all_params["std"],dtype=torch.float32,device=dev)
         else:
             all_params = None
             
@@ -561,14 +531,19 @@ if __name__ == "__main__":
             with tqdm(train_list) as t:
                 t.set_description("Setting up partially random sampler")
                 for x in t:
-                    masks = monai.transforms.LoadImaged(keys=label_keys)(x)
-                    total = []
-                    for k in label_keys:
-                        for u in np.unique(masks[k]):
-                            if u not in total:
-                                total.append(u)
-                    if len(total) > 1:
-                        cl.append(1)
+                    I = set.intersection(set(label_keys),set(x.keys()))
+                    if len(I) > 0:
+                        masks = monai.transforms.LoadImaged(
+                            keys=label_keys,allow_missing_keys=True)(x)
+                        total = []
+                        for k in I:
+                            for u in np.unique(masks[k]):
+                                if u not in total:
+                                    total.append(u)
+                        if len(total) > 1:
+                            cl.append(1)
+                        else:
+                            cl.append(0)
                     else:
                         cl.append(0)
             adaptive_weights = len(cl)/np.sum(cl)
@@ -580,7 +555,7 @@ if __name__ == "__main__":
         if args.class_weights[0] != "adaptive":
             weights = torch.as_tensor(
                 np.float32(np.array(args.class_weights)),dtype=torch.float32,
-                device=args.dev)
+                device=dev)
         else:
             weights = adaptive_weights
         
@@ -589,21 +564,21 @@ if __name__ == "__main__":
             weights=weights,gamma=args.loss_gamma,
             comb=args.loss_comb)[loss_key]
 
-        def train_loader_call(): 
+        def train_loader_call(batch_size): 
             return monai.data.ThreadDataLoader(
-                train_dataset,batch_size=network_config["batch_size"],
+                train_dataset,batch_size=batch_size,
                 num_workers=args.n_workers,generator=g,sampler=sampler,
                 collate_fn=collate_fn,pin_memory=True,
                 persistent_workers=True,drop_last=True)
 
-        train_loader = train_loader_call()
+        train_loader = train_loader_call(network_config["batch_size"])
         train_val_loader = monai.data.ThreadDataLoader(
             train_dataset_val,batch_size=network_config["batch_size"],
-            shuffle=False,num_workers=args.n_workers,generator=g,
+            shuffle=False,num_workers=args.n_workers,
             collate_fn=collate_fn,persistent_workers=True)
         validation_loader = monai.data.ThreadDataLoader(
             validation_dataset,batch_size=1,
-            shuffle=False,num_workers=args.n_workers,generator=g,
+            shuffle=False,num_workers=args.n_workers,
             collate_fn=collate_fn,persistent_workers=True)
 
         if args.res_config_file is not None:
@@ -612,32 +587,70 @@ if __name__ == "__main__":
             for k in ['weight_decay','learning_rate','batch_size']:
                 if k in network_config_ssl:
                     del network_config_ssl[k]
-            res_net = ResNet(**network_config_ssl)
-            if args.res_checkpoint is not None:
-                res_state_dict = torch.load(
-                    args.res_checkpoint)['state_dict']
-                mismatched = res_net.load_state_dict(
-                    res_state_dict,strict=False)
-            backbone = res_net.backbone
+            if args.brunet == True:
+                n = len(keys)
+                nc = network_config_ssl["backbone_args"]["in_channels"]
+                network_config_ssl["backbone_args"]["in_channels"] = nc // n
+                res_net = [ResNet(**network_config_ssl) for _ in keys]
+            else:
+                res_net = [ResNet(**network_config_ssl)]
+            if args.encoder_checkpoint is not None:
+                for i in range(len(args.encoder_checkpoint)):
+                    res_state_dict = torch.load(
+                        args.encoder_checkpoint[i])['state_dict']
+                    mismatched = res_net[i].load_state_dict(
+                        res_state_dict,strict=False)
+            backbone = [x.backbone for x in res_net]
             network_config['depth'] = [
-                backbone.structure[0][0],
-                *[x[0] for x in backbone.structure]]
+                backbone[0].structure[0][0],
+                *[x[0] for x in backbone[0].structure]]
             network_config['kernel_sizes'] = [3 for _ in network_config['depth']]
             network_config['strides'] = [2 for _ in network_config['depth']]
-            res_ops = [backbone.input_layer,*backbone.operations]
-            res_pool_ops = [backbone.first_pooling,*backbone.pooling_operations]
-            if args.res_checkpoint is not None:
+            res_ops = [[x.input_layer,*x.operations] for x in backbone]
+            res_pool_ops = [[x.first_pooling,*x.pooling_operations]
+                            for x in backbone]
+            if args.encoder_checkpoint is not None:
                 # freezes training for resnet encoder
-                for res_op in res_ops:
-                    for param in res_op.parameters():
-                        pass
-                        #param.requires_grad = False
-            encoding_operations = torch.nn.ModuleList(
-                [torch.nn.ModuleList([a,b]) 
-                 for a,b in zip(res_ops,res_pool_ops)])
+                for enc in res_ops:
+                    for res_op in enc:
+                        for param in res_op.parameters():
+                            if args.lr_encoder == 0.:
+                                param.requires_grad = False
+            
+            encoding_operations = [torch.nn.ModuleList([]) for _ in res_ops]
+            for i in range(len(res_ops)):
+                A = res_ops[i]
+                B = res_pool_ops[i]
+                for a,b in zip(A,B):
+                    encoding_operations[i].append(
+                        torch.nn.ModuleList([a,b]))
+            encoding_operations = torch.nn.ModuleList(encoding_operations)
         else:
-            encoding_operations = None
-        if args.unet_pp == True:
+            encoding_operations = [None]
+
+        if args.brunet == True:
+            nc = network_config["n_channels"]
+            network_config["n_channels"] = nc // len(keys)
+            unet = BrUNetPL(
+                training_dataloader_call=train_loader_call,
+                encoders=encoding_operations,
+                image_keys=keys,label_key="mask",
+                loss_params=loss_params,n_classes=n_classes,
+                bottleneck_classification=args.bottleneck_classification,
+                skip_conditioning=len(all_aux_keys),
+                skip_conditioning_key=aux_key_net,
+                feature_conditioning=len(feature_keys),
+                feature_conditioning_params=all_params,
+                feature_conditioning_key=feature_key_net,
+                n_epochs=args.max_epochs,
+                n_input_branches=len(keys),
+                lr_encoder=args.lr_encoder,
+                **network_config)
+            if args.encoder_checkpoint is not None and args.res_config_file is None:
+                for encoder,ckpt in zip(unet.encoders,args.encoder_checkpoint):
+                    encoder.load_state_dict(torch.load(ckpt)["state_dict"])
+        elif args.unet_pp == True:
+            encoding_operations = encoding_operations[0]
             unet = UNetPlusPlusPL(
                 training_dataloader_call=train_loader_call,
                 encoding_operations=encoding_operations,
@@ -650,8 +663,10 @@ if __name__ == "__main__":
                 feature_conditioning_params=all_params,
                 feature_conditioning_key=feature_key_net,
                 n_epochs=args.max_epochs,
+                lr_encoder=args.lr_encoder,
                 **network_config)
         else:
+            encoding_operations = encoding_operations[0]
             unet = UNetPL(
                 training_dataloader_call=train_loader_call,
                 encoding_operations=encoding_operations,
@@ -665,6 +680,7 @@ if __name__ == "__main__":
                 feature_conditioning_key=feature_key_net,
                 deep_supervision=args.deep_supervision,
                 n_epochs=args.max_epochs,
+                lr_encoder=args.lr_encoder,
                 **network_config)
         
         if args.early_stopping is not None:
@@ -685,21 +701,15 @@ if __name__ == "__main__":
         else:
             logger = None
 
-        # correctly assign devices
-        if ":" in args.dev:
-            devices = args.dev.split(":")[-1].split(",")
-            devices = [int(i) for i in devices]
-        else:
-            devices = args.n_devices
-
+        precision = {"32":32,"16":16,"bf16":"bf16"}[args.precision]
         trainer = Trainer(
-            accelerator="gpu" if "cuda" in args.dev else "cpu",
+            accelerator=dev,
             devices=devices,logger=logger,callbacks=callbacks,
-            strategy='ddp' if args.n_devices > 1 else None,
-            max_epochs=args.max_epochs,enable_checkpointing=ckpt,
-            accumulate_grad_batches=3,resume_from_checkpoint=ckpt_path,
+            strategy=strategy,max_epochs=args.max_epochs,
+            enable_checkpointing=ckpt,accumulate_grad_batches=3,
+            resume_from_checkpoint=ckpt_path,
             check_val_every_n_epoch=args.check_val_every_n_epoch,
-            log_every_n_steps=10,precision=args.precision)
+            log_every_n_steps=10,precision=precision)
 
         trainer.fit(unet,train_loader,train_val_loader)
         

@@ -1338,7 +1338,7 @@ class CreateImageAndWeightsd(monai.transforms.Transform):
     def __call__(self,X):
         for k in self.keys:
             if k not in X:
-                X[k] = torch.zeros(self.shape)
+                X[k] = np.zeros(self.shape,dtype=bool)
                 X["{}_weight".format(k)] = 0.
             else:
                 X["{}_weight".format(k)] = 1.

@@ -11,7 +11,7 @@ if __name__ == "__main__":
         help="JSON containing dataset information",required=True)
     parser.add_argument(
         '--all_keys',dest='all_keys',type=str,nargs="+",
-        help="all keys",required=True)
+        help="all keys",default=None)
     parser.add_argument(
         '--n_folds',dest="n_folds",
         help="Number of validation folds",default=5,type=int)
@@ -22,12 +22,13 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     data_dict = json.load(open(args.dataset_json,'r'))
-    for k in args.all_keys:
-        nd = {}
-        for kk in data_dict:
-            if k in data_dict[kk]:
-                nd[kk] = data_dict[kk]
-        data_dict = nd
+    if args.all_keys is not None:
+        for k in args.all_keys:
+            nd = {}
+            for kk in data_dict:
+                if k in data_dict[kk]:
+                    nd[kk] = data_dict[kk]
+            data_dict = nd
 
     all_pids = [k for k in data_dict]
 

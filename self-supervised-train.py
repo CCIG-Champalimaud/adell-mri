@@ -19,15 +19,13 @@ from lib.utils import (
     PrintShaped,
     collate_last_slice,
     RandomSlices,
-    SlicesToFirst,
     ConditionalRescalingd,
-    FastResample,
     ExposeTransformKeyd,
     safe_collate)
 from lib.modules.augmentations import *
-from lib.modules.self_supervised_pl import NonContrastiveSelfSLPL
+from lib.modules.self_supervised_pl import NonContrastiveSelfSLPL,NonContrastiveSelfSLUNetPL
 from lib.utils import ExponentialMovingAverage
-from lib.modules.config_parsing import parse_config_ssl
+from lib.modules.config_parsing import parse_config_ssl,parse_config_unet
 
 torch.backends.cudnn.benchmark = True
 
@@ -86,6 +84,10 @@ if __name__ == "__main__":
         '--precision',dest='precision',type=str,
         help="Floating point precision",choices=["16","32","bf16"],
         default="32")
+    parser.add_argument(
+        '--unet_encoder',dest='unet_encoder',action="store_true",
+        help="Trains a UNet encoder")
+
 
     # network + training
     parser.add_argument(
@@ -184,9 +186,19 @@ if __name__ == "__main__":
         data_dict = {k:data_dict[k] for k in ss}
     for k in data_dict:
         data_dict[k]["pid"] = k
-    
-    network_config,network_config_correct = parse_config_ssl(
-        args.config_file,args.dropout_param,len(keys),args.n_devices)
+
+    if args.unet_encoder == True:
+        network_config,_ = parse_config_unet(
+            args.config_file,len(keys),2)
+        network_config_correct = deepcopy(network_config)
+        for k in network_config:
+            if k in ["loss_fn"]:
+                del network_config_correct[k]
+        n_dims = network_config["spatial_dimensions"]
+    else:
+        network_config,network_config_correct = parse_config_ssl(
+            args.config_file,args.dropout_param,len(keys),args.n_devices)
+        n_dims = network_config["backbone_args"]["spatial_dim"]
 
     if args.ema == True:
         bs = network_config["batch_size"]
@@ -286,7 +298,7 @@ if __name__ == "__main__":
         *get_augmentations(),
         *get_transforms("post")]
 
-    if network_config["backbone_args"]["spatial_dim"] == 2:
+    if n_dims == 2:
         transforms.append(
             RandomSlices(["image"],None,8,base=0.001))
         collate_fn = collate_last_slice
@@ -318,17 +330,30 @@ if __name__ == "__main__":
         network_config["batch_size"],False)
 
     force_cudnn_initialization()
-    ssl = NonContrastiveSelfSLPL(
-        training_dataloader_call=train_loader_call,
-        aug_image_key_1="augmented_image_1",
-        aug_image_key_2="augmented_image_2",
-        box_key_1="box_1",
-        box_key_2="box_2",
-        n_epochs=args.max_epochs,
-        vic_reg=args.vicreg,
-        vic_reg_local=args.vicregl,
-        ema=ema,
-        **network_config_correct)
+    if args.unet_encoder == True:
+        ssl = NonContrastiveSelfSLUNetPL(
+            training_dataloader_call=train_loader_call,
+            aug_image_key_1="augmented_image_1",
+            aug_image_key_2="augmented_image_2",
+            box_key_1="box_1",
+            box_key_2="box_2",
+            n_epochs=args.max_epochs,
+            vic_reg=args.vicreg,
+            vic_reg_local=args.vicregl,
+            ema=ema,
+            **network_config_correct)
+    else:
+        ssl = NonContrastiveSelfSLPL(
+            training_dataloader_call=train_loader_call,
+            aug_image_key_1="augmented_image_1",
+            aug_image_key_2="augmented_image_2",
+            box_key_1="box_1",
+            box_key_2="box_2",
+            n_epochs=args.max_epochs,
+            vic_reg=args.vicreg,
+            vic_reg_local=args.vicregl,
+            ema=ema,
+            **network_config_correct)
     if args.from_checkpoint is not None:
         state_dict = torch.load(
             args.from_checkpoint,map_location=args.dev)['state_dict']
@@ -381,7 +406,7 @@ if __name__ == "__main__":
             strategy = None
     else:
         devices = args.n_devices
-        if len(devices) > 1:
+        if devices > 1:
             strategy = "ddp"
         else:
             strategy = None

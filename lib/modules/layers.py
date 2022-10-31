@@ -60,12 +60,10 @@ def get_adn_fn(spatial_dim,norm_fn="batch",
         norm_fn = torch.nn.Identity
     if isinstance(act_fn,str):
         act_fn = activation_factory[act_fn]
-    def adn_fn(s):
-        return ActDropNorm(
-            s,norm_fn=norm_fn,act_fn=act_fn,
-            dropout_param=dropout_param)
-
-    return adn_fn
+    
+    return ActDropNormBuilder(norm_fn=norm_fn,
+                              act_fn=act_fn,
+                              dropout_param=dropout_param)
 
 def unsqueeze_to_target(x:torch.Tensor,target:torch.Tensor,dim=-1):
     cur,tar = len(x.shape),len(target.shape)
@@ -107,7 +105,7 @@ class ActDropNorm(torch.nn.Module):
 
         self.name_dict = {"A":"activation","D":"dropout","N":"normalization"}
         self.init_layers()
-
+    
     def init_layers(self):
         """Initiates the necessary layers.
         """
@@ -131,7 +129,10 @@ class ActDropNorm(torch.nn.Module):
         self.op = torch.nn.Sequential(op_list)
         
     def get_act_fn(self):
-        return self.act_fn()
+        try:
+            return self.act_fn(inplace=True)
+        except:
+            return self.act_fn()
 
     def get_dropout_fn(self):
         return self.dropout_fn(self.dropout_param)
@@ -149,6 +150,30 @@ class ActDropNorm(torch.nn.Module):
             torch.Tensor
         """
         return self.op(X)
+
+class ActDropNormBuilder:
+    def __init__(self,ordering:str='NDA',
+                 norm_fn: torch.nn.Module=torch.nn.BatchNorm2d,
+                 act_fn: torch.nn.Module=torch.nn.PReLU,
+                 dropout_fn:torch.nn.Module=torch.nn.Dropout,
+                 dropout_param: float=0.):
+        super().__init__()
+        self.ordering = ordering
+        self.norm_fn = norm_fn
+        self.act_fn = act_fn
+        self.dropout_fn = dropout_fn
+        self.dropout_param = dropout_param
+        
+        self.name_dict = {"A":"activation","D":"dropout","N":"normalization"}
+    
+    def __call__(self,in_channels:int):
+        return ActDropNorm(
+            in_channels=in_channels,
+            ordering=self.ordering,
+            norm_fn=self.norm_fn,
+            act_fn=self.act_fn,
+            dropout_fn=self.dropout_fn,
+            dropout_param=self.dropout_param)
 
 class ResidualBlock2d(torch.nn.Module):
     def __init__(

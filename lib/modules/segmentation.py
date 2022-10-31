@@ -29,7 +29,9 @@ class UNet(torch.nn.Module):
         skip_conditioning: int=None,
         feature_conditioning: int=None,
         feature_conditioning_params: Dict[str,torch.Tensor]=None,
-        deep_supervision: bool=False) -> torch.nn.Module:
+        deep_supervision: bool=False,
+        parent_class: bool=False,
+        encoder_only: bool=False) -> torch.nn.Module:
         """Standard U-Net [1] implementation. Features some useful additions 
         such as residual links, different upsampling types, normalizations 
         (batch or instance) and ropouts (dropout and U-out). This version of 
@@ -95,6 +97,9 @@ class UNet(torch.nn.Module):
                 Defaults to None.
             deep_supervision (bool, optional): forward method returns 
                 segmentation predictions obtained from each decoder block.
+            parent_class (bool, optional): does not initialise any layer, only
+                sets constants. Helpful for inheritance.
+            encoder_only (bool, optional): makes only encoder.
         [1] https://www.nature.com/articles/s41592-018-0261-2
         [2] https://openaccess.thecvf.com/content_CVPR_2019/papers/Li_Understanding_the_Disharmony_Between_Dropout_and_Batch_Normalization_by_Variance_CVPR_2019_paper.pdf
 
@@ -124,24 +129,37 @@ class UNet(torch.nn.Module):
         self.feature_conditioning = feature_conditioning
         self.feature_conditioning_params = feature_conditioning_params
         self.deep_supervision = deep_supervision
-        
-        # initialize all layers
-        self.get_norm_op()
-        self.get_drop_op()
+        self.encoder_only = encoder_only
 
-        self.get_conv_op()
-        if self.encoding_operations is None:
-            self.init_encoder()
-        else:
-            self.init_encoder_backbone()
-        self.init_upscale_ops()
-        self.init_link_ops()
-        self.init_decoder()
-        self.init_final_layer()
-        if self.bottleneck_classification == True:
-            self.init_bottleneck_classifier()
-        if self.feature_conditioning is not None:
-            self.init_feature_conditioning_operations()
+        if self.encoder_only == True:
+            # initialize all layers
+            self.get_norm_op()
+            self.get_drop_op()
+
+            self.get_conv_op()
+            if self.encoding_operations is None:
+                self.init_encoder()
+            else:
+                self.init_encoder_backbone()
+
+        elif parent_class == False:
+            # initialize all layers
+            self.get_norm_op()
+            self.get_drop_op()
+
+            self.get_conv_op()
+            if self.encoding_operations is None:
+                self.init_encoder()
+            else:
+                self.init_encoder_backbone()
+            self.init_upscale_ops()
+            self.init_link_ops()
+            self.init_decoder()
+            self.init_final_layer()
+            if self.bottleneck_classification == True:
+                self.init_bottleneck_classifier()
+            if self.feature_conditioning is not None:
+                self.init_feature_conditioning_operations()
 
     def get_norm_op(self):
         """Retrieves the normalization operation using `self.norm_type`.
@@ -415,7 +433,7 @@ class UNet(torch.nn.Module):
                 self.adn_fn(d))
             self.decoding_operations.append(op)
             if self.deep_supervision == True:
-                self.deep_supervision_ops.append(self.get_final_layer(d))
+                self.deep_supervision_ops.append(self.get_ds_final_layer(d))
 
     def get_final_layer(self,d:int)->torch.nn.Module:
         """Returns the final layer.
@@ -561,6 +579,8 @@ class UNet(torch.nn.Module):
         bottleneck = curr
         if return_bottleneck == True:
             return None,None,bottleneck
+        elif self.encoder_only == True:
+            return bottleneck
         
         deep_outputs = []
         for i in range(len(self.decoding_operations)):
@@ -713,8 +733,7 @@ class BrUNet(UNet,torch.nn.Module):
         Returns:
             torch.nn.Module: a U-Net module.
         """
-        
-        torch.nn.Module.__init__(self)
+        super().__init__(parent_class=True)
         self.spatial_dimensions = spatial_dimensions
         self.n_input_branches = n_input_branches
         self.encoders = encoders

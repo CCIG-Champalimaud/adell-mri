@@ -155,5 +155,3 @@ def test_unet_3d_skip_feature():
     for D in depths:
         for conv_type in ["regular","resnet"]:
             unet_skip_feature(D,3,conv_type)
-
-unet_base_missing(depths[0],3,"regular")
