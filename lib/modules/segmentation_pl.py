@@ -21,7 +21,7 @@ def get_lesions(x):
     return extract_lesion_candidates(x)[0]
 
 def update_metrics(cls,metrics,pred,y,pred_class,y_class,**kwargs):
-    try: y = torch.round(y)
+    try: y = torch.round(y).int()
     except: pass
     y = y.long()
     p = pred.detach()
@@ -184,8 +184,7 @@ class UNetPL(UNet,pl.LightningModule):
         if class_loss is not None:
             self.log("train_cl_loss",class_loss,batch_size=y.shape[0],
                      sync_dist=True)
-        try: y = torch.round(y).int()
-        except: pass
+
         update_metrics(
             self.train_metrics,pred_final,y,pred_class,y_class,
             on_epoch=True,on_step=False,prog_bar=True)
@@ -217,8 +216,7 @@ class UNetPL(UNet,pl.LightningModule):
         self.log("val_loss",loss,prog_bar=True,
                  on_epoch=True,batch_size=y.shape[0],
                  sync_dist=True)
-        try: y = torch.round(y).int()
-        except: pass
+
         update_metrics(
             self.val_metrics,pred_final,y,pred_class,y_class,
             on_epoch=True,prog_bar=True)
@@ -247,8 +245,6 @@ class UNetPL(UNet,pl.LightningModule):
             self.all_pred.append(s_p)
             self.all_true.append(s_y)
 
-        try: y = torch.round(y).int()
-        except: pass
         update_metrics(
             self.test_metrics,pred_final,y,pred_class,y_class,
             on_epoch=True,on_step=False,prog_bar=True)
@@ -511,8 +507,7 @@ class UNetPlusPlusPL(UNetPlusPlus,pl.LightningModule):
                      sync_dist=True)
         self.log("train_loss", loss,batch_size=y.shape[0],
                  sync_dist=True)
-        try: y = torch.round(y).int()
-        except: pass
+
         update_metrics(
             self.train_metrics,pred_final,y,pred_class,y_class,
             on_epoch=True,on_step=False,prog_bar=True)
@@ -546,8 +541,7 @@ class UNetPlusPlusPL(UNetPlusPlus,pl.LightningModule):
         if class_loss is not None:
             self.log("val_loss_cl",class_loss,prog_bar=True,on_epoch=True,
                      batch_size=y.shape[0],sync_dist=True)
-        try: y = torch.round(y).int()
-        except: pass
+
         update_metrics(
             self.val_metrics,pred_final,y,pred_class,y_class,
             on_epoch=True,prog_bar=True)
@@ -576,8 +570,6 @@ class UNetPlusPlusPL(UNetPlusPlus,pl.LightningModule):
             self.all_pred.append(s_p)
             self.all_true.append(s_y)
 
-        try: y = torch.round(y).int()
-        except: pass
         update_metrics(
             self,self.test_metrics,pred_final,y,pred_class,y_class)
         return output_loss
