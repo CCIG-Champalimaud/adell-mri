@@ -50,9 +50,10 @@ def polynomial_lr_decay(optimizer:torch.optim.Optimizer,
                         end_lr:float=0.0,
                         power:float=1.0):
     step = min(step, max_decay_steps)
+    if isinstance(initial_lr,float):
+        initial_lr = [initial_lr for _ in optimizer.param_groups]
     if step <= max_decay_steps:
-        for param_group in optimizer.param_groups:
-            lr = param_group['lr']
-            base_lr = max(initial_lr - end_lr,0)
+        for param_group,i_lr in zip(optimizer.param_groups,initial_lr):
+            base_lr = max(i_lr - end_lr,0)
             new_lr = base_lr*(1-step/max_decay_steps)**power+end_lr
             param_group['lr'] = new_lr
