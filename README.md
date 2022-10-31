@@ -1,6 +1,16 @@
 # Methods for prostate cancer segmentation and detection for multi-parametric MRI
 
-Here I develop and present methods for segmenting prostate cancer from different MRI modalities. I use both ProstateX and PI-CAI (under development).
+Here I develop and present methods for segmenting prostate cancer from different MRI modalities, but these are more generically applicable to other problems - I try to follow a modular design and development, such that networks can be deployed to different problems as necessary. I prefer to organize data using `json` files so I have developed a number of scripts that allow me to achieve this (i.e. `utils/get-dataset-json.py`) and generate "dataset JSON files". By a dataset JSON file I merely mean a JSON file with the following format:
+
+```
+entry_1
+|-image_0: path_to_image_0
+|-image_1: path_to_image_1
+|-feature_0: value_for_feature_0
+|-class: class_for_entry_1
+```
+
+Then, using some minor JSON manipulation and [`MONAI`](https://monai.io/) I am able to easily construct data ingestion pipelines for training.
 
 ## Implemented methods for segmentation
 
