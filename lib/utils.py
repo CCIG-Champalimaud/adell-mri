@@ -124,21 +124,21 @@ def get_loss_param_dict(
     weights:torch.Tensor,
     gamma:FloatOrTensor,
     comb:FloatOrTensor,
-    threshold:FloatOrTensor=0.5)->Dict[str,Dict[str,FloatOrTensor]]:
+    threshold:FloatOrTensor=0.5,
+    scale:FloatOrTensor=1.0)->Dict[str,Dict[str,FloatOrTensor]]:
     """Constructs a keyword dictionary that can be used with the losses in 
     `losses.py`.
 
     Args:
         weights (torch.Tensor): weights for different classes (or for the 
-        positive class).
+            positive class).
         gamma (Union[torch.Tensor,float]): gamma for focal losses.
         comb (Union[torch.Tensor,float]): relative combination coefficient for
-        combination losses.
+            combination losses.
         threshold (Union[torch.Tensor,float],optional): threshold for the 
-        positive class in the focal loss. Helpful in cases where one is 
-        trying to model the probability explictly. Defaults to 0.5.
-        dev (str, optional): device to which parameters should be mapped. 
-        Defaults to "cuda".
+            positive class in the focal loss. Helpful in cases where one is 
+            trying to model the probability explictly. Defaults to 0.5.
+        scale (float, optional): scaling factor for CE and focal losses.
 
     Returns:
         Dict[str,Dict[str,Union[float,torch.Tensor]]]: dictionary where each 
@@ -153,19 +153,21 @@ def get_loss_param_dict(
     weights = torch.as_tensor(weights)
     gamma = torch.as_tensor(gamma)
     comb = torch.as_tensor(comb)
+    scale = torch.as_tensor(scale)
     
     loss_param_dict = {
-        "cross_entropy":{"weight":weights},
-        "focal":{"alpha":weights,"gamma":gamma},
+        "cross_entropy":{"weight":weights,"scale":scale},
+        "focal":{"alpha":weights,"gamma":gamma,"scale":scale},
         "focal_alt":{"alpha":weights,"gamma":gamma},
         "dice":{"weight":weights},
         "tversky_focal":{
-            "alpha":invert_weights(weights),"beta":weights,"gamma":gamma},
+            "alpha":invert_weights(weights),"beta":weights,
+            "gamma":gamma,"scale":scale},
         "combo":{
-            "alpha":comb,"beta":weights,"gamma":gamma},
+            "alpha":comb,"beta":weights,"gamma":gamma,"scale":scale},
         "unified_focal":{
             "delta":weights,"gamma":gamma,
-            "lam":comb,"threshold":threshold},
+            "lam":comb,"threshold":threshold,"scale":scale},
         "weighted_mse":{"alpha":weights,"threshold":threshold},
         "mse":{}}
     return loss_param_dict

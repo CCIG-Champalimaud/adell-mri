@@ -117,6 +117,10 @@ if __name__ == "__main__":
         '--subsample_size',dest='subsample_size',type=int,
         help="Subsamples data to a given size",
         default=None)
+    parser.add_argument(
+        '--cache_rate',dest='cache_rate',type=float,
+        help="Rate of samples to be cached",
+        default=1.0)
 
     # network + training
     parser.add_argument(
@@ -176,6 +180,9 @@ if __name__ == "__main__":
     parser.add_argument(
         '--loss_comb',dest="loss_comb",
         help="Relative weight for combined losses",default=0.5,type=float)
+    parser.add_argument(
+        '--loss_scale',dest="loss_scale",
+        help="Loss scale (helpful for 16bit trainign",default=1.0,type=float)
     parser.add_argument(
         '--learning_rate',dest="learning_rate",
         help="Learning rate (overrides the lr specified in network_config)",
@@ -469,7 +476,7 @@ if __name__ == "__main__":
             train_dataset = monai.data.CacheDataset(
                 train_list,
                 monai.transforms.Compose(transforms_train),
-                num_workers=args.n_workers)
+                num_workers=args.n_workers,cache_rate=args.cache_rate)
             train_dataset_val = monai.data.CacheDataset(
                 train_val_list,
                 monai.transforms.Compose(transforms_train_val),
@@ -477,7 +484,7 @@ if __name__ == "__main__":
             validation_dataset = monai.data.CacheDataset(
                 val_list,
                 monai.transforms.Compose(transforms_val),
-                num_workers=args.n_workers)
+                num_workers=args.n_workers,cache_rate=args.cache_rate)
 
         else:
             train_list = [dataset_full[i] for i in train_idxs]
@@ -562,7 +569,7 @@ if __name__ == "__main__":
         # get loss function parameters
         loss_params = get_loss_param_dict(
             weights=weights,gamma=args.loss_gamma,
-            comb=args.loss_comb)[loss_key]
+            comb=args.loss_comb,scale=args.loss_scale)[loss_key]
 
         def train_loader_call(batch_size): 
             return monai.data.ThreadDataLoader(
@@ -711,6 +718,7 @@ if __name__ == "__main__":
             check_val_every_n_epoch=args.check_val_every_n_epoch,
             log_every_n_steps=10,precision=precision)
 
+        torch.cuda.empty_cache()
         trainer.fit(unet,train_loader,train_val_loader)
         
         print("Validating...")

@@ -753,7 +753,7 @@ class BrUNetPL(BrUNet,pl.LightningModule):
         pred_final,pred_class,loss,class_loss,output_loss = self.loss_wrapper(
             x,x_weights,y,y_class,x_cond,x_fc)
         
-        self.log("train_loss", loss,batch_size=y.shape[0],
+        self.log("train_loss",loss,batch_size=y.shape[0],
                  sync_dist=True)
         if class_loss is not None:
             self.log("train_cl_loss",class_loss,batch_size=y.shape[0],
