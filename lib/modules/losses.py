@@ -7,7 +7,7 @@ import torch.nn.functional as F
 from typing import Union,Tuple
 from itertools import combinations
 
-EPS = 1e-6
+eps = 1e-6
 FOCAL_DEFAULT = {"alpha":None,"gamma":1}
 TVERSKY_DEFAULT = {"alpha":1,"beta":1,"gamma":1}
 
@@ -33,7 +33,8 @@ def pt(pred:torch.Tensor,target:torch.Tensor,
 def binary_cross_entropy(pred:torch.Tensor,
                          target:torch.Tensor,
                          weight:float=1.,
-                         scale:float=1.)->torch.Tensor:
+                         scale:float=1.,
+                         eps:float=eps)->torch.Tensor:
     """Standard implementation of binary cross entropy.
 
     Args:
@@ -42,6 +43,8 @@ def binary_cross_entropy(pred:torch.Tensor,
         weight (float, optional): weight for the positive
             class. Defaults to 1.
         scale (float, optional): factor to scale loss before reducing.
+        eps (float, optional): epsilon factor to avoid floating-point
+            imprecisions.
 
     Returns:
         torch.Tensor: a tensor with size equal to the batch size (first 
@@ -49,8 +52,8 @@ def binary_cross_entropy(pred:torch.Tensor,
     """
     pred = torch.flatten(pred,start_dim=1)
     target = torch.flatten(target,start_dim=1)
-    a = weight*target*torch.log(pred+EPS)
-    b = (1-target)*torch.log(1-pred+EPS)
+    a = weight*target*torch.log(pred+eps)
+    b = (1-target)*torch.log(1-pred+eps)
     return -torch.mean((a+b)*scale,dim=1)
 
 def binary_focal_loss(pred:torch.Tensor,
@@ -58,7 +61,8 @@ def binary_focal_loss(pred:torch.Tensor,
                       alpha:float,
                       gamma:float,
                       threshold:float=0.5,
-                      scale:float=1.0)->torch.Tensor: 
+                      scale:float=1.0,
+                      eps:float=eps)->torch.Tensor: 
     """Binary focal loss. Uses `alpha` to weight the positive class and 
     `lambda` to suppress examples which are easy to classify (given that 
     `lambda`>1). `lambda` is also known as the focusing parameter. In essence,
@@ -76,6 +80,8 @@ def binary_focal_loss(pred:torch.Tensor,
             focal loss. Helpful in cases where one is trying to model the 
             probability explictly. Defaults to 0.5.
         scale (float, optional): factor to scale loss before reducing.
+        eps (float, optional): epsilon factor to avoid floating-point
+            imprecisions.
 
     Returns:
         torch.Tensor: a tensor with size equal to the batch size (first 
@@ -88,16 +94,19 @@ def binary_focal_loss(pred:torch.Tensor,
     w = torch.where(target>0,alpha*torch.ones_like(p),torch.ones_like(p))
     p = torch.flatten(p,start_dim=1)
     w = torch.flatten(w,start_dim=1)
-    bce = -torch.log(p+EPS)
+    bce = -torch.log(p+eps)
     
-    x = w * ((1-p+EPS)**gamma)
-    return torch.mean(scale*x*bce,dim=-1)
+    x = w * ((1-p+eps)**gamma)
+    x = scale*x*bce
+    loss = torch.mean(x,dim=-1)
+    return loss
 
 def binary_focal_loss_(pred:torch.Tensor,
                        target:torch.Tensor,
                        alpha:float,
                        gamma:float,
-                       scale:float=1.0)->torch.Tensor: 
+                       scale:float=1.0,
+                       eps:float=eps)->torch.Tensor: 
     """Implementation of binary focal loss. Uses `alpha` to weight
     the positive class and `lambda` to suppress examples which are easy to 
     classify (given that `lambda`>1). `lambda` is also known as the focusing 
@@ -115,6 +124,8 @@ def binary_focal_loss_(pred:torch.Tensor,
         alpha (float): positive class weight.
         gamma (float): focusing parameter.
         scale (float, optional): factor to scale loss before reducing.
+        eps (float, optional): epsilon factor to avoid floating-point
+            imprecisions.
 
     Returns:
          torch.Tensor: a tensor with size equal to the batch size (first 
@@ -127,10 +138,10 @@ def binary_focal_loss_(pred:torch.Tensor,
         pred = torch.flatten(pred,start_dim=1)
     
     target = target.reshape(pred.shape)
-    loss = -(target*torch.log(pred+EPS)+(1-target)*torch.log(1-pred+EPS))
+    loss = -(target*torch.log(pred+eps)+(1-target)*torch.log(1-pred+eps))
     target_bin = (target>0).float()
     alpha_factor = target_bin*alpha + (1-target_bin)*(1-alpha)
-    modulating_factor = torch.pow(torch.abs(target - pred)+EPS,gamma)
+    modulating_factor = torch.pow(torch.abs(target - pred)+eps,gamma)
     loss *= alpha_factor * modulating_factor
     return torch.mean(loss*scale,1)
 
@@ -269,7 +280,7 @@ def combo_loss(pred:torch.Tensor,
     beta = torch.as_tensor(beta).type_as(pred)
 
     bdl = generalized_dice_loss(pred,target,beta)
-    bce = binary_focal_loss(pred,target,beta,gamma,scale)
+    bce = binary_focal_loss(pred,target,beta,gamma,scale=scale)
     return (alpha)*bce + (1-alpha)*bdl
 
 def hybrid_focal_loss(pred:torch.Tensor,
@@ -400,7 +411,8 @@ def unsqueeze_to_shape(X:torch.Tensor,
 def cat_cross_entropy(pred:torch.Tensor,
                       target:torch.Tensor,
                       weight:Union[float,torch.Tensor]=1.,
-                      scale:float=1.0)->torch.Tensor:
+                      scale:float=1.0,
+                      eps:float=eps)->torch.Tensor:
     """Standard implementation of categorical cross entropy.
 
     Args:
@@ -409,6 +421,8 @@ def cat_cross_entropy(pred:torch.Tensor,
         weight (Union[float,torch.Tensor], optional): class weights.
             Should be the same shape as the number of classes. Defaults to 1.
         scale (float, optional): factor to scale loss before reducing.
+        eps (float, optional): epsilon factor to avoid floating-point
+            imprecisions.
 
     Returns:
         torch.Tensor: a tensor with size equal to the batch size (first 
@@ -420,7 +434,7 @@ def cat_cross_entropy(pred:torch.Tensor,
         target = classes_to_one_hot(target)
     if isinstance(weight,torch.Tensor) == True:
         weight = unsqueeze_to_shape(weight,pred.shape,1)
-    out = -target*torch.log(pred+EPS)
+    out = -target*torch.log(pred+eps)
     out = torch.flatten(out*weight,start_dim=1)
     return torch.mean(out*scale,dim=1)
 
@@ -428,7 +442,8 @@ def mc_focal_loss(pred:torch.Tensor,
                   target:torch.Tensor,
                   alpha:torch.Tensor,
                   gamma:Union[float,torch.Tensor],
-                  scale:float=1.0)->torch.Tensor:
+                  scale:float=1.0,
+                  eps:float=eps)->torch.Tensor:
     """Categorical focal loss. Uses `alpha` to weight classes and `lambda` to
     suppress examples which are easy to classify (given that `lambda`>1). 
     `lambda` is also known as the focusing parameter. In essence, 
@@ -443,6 +458,8 @@ def mc_focal_loss(pred:torch.Tensor,
         alpha (torch.Tensor): class weights.
         gamma (Union[float,torch.Tensor]): focusing parameter.
         scale (float, optional): factor to scale loss before reducing.
+        eps (float, optional): epsilon factor to avoid floating-point
+            imprecisions.
 
     Returns:
          torch.Tensor: a tensor with size equal to the batch size (first 
@@ -455,8 +472,8 @@ def mc_focal_loss(pred:torch.Tensor,
     if pred.shape != target.shape:
         target = classes_to_one_hot(target)
     p = mc_pt(pred,target)
-    ce = -target*torch.log(pred+EPS)
-    out = torch.flatten(alpha*((1-p+EPS)**gamma)*ce,start_dim=1)
+    ce = -target*torch.log(pred+eps)
+    out = torch.flatten(alpha*((1-p+eps)**gamma)*ce,start_dim=1)
     return torch.mean(out*scale,dim=1)
 
 def mc_focal_tversky_loss(pred:torch.Tensor,
