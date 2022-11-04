@@ -7,6 +7,7 @@ import numpy as np
 import torch
 import monai
 import wandb
+import gc
 from copy import deepcopy
 from sklearn.model_selection import KFold,train_test_split
 from tqdm import tqdm
@@ -36,6 +37,9 @@ def if_none_else(x,obj):
     if x is None:
         return obj
     return x
+
+def inter_size(a,b):
+    return len(set.intersection(set(a),set(b)))
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -121,6 +125,11 @@ if __name__ == "__main__":
         '--cache_rate',dest='cache_rate',type=float,
         help="Rate of samples to be cached",
         default=1.0)
+    parser.add_argument(
+        '--missing_to_empty',dest='missing_to_empty',
+        type=str,nargs="+",choices=["image","mask"],
+        help="If some images or masks are missing, assume they are empty \
+            tensors.")
 
     # network + training
     parser.add_argument(
@@ -208,6 +217,9 @@ if __name__ == "__main__":
         '--check_val_every_n_epoch',dest='check_val_every_n_epoch',type=int,
         default=1,help="Epoch frequency of validation.")
     parser.add_argument(
+        '--picai_eval',dest='picai_eval',action="store_true",
+        help="Validates model using PI-CAI metrics.")
+    parser.add_argument(
         '--accumulate_grad_batches',dest='accumulate_grad_batches',type=int,
         default=1,help="Accumulate batches to calculate gradients.")
     parser.add_argument(
@@ -294,23 +306,25 @@ if __name__ == "__main__":
         args.input_size = [round(x) for x in args.input_size]
 
     data_dict = json.load(open(args.dataset_json,'r'))
-    if args.brunet == True:
-        obl_keys = [*aux_keys,*aux_mask_keys,*feature_keys]
-        opt_keys = keys
+    if args.missing_to_empty is None:
         data_dict = {
             k:data_dict[k] for k in data_dict
-            if len(set.intersection(set(data_dict[k]),
-                                    set(obl_keys))) == len(obl_keys)}
-        data_dict = {
-            k:data_dict[k] for k in data_dict
-            if len(set.intersection(set(data_dict[k]),
-                                    set(opt_keys))) > 0}
-
+            if inter_size(data_dict[k],set(all_keys_t)) == len(all_keys_t)}
     else:
-        data_dict = {
-            k:data_dict[k] for k in data_dict
-            if len(set.intersection(set(data_dict[k]),
-                                    set(all_keys_t))) == len(all_keys_t)}
+        if "image" in args.missing_to_empty:
+            obl_keys = [*aux_keys,*aux_mask_keys,*feature_keys]
+            opt_keys = keys
+            data_dict = {
+                k:data_dict[k] for k in data_dict
+                if inter_size(data_dict[k],obl_keys) == len(obl_keys)}
+            data_dict = {
+                k:data_dict[k] for k in data_dict
+                if inter_size(data_dict[k],opt_keys) > 0}
+        if "mask" in args.missing_to_empty:
+            data_dict = {
+                k:data_dict[k] for k in data_dict
+                if inter_size(data_dict[k],set(mask_image_keys)) >= 0}
+
     for kk in feature_keys:
         data_dict = {
             k:data_dict[k] for k in data_dict
@@ -348,7 +362,7 @@ if __name__ == "__main__":
         "input_size": args.input_size,
         "crop_size": args.crop_size,
         "label_mode": label_mode,
-        "fill_missing": args.brunet,
+        "fill_missing": args.missing_to_empty is not None,
         "brunet": args.brunet}
     augment_arguments = {
         "all_keys":all_keys,
@@ -423,9 +437,8 @@ if __name__ == "__main__":
     for val_fold in range(args.n_folds):
         print("="*80)
         print("Starting fold={}".format(val_fold))
-        callbacks = [
-            #RichProgressBar()
-            ]
+        torch.cuda.empty_cache()
+        callbacks = [RichProgressBar()]
 
         ckpt_path = None
 
@@ -476,15 +489,13 @@ if __name__ == "__main__":
             train_dataset = monai.data.CacheDataset(
                 train_list,
                 monai.transforms.Compose(transforms_train),
-                num_workers=args.n_workers,cache_rate=args.cache_rate)
+                num_workers=args.n_workers)
             train_dataset_val = monai.data.CacheDataset(
                 train_val_list,
-                monai.transforms.Compose(transforms_train_val),
-                num_workers=args.n_workers)
-            validation_dataset = monai.data.CacheDataset(
+                monai.transforms.Compose(transforms_train_val))
+            validation_dataset = monai.data.Dataset(
                 val_list,
-                monai.transforms.Compose(transforms_val),
-                num_workers=args.n_workers,cache_rate=args.cache_rate)
+                monai.transforms.Compose(transforms_val))
 
         else:
             train_list = [dataset_full[i] for i in train_idxs]
@@ -533,10 +544,13 @@ if __name__ == "__main__":
             
         # include some constant label images
         sampler = None
-        if args.constant_ratio is not None or args.class_weights[0] == "adaptive":
+        ad = "adaptive" in args.class_weights[0]
+        if args.constant_ratio is not None or ad:
             cl = []
+            pos_pixel_sum = 0
+            total_pixel_sum = 0
             with tqdm(train_list) as t:
-                t.set_description("Setting up partially random sampler")
+                t.set_description("Setting up partially random sampler/adaptive weights")
                 for x in t:
                     I = set.intersection(set(label_keys),set(x.keys()))
                     if len(I) > 0:
@@ -544,9 +558,12 @@ if __name__ == "__main__":
                             keys=label_keys,allow_missing_keys=True)(x)
                         total = []
                         for k in I:
-                            for u in np.unique(masks[k]):
+                            for u,c in zip(*np.unique(masks[k],return_counts=True)):
                                 if u not in total:
                                     total.append(u)
+                                if u != 0:
+                                    pos_pixel_sum += c
+                                total_pixel_sum += c
                         if len(total) > 1:
                             cl.append(1)
                         else:
@@ -554,22 +571,30 @@ if __name__ == "__main__":
                     else:
                         cl.append(0)
             adaptive_weights = len(cl)/np.sum(cl)
+            adaptive_pixel_weights = total_pixel_sum / pos_pixel_sum
             if args.constant_ratio is not None:
                 sampler = PartiallyRandomSampler(
                     cl,non_keep_ratio=args.constant_ratio,seed=args.seed)
-
+                if args.class_weights[0] == "adaptive":
+                    adaptive_weights = 1 + args.constant_ratio
         # weights to tensor
-        if args.class_weights[0] != "adaptive":
+        if args.class_weights[0] == "adaptive":
+            weights = adaptive_weights
+        elif args.class_weights[0] == "adaptive_pixel":
+            weights = adaptive_pixel_weights
+        else:
             weights = torch.as_tensor(
                 np.float32(np.array(args.class_weights)),dtype=torch.float32,
                 device=dev)
-        else:
-            weights = adaptive_weights
+        print("Weights set to:",weights)
         
         # get loss function parameters
         loss_params = get_loss_param_dict(
             weights=weights,gamma=args.loss_gamma,
             comb=args.loss_comb,scale=args.loss_scale)[loss_key]
+        if "eps" in loss_params and args.precision != "32":
+            if loss_params["eps"] < 1e-4:
+                loss_params["eps"] = 1e-4
 
         def train_loader_call(batch_size): 
             return monai.data.ThreadDataLoader(
@@ -651,6 +676,7 @@ if __name__ == "__main__":
                 feature_conditioning_key=feature_key_net,
                 n_epochs=args.max_epochs,
                 n_input_branches=len(keys),
+                picai_eval=args.picai_eval,
                 lr_encoder=args.lr_encoder,
                 **network_config)
             if args.encoder_checkpoint is not None and args.res_config_file is None:
@@ -670,6 +696,7 @@ if __name__ == "__main__":
                 feature_conditioning_params=all_params,
                 feature_conditioning_key=feature_key_net,
                 n_epochs=args.max_epochs,
+                picai_eval=args.picai_eval,
                 lr_encoder=args.lr_encoder,
                 **network_config)
         else:
@@ -687,6 +714,7 @@ if __name__ == "__main__":
                 feature_conditioning_key=feature_key_net,
                 deep_supervision=args.deep_supervision,
                 n_epochs=args.max_epochs,
+                picai_eval=args.picai_eval,
                 lr_encoder=args.lr_encoder,
                 **network_config)
         
@@ -701,7 +729,8 @@ if __name__ == "__main__":
                 
         if args.summary_name is not None and args.project_name is not None:
             wandb.finish()
-            run_name = args.summary_name.replace(':','_') + "_fold_{}".format(val_fold)
+            run_name = args.summary_name.replace(':','_') 
+            run_name = run_name + "_fold_{}".format(val_fold)
             logger = WandbLogger(
                 save_dir=args.summary_dir,project=args.project_name,
                 name=run_name,version=run_name,reinit=True,resume="allow")
@@ -713,12 +742,11 @@ if __name__ == "__main__":
             accelerator=dev,
             devices=devices,logger=logger,callbacks=callbacks,
             strategy=strategy,max_epochs=args.max_epochs,
-            enable_checkpointing=ckpt,accumulate_grad_batches=3,
+            enable_checkpointing=ckpt,accumulate_grad_batches=1,
             resume_from_checkpoint=ckpt_path,
             check_val_every_n_epoch=args.check_val_every_n_epoch,
             log_every_n_steps=10,precision=precision)
 
-        torch.cuda.empty_cache()
         trainer.fit(unet,train_loader,train_val_loader)
         
         print("Validating...")
@@ -740,3 +768,12 @@ if __name__ == "__main__":
                     output_file.write(x+'\n')
                     print(x)
         print("="*80)
+        gc.collect()
+        
+        del trainer
+        del train_dataset
+        del train_loader
+        del validation_dataset
+        del validation_loader
+        del train_dataset_val
+        del train_val_loader
