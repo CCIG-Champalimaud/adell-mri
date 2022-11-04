@@ -200,15 +200,20 @@ def generalized_dice_loss(pred:torch.Tensor,
 
     if pred.shape != target.shape:
         target = classes_to_one_hot(target)
-        weight = unsqueeze_to_shape(weight,target.shape,1)
-    else:
-        weight = torch.where(
-            target>0.5,
-            torch.ones_like(target)*weight,
-            torch.ones_like(target))
-    I = torch.flatten(weight*target*pred,start_dim=2).sum(-1).sum(-1)
-    U = torch.flatten(weight*target+pred,start_dim=2).sum(-1).sum(-1)
-    return 1. - 2.*(I+smooth)/(U+smooth)
+        weight = unsqueeze_to_shape(weight,[1,1],1)
+    
+    target = torch.flatten(target,start_dim=2)
+    pred = torch.flatten(pred,start_dim=2)
+    # adjusting the values of target and pred to avoid fp16 issues
+    tp = torch.sum(target * pred * 0.01,2)
+    fp = torch.sum((1.-target) * pred * 0.01,2)
+    fn = torch.sum(target * (1.-pred) * 0.01,2)
+            
+    cl_dice = torch.sum(
+        1. - torch.divide(2.*(tp*weight) + smooth,
+                          2.*(tp*weight) + fp + fn + smooth),
+        1)
+    return cl_dice
 
 def binary_focal_tversky_loss(pred:torch.Tensor,
                               target:torch.Tensor,
@@ -258,7 +263,7 @@ def combo_loss(pred:torch.Tensor,
                gamma:float=1.,
                scale:float=1.0)->torch.Tensor:
     """Combo loss. Simply put, it is a weighted combination of the Dice loss
-    and the weighted cross entropy [1]. `alpha` is the weight for each loss 
+    and the weighted focal loss [1]. `alpha` is the weight for each loss 
     and beta is the weight for the binary cross entropy.
 
     [1] https://arxiv.org/abs/1805.02798
@@ -270,7 +275,11 @@ def combo_loss(pred:torch.Tensor,
             entropy is scaled by `alpha` and the Dice score is scaled by 
             `1-alpha`. Defaults to 0.5.
         beta (float, optional): weight for the cross entropy. Defaults to 1.
+        gamma (float, optional): focusing parameter. Setting this to 0 leads
+            this loss to be the weighted sum of generalized Dice loss and
+            BCE. Defaults to 1.0.
         scale (float, optional): factor to scale focal loss before reducing.
+            Defaults to 1.0.
 
     Returns:
         torch.Tensor: a tensor with size equal to the batch size (first 
