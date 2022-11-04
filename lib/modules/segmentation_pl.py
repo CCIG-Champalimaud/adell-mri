@@ -11,7 +11,7 @@ from picai_eval import evaluate
 
 from .segmentation import UNet,BrUNet
 from .segmentation_plus import UNetPlusPlus
-from .learning_rate import polynomial_lr_decay
+from .learning_rate import poly_lr_decay
 from .extract_lesion_candidates import extract_lesion_candidates
 
 def split(x,n_splits,dim):
@@ -51,6 +51,8 @@ class UNetPL(UNet,pl.LightningModule):
         skip_conditioning_key: str=None,
         feature_conditioning_key: str=None,
         learning_rate: float=0.001,
+        lr_encoder: float=None,
+        polynomial_lr_decay: bool=True,
         batch_size: int=4,
         n_epochs: int=100,
         weight_decay: float=0.005,
@@ -58,8 +60,7 @@ class UNetPL(UNet,pl.LightningModule):
         loss_fn: Callable=torch.nn.functional.binary_cross_entropy,
         loss_params: dict={},
         tta: bool=False,
-        picai_eval: bool=False,
-        lr_encoder: float=None,*args,**kwargs) -> torch.nn.Module:
+        picai_eval: bool=False,*args,**kwargs) -> torch.nn.Module:
         """Standard U-Net [1] implementation for Pytorch Lightning.
 
         Args:
@@ -73,6 +74,10 @@ class UNetPL(UNet,pl.LightningModule):
                 the tabular features which will be used in the feature
                 conditioning.
             learning_rate (float, optional): learning rate. Defaults to 0.001.
+            lr_encoder (float, optional): encoder learning rate. Defaults to None
+                (same as learning_rate).
+            polynomial_lr_decay (bool, optional): triggers polynomial learning rate
+                decay. Defaults to True.
             batch_size (int, optional): batch size. Defaults to 4.
             n_epochs (int, optional): number of epochs. Defaults to 100.
             weight_decay (float, optional): weight decay for optimizer. Defaults 
@@ -86,7 +91,6 @@ class UNetPL(UNet,pl.LightningModule):
             tta (bool, optional): test-time augmentation. Defaults to False.
             picai_eval (bool, optional): evaluates network using PI-CAI 
                 metrics as well (can be a bit long).
-            lr_encoder (float, optional): encoder learning rate.
             args: arguments for UNet class.
             kwargs: keyword arguments for UNet class.
 
@@ -103,6 +107,8 @@ class UNetPL(UNet,pl.LightningModule):
         self.skip_conditioning_key = skip_conditioning_key
         self.feature_conditioning_key = feature_conditioning_key
         self.learning_rate = learning_rate
+        self.lr_encoder = lr_encoder
+        self.polynomial_lr_decay = polynomial_lr_decay
         self.batch_size = batch_size
         self.n_epochs = n_epochs
         self.weight_decay = weight_decay
@@ -111,7 +117,6 @@ class UNetPL(UNet,pl.LightningModule):
         self.loss_params = loss_params
         self.tta = tta
         self.picai_eval = picai_eval
-        self.lr_encoder = lr_encoder
         
         self.loss_fn_class = torch.nn.BCEWithLogitsLoss()
         self.setup_metrics()
@@ -127,8 +132,7 @@ class UNetPL(UNet,pl.LightningModule):
         return loss.mean()
 
     def calculate_loss_class(self,prediction,y):
-        y = y.type(torch.float32)
-        prediction = prediction.type(torch.float32)
+        y = y.type_as(prediction)
         loss = self.loss_fn_class(prediction,y)
         return loss.mean()
 
@@ -189,6 +193,24 @@ class UNetPL(UNet,pl.LightningModule):
         update_metrics(
             self,self.train_metrics,pred_final,y,pred_class,y_class,
             on_epoch=True,on_step=False,prog_bar=True)
+        if torch.isnan(output_loss) == True:
+            print("Nan loss detected! ({})".format(output_loss.detach()))
+            for i,sx in enumerate(x):
+                print("\t0",[sx.detach().max(),sx.detach().min()])
+            print("\tOutput:",[pred_final.detach().max(),pred_final.detach().min()])
+            print("\tTruth:",[y.min(),y.max()])
+            print("\tModel parameters:")
+            for n,p in self.named_parameters():
+                pn = p.norm()
+                if (torch.isnan(pn) == True) or (torch.isinf(pn) == True):
+                    print("\t\tparameter norm({})={}".format(n,pn))
+            for n,p in self.named_parameters():
+                if p.grad is not None:
+                    pg = p.grad.mean()
+                    if (torch.isnan(pg) == True) or (torch.isinf(pg) == True):
+                        print("\t\taverage grad({})={}".format(n,pg))
+            raise RuntimeError(
+                "nan found in loss (see above for details)")
         return output_loss
     
     def validation_step(self,batch,batch_idx):
@@ -264,11 +286,12 @@ class UNetPL(UNet,pl.LightningModule):
                 rest_of_params.append(p)
         if self.lr_encoder is None:
             lr_encoder = self.learning_rate
+            parameters = encoder_params + rest_of_params
         else:
             lr_encoder = self.lr_encoder
-        parameters = [
-            {'params': encoder_params,'lr':lr_encoder},
-            {'params': rest_of_params}]
+            parameters = [
+                {'params': encoder_params,'lr':lr_encoder},
+                {'params': rest_of_params}]
         if self.precision != 32: eps = 1e-4
         else: eps = 1e-8
         optimizer = torch.optim.AdamW(
@@ -283,8 +306,9 @@ class UNetPL(UNet,pl.LightningModule):
         # basically the lr_scheduler (as I was using it at least)
         # is not terribly compatible with starting and stopping training
         opt = self.optimizers()
-        polynomial_lr_decay(opt,self.current_epoch,initial_lr=self.learning_rate,
-                            max_decay_steps=self.n_epochs,end_lr=1e-6,power=0.9)
+        if self.polynomial_lr_decay == True:
+            poly_lr_decay(opt,self.current_epoch,initial_lr=self.learning_rate,
+                          max_decay_steps=self.n_epochs,end_lr=1e-6,power=0.9)
         try:
             last_lr = [x["lr"] for x in opt.param_groups][-1]
         except:
@@ -354,6 +378,8 @@ class UNetPlusPlusPL(UNetPlusPlus,pl.LightningModule):
         skip_conditioning_key: str=None,
         feature_conditioning_key: str=None,
         learning_rate: float=0.001,
+        lr_encoder: float=None,
+        polynomial_lr_decay: bool=True,
         batch_size: int=4,
         n_epochs: int=100,
         weight_decay: float=0.005,
@@ -361,8 +387,7 @@ class UNetPlusPlusPL(UNetPlusPlus,pl.LightningModule):
         loss_fn: Callable=torch.nn.functional.binary_cross_entropy,
         loss_params: dict={},
         tta: bool=False,
-        picai_eval: bool=False,
-        lr_encoder: float=None,*args,**kwargs) -> torch.nn.Module:
+        picai_eval: bool=False,*args,**kwargs) -> torch.nn.Module:
         """Standard U-Net++ [1] implementation for Pytorch Lightning.
 
         Args:
@@ -376,6 +401,7 @@ class UNetPlusPlusPL(UNetPlusPlus,pl.LightningModule):
                 the tabular features which will be used in the feature
                 conditioning.
             learning_rate (float, optional): learning rate. Defaults to 0.001.
+            lr_encoder (float, optional): encoder learning rate.
             batch_size (int, optional): batch size. Defaults to 4.
             n_epochs (int, optional): number of epochs. Defaults to 100.
             weight_decay (float, optional): weight decay for optimizer. Defaults 
@@ -389,7 +415,6 @@ class UNetPlusPlusPL(UNetPlusPlus,pl.LightningModule):
             tta (bool, optional): test-time augmentation. Defaults to False.
             picai_eval (bool, optional): evaluates network using PI-CAI 
                 metrics as well (can be a bit long).
-            lr_encoder (float, optional): encoder learning rate.
             args: arguments for UNet class.
             kwargs: keyword arguments for UNet class.
 
@@ -406,6 +431,8 @@ class UNetPlusPlusPL(UNetPlusPlus,pl.LightningModule):
         self.skip_conditioning_key = skip_conditioning_key
         self.feature_conditioning_key = feature_conditioning_key
         self.learning_rate = learning_rate
+        self.lr_encoder = lr_encoder
+        self.polynomial_lr_decay = polynomial_lr_decay
         self.batch_size = batch_size
         self.n_epochs = n_epochs
         self.weight_decay = weight_decay
@@ -414,7 +441,6 @@ class UNetPlusPlusPL(UNetPlusPlus,pl.LightningModule):
         self.loss_params = loss_params
         self.tta = tta
         self.picai_eval = picai_eval
-        self.lr_encoder = lr_encoder
         
         self.loss_fn_class = torch.nn.BCEWithLogitsLoss()
         self.setup_metrics()
@@ -590,8 +616,9 @@ class UNetPlusPlusPL(UNetPlusPlus,pl.LightningModule):
         # basically the lr_scheduler (as I was using it at least)
         # is not terribly compatible with starting and stopping training
         opt = self.optimizers()
-        polynomial_lr_decay(opt,self.current_epoch,initial_lr=self.learning_rate,
-                            max_decay_steps=self.n_epochs,end_lr=1e-6,power=0.9)
+        if self.polynomial_lr_decay == True:
+            poly_lr_decay(opt,self.current_epoch,initial_lr=self.learning_rate,
+                        max_decay_steps=self.n_epochs,end_lr=1e-6,power=0.9)
         try:
             last_lr = [x["lr"] for x in opt.param_groups][-1]
         except:
@@ -631,6 +658,8 @@ class BrUNetPL(BrUNet,pl.LightningModule):
         skip_conditioning_key: str=None,
         feature_conditioning_key: str=None,
         learning_rate: float=0.001,
+        lr_encoder: float=None,
+        polynomial_lr_decay: bool=True,
         batch_size: int=4,
         n_epochs: int=100,
         weight_decay: float=0.005,
@@ -638,8 +667,7 @@ class BrUNetPL(BrUNet,pl.LightningModule):
         loss_fn: Callable=torch.nn.functional.binary_cross_entropy,
         loss_params: dict={},
         tta: bool=False,
-        picai_eval: bool=False,
-        lr_encoder: float=None,*args,**kwargs) -> torch.nn.Module:
+        picai_eval: bool=False,*args,**kwargs) -> torch.nn.Module:
         """Standard U-Net [1] implementation for Pytorch Lightning.
 
         Args:
@@ -653,6 +681,7 @@ class BrUNetPL(BrUNet,pl.LightningModule):
                 the tabular features which will be used in the feature
                 conditioning.
             learning_rate (float, optional): learning rate. Defaults to 0.001.
+            lr_encoder (float, optional): encoder learning rate.
             batch_size (int, optional): batch size. Defaults to 4.
             n_epochs (int, optional): number of epochs. Defaults to 100.
             weight_decay (float, optional): weight decay for optimizer. Defaults 
@@ -666,7 +695,6 @@ class BrUNetPL(BrUNet,pl.LightningModule):
             tta (bool, optional): test-time augmentation. Defaults to False.
             picai_eval (bool, optional): evaluates network using PI-CAI 
                 metrics as well (can be a bit long).
-            lr_encoder (float, optional): encoder learning rate.
             args: arguments for UNet class.
             kwargs: keyword arguments for UNet class.
 
@@ -683,6 +711,8 @@ class BrUNetPL(BrUNet,pl.LightningModule):
         self.skip_conditioning_key = skip_conditioning_key
         self.feature_conditioning_key = feature_conditioning_key
         self.learning_rate = learning_rate
+        self.lr_encoder = lr_encoder
+        self.polynomial_lr_decay = polynomial_lr_decay
         self.batch_size = batch_size
         self.n_epochs = n_epochs
         self.weight_decay = weight_decay
@@ -691,7 +721,6 @@ class BrUNetPL(BrUNet,pl.LightningModule):
         self.loss_params = loss_params
         self.tta = tta
         self.picai_eval = picai_eval
-        self.lr_encoder = lr_encoder
         
         self.loss_fn_class = torch.nn.BCEWithLogitsLoss()
         self.setup_metrics()
@@ -707,8 +736,7 @@ class BrUNetPL(BrUNet,pl.LightningModule):
         return loss.mean()
 
     def calculate_loss_class(self,prediction,y):
-        y = y.type(torch.float32)
-        prediction = prediction.type(torch.float32)
+        y = y.type_as(prediction)
         loss = self.loss_fn_class(prediction,y)
         return loss.mean()
 
@@ -860,9 +888,10 @@ class BrUNetPL(BrUNet,pl.LightningModule):
         # basically the lr_scheduler (as I was using it at least)
         # is not terribly compatible with starting and stopping training
         opt = self.optimizers()
-        polynomial_lr_decay(opt,self.current_epoch,
-                            initial_lr=self.initial_learning_rates,
-                            max_decay_steps=self.n_epochs,end_lr=1e-6,power=0.9)
+        if self.polynomial_lr_decay == True:
+            poly_lr_decay(opt,self.current_epoch,
+                          initial_lr=self.initial_learning_rates,
+                          max_decay_steps=self.n_epochs,end_lr=1e-6,power=0.9)
         try:
             last_lr = [x["lr"] for x in opt.param_groups][-1]
         except:
