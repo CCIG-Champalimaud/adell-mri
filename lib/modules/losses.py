@@ -177,7 +177,7 @@ def weighted_mse(pred:torch.Tensor,
 def generalized_dice_loss(pred:torch.Tensor,
                           target:torch.Tensor,
                           weight:float=1.,
-                          smooth:float=0.)->torch.Tensor:
+                          smooth:float=1.)->torch.Tensor:
     """Dice loss adapted to cases of very high class imbalance. In essence
     it adds class weights to the calculation of the Dice loss [1]. If 
     `weights=1` it defaults to the regular Dice loss. This implementation 
@@ -197,18 +197,20 @@ def generalized_dice_loss(pred:torch.Tensor,
         dimension of `pred`).
     """
     weight = torch.as_tensor(weight).type_as(pred)
-
+    scaling_term = 0.0001
+    
     if pred.shape != target.shape:
         target = classes_to_one_hot(target)
         weight = unsqueeze_to_shape(weight,[1,1],1)
     
     target = torch.flatten(target,start_dim=2)
     pred = torch.flatten(pred,start_dim=2)
+    smooth = smooth * scaling_term
     # adjusting the values of target and pred to avoid fp16 issues
-    tp = torch.sum(target * pred * 0.01,2)
-    fp = torch.sum((1.-target) * pred * 0.01,2)
-    fn = torch.sum(target * (1.-pred) * 0.01,2)
-            
+    tp = torch.sum(target * pred * scaling_term,2)
+    fp = torch.sum((1.-target) * pred * scaling_term,2)
+    fn = torch.sum(target * (1.-pred) * scaling_term,2)
+        
     cl_dice = torch.sum(
         1. - torch.divide(2.*(tp*weight) + smooth,
                           2.*(tp*weight) + fp + fn + smooth),
