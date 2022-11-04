@@ -4,6 +4,7 @@ import torch
 import torch.nn.functional as F
 import torchmetrics
 import pytorch_lightning as pl
+import torchmetrics.classification as tmc
 from typing import Callable
 from copy import deepcopy
 from picai_eval import evaluate
@@ -24,6 +25,8 @@ def update_metrics(cls,metrics,pred,y,pred_class,y_class,**kwargs):
     try: y = torch.round(y).int()
     except: pass
     y = y.long()
+    pred = pred.squeeze(1)
+    y = y.squeeze(1)
     p = pred.detach()
     if y_class is not None:
         y_class = y_class.long()
@@ -31,11 +34,11 @@ def update_metrics(cls,metrics,pred,y,pred_class,y_class,**kwargs):
     for k in metrics:
         if 'cl:' in k:
             if cls.n_classes == 2:
-                pred_class = F.sigmoid(pc)
+                pc = F.sigmoid(pc)
             else:
-                pred_class = F.softmax(pc,1)
+                pc = F.softmax(pc,1)
             metrics[k].update(pc,y_class)
-        else:    
+        else:
             metrics[k].update(p,y)
         cls.log(k,metrics[k],**kwargs,batch_size=y.shape[0],
                 sync_dist=True)
@@ -55,6 +58,7 @@ class UNetPL(UNet,pl.LightningModule):
         loss_fn: Callable=torch.nn.functional.binary_cross_entropy,
         loss_params: dict={},
         tta: bool=False,
+        picai_eval: bool=False,
         lr_encoder: float=None,*args,**kwargs) -> torch.nn.Module:
         """Standard U-Net [1] implementation for Pytorch Lightning.
 
@@ -80,6 +84,8 @@ class UNetPL(UNet,pl.LightningModule):
             loss_params (dict, optional): additional parameters for the loss
                 function. Defaults to {}.
             tta (bool, optional): test-time augmentation. Defaults to False.
+            picai_eval (bool, optional): evaluates network using PI-CAI 
+                metrics as well (can be a bit long).
             lr_encoder (float, optional): encoder learning rate.
             args: arguments for UNet class.
             kwargs: keyword arguments for UNet class.
@@ -104,6 +110,7 @@ class UNetPL(UNet,pl.LightningModule):
         self.loss_fn = loss_fn
         self.loss_params = loss_params
         self.tta = tta
+        self.picai_eval = picai_eval
         self.lr_encoder = lr_encoder
         
         self.loss_fn_class = torch.nn.BCEWithLogitsLoss()
@@ -121,7 +128,7 @@ class UNetPL(UNet,pl.LightningModule):
 
     def calculate_loss_class(self,prediction,y):
         y = y.type(torch.float32)
-        prediction = prediction.squeeze(1).type(torch.float32)
+        prediction = prediction.type(torch.float32)
         loss = self.loss_fn_class(prediction,y)
         return loss.mean()
 
@@ -133,13 +140,8 @@ class UNetPL(UNet,pl.LightningModule):
             prediction,pred_class = output
         else:
             prediction,pred_class,deep_outputs = output
-            deep_outputs = [torch.squeeze(o,1) for o in deep_outputs]
-        prediction = torch.squeeze(prediction,1)
-        y = torch.squeeze(y,1)
-        batch_size = int(prediction.shape[0])
-        if batch_size == 1:
-            y = torch.unsqueeze(y,0)
-        y = torch.squeeze(y,1)
+        prediction = prediction
+        y = y
 
         loss = self.calculate_loss(prediction,y)
         if self.deep_supervision == True:
@@ -147,8 +149,7 @@ class UNetPL(UNet,pl.LightningModule):
             additional_losses = torch.zeros_like(loss)
             for i,o in enumerate(deep_outputs):
                 S = o.shape[-self.spatial_dimensions:]
-                y_small = F.interpolate(torch.unsqueeze(y,1),S,mode="nearest")
-                y_small = torch.squeeze(y_small,1)
+                y_small = F.interpolate(y,S,mode="nearest")
                 l = self.calculate_loss(o,y_small).mean()/(2**(t-i))/t
                 additional_losses = additional_losses + l
             loss = loss + additional_losses
@@ -186,7 +187,7 @@ class UNetPL(UNet,pl.LightningModule):
                      sync_dist=True)
 
         update_metrics(
-            self.train_metrics,pred_final,y,pred_class,y_class,
+            self,self.train_metrics,pred_final,y,pred_class,y_class,
             on_epoch=True,on_step=False,prog_bar=True)
         return output_loss
     
@@ -208,19 +209,19 @@ class UNetPL(UNet,pl.LightningModule):
         pred_final,pred_class,loss,class_loss,output_loss = self.loss_wrapper(
             x,y,y_class,x_cond,x_fc)
         
-        for s_p,s_y in zip(pred_final.detach().cpu().numpy(),
-                           y.squeeze(1).detach().cpu().numpy()):
-            self.all_pred.append(s_p)
-            self.all_true.append(s_y)
+        if self.picai_eval == True:
+            for s_p,s_y in zip(pred_final.squeeze(1).detach().cpu().numpy(),
+                               y.squeeze(1).detach().cpu().numpy()):
+                self.all_pred.append(s_p)
+                self.all_true.append(s_y)
 
-        self.log("val_loss",loss,prog_bar=True,
+        self.log("val_loss",loss.detach(),prog_bar=True,
                  on_epoch=True,batch_size=y.shape[0],
                  sync_dist=True)
 
         update_metrics(
-            self.val_metrics,pred_final,y,pred_class,y_class,
+            self,self.val_metrics,pred_final,y,pred_class,y_class,
             on_epoch=True,prog_bar=True)
-        return output_loss
 
     def test_step(self,batch,batch_idx):
         x, y = batch[self.image_key],batch[self.label_key]
@@ -239,16 +240,16 @@ class UNetPL(UNet,pl.LightningModule):
 
         pred_final,pred_class,loss,class_loss,output_loss = self.loss_wrapper(
             x,y,y_class,x_cond,x_fc)
-
-        for s_p,s_y in zip(pred_final.detach().cpu().numpy(),
-                           y.squeeze(1).detach().cpu().numpy()):
-            self.all_pred.append(s_p)
-            self.all_true.append(s_y)
+        
+        if self.picai_eval == True:
+            for s_p,s_y in zip(pred_final.squeeze(1).detach().cpu().numpy(),
+                               y.squeeze(1).detach().cpu().numpy()):
+                self.all_pred.append(s_p)
+                self.all_true.append(s_y)
 
         update_metrics(
-            self.test_metrics,pred_final,y,pred_class,y_class,
+            self,self.test_metrics,pred_final,y,pred_class,y_class,
             on_epoch=True,on_step=False,prog_bar=True)
-        return output_loss
         
     def train_dataloader(self) -> torch.utils.data.DataLoader:
         return self.training_dataloader_call()
@@ -268,9 +269,11 @@ class UNetPL(UNet,pl.LightningModule):
         parameters = [
             {'params': encoder_params,'lr':lr_encoder},
             {'params': rest_of_params}]
+        if self.precision != 32: eps = 1e-4
+        else: eps = 1e-8
         optimizer = torch.optim.AdamW(
             parameters,lr=self.learning_rate,
-            weight_decay=self.weight_decay)
+            weight_decay=self.weight_decay,eps=eps)
 
         return {"optimizer":optimizer,
                 "monitor":"val_loss"}
@@ -289,70 +292,59 @@ class UNetPL(UNet,pl.LightningModule):
         self.log("lr",last_lr,prog_bar=True,sync_dist=True)
 
     def on_validation_epoch_end(self):
-        picai_eval_metrics = evaluate(
-            y_det=self.all_pred,y_true=self.all_true,
-            y_det_postprocess_func=get_lesions,
-            num_parallel_calls=8)
-        self.log("V_AP",picai_eval_metrics.AP,prog_bar=True,
-                 sync_dist=True)
-        self.log("V_R",picai_eval_metrics.score,prog_bar=True,
-                 sync_dist=True)
-        self.log("V_AUC",picai_eval_metrics.auroc,prog_bar=True,
-                 sync_dist=True)
-        self.all_pred = []
-        self.all_true = []
+        if self.picai_eval:
+            picai_eval_metrics = evaluate(
+                y_det=self.all_pred,y_true=self.all_true,
+                y_det_postprocess_func=get_lesions,
+                num_parallel_calls=8)
+            self.log("V_AP",picai_eval_metrics.AP,prog_bar=True,
+                    sync_dist=True)
+            self.log("V_R",picai_eval_metrics.score,prog_bar=True,
+                    sync_dist=True)
+            self.log("V_AUC",picai_eval_metrics.auroc,prog_bar=True,
+                    sync_dist=True)
+            self.all_pred = []
+            self.all_true = []
 
     def on_test_epoch_end(self):
-        picai_eval_metrics = evaluate(
-            y_det=self.all_pred,y_true=self.all_true,
-            y_det_postprocess_func=get_lesions,
-            num_parallel_calls=8)
-        self.log("T_AP",picai_eval_metrics.AP,prog_bar=True,
-                 sync_dist=True)
-        self.log("T_R",picai_eval_metrics.score,prog_bar=True,
-                 sync_dist=True)
-        self.log("T_AUC",picai_eval_metrics.auroc,prog_bar=True,
-                 sync_dist=True)
-        self.all_pred = []
-        self.all_true = []
+        if self.picai_eval:
+            picai_eval_metrics = evaluate(
+                y_det=self.all_pred,y_true=self.all_true,
+                y_det_postprocess_func=get_lesions,
+                num_parallel_calls=8)
+            self.log("V_AP",picai_eval_metrics.AP,prog_bar=True,
+                    sync_dist=True)
+            self.log("V_R",picai_eval_metrics.score,prog_bar=True,
+                    sync_dist=True)
+            self.log("V_AUC",picai_eval_metrics.auroc,prog_bar=True,
+                    sync_dist=True)
+            self.all_pred = []
+            self.all_true = []
 
     def setup_metrics(self):
-        if self.n_classes == 2:
-            C_1,C_2,A,M,I = 2,None,None,"micro",0
+        nc = self.n_classes
+        if nc == 2:
+            md = {
+                "IoU":lambda: tmc.BinaryJaccardIndex(),
+                "Pr":lambda: tmc.BinaryPrecision(),
+                "F1":lambda: tmc.BinaryFBetaScore(1.0),
+                "Dice":lambda: torchmetrics.Dice(2)}
         else:
-            C_1,C_2,A,M,I = [
-                self.n_classes,self.n_classes,"samplewise","macro",None]
+            md = {"IoU":lambda: torchmetrics.JaccardIndex(nc,average="macro"),
+                  "Pr":lambda: torchmetrics.Precision(nc,average="macro"),
+                  "F1":lambda: torchmetrics.FBetaScore(nc,average="macro"),
+                  "Dice":lambda: torchmetrics.Dice(nc,average="macro")}
         self.train_metrics = torch.nn.ModuleDict({})
         self.val_metrics = torch.nn.ModuleDict({})
         self.test_metrics = torch.nn.ModuleDict({})
-        md = {"IoU":torchmetrics.JaccardIndex,
-              "Pr":torchmetrics.Precision,
-              "F1":torchmetrics.FBetaScore,
-              "Dice":torchmetrics.Dice}
         if self.bottleneck_classification == True:
             md["AUC_bn"] = torchmetrics.AUROC
         for k in md:
-            if k == "IoU":
-                m,C = "macro",C_1
-            elif k == "Dice":
-                m,C = "micro",C_2
-            else:
-                m,C = M,C_2
-            if "bn" in k:
-                I_ = None
-            else:
-                I_ = I
             if k in []:
-                self.train_metrics[k] = md[k](
-                    num_classes=C,mdmc_average=A,average=m,
-                    ignore_index=I_).to(self.device)
+                self.train_metrics[k] = md[k]().to(self.device)
             if k in ["IoU","AUC_bn"]:
-                self.val_metrics["V_"+k] = md[k](
-                    num_classes=C,mdmc_average=A,average=m,
-                    ignore_index=I_).to(self.device)
-            self.test_metrics["T_"+k] = md[k](
-                num_classes=C,mdmc_average=A,average=m,
-                ignore_index=I_).to(self.device)
+                self.val_metrics["V_"+k] = md[k]().to(self.device)
+            self.test_metrics["T_"+k] = md[k]().to(self.device)
 
 class UNetPlusPlusPL(UNetPlusPlus,pl.LightningModule):
     def __init__(
@@ -369,6 +361,7 @@ class UNetPlusPlusPL(UNetPlusPlus,pl.LightningModule):
         loss_fn: Callable=torch.nn.functional.binary_cross_entropy,
         loss_params: dict={},
         tta: bool=False,
+        picai_eval: bool=False,
         lr_encoder: float=None,*args,**kwargs) -> torch.nn.Module:
         """Standard U-Net++ [1] implementation for Pytorch Lightning.
 
@@ -394,6 +387,8 @@ class UNetPlusPlusPL(UNetPlusPlus,pl.LightningModule):
             loss_params (dict, optional): additional parameters for the loss
                 function. Defaults to {}.
             tta (bool, optional): test-time augmentation. Defaults to False.
+            picai_eval (bool, optional): evaluates network using PI-CAI 
+                metrics as well (can be a bit long).
             lr_encoder (float, optional): encoder learning rate.
             args: arguments for UNet class.
             kwargs: keyword arguments for UNet class.
@@ -418,6 +413,7 @@ class UNetPlusPlusPL(UNetPlusPlus,pl.LightningModule):
         self.loss_fn = loss_fn
         self.loss_params = loss_params
         self.tta = tta
+        self.picai_eval = picai_eval
         self.lr_encoder = lr_encoder
         
         self.loss_fn_class = torch.nn.BCEWithLogitsLoss()
@@ -452,13 +448,6 @@ class UNetPlusPlusPL(UNetPlusPlus,pl.LightningModule):
             prediction,prediction_aux,pred_class = self.forward(
                 x,X_skip_layer=x_cond,X_feature_conditioning=x_fc,
                 return_aux=True)
-        prediction = torch.squeeze(prediction,1)
-        prediction_aux = [torch.squeeze(x,1) for x in prediction_aux]
-        y = torch.squeeze(y,1)
-        batch_size = int(prediction.shape[0])
-        if batch_size == 1:
-            y = torch.unsqueeze(y,0)
-        y = torch.squeeze(y,1)
 
         loss = self.calculate_loss(prediction,prediction_aux,y)
         if self.bottleneck_classification == True:
@@ -467,8 +456,6 @@ class UNetPlusPlusPL(UNetPlusPlus,pl.LightningModule):
         else:
             class_loss = None
             output_loss = loss
-
-        print(loss,class_loss)
 
         n = len(prediction_aux)
         D = [1/(2**(n-i+1)) for i in range(n)]
@@ -481,7 +468,7 @@ class UNetPlusPlusPL(UNetPlusPlus,pl.LightningModule):
 
     def calculate_loss_class(self,prediction,y):
         loss = self.loss_fn_class(
-            prediction.squeeze(1),y.type(torch.int32))
+            prediction,y.type(torch.int32))
         return loss.mean()
 
     def training_step(self,batch,batch_idx):
@@ -531,10 +518,11 @@ class UNetPlusPlusPL(UNetPlusPlus,pl.LightningModule):
         pred_final,pred_class,output_loss,loss,class_loss = self.loss_wrapper(
             x,y,y_class,x_cond,x_fc)
 
-        for s_p,s_y in zip(pred_final.detach().cpu().numpy(),
-                           y.squeeze(1).detach().cpu().numpy()):
-            self.all_pred.append(s_p)
-            self.all_true.append(s_y)
+        if self.picai_eval == True:
+            for s_p,s_y in zip(pred_final.squeeze(1).detach().cpu().numpy(),
+                               y.squeeze(1).detach().cpu().numpy()):
+                self.all_pred.append(s_p)
+                self.all_true.append(s_y)
 
         self.log("val_loss",loss,prog_bar=True,on_epoch=True,
                   batch_size=y.shape[0],sync_dist=True)
@@ -545,7 +533,6 @@ class UNetPlusPlusPL(UNetPlusPlus,pl.LightningModule):
         update_metrics(
             self.val_metrics,pred_final,y,pred_class,y_class,
             on_epoch=True,prog_bar=True)
-        return output_loss
 
     def test_step(self,batch,batch_idx):
         x, y = batch[self.image_key],batch[self.label_key]
@@ -565,14 +552,14 @@ class UNetPlusPlusPL(UNetPlusPlus,pl.LightningModule):
         pred_final,pred_class,output_loss,loss,class_loss = self.loss_wrapper(
             x,y,y_class,x_cond,x_fc)
         
-        for s_p,s_y in zip(pred_final.detach().cpu().numpy(),
-                           y.squeeze(1).detach().cpu().numpy()):
-            self.all_pred.append(s_p)
-            self.all_true.append(s_y)
+        if self.picai_eval == True:
+            for s_p,s_y in zip(pred_final.squeeze(1).detach().cpu().numpy(),
+                               y.squeeze(1).detach().cpu().numpy()):
+                self.all_pred.append(s_p)
+                self.all_true.append(s_y)
 
         update_metrics(
             self,self.test_metrics,pred_final,y,pred_class,y_class)
-        return output_loss
         
     def configure_optimizers(self):
         encoder_params = []
@@ -589,10 +576,12 @@ class UNetPlusPlusPL(UNetPlusPlus,pl.LightningModule):
         parameters = [
             {'params': encoder_params,'lr':lr_encoder},
             {'params': rest_of_params}]
+        if self.precision != 32: eps = 1e-4
+        else: eps = 1e-8
         optimizer = torch.optim.AdamW(
             parameters,lr=self.learning_rate,
-            weight_decay=self.weight_decay)
-
+            weight_decay=self.weight_decay,eps=eps)
+        
         return {"optimizer":optimizer,
                 "monitor":"val_loss"}
     
@@ -609,6 +598,31 @@ class UNetPlusPlusPL(UNetPlusPlus,pl.LightningModule):
             last_lr = self.learning_rate
         self.log("lr",last_lr,prog_bar=True,sync_dist=True)
 
+    def setup_metrics(self):
+        nc = self.n_classes
+        if nc == 2:
+            md = {
+                "IoU":lambda: tmc.BinaryJaccardIndex(),
+                "Pr":lambda: tmc.BinaryPrecision(),
+                "F1":lambda: tmc.BinaryFBetaScore(1.0),
+                "Dice":lambda: torchmetrics.Dice(2)}
+        else:
+            md = {"IoU":lambda: torchmetrics.JaccardIndex(nc,average="macro"),
+                  "Pr":lambda: torchmetrics.Precision(nc,average="macro"),
+                  "F1":lambda: torchmetrics.FBetaScore(nc,average="macro"),
+                  "Dice":lambda: torchmetrics.Dice(nc,average="macro")}
+        self.train_metrics = torch.nn.ModuleDict({})
+        self.val_metrics = torch.nn.ModuleDict({})
+        self.test_metrics = torch.nn.ModuleDict({})
+        if self.bottleneck_classification == True:
+            md["AUC_bn"] = torchmetrics.AUROC
+        for k in md:
+            if k in []:
+                self.train_metrics[k] = md[k]().to(self.device)
+            if k in ["IoU","AUC_bn"]:
+                self.val_metrics["V_"+k] = md[k]().to(self.device)
+            self.test_metrics["T_"+k] = md[k]().to(self.device)
+
 class BrUNetPL(BrUNet,pl.LightningModule):
     def __init__(
         self,
@@ -624,6 +638,7 @@ class BrUNetPL(BrUNet,pl.LightningModule):
         loss_fn: Callable=torch.nn.functional.binary_cross_entropy,
         loss_params: dict={},
         tta: bool=False,
+        picai_eval: bool=False,
         lr_encoder: float=None,*args,**kwargs) -> torch.nn.Module:
         """Standard U-Net [1] implementation for Pytorch Lightning.
 
@@ -649,6 +664,8 @@ class BrUNetPL(BrUNet,pl.LightningModule):
             loss_params (dict, optional): additional parameters for the loss
                 function. Defaults to {}.
             tta (bool, optional): test-time augmentation. Defaults to False.
+            picai_eval (bool, optional): evaluates network using PI-CAI 
+                metrics as well (can be a bit long).
             lr_encoder (float, optional): encoder learning rate.
             args: arguments for UNet class.
             kwargs: keyword arguments for UNet class.
@@ -673,6 +690,7 @@ class BrUNetPL(BrUNet,pl.LightningModule):
         self.loss_fn = loss_fn
         self.loss_params = loss_params
         self.tta = tta
+        self.picai_eval = picai_eval
         self.lr_encoder = lr_encoder
         
         self.loss_fn_class = torch.nn.BCEWithLogitsLoss()
@@ -690,7 +708,7 @@ class BrUNetPL(BrUNet,pl.LightningModule):
 
     def calculate_loss_class(self,prediction,y):
         y = y.type(torch.float32)
-        prediction = prediction.squeeze(1).type(torch.float32)
+        prediction = prediction.type(torch.float32)
         loss = self.loss_fn_class(prediction,y)
         return loss.mean()
 
@@ -702,13 +720,6 @@ class BrUNetPL(BrUNet,pl.LightningModule):
             prediction,pred_class = output
         else:
             prediction,pred_class,deep_outputs = output
-            deep_outputs = [torch.squeeze(o,1) for o in deep_outputs]
-        prediction = torch.squeeze(prediction,1)
-        y = torch.squeeze(y,1)
-        batch_size = int(prediction.shape[0])
-        if batch_size == 1:
-            y = torch.unsqueeze(y,0)
-        y = torch.squeeze(y,1)
 
         loss = self.calculate_loss(prediction,y)
         if self.deep_supervision == True:
@@ -716,8 +727,7 @@ class BrUNetPL(BrUNet,pl.LightningModule):
             additional_losses = torch.zeros_like(loss)
             for i,o in enumerate(deep_outputs):
                 S = o.shape[-self.spatial_dimensions:]
-                y_small = F.interpolate(torch.unsqueeze(y,1),S,mode="nearest")
-                y_small = torch.squeeze(y_small,1)
+                y_small = F.interpolate(y,S,mode="nearest")
                 l = self.calculate_loss(o,y_small).mean()/(2**(t-i))/t
                 additional_losses = additional_losses + l
             loss = loss + additional_losses
@@ -727,6 +737,20 @@ class BrUNetPL(BrUNet,pl.LightningModule):
         else:
             class_loss = None
             output_loss = loss
+        
+        if torch.isnan(output_loss) == True:
+            print("Nan loss detected! ({})".format(output_loss.detach()))
+            for i,sx in enumerate(x):
+                print("\t0",[sx.detach().max(),sx.detach().min()])
+            print("\tOutput:",[prediction.detach().max(),prediction.detach().min()])
+            print("\tTruth:",[y.min(),y.max()])
+            print("\Model parameters:")
+            for n,p in self.named_parameters():
+                print("\t\taverage norm({})={}".format(n,p.norm()))
+                if p.grad is not None:
+                    print("\t\taverage grad({})={}".format(n,p.grad.mean()))
+            raise RuntimeError(
+                "nan found in loss (see above for details)")
 
         return prediction,pred_class,loss,class_loss,output_loss
 
@@ -770,21 +794,21 @@ class BrUNetPL(BrUNet,pl.LightningModule):
         pred_final,pred_class,loss,class_loss,output_loss = self.loss_wrapper(
             x,x_weights,y,y_class,x_cond,x_fc)
         
-        for s_p,s_y in zip(pred_final.detach().cpu().numpy(),
-                           y.squeeze(1).detach().cpu().numpy()):
-            self.all_pred.append(s_p)
-            self.all_true.append(s_y)
+        if self.picai_eval == True:
+            for s_p,s_y in zip(pred_final.squeeze(1).detach().cpu().numpy(),
+                               y.squeeze(1).detach().cpu().numpy()):
+                self.all_pred.append(s_p)
+                self.all_true.append(s_y)
 
-        self.log("val_loss",loss,prog_bar=True,
+        self.log("val_loss",loss.detach(),prog_bar=True,
                  on_epoch=True,batch_size=y.shape[0],sync_dist=True)
         if class_loss is not None:
-            self.log("val_cl_loss",class_loss,batch_size=y.shape[0],
+            self.log("val_cl_loss",class_loss.detach(),batch_size=y.shape[0],
                      sync_dist=True)
         
         update_metrics(
             self,self.val_metrics,pred_final,y,pred_class,y_class,
             on_epoch=True,prog_bar=True)
-        return output_loss
 
     def test_step(self,batch,batch_idx):
         x,x_weights,y,x_cond,x_fc,y_class = self.unpack_batch(batch)
@@ -792,15 +816,15 @@ class BrUNetPL(BrUNet,pl.LightningModule):
         pred_final,pred_class,loss,class_loss,output_loss = self.loss_wrapper(
             x,x_weights,y,y_class,x_cond,x_fc)
 
-        for s_p,s_y in zip(pred_final.detach().cpu().numpy(),
-                           y.squeeze(1).detach().cpu().numpy()):
-            self.all_pred.append(s_p)
-            self.all_true.append(s_y)
+        if self.picai_eval == True:
+            for s_p,s_y in zip(pred_final.squeeze(1).detach().cpu().numpy(),
+                               y.squeeze(1).detach().cpu().numpy()):
+                self.all_pred.append(s_p)
+                self.all_true.append(s_y)
 
         update_metrics(
             self,self.test_metrics,pred_final,y,pred_class,y_class,
             on_epoch=True,on_step=False,prog_bar=True)
-        return output_loss
         
     def train_dataloader(self) -> torch.utils.data.DataLoader:
         return self.training_dataloader_call()
@@ -820,10 +844,12 @@ class BrUNetPL(BrUNet,pl.LightningModule):
         parameters = [
             {'params': encoder_params,'lr':lr_encoder},
             {'params': rest_of_params}]
+        if self.precision != 32: eps = 1e-4
+        else: eps = 1e-8
         optimizer = torch.optim.AdamW(
             parameters,lr=self.learning_rate,
-            weight_decay=self.weight_decay)
-
+            weight_decay=self.weight_decay,eps=eps)
+        
         self.initial_learning_rates = [parameters[0]["lr"],
                                        self.learning_rate]
         return {"optimizer":optimizer,
@@ -844,67 +870,56 @@ class BrUNetPL(BrUNet,pl.LightningModule):
         self.log("lr",last_lr,prog_bar=True,sync_dist=True)
 
     def on_validation_epoch_end(self):
-        picai_eval_metrics = evaluate(
-            y_det=self.all_pred,y_true=self.all_true,
-            y_det_postprocess_func=get_lesions,
-            num_parallel_calls=8)
-        self.log("V_AP",picai_eval_metrics.AP,prog_bar=True,
-                 sync_dist=True)
-        self.log("V_R",picai_eval_metrics.score,prog_bar=True,
-                 sync_dist=True)
-        self.log("V_AUC",picai_eval_metrics.auroc,prog_bar=True,
-                 sync_dist=True)
-        self.all_pred = []
-        self.all_true = []
+        if self.picai_eval:
+            picai_eval_metrics = evaluate(
+                y_det=self.all_pred,y_true=self.all_true,
+                y_det_postprocess_func=get_lesions,
+                num_parallel_calls=8)
+            self.log("V_AP",picai_eval_metrics.AP,prog_bar=True,
+                    sync_dist=True)
+            self.log("V_R",picai_eval_metrics.score,prog_bar=True,
+                    sync_dist=True)
+            self.log("V_AUC",picai_eval_metrics.auroc,prog_bar=True,
+                    sync_dist=True)
+            self.all_pred = []
+            self.all_true = []
 
     def on_test_epoch_end(self):
-        picai_eval_metrics = evaluate(
-            y_det=self.all_pred,y_true=self.all_true,
-            y_det_postprocess_func=get_lesions,
-            num_parallel_calls=8)
-        self.log("T_AP",picai_eval_metrics.AP,prog_bar=True,
-                 sync_dist=True)
-        self.log("T_R",picai_eval_metrics.score,prog_bar=True,
-                 sync_dist=True)
-        self.log("T_AUC",picai_eval_metrics.auroc,prog_bar=True,
-                 sync_dist=True)
-        self.all_pred = []
-        self.all_true = []
+        if self.picai_eval:
+            picai_eval_metrics = evaluate(
+                y_det=self.all_pred,y_true=self.all_true,
+                y_det_postprocess_func=get_lesions,
+                num_parallel_calls=8)
+            self.log("V_AP",picai_eval_metrics.AP,prog_bar=True,
+                    sync_dist=True)
+            self.log("V_R",picai_eval_metrics.score,prog_bar=True,
+                    sync_dist=True)
+            self.log("V_AUC",picai_eval_metrics.auroc,prog_bar=True,
+                    sync_dist=True)
+            self.all_pred = []
+            self.all_true = []
 
     def setup_metrics(self):
-        if self.n_classes == 2:
-            C_1,C_2,A,M,I = 2,None,None,"micro",0
+        nc = self.n_classes
+        if nc == 2:
+            md = {
+                "IoU":lambda: tmc.BinaryJaccardIndex(),
+                "Pr":lambda: tmc.BinaryPrecision(),
+                "F1":lambda: tmc.BinaryFBetaScore(1.0),
+                "Dice":lambda: torchmetrics.Dice(2)}
         else:
-            C_1,C_2,A,M,I = [
-                self.n_classes,self.n_classes,"samplewise","macro",None]
+            md = {"IoU":lambda: torchmetrics.JaccardIndex(nc,average="macro"),
+                  "Pr":lambda: torchmetrics.Precision(nc,average="macro"),
+                  "F1":lambda: torchmetrics.FBetaScore(nc,average="macro"),
+                  "Dice":lambda: torchmetrics.Dice(nc,average="macro")}
         self.train_metrics = torch.nn.ModuleDict({})
         self.val_metrics = torch.nn.ModuleDict({})
         self.test_metrics = torch.nn.ModuleDict({})
-        md = {"IoU":torchmetrics.JaccardIndex,
-              "Pr":torchmetrics.Precision,
-              "F1":torchmetrics.FBetaScore,
-              "Dice":torchmetrics.Dice}
         if self.bottleneck_classification == True:
             md["AUC_bn"] = torchmetrics.AUROC
         for k in md:
-            if k == "IoU":
-                m,C = "macro",C_1
-            elif k == "Dice":
-                m,C = "micro",C_2
-            else:
-                m,C = M,C_2
-            if "bn" in k:
-                I_ = None
-            else:
-                I_ = I
             if k in []:
-                self.train_metrics[k] = md[k](
-                    num_classes=C,mdmc_average=A,average=m,
-                    ignore_index=I_).to(self.device)
+                self.train_metrics[k] = md[k]().to(self.device)
             if k in ["IoU","AUC_bn"]:
-                self.val_metrics["V_"+k] = md[k](
-                    num_classes=C,mdmc_average=A,average=m,
-                    ignore_index=I_).to(self.device)
-            self.test_metrics["T_"+k] = md[k](
-                num_classes=C,mdmc_average=A,average=m,
-                ignore_index=I_).to(self.device)
+                self.val_metrics["V_"+k] = md[k]().to(self.device)
+            self.test_metrics["T_"+k] = md[k]().to(self.device)
