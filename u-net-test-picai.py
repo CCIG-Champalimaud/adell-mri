@@ -8,12 +8,11 @@ import monai
 from tqdm import tqdm
 from multiprocessing import Queue, Process
 
+import SimpleITK as sitk
+
 from lib.utils import (
-    LabelOperatorSegmentationd,
     collate_last_slice,
     SlicesToFirst,
-    CombineBinaryLabelsd,
-    ConditionalRescalingd,
     safe_collate)
 from lib.modules.layers import ResNet
 from lib.modules.segmentation import UNet
@@ -21,6 +20,8 @@ from lib.modules.segmentation_plus import UNetPlusPlus
 from lib.modules.config_parsing import parse_config_unet,parse_config_ssl
 from lib.modules.extract_lesion_candidates import (
     extract_lesion_candidates,extract_lesion_candidates_dynamic)
+from lib.monai_transforms import get_transforms_unet as get_transforms
+
 from picai_eval import evaluate
 
 def post_process_from_queue(queue,out_queue):
@@ -41,6 +42,14 @@ def start_procs(in_q,num_of_reader_procs,out_q):
         reader_p.start()
         all_reader_procs.append(reader_p)
     return all_reader_procs
+
+def if_none_else(x,obj):
+    if x is None:
+        return obj
+    return x
+
+def inter_size(a,b):
+    return len(set.intersection(set(a),set(b)))
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -109,13 +118,14 @@ if __name__ == "__main__":
         help="Labels that should be considered positive (binarizes labels)",
         default=None)
     parser.add_argument(
-        '--constant_ratio',dest='constant_ratio',type=float,default=None,
-        help="If there are masks with only one value, defines how many are\
-            included relatively to masks with more than one value.")
-    parser.add_argument(
         '--subsample_size',dest='subsample_size',type=int,
         help="Subsamples data to a given size",
         default=None)
+    parser.add_argument(
+        '--missing_to_empty',dest='missing_to_empty',
+        type=str,nargs="+",choices=["image","mask"],
+        help="If some images or masks are missing, assume they are empty \
+            tensors.")
 
     # network
     parser.add_argument(
@@ -125,6 +135,9 @@ if __name__ == "__main__":
     parser.add_argument(
         '--unet_pp',dest='unet_pp',action="store_true",
         help="Uses U-Net++ rather than U-Net")
+    parser.add_argument(
+        '--brunet',dest='brunet',action="store_true",
+        help="Uses BrU-Net rather than U-Net")
     parser.add_argument(
         '--res_config_file',dest='res_config_file',action="store",default=None,
         help="Uses a ResNet as a backbone (depths are inferred from this). \
@@ -143,18 +156,10 @@ if __name__ == "__main__":
         '--dev',dest='dev',type=str,
         help="Device for PyTorch training")
     parser.add_argument(
-        '--seed',dest='seed',help="Random seed",default=42,type=int)
-    parser.add_argument(
         '--n_workers',dest='n_workers',
         help="Number of workers",default=1,type=int)
 
     args = parser.parse_args()
-
-    torch.manual_seed(args.seed)
-    random.seed(args.seed)
-    np.random.seed(args.seed)
-    g = torch.Generator()
-    g.manual_seed(args.seed)
 
     if args.possible_labels == 2 or args.positive_labels is not None:
         n_classes = 2
@@ -164,35 +169,34 @@ if __name__ == "__main__":
     keys = args.image_keys
     label_keys = args.mask_keys
 
-    if args.mask_image_keys is None: args.mask_image_keys = []
-    if args.adc_image_keys is None: args.adc_image_keys = []
-    if args.skip_key is None: args.skip_key = []
-    if args.skip_mask_key is None: args.skip_mask_key = []
-    if args.feature_keys is None: args.feature_keys = []
+    mask_image_keys = if_none_else(args.mask_image_keys,[])
+    adc_image_keys = if_none_else(args.adc_image_keys,[])
+    aux_keys = if_none_else(args.skip_key,[])
+    aux_mask_keys = if_none_else(args.skip_mask_key,[])
+    resize_keys = []
+    feature_keys = if_none_else(args.feature_keys,[])
     
-    aux_keys = args.skip_key
-    aux_mask_keys = args.skip_mask_key
     all_aux_keys = aux_keys + aux_mask_keys
     if len(all_aux_keys) > 0:
         aux_key_net = "aux_key"
     else:
         aux_key_net = None
-    if len(args.feature_keys) > 0:
+    if len(feature_keys) > 0:
         feature_key_net = "tabular_features"
     else:
         feature_key_net = None
 
-    args.adc_image_keys = [k for k in args.adc_image_keys if k in keys]
+    adc_image_keys = [k for k in adc_image_keys if k in keys]
     intp = []
     intp_resampling_augmentations = []
     for k in keys:
-        if k in args.mask_image_keys:
+        if k in mask_image_keys:
             intp.append("nearest")
             intp_resampling_augmentations.append("nearest")
         else:
             intp.append("area")
             intp_resampling_augmentations.append("bilinear")
-    non_adc_keys = [k for k in keys if k not in args.adc_image_keys]
+    non_adc_keys = [k for k in keys if k not in adc_image_keys]
     intp.extend(["nearest"]*len(label_keys))
     intp.extend(["area"]*len(aux_keys))
     intp.extend(["nearest"]*len(aux_mask_keys))
@@ -200,14 +204,29 @@ if __name__ == "__main__":
     intp_resampling_augmentations.extend(["bilinear"]*len(aux_keys))
     intp_resampling_augmentations.extend(["nearest"]*len(aux_mask_keys))
     all_keys = [*keys,*label_keys,*aux_keys,*aux_mask_keys]
-    all_keys_t = [*all_keys,*args.feature_keys]
+    all_keys_t = [*all_keys,*feature_keys]
 
     data_dict = json.load(open(args.dataset_json,'r'))
-    data_dict = {
-        k:data_dict[k] for k in data_dict
-        if len(set.intersection(set(data_dict[k]),
-                                set(all_keys_t))) == len(all_keys_t)}
-    for kk in args.feature_keys:
+    if args.missing_to_empty is None:
+        data_dict = {
+            k:data_dict[k] for k in data_dict
+            if inter_size(data_dict[k],set(all_keys_t)) == len(all_keys_t)}
+    else:
+        if "image" in args.missing_to_empty:
+            obl_keys = [*aux_keys,*aux_mask_keys,*feature_keys]
+            opt_keys = keys
+            data_dict = {
+                k:data_dict[k] for k in data_dict
+                if inter_size(data_dict[k],obl_keys) == len(obl_keys)}
+            data_dict = {
+                k:data_dict[k] for k in data_dict
+                if inter_size(data_dict[k],opt_keys) > 0}
+        if "mask" in args.missing_to_empty:
+            data_dict = {
+                k:data_dict[k] for k in data_dict
+                if inter_size(data_dict[k],set(mask_image_keys)) >= 0}
+
+    for kk in feature_keys:
         data_dict = {
             k:data_dict[k] for k in data_dict
             if np.isnan(data_dict[k][kk]) == False}
@@ -221,74 +240,33 @@ if __name__ == "__main__":
     network_config,loss_key = parse_config_unet(
         args.config_file,len(keys),n_classes)
 
-    def get_transforms(x,label_mode=None):
-        if args.target_spacing is not None:
-            rs = [
-                monai.transforms.Spacingd(
-                    keys=all_keys,pixdim=args.target_spacing,
-                    mode=intp_resampling_augmentations)]
-        else:
-            rs = []
-        scaling_ops = []
-        if len(non_adc_keys) > 0:
-            scaling_ops.append(
-                monai.transforms.ScaleIntensityd(non_adc_keys,0,1))
-        if len(args.adc_image_keys) > 0:
-            scaling_ops.append(
-                ConditionalRescalingd(args.adc_image_keys,1000,0.001))
-            scaling_ops.append(
-                monai.transforms.ScaleIntensityd(
-                    args.adc_image_keys,None,None,-(1-args.adc_factor)))
-        if args.crop_size is not None:
-            crop_size = [int(args.crop_size[0]),
-                         int(args.crop_size[1]),
-                         int(args.crop_size[2])]
-            crop_op = [
-                monai.transforms.CenterSpatialCropd(all_keys,crop_size),
-                monai.transforms.SpatialPadd(all_keys,crop_size)]
-        else:
-            crop_op = []
-
-        if x == "pre":
-            return [
-                monai.transforms.LoadImaged(
-                    all_keys,ensure_channel_first=True),
-                monai.transforms.Orientationd(all_keys,"RAS"),
-                *rs,
-                *scaling_ops,
-                *crop_op,
-                monai.transforms.EnsureTyped(all_keys),
-                CombineBinaryLabelsd(label_keys,"any","mask"),
-                LabelOperatorSegmentationd(
-                    ["mask"],args.possible_labels,
-                    mode=label_mode,positive_labels=args.positive_labels)]
-        elif x == "post":
-            if len(all_aux_keys) > 0:
-                aux_concat = [monai.transforms.ConcatItemsd(
-                    all_aux_keys,aux_key_net)]
-            else:
-                aux_concat = []
-            if len(args.feature_keys) > 0:
-                feature_concat = [
-                    monai.transforms.EnsureTyped(
-                        args.feature_keys,dtype=np.float32),
-                    monai.transforms.Lambdad(
-                        args.feature_keys,
-                        func=lambda x:np.reshape(x,[1])),
-                    monai.transforms.ConcatItemsd(
-                        args.feature_keys,feature_key_net)]
-            else:
-                feature_concat = []
-            return [
-                monai.transforms.ConcatItemsd(keys,"image"),
-                *aux_concat,
-                *feature_concat,
-                monai.transforms.ToTensord(["image","mask"])]
-
     label_mode = "binary" if n_classes == 2 else "cat"
+    transform_arguments = {
+        "all_keys": all_keys,
+        "image_keys": keys,
+        "label_keys": label_keys,
+        "non_adc_keys": non_adc_keys,
+        "adc_image_keys": adc_image_keys,
+        "target_spacing": args.target_spacing,
+        "intp": intp,
+        "intp_resampling_augmentations": intp_resampling_augmentations,
+        "possible_labels": args.possible_labels,
+        "positive_labels": args.positive_labels,
+        "adc_factor": args.adc_factor,
+        "all_aux_keys": all_aux_keys,
+        "resize_keys": resize_keys,
+        "feature_keys": feature_keys,
+        "aux_key_net": aux_key_net,
+        "feature_key_net": feature_key_net,
+        "input_size": None,
+        "crop_size": args.crop_size,
+        "label_mode": label_mode,
+        "fill_missing": args.missing_to_empty is not None,
+        "brunet": args.brunet}
+
     transforms_train = [
-        *get_transforms("pre",label_mode),
-        *get_transforms("post",label_mode)]
+        *get_transforms("pre",**transform_arguments),
+        *get_transforms("post",**transform_arguments)]
 
     if network_config["spatial_dimensions"] == 2:
         transforms_train.append(
@@ -301,11 +279,10 @@ if __name__ == "__main__":
     dataset = monai.data.Dataset(
         data_list,
         monai.transforms.Compose(transforms_train))
-
         # calculate the mean/std of tabular features
-    if args.feature_keys is not None:
+    if feature_keys is not None:
         all_params = {"mean":[],"std":[]}
-        for kk in args.feature_keys:
+        for kk in feature_keys:
             f = np.array([x[kk] for x in data_list])
             all_params["mean"].append(np.mean(f))
             all_params["std"].append(np.std(f))
@@ -316,10 +293,6 @@ if __name__ == "__main__":
     else:
         all_params = None
         
-    for k in ['weight_decay','learning_rate','batch_size','loss_fn']:
-        if k in network_config:
-            del network_config[k]
-
     if args.res_config_file is not None:
         _,network_config_ssl = parse_config_ssl(
             args.res_config_file,0.,len(keys),network_config["batch_size"])
@@ -341,13 +314,17 @@ if __name__ == "__main__":
     else:
         encoding_operations = None
 
+    for k in ['weight_decay','learning_rate','batch_size','loss_fn']:
+        if k in network_config:
+            del network_config[k]
+
     if args.unet_pp == True:
         unet = UNetPlusPlus(
             encoding_operations=encoding_operations,
             n_classes=n_classes,
             bottleneck_classification=args.bottleneck_classification,
             skip_conditioning=len(all_aux_keys),
-            feature_conditioning=len(args.feature_keys),
+            feature_conditioning=len(feature_keys),
             feature_conditioning_params=all_params,
             **network_config)
     else:
@@ -356,7 +333,7 @@ if __name__ == "__main__":
             n_classes=n_classes,
             bottleneck_classification=args.bottleneck_classification,
             skip_conditioning=len(all_aux_keys),
-            feature_conditioning=len(args.feature_keys),
+            feature_conditioning=len(feature_keys),
             feature_conditioning_params=all_params,
             deep_supervision=args.deep_supervision,
             **network_config)
@@ -382,12 +359,13 @@ if __name__ == "__main__":
         image = entry["image"].unsqueeze(0).to(args.dev)
         mask = entry["mask"].squeeze().numpy()
 
-        if len(args.skip_key) == 0: X_skip = None
+        if len(aux_keys) == 0: X_skip = None
         else: X_skip = entry[aux_key_net].unsqueeze(0).to(args.dev)
-        if len(args.feature_keys) == 0: X_features = None
+        if len(feature_keys) == 0: X_features = None
         else: X_features = entry["tabular_features"].unsqueeze(0).to(args.dev)
-        
+
         output,bn_class,_ = unet.forward(image,X_skip,X_features)
+        
         outputs = [output[0,0].cpu().detach().numpy()]
         bn_classes = [outputs[-1].max()]
         for d in tta:
