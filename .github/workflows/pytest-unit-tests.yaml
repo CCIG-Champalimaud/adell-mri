@@ -1,6 +1,10 @@
 name: Unit tests for custom PyTorch operations
 
-on: [push,pull_request]
+on: 
+  push:
+    paths:
+      - "testing/*"
+      - "lib/*"
 
 jobs:
   build:
