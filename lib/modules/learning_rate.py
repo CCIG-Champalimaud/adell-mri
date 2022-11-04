@@ -43,12 +43,23 @@ class PolynomialLRDecay(_LRScheduler):
                 param_group['lr'] = lr
                 self._last_lr.append(lr)
             
-def polynomial_lr_decay(optimizer:torch.optim.Optimizer,
+def poly_lr_decay(optimizer:torch.optim.Optimizer,
                         step:int,
                         initial_lr:float,
                         max_decay_steps:int,
                         end_lr:float=0.0,
                         power:float=1.0):
+    """Polynomial LR decay.
+
+    Args:
+        optimizer (torch.optim.Optimizer): torch optimizer.
+        step (int): step.
+        initial_lr (float): initial learning rate.
+        max_decay_steps (int): maximum number of steps for decay.
+        end_lr (float, optional): final learning rate. Defaults to 0.0.
+        power (float, optional): power (scales step/max_decay_steps). Defaults 
+            to 1.0.
+    """
     step = min(step, max_decay_steps)
     if isinstance(initial_lr,float):
         initial_lr = [initial_lr for _ in optimizer.param_groups]
