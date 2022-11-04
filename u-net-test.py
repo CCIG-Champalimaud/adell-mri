@@ -110,8 +110,6 @@ if __name__ == "__main__":
         '--dev',dest='dev',type=str,
         help="Device for PyTorch training",choices=["cuda","cpu"])
     parser.add_argument(
-        '--seed',dest='seed',help="Random seed",default=42,type=int)
-    parser.add_argument(
         '--n_workers',dest='n_workers',
         help="Number of workers",default=1,type=int)
     parser.add_argument(
@@ -124,12 +122,6 @@ if __name__ == "__main__":
         help='Path to directory where checkpoints will be saved.')
 
     args = parser.parse_args()
-
-    torch.manual_seed(args.seed)
-    random.seed(args.seed)
-    np.random.seed(args.seed)
-    g = torch.Generator()
-    g.manual_seed(args.seed)
 
     if args.possible_labels == 2 or args.positive_labels is not None:
         n_classes = 2
@@ -300,7 +292,7 @@ if __name__ == "__main__":
 
         validation_loader = monai.data.ThreadDataLoader(
             validation_dataset,batch_size=1,
-            shuffle=False,num_workers=args.n_workers,generator=g,
+            shuffle=False,num_workers=args.n_workers,
             collate_fn=collate_fn,persistent_workers=True)
 
         print("Setting up training...")
