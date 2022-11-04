@@ -121,7 +121,11 @@ def get_augmentations_unet(augment,
                            all_keys,
                            image_keys,
                            intp_resampling_augmentations):
-    if augment == True:
+    valid_arg_list = ["full","light","lightest","none"]
+    if augment not in valid_arg_list:
+        raise NotImplementedError(
+            "augment must be one of {}".format(valid_arg_list))
+    if augment == "full":
         return [
             monai.transforms.RandBiasFieldd(image_keys,degree=2,prob=0.1),
             monai.transforms.RandAdjustContrastd(image_keys,prob=0.25),
@@ -140,5 +144,34 @@ def get_augmentations_unet(augment,
                 padding_mode="zeros"),
             monai.transforms.RandFlipd(
                 all_keys,prob=0.5,spatial_axis=[0,1,2])]
-    else:
+    elif augment == "light":
+        return [
+            monai.transforms.RandAdjustContrastd(image_keys,prob=0.25),
+            monai.transforms.RandRicianNoised(
+                image_keys,std=0.05,prob=0.25),
+            monai.transforms.RandGibbsNoised(
+                image_keys,alpha=(0.0,0.6),prob=0.25),
+            monai.transforms.RandGaussianSmoothd(image_keys,prob=0.25),
+            monai.transforms.RandAffined(
+                all_keys,
+                scale_range=[0.1,0.1,0.1],
+                rotate_range=[np.pi/8,np.pi/8,np.pi/16],
+                translate_range=[10,10,1],
+                prob=0.5,mode=intp_resampling_augmentations,
+                padding_mode="zeros"),
+            monai.transforms.RandFlipd(
+                all_keys,prob=0.5,spatial_axis=[0,1,2])]
+
+    elif augment == "lightest":
+        return [
+            monai.transforms.RandAdjustContrastd(image_keys,prob=0.25),
+            monai.transforms.RandRicianNoised(
+                image_keys,std=0.05,prob=0.25),
+            monai.transforms.RandGibbsNoised(
+                image_keys,alpha=(0.0,0.6),prob=0.25),
+            monai.transforms.RandGaussianSmoothd(image_keys,prob=0.25),
+            monai.transforms.RandFlipd(
+                all_keys,prob=0.5,spatial_axis=[0,1,2])]
+
+    elif augment == "none":
         return []

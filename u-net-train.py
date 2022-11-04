@@ -177,8 +177,10 @@ if __name__ == "__main__":
         '--n_devices',dest='n_devices',
         help="Number of devices",default=1,type=int)
     parser.add_argument(
-        '--augment',dest='augment',action="store_true",
-        help="Use data augmentations",default=False)
+        '--augment',dest='augment',action="store",
+        choices=["full","light","lightest"],
+        help="Sets data augmentation. Light skips shear + RBF, lightest skips\
+            all affine transforms + RBF",default="none")
     parser.add_argument(
         '--pre_load',dest='pre_load',action="store_true",
         help="Load and process data to memory at the beginning of training",
@@ -196,6 +198,10 @@ if __name__ == "__main__":
         '--learning_rate',dest="learning_rate",
         help="Learning rate (overrides the lr specified in network_config)",
         default=None,type=float)
+    parser.add_argument(
+        '--gradient_clip_val',dest="gradient_clip_val",
+        help="Value for gradient clipping",
+        default=0.0,type=float)
     parser.add_argument(
         '--max_epochs',dest="max_epochs",
         help="Maximum number of training epochs",default=100,type=int)
@@ -365,14 +371,14 @@ if __name__ == "__main__":
         "fill_missing": args.missing_to_empty is not None,
         "brunet": args.brunet}
     augment_arguments = {
+        "augment":args.augment,
         "all_keys":all_keys,
         "image_keys":keys,
         "intp_resampling_augmentations":intp_resampling_augmentations}
-    
     if args.pre_load == False:
         transforms_train = [
             *get_transforms("pre",**transform_arguments),
-            *get_augmentations(args.augment,**augment_arguments),
+            *get_augmentations(**augment_arguments),
             *get_transforms("post",**transform_arguments)]
 
         transforms_train_val = [
@@ -384,7 +390,7 @@ if __name__ == "__main__":
             *get_transforms("post",**transform_arguments)]
     else:
         transforms_train = [
-            *get_augmentations(args.augment,**augment_arguments),
+            *get_augmentations(**augment_arguments),
             *get_transforms("post",**transform_arguments)]
 
         transforms_train_val = [
@@ -637,7 +643,10 @@ if __name__ == "__main__":
                 backbone[0].structure[0][0],
                 *[x[0] for x in backbone[0].structure]]
             network_config['kernel_sizes'] = [3 for _ in network_config['depth']]
-            network_config['strides'] = [2 for _ in network_config['depth']]
+            # the last sum is for the bottleneck layer
+            network_config['strides'] = [2]
+            network_config['strides'].extend(network_config_ssl[
+                "backbone_args"]["maxpool_structure"])
             res_ops = [[x.input_layer,*x.operations] for x in backbone]
             res_pool_ops = [[x.first_pooling,*x.pooling_operations]
                             for x in backbone]
@@ -742,10 +751,12 @@ if __name__ == "__main__":
             accelerator=dev,
             devices=devices,logger=logger,callbacks=callbacks,
             strategy=strategy,max_epochs=args.max_epochs,
-            enable_checkpointing=ckpt,accumulate_grad_batches=1,
+            enable_checkpointing=ckpt,
+            accumulate_grad_batches=args.accumulate_grad_batches,
             resume_from_checkpoint=ckpt_path,
             check_val_every_n_epoch=args.check_val_every_n_epoch,
-            log_every_n_steps=10,precision=precision)
+            log_every_n_steps=10,precision=precision,
+            gradient_clip_val=args.gradient_clip_val)
 
         trainer.fit(unet,train_loader,train_val_loader)
         
