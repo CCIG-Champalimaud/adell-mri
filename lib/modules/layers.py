@@ -76,6 +76,30 @@ def unsqueeze_to_target(x:torch.Tensor,target:torch.Tensor,dim=-1):
             x = x.unsqueeze(dim)
     return x
 
+def resnet_to_encoding_ops(res_net:List[torch.nn.Module])->ModuleList:
+    """Convenience function generating UNet encoder from ResNet.
+
+    Args:
+        res_net (torch.nn.Module): a list of ResNet objects.
+
+    Returns:
+        encoding_operations: ModuleList of ModuleList objects containing 
+            pairs of convolutions and pooling operations.
+    """
+    backbone = [x.backbone for x in res_net]
+    res_ops = [[x.input_layer,*x.operations] for x in backbone]
+    res_pool_ops = [[x.first_pooling,*x.pooling_operations]
+                    for x in backbone]
+    encoding_operations = [torch.nn.ModuleList([]) for _ in res_ops]
+    for i in range(len(res_ops)):
+        A = res_ops[i]
+        B = res_pool_ops[i]
+        for a,b in zip(A,B):
+            encoding_operations[i].append(
+                torch.nn.ModuleList([a,b]))
+    encoding_operations = torch.nn.ModuleList(encoding_operations)
+    return encoding_operations
+
 class ActDropNorm(torch.nn.Module):
     def __init__(self,in_channels:int=None,ordering:str='NDA',
                  norm_fn: torch.nn.Module=torch.nn.BatchNorm2d,
