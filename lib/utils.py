@@ -156,8 +156,8 @@ def get_loss_param_dict(
     scale = torch.as_tensor(scale)
     
     loss_param_dict = {
-        "cross_entropy":{"weight":weights,"scale":scale},
-        "focal":{"alpha":weights,"gamma":gamma,"scale":scale},
+        "cross_entropy":{"weight":weights,"scale":scale,"eps":eps},
+        "focal":{"alpha":weights,"gamma":gamma,"scale":scale,"eps":eps},
         "focal_alt":{"alpha":weights,"gamma":gamma},
         "dice":{"weight":weights},
         "tversky_focal":{
@@ -1339,9 +1339,10 @@ class CreateImageAndWeightsd(monai.transforms.Transform):
     
     def __call__(self,X):
         for k in self.keys:
+            weight_key = "{}_weight".format(k)
             if k not in X:
-                X[k] = np.zeros(self.shape,dtype=bool)
-                X["{}_weight".format(k)] = 0.
+                X[k] = np.zeros(self.shape,dtype=np.uint8)
+                X[weight_key] = 0
             else:
-                X["{}_weight".format(k)] = 1.
+                X[weight_key] = 1
         return X
