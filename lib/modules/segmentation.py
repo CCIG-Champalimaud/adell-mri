@@ -414,8 +414,12 @@ class UNet(torch.nn.Module):
         elif self.spatial_dimensions == 3:
             mp = torch.nn.MaxPool3d
         for i in range(len(self.encoding_operations)):
+            s = self.strides[i]
+            if isinstance(s,int):
+                s = [s for _ in range(self.spatial_dimensions)]
+            s = np.array(s)
             self.encoding_operations[i][1] = mp(
-                self.kernel_sizes[i],2,self.kernel_sizes[i]//2)
+                kernel_size=tuple(s),stride=tuple(s),padding=tuple(s//2))
         self.encoding_operations[-1][1] = torch.nn.Identity()
 
     def init_decoder(self):
@@ -583,7 +587,7 @@ class UNet(torch.nn.Module):
             return None,None,bottleneck
         elif self.encoder_only == True:
             return bottleneck
-        
+                
         deep_outputs = []
         for i in range(len(self.decoding_operations)):
             op = self.decoding_operations[i]
