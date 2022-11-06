@@ -154,6 +154,9 @@ if __name__ == "__main__":
         '--lr_encoder',dest='lr_encoder',action="store",default=None,type=float,
         help="Sets learning rate for encoder.")
     parser.add_argument(
+        '--polynomial_lr_decay',dest='polynomial_lr_decay',action="store_true",
+        default=False,help="Decays the LR at a polynomial rate.")
+    parser.add_argument(
         '--from_checkpoint',dest='from_checkpoint',action="store",nargs="+",
         default=None,
         help="Uses this space-separated list of checkpoints as a starting\
@@ -243,6 +246,11 @@ if __name__ == "__main__":
     parser.add_argument(
         '--project_name',dest='project_name',type=str,default="summaries",
         help='Project name for wandb.')
+    parser.add_argument(
+        '--resume',dest='resume',type=str,default="allow",
+        choices=["allow","must","never","auto","none"],
+        help='Whether wandb project should be resumed (check \
+            https://docs.wandb.ai/ref/python/init for more details).')
     parser.add_argument(
         '--metric_path',dest='metric_path',type=str,default="metrics.csv",
         help='Path to file with CV metrics + information.')
@@ -687,6 +695,7 @@ if __name__ == "__main__":
                 n_input_branches=len(keys),
                 picai_eval=args.picai_eval,
                 lr_encoder=args.lr_encoder,
+                polynomial_lr_decay=args.polynomial_lr_decay,
                 **network_config)
             if args.encoder_checkpoint is not None and args.res_config_file is None:
                 for encoder,ckpt in zip(unet.encoders,args.encoder_checkpoint):
@@ -707,6 +716,7 @@ if __name__ == "__main__":
                 n_epochs=args.max_epochs,
                 picai_eval=args.picai_eval,
                 lr_encoder=args.lr_encoder,
+                polynomial_lr_decay=args.polynomial_lr_decay,
                 **network_config)
         else:
             encoding_operations = encoding_operations[0]
@@ -725,6 +735,7 @@ if __name__ == "__main__":
                 n_epochs=args.max_epochs,
                 picai_eval=args.picai_eval,
                 lr_encoder=args.lr_encoder,
+                polynomial_lr_decay=args.polynomial_lr_decay,
                 **network_config)
         
         if args.early_stopping is not None:
@@ -738,11 +749,14 @@ if __name__ == "__main__":
                 
         if args.summary_name is not None and args.project_name is not None:
             wandb.finish()
+            wandb_resume = args.resume
+            if wandb_resume == "none":
+                wandb_resume = None
             run_name = args.summary_name.replace(':','_') 
             run_name = run_name + "_fold_{}".format(val_fold)
             logger = WandbLogger(
                 save_dir=args.summary_dir,project=args.project_name,
-                name=run_name,version=run_name,reinit=True,resume="allow")
+                name=run_name,version=run_name,reinit=True,resume=wandb_resume)
         else:
             logger = None
 
@@ -781,6 +795,7 @@ if __name__ == "__main__":
         print("="*80)
         gc.collect()
         
+        # just for safety
         del trainer
         del train_dataset
         del train_loader
