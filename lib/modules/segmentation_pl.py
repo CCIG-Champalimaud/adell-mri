@@ -1,4 +1,3 @@
-from pyexpat.errors import XML_ERROR_INCOMPLETE_PE
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -618,7 +617,7 @@ class UNetPlusPlusPL(UNetPlusPlus,pl.LightningModule):
         opt = self.optimizers()
         if self.polynomial_lr_decay == True:
             poly_lr_decay(opt,self.current_epoch,initial_lr=self.learning_rate,
-                        max_decay_steps=self.n_epochs,end_lr=1e-6,power=0.9)
+                          max_decay_steps=self.n_epochs,end_lr=1e-6,power=0.9)
         try:
             last_lr = [x["lr"] for x in opt.param_groups][-1]
         except:
