@@ -136,6 +136,11 @@ if __name__ == "__main__":
         '--project_name',dest='project_name',type=str,default=None,
         help='Project name for wandb.')
     parser.add_argument(
+        '--resume',dest='resume',type=str,default="allow",
+        choices=["allow","must","never","auto","none"],
+        help='Whether wandb project should be resumed (check \
+            https://docs.wandb.ai/ref/python/init for more details).')
+    parser.add_argument(
         '--metric_path',dest='metric_path',type=str,default="metrics.csv",
         help='Path to file with CV metrics + information.')
     parser.add_argument(
@@ -390,10 +395,13 @@ if __name__ == "__main__":
     
     if args.summary_name is not None and args.project_name is not None:
         wandb.finish()
+        wandb_resume = args.resume
+        if wandb_resume == "none":
+            wandb_resume = None
         run_name = args.summary_name.replace(':','_')
         logger = WandbLogger(
             save_dir=args.summary_dir,project=args.project_name,
-            name=run_name,version=run_name,reinit=True)
+            name=run_name,version=run_name,reinit=True,resume=wandb_resume)
     else:
         logger = None
 
