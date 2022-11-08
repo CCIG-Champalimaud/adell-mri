@@ -287,7 +287,7 @@ if __name__ == "__main__":
     if feature_keys is not None:
         all_params = {"mean":[],"std":[]}
         for kk in feature_keys:
-            f = np.array([x[kk] for x in train_list])
+            f = np.array([x[kk] for x in data_list])
             all_params["mean"].append(np.mean(f))
             all_params["std"].append(np.std(f))
         all_params["mean"] = torch.as_tensor(
