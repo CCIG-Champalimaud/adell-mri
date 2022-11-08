@@ -4,7 +4,7 @@ import torch.nn.functional as F
 import torchmetrics
 import pytorch_lightning as pl
 import torchmetrics.classification as tmc
-from typing import Callable
+from typing import Callable,Dict
 from copy import deepcopy
 from picai_eval import evaluate
 
@@ -17,10 +17,35 @@ def split(x,n_splits,dim):
     size = int(x.shape[dim]//n_splits)
     return torch.split(x,size,dim)
 
-def get_lesions(x):
+def get_lesions(x:torch.Tensor)->np.NDArray:
+    """Wrapper for getting lesions using extract_lesion_candidates.
+
+    Args:
+        x (torch.Tensor): input tensor with segmentation probabilities.
+
+    Returns:
+        _type_: map containing indexed lesion candidates.
+    """
     return extract_lesion_candidates(x)[0]
 
-def update_metrics(cls,metrics,pred,y,pred_class,y_class,**kwargs):
+def update_metrics(cls:pl.LightningModule,
+                   metrics:Dict[str,torchmetrics.Metric],
+                   pred:torch.Tensor,
+                   y:torch.Tensor,
+                   pred_class:torch.Tensor,
+                   y_class:torch.Tensor,**kwargs)->None:
+    """Wraper function to update metrics.
+
+    Args:
+        cls (pl.LightningModule): a wraper function.
+        metrics (Dict[str,torchmetrics.Metric]): a dictionary containing 
+            strings as keys and torchmetrics metrics (with an update method
+            and compatible with pl.LightningModule.log) as values.
+        pred (torch.Tensor): tensor containing probability segmentation maps.
+        y (torch.Tensor): segmentation ground truth.
+        pred_class (torch.Tensor): class probability.
+        y_class (torch.Tensor): class ground truths.
+    """
     try: y = torch.round(y).int()
     except: pass
     y = y.long()
