@@ -3,9 +3,8 @@ name: Unit tests for custom PyTorch operations
 on: 
   push:
     paths:
-      - "testing/*"
-      - "lib/modules/*"
-      - "modules/utils.py"
+      - "testing/**"
+      - "lib/**"
 
 jobs:
   build:
