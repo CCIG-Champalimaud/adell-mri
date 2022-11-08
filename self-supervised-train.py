@@ -81,13 +81,19 @@ if __name__ == "__main__":
         help="Subsamples data to a given size",
         default=None)
     parser.add_argument(
+        '--cache_rate',dest='cache_rate',type=float,
+        help="Cache rate for CacheDataset",
+        default=1.0)
+    parser.add_argument(
         '--precision',dest='precision',type=str,
         help="Floating point precision",choices=["16","32","bf16"],
         default="32")
     parser.add_argument(
         '--unet_encoder',dest='unet_encoder',action="store_true",
         help="Trains a UNet encoder")
-
+    parser.add_argument(
+        '--batch_size',dest='batch_size',type=int,default=None,
+        help="Overrides batch size in config file")
 
     # network + training
     parser.add_argument(
@@ -145,7 +151,7 @@ if __name__ == "__main__":
         help='Path to file with CV metrics + information.')
     parser.add_argument(
         '--dropout_param',dest='dropout_param',type=float,
-        help="Parameter for dropout.",default=0.1)
+        help="Parameter for dropout.",default=0.0)
     parser.add_argument(
         '--vicreg',dest='vicreg',action="store_true",
         help="Use VICReg loss")
@@ -202,8 +208,11 @@ if __name__ == "__main__":
         n_dims = network_config["spatial_dimensions"]
     else:
         network_config,network_config_correct = parse_config_ssl(
-            args.config_file,args.dropout_param,len(keys),args.n_devices)
+            args.config_file,args.dropout_param,len(keys))
         n_dims = network_config["backbone_args"]["spatial_dim"]
+
+    if args.batch_size is not None:
+        network_config["batch_size"] = args.batch_size
 
     if args.ema == True:
         bs = network_config["batch_size"]
@@ -290,10 +299,10 @@ if __name__ == "__main__":
             *cropping_strategy,
             AugmentationWorkhorsed(
                 augmentations=aug_list,
-                keys=all_keys,mask_keys=[],max_mult=0.5,N=3),
+                keys=all_keys,mask_keys=[],max_mult=0.75,N=2),
             AugmentationWorkhorsed(
                 augmentations=aug_list,
-                keys=copied_keys,mask_keys=[],max_mult=0.5,N=3),
+                keys=copied_keys,mask_keys=[],max_mult=0.75,N=2),
             ]
 
     all_pids = [k for k in data_dict]
@@ -317,16 +326,30 @@ if __name__ == "__main__":
     train_list = [data_dict[pid] for pid in data_dict
                   if pid in train_pids]
 
+    if ":" in args.dev:
+        devices = args.dev.split(":")[-1].split(",")
+        devices = [int(i) for i in devices]
+        if len(devices) > 1:
+            strategy = "ddp"
+        else:
+            strategy = None
+    else:
+        devices = args.n_devices
+        if devices > 1:
+            strategy = "ddp"
+        else:
+            strategy = None
+
     train_dataset = monai.data.CacheDataset(
         train_list,
         monai.transforms.Compose(transforms),
-        num_workers=args.n_workers)
+        num_workers=args.n_workers,cache_rate=args.cache_rate)
 
     def train_loader_call(batch_size,shuffle=True): 
         return monai.data.ThreadDataLoader(
             train_dataset,batch_size=batch_size,
             shuffle=shuffle,num_workers=args.n_workers,generator=g,
-            pin_memory=True,collate_fn=collate_fn,
+            collate_fn=collate_fn,pin_memory=True,
             persistent_workers=True,drop_last=True)
 
     train_loader = train_loader_call(
@@ -334,7 +357,6 @@ if __name__ == "__main__":
     validation_loader = train_loader_call(
         network_config["batch_size"],False)
 
-    force_cudnn_initialization()
     if args.unet_encoder == True:
         ssl = NonContrastiveSelfSLUNetPL(
             training_dataloader_call=train_loader_call,
@@ -405,22 +427,7 @@ if __name__ == "__main__":
     else:
         logger = None
 
-    if ":" in args.dev:
-        devices = args.dev.split(":")[-1].split(",")
-        devices = [int(i) for i in devices]
-        if len(devices) > 1:
-            strategy = "ddp"
-        else:
-            strategy = None
-    else:
-        devices = args.n_devices
-        if devices > 1:
-            strategy = "ddp"
-        else:
-            strategy = None
-
     precision = {"16":16,"32":32,"bf16":"bf16"}[args.precision]
-    torch.autograd.set_detect_anomaly(True)
     trainer = Trainer(
         accelerator="gpu" if "cuda" in args.dev else "cpu",
         devices=devices,logger=logger,callbacks=callbacks,
@@ -432,8 +439,8 @@ if __name__ == "__main__":
         accumulate_grad_batches=args.accumulate_grad_batches)
     if strategy is None:
         bs = trainer.tune(ssl)
-    torch.cuda.empty_cache()
     
+    torch.cuda.empty_cache()
     trainer.fit(ssl,val_dataloaders=validation_loader)
     
     print("Validating...")
@@ -446,11 +453,8 @@ if __name__ == "__main__":
             value = float(out)
         x = "{},{},{},{}".format(k,0,0,value)
         output_file.write(x+'\n')
-        print(x)
     x = "{},{},{},{}".format(
         "train_ids",0,0,':'.join(train_pids))
-    output_file.write(x+'\n')
-    print(x)
     output_file.write(x+'\n')
 
     # just in case
