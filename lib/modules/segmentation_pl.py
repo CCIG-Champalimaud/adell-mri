@@ -17,14 +17,14 @@ def split(x,n_splits,dim):
     size = int(x.shape[dim]//n_splits)
     return torch.split(x,size,dim)
 
-def get_lesions(x:torch.Tensor)->np.NDArray:
+def get_lesions(x:torch.Tensor)->np.ndarray:
     """Wrapper for getting lesions using extract_lesion_candidates.
 
     Args:
         x (torch.Tensor): input tensor with segmentation probabilities.
 
     Returns:
-        _type_: map containing indexed lesion candidates.
+        (np.ndarray): map containing indexed lesion candidates.
     """
     return extract_lesion_candidates(x)[0]
 
