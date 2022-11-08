@@ -2,6 +2,7 @@ from cmath import inf
 import torch
 import torch.nn.functional as F
 from copy import deepcopy
+import time
 
 from ..types import *
 
@@ -223,12 +224,17 @@ class VICRegLoss(torch.nn.Module):
         """
         return F.mse_loss(X1,X2)
     
-    def vicreg_loss(self,X1:torch.Tensor,X2:torch.Tensor)->torch.Tensor:
+    def vicreg_loss(self,
+                    X1:torch.Tensor,
+                    X2:torch.Tensor,
+                    adj:float=1.0)->torch.Tensor:
         """Wrapper for the three components of the VICReg loss.
 
         Args:
             X1 (torch.Tensor): input tensor from view 1
             X2 (torch.Tensor): input tensor from view 2
+            adj (float, optional): adjustment to the covariance loss (helpful
+                for local VICReg losses. Defaults to 1.0.
 
         Returns:
             var_loss (torch.Tensor) variance loss
@@ -239,8 +245,8 @@ class VICRegLoss(torch.nn.Module):
             self.variance_loss(X1),
             self.variance_loss(X2)) / 2
         cov_loss = torch.add(
-            self.covariance_loss(X1),
-            self.covariance_loss(X2)) / 2
+            self.covariance_loss(X1)/adj,
+            self.covariance_loss(X2)/adj) / 2
         inv_loss = self.invariance_loss(X1,X2)
         return var_loss,cov_loss,inv_loss
     
@@ -298,7 +304,7 @@ class VICRegLocalLoss(VICRegLoss):
             nu (float, optional): covariance term.
             gamma (int, optional): the local loss term is calculated only for 
                 the top-gamma feature matches between input images. Defaults 
-                to 20.
+                to 10.
         """
         super().__init__()
         self.min_var = min_var
@@ -333,6 +339,26 @@ class VICRegLocalLoss(VICRegLoss):
         size = b - a
         return coords.unsqueeze(0) * size + a
 
+    def local_loss(self,
+                   X1,X2,all_dists):
+        g = self.gamma
+        b = X1.shape[0]
+        _,idxs = torch.topk(all_dists.flatten(start_dim=1),g,1)
+        idxs = [unravel_index(x,all_dists[0].shape) for x in idxs]
+        indexes = torch.cat([torch.ones(g)*i for i in range(b)]).long()
+        indexes_1 = torch.cat(
+            [self.sparse_coords_1[idxs[i][:,0]].long() for i in range(b)])
+        indexes_2 = torch.cat(
+            [self.sparse_coords_2[idxs[i][:,0]].long() for i in range(b)])
+        indexes_1 = tuple(
+            [indexes,*[indexes_1[:,i] for i in range(indexes_1.shape[1])]])
+        indexes_2 = tuple(
+            [indexes,*[indexes_2[:,i] for i in range(indexes_2.shape[1])]])
+        features_1 = X1.unsqueeze(-1).swapaxes(1,-1).squeeze(1)[indexes_1]
+        features_2 = X2.unsqueeze(-1).swapaxes(1,-1).squeeze(1)[indexes_2]
+        vrl = sum(self.vicreg_loss(features_1,features_2,g))
+        return vrl/g
+
     def location_local_loss(self,
                             X1:torch.Tensor,
                             X2:torch.Tensor,
@@ -355,27 +381,11 @@ class VICRegLocalLoss(VICRegLoss):
         """
         assert X1.shape[0] == X2.shape[0],"X1 and X2 need to have the same batch size"
         g = self.gamma
+        b = X1.shape[0]
         coords_X1 = self.transform_coords(self.sparse_coords_1,box_X1)
         coords_X2 = self.transform_coords(self.sparse_coords_2,box_X2)
-        loss_acc = torch.zeros([3])
-        all_dists = torch.cdist(coords_X1,
-                                coords_X2)
-        for b in range(X1.shape[0]):
-            dist = all_dists[b]
-            top_gamma = unravel_index(
-                torch.topk(
-                    dist.flatten(),
-                    g,largest=False).indices,
-                dist.shape)
-            f1 = torch.zeros([g,X1.shape[1]])
-            f2 = torch.zeros([g,X2.shape[1]])
-            sc1 = self.sparse_coords_1[top_gamma[:,0]].long()
-            sc2 = self.sparse_coords_2[top_gamma[:,1]].long()
-            for tg in range(g):
-                f1[tg,:] = X1[(b,slice(0,X1.shape[1]),*sc1[tg])]
-                f2[tg,:] = X2[(b,slice(0,X2.shape[1]),*sc2[tg])]
-            loss_acc = loss_acc + torch.as_tensor(self.vicreg_loss(f1,f2))/g
-        return loss_acc/b
+        all_dists = torch.cdist(coords_X1,coords_X2,p=2)
+        return self.local_loss(X1,X2,all_dists)
 
     def feature_local_loss(self,X1:torch.Tensor,X2:torch.Tensor):
         """Given two views of the same image X1 and X2, this loss
@@ -389,28 +399,12 @@ class VICRegLocalLoss(VICRegLoss):
         Returns:
             torch.Tensor: local loss for features
         """
-        g = self.gamma
+        assert X1.shape[0] == X2.shape[0],"X1 and X2 need to have the same batch size"
         flat_X1 = X1.flatten(start_dim=2).swapaxes(1,2)
         flat_X2 = X2.flatten(start_dim=2).swapaxes(1,2)
-        loss_acc = 0.
-        all_dists = torch.cdist(flat_X1,flat_X2)
-        for b in range(X1.shape[0]):
-            dist = all_dists[b]
-            top_gamma = unravel_index(
-                torch.topk(
-                    dist.flatten(),
-                    g,largest=False).indices,
-                dist.shape)
-            f1 = torch.zeros([g,X1.shape[1]])
-            f2 = torch.zeros([g,X2.shape[1]])
-            sc1 = self.sparse_coords_1[top_gamma[:,0]].long()
-            sc2 = self.sparse_coords_2[top_gamma[:,1]].long()
-            for tg in range(g):
-                f1[tg,:] = X1[(b,slice(0,X1.shape[1]),*sc1[tg])]
-                f2[tg,:] = X2[(b,slice(0,X2.shape[1]),*sc2[tg])]
-            loss_acc = loss_acc + torch.as_tensor(self.vicreg_loss(f1,f2))/g
-        return loss_acc/b
-
+        all_dists = torch.cdist(flat_X1,flat_X2,p=2)
+        return self.local_loss(X1,X2,all_dists)
+        
     def get_sparse_coords(self,X):
         return torch.stack(
             [x.flatten() for x in torch.meshgrid(
@@ -439,7 +433,7 @@ class VICRegLocalLoss(VICRegLoss):
             inv_loss (torch.Tensor)
             local_loss (torch.Tensor)
         """
-
+        
         flat_max_X1 = X1.flatten(start_dim=2).mean(-1)
         flat_max_X2 = X2.flatten(start_dim=2).mean(-1)
 
@@ -472,14 +466,14 @@ class VICRegLocalLoss(VICRegLoss):
             self.location_local_loss(
                 X1,X2,box_X1,box_X2),
             self.location_local_loss(
-                X2,X1,box_X2,box_X1))
+                X2,X1,box_X2,box_X1)) / 2
         long_range_local_loss = torch.add(
             self.feature_local_loss(X1,X2),
             self.feature_local_loss(X2,X1)) / 2
-                
+        
         local_loss = torch.add(
-            short_range_local_loss.sum(),
-            long_range_local_loss.sum()) * (1-self.alpha)
+            short_range_local_loss,
+            long_range_local_loss) * (1-self.alpha)
         return (self.lam*inv_loss * self.alpha,
                 self.mu*var_loss * self.alpha,
                 self.nu*cov_loss * self.alpha,
