@@ -351,7 +351,8 @@ class UNetPL(UNet,pl.LightningModule):
                 "IoU":lambda: tmc.BinaryJaccardIndex(),
                 "Pr":lambda: tmc.BinaryPrecision(),
                 "F1":lambda: tmc.BinaryFBetaScore(1.0),
-                "Dice":lambda: torchmetrics.Dice(2)}
+                "Dice":lambda: torchmetrics.Dice(
+                    num_classes=nc,ignore_index=0)}
         else:
             md = {"IoU":lambda: torchmetrics.JaccardIndex(nc,average="macro"),
                   "Pr":lambda: torchmetrics.Precision(nc,average="macro"),
@@ -631,7 +632,8 @@ class UNetPlusPlusPL(UNetPlusPlus,pl.LightningModule):
                 "IoU":lambda: tmc.BinaryJaccardIndex(),
                 "Pr":lambda: tmc.BinaryPrecision(),
                 "F1":lambda: tmc.BinaryFBetaScore(1.0),
-                "Dice":lambda: torchmetrics.Dice(2)}
+                "Dice":lambda: torchmetrics.Dice(
+                    num_classes=nc,ignore_index=0)}
         else:
             md = {"IoU":lambda: torchmetrics.JaccardIndex(nc,average="macro"),
                   "Pr":lambda: torchmetrics.Precision(nc,average="macro"),
@@ -934,7 +936,8 @@ class BrUNetPL(BrUNet,pl.LightningModule):
                 "IoU":lambda: tmc.BinaryJaccardIndex(),
                 "Pr":lambda: tmc.BinaryPrecision(),
                 "F1":lambda: tmc.BinaryFBetaScore(1.0),
-                "Dice":lambda: torchmetrics.Dice(2)}
+                "Dice":lambda: torchmetrics.Dice(
+                    num_classes=nc,ignore_index=0)}
         else:
             md = {"IoU":lambda: torchmetrics.JaccardIndex(nc,average="macro"),
                   "Pr":lambda: torchmetrics.Precision(nc,average="macro"),
