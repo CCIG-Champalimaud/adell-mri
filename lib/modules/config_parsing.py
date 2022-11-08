@@ -34,7 +34,7 @@ def parse_config_unet(config_file,n_keys,n_classes):
     network_config["n_channels"] = n_keys * network_config["n_channels"]
     return network_config,loss_key
 
-def parse_config_ssl(config_file:str,dropout_param:float,n_keys:int,n_devices:int):
+def parse_config_ssl(config_file:str,dropout_param:float,n_keys:int):
     with open(config_file,'r') as o:
         network_config = yaml.safe_load(o)
 
@@ -59,6 +59,6 @@ def parse_config_ssl(config_file:str,dropout_param:float,n_keys:int,n_devices:in
     }
     n_c = network_config["backbone_args"]["in_channels"]
     network_config["backbone_args"]["in_channels"] = n_keys * n_c
-    network_config["batch_size"] = network_config["batch_size"]*n_devices
+    network_config["batch_size"] = network_config["batch_size"]
 
     return network_config,network_config_correct
