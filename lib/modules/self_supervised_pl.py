@@ -262,7 +262,7 @@ class NonContrastiveSelfSLPL(ResNet,pl.LightningModule):
             box_1 = batch[self.box_key_1]
             box_2 = batch[self.box_key_2]
             other_args = [box_1,box_2]
-
+        
         x1,x2 = batch[self.aug_image_key_1],batch[self.aug_image_key_2]
         y1 = self.forward(x1,ret=ret_string_1)
         y2 = self.forward_ema_stop_grad(x2,ret=ret_string_2)
@@ -271,7 +271,7 @@ class NonContrastiveSelfSLPL(ResNet,pl.LightningModule):
         self.update_metrics(y1,y2,metrics)
         
         # loss is already symmetrised for VICReg and VICRegL
-        if self.vic_reg == False and self.vic_reg_local == False:
+        if (self.vic_reg == False) and (self.vic_reg_local == False):
             y1_ = self.forward_ema_stop_grad(x1,ret=ret_string_1)
             y2_ = self.forward(x2,ret=ret_string_2)
             losses = losses + self.calculate_loss(y2_,y1_,*other_args)
@@ -299,7 +299,6 @@ class NonContrastiveSelfSLPL(ResNet,pl.LightningModule):
             self.log(sub_loss_str,l,batch_size=x1.shape[0],
                      on_epoch=True,on_step=False,prog_bar=True,
                      sync_dist=True)
-
         return loss
 
     def training_step(self,batch,batch_idx):
