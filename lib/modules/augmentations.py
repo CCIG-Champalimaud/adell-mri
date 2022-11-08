@@ -91,7 +91,7 @@ AUG_PARAM_DICT = {
     "gaussian_sharpen_z":{"sigma1_z":0.3},
     "gibbs_noise":{"alpha":1.0},
     "spike_noise":{"intensity_range":0.5},
-    "rician_noise":{"std":0.5},
+    "rician_noise":{"std":0.2},
     "coarse_dropout":{"holes":16},
 }
 for i,c in enumerate(["x","y","z"]):
