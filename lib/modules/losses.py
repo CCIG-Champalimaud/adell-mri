@@ -211,10 +211,8 @@ def generalized_dice_loss(pred:torch.Tensor,
     fp = torch.sum((1.-target) * pred * scaling_term,2)
     fn = torch.sum(target * (1.-pred) * scaling_term,2)
         
-    cl_dice = torch.sum(
-        1. - torch.divide(2.*(tp*weight) + smooth,
-                          2.*(tp*weight) + fp + fn + smooth),
-        1)
+    cl_dice = torch.divide(2.*(tp*weight) + smooth,
+                           2.*(tp*weight) + fp + fn + smooth)
     return cl_dice
 
 def binary_focal_tversky_loss(pred:torch.Tensor,
@@ -250,11 +248,10 @@ def binary_focal_tversky_loss(pred:torch.Tensor,
     p_back = 1-p_fore
     t_fore = torch.flatten(target,start_dim=1)
     t_back = 1-t_fore
-    n = torch.sum(p_fore*t_fore,dim=1) + 1
-    d_1 = alpha*torch.sum(p_fore*t_back,dim=1)
-    d_2 = beta*torch.sum(p_back*t_fore,dim=1)
-    d = n + d_1 + d_2 + 1
-    nd = n/d
+    tp = torch.sum(p_fore*t_fore,dim=1)
+    fn = torch.sum(p_fore*t_back,dim=1)
+    fp = torch.sum(p_back*t_fore,dim=1)
+    nd = (tp+1)/(tp + alpha*fn + beta*fp+1)
 
     return 1-(nd)**gamma
 
@@ -290,7 +287,7 @@ def combo_loss(pred:torch.Tensor,
     alpha = torch.as_tensor(alpha).type_as(pred)
     beta = torch.as_tensor(beta).type_as(pred)
 
-    bdl = generalized_dice_loss(pred,target,beta)
+    bdl = generalized_dice_loss(pred,target,beta) * scale
     bce = binary_focal_loss(pred,target,beta,gamma,scale=scale)
     return (alpha)*bce + (1-alpha)*bdl
 
