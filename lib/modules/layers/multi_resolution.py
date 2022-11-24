@@ -184,7 +184,7 @@ class SpatialPyramidPooling2d(torch.nn.Module):
         outputs = []
         for layer in self.layers:
             outputs.append(layer(X))
-        output = torch.cat(output,dim=1)
+        output = torch.cat(outputs,dim=1)
         return output
 
 class SpatialPyramidPooling3d(torch.nn.Module):
@@ -385,7 +385,7 @@ class ReceptiveFieldBlock2d(torch.nn.Module):
         outputs = []
         for layer in self.layers:
             outputs.append(layer(X))
-        output = torch.cat(output,dim=1)
+        output = torch.cat(outputs,dim=1)
         output = self.final_op(output)
         output = X + output
         return output
