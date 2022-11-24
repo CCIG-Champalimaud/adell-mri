@@ -1,10 +1,10 @@
 import sys
 import os
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)),'..'))
+
 import torch
 
-from lib.modules.object_detection import *
-from lib.utils import *
+from lib.modules.object_detection import YOLONet3d
 
 def test_yolo():
     anchor_sizes = [
@@ -14,7 +14,7 @@ def test_yolo():
     ]
     yolo = YOLONet3d(1,n_c=4,anchor_sizes=anchor_sizes,dev='cpu')
 
-    input_tensor = torch.ones([1,1,64,64,21])
+    input_tensor = torch.ones([1,1,32,32,21])
 
     bb_center_pred,bb_size_pred,bb_object_pred,class_pred = yolo(input_tensor)
 

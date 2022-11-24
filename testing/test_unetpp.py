@@ -1,6 +1,7 @@
 import os
 import sys
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)),'..'))
+import pytest
 
 import torch
 from lib.modules.segmentation_plus import *
@@ -11,7 +12,13 @@ depths = [[16,32,64],[16,32,64,128]]
 spatial_dims = [2,3]
 conv_types = ["regular","resnet"]
 
-def unetpp_base(D,sd,conv_type):
+param_list = []
+for dim in [2,3]:
+    for D in depths:
+        for conv_type in ["regular","resnet"]:
+            param_list.append((D,dim,conv_type))
+@pytest.mark.parametrize("D,sd,conv_type",param_list)
+def test_unetpp_base(D,sd,conv_type):
     K = [3 for _ in D]
     S = [2 for _ in D]
     if sd == 2:
@@ -29,7 +36,13 @@ def unetpp_base(D,sd,conv_type):
     for x in o_aux:
         assert list(x.shape) == out_shape
 
-def unetpp_base_skip(D,sd,conv_type):
+param_list = []
+for dim in [2,3]:
+    for D in depths:
+        for conv_type in ["regular","resnet"]:
+            param_list.append((D,dim,conv_type))
+@pytest.mark.parametrize("D,sd,conv_type",param_list)
+def test_unetpp_base_skip(D,sd,conv_type):
     K = [3 for _ in D]
     S = [2 for _ in D]
     if sd == 2:
@@ -49,23 +62,3 @@ def unetpp_base_skip(D,sd,conv_type):
     assert list(o.shape) == out_shape
     for x in o_aux:
         assert list(x.shape) == out_shape
-
-def test_unet_2d():
-    for d in depths:
-        for c in conv_types:
-            unetpp_base(d,2,c)
-
-def test_unet_3d():
-    for d in depths:
-        for c in conv_types:
-            unetpp_base(d,3,c)
-
-def test_unet_2d_skip():
-    for d in depths:
-        for c in conv_types:
-            unetpp_base_skip(d,2,c)
-
-def test_unet_3d_skip():
-    for d in depths:
-        for c in conv_types:
-            unetpp_base_skip(d,3,c)

@@ -1,6 +1,7 @@
 import os
 import sys
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)),'..'))
+import pytest
 
 import torch
 from lib.modules.segmentation import UNet
@@ -28,7 +29,15 @@ resnet_args = {'backbone_args':
         'adn_fn': ActDropNormBuilder(norm_fn=torch.nn.BatchNorm1d)},
     }
 
-def unet_base(D,sd,conv_type,strides="regular"):
+param_list = []
+for dim in [2,3]:
+    for D in depths:
+        for conv_type in ["regular","resnet"]:
+            for strides in ["regular","irregular"]:
+                param_list.append((D,dim,conv_type,strides))
+
+@pytest.mark.parametrize("D,sd,conv_type,strides",param_list)
+def test_unet_base(D,sd,conv_type,strides):
     K = [3 for _ in D]
     if strides == "irregular":
         if sd == 2:
@@ -48,7 +57,14 @@ def unet_base(D,sd,conv_type,strides="regular"):
     o,bb = a(i)
     assert list(o.shape) == output_size
 
-def unet_skip(D,sd,conv_type):
+param_list = []
+for dim in [2,3]:
+    for D in depths:
+        for conv_type in ["regular","resnet"]:
+            param_list.append((D,dim,conv_type))
+
+@pytest.mark.parametrize("D,sd,conv_type",param_list)
+def test_unet_skip(D,sd,conv_type):
     K = [3 for _ in D]
     S = [2 for _ in D]
     if sd == 2:
@@ -65,7 +81,13 @@ def unet_skip(D,sd,conv_type):
     o,bb = a(i,X_skip_layer=i_skip)
     assert list(o.shape) == output_size
 
-def unet_skip_feature(D,sd,conv_type):
+param_list = []
+for dim in [2,3]:
+    for D in depths:
+        param_list.append((D,dim))
+
+@pytest.mark.parametrize("D,sd",param_list)
+def test_unet_skip_feature(D,sd):
     n_features = 4
     K = [3 for _ in D]
     S = [2 for _ in D]
@@ -89,8 +111,13 @@ def unet_skip_feature(D,sd,conv_type):
     o,bb = a(i,X_feature_conditioning=i_feat,X_skip_layer=i_skip)
     assert list(o.shape) == output_size
 
-# TODO: finish this test
-def unet_from_encoder(D,sd,strides):
+param_list = []
+for dim in [2,3]:
+    for D in depths:
+        for strides in ["regular","irregular"]:
+            param_list.append((D,dim,strides))
+@pytest.mark.parametrize("D,sd,strides",param_list)
+def test_unet_from_encoder(D,sd,strides):
     K = [3] + [3 for _ in D]
     if strides == "irregular":
         if sd == 2:
@@ -126,59 +153,3 @@ def unet_from_encoder(D,sd,strides):
     o,bb = a(i)
     print(o.shape,output_size)
     assert list(o.shape) == output_size
-
-def test_unet_2d():
-    for D in depths:
-        for conv_type in ["regular","resnet"]:
-            unet_base(D,2,conv_type)
-
-def test_unet_2d_irregular_strides():
-    for D in depths:
-        for conv_type in ["regular","resnet"]:
-            unet_base(D,2,conv_type,strides="irregular")
-
-def test_unet_3d():
-    for D in depths:
-        for conv_type in ["regular","resnet"]:
-            unet_base(D,3,conv_type)
-
-def test_unet_3d_irregular_strides():
-    for D in depths:
-        for conv_type in ["regular","resnet"]:
-            unet_base(D,3,conv_type,strides="irregular")
-
-def test_unet_2d_skip():
-    for D in depths:
-        for conv_type in ["regular","resnet"]:
-            unet_skip(D,2,conv_type)
-
-def test_unet_3d_skip():
-    for D in depths:
-        for conv_type in ["regular","resnet"]:
-            unet_skip(D,3,conv_type)
-
-def test_unet_2d_skip_feature():
-    for D in depths:
-        for conv_type in ["regular","resnet"]:
-            unet_skip_feature(D,2,conv_type)
-
-def test_unet_3d_skip_feature():
-    for D in depths:
-        for conv_type in ["regular","resnet"]:
-            unet_skip_feature(D,3,conv_type)
-
-def test_unet_2d_resnet():
-    for D in depths:
-        unet_from_encoder(D,2,strides="regular")
-
-def test_unet_2d_irregular_strides_resnet():
-    for D in depths:
-        unet_from_encoder(D,2,strides="irregular")
-
-def test_unet_3d_resnet():
-    for D in depths:
-        unet_from_encoder(D,3,strides="regular")
-
-def test_unet_3d_irregular_strides_resnet():
-    for D in depths:
-        unet_from_encoder(D,3,strides="irregular")

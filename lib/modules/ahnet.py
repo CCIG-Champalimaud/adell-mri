@@ -15,16 +15,16 @@ class AHNet(torch.nn.Module):
             in_channels (int): number of input channels.
             out_channels (int): number of output channels.
             spatial_dim (int, optional): number of initial spatial dimensions.
-            Defaults to 2.
+                Defaults to 2.
             n_classes (int, optional): number of classes. Defaults to 2.
             n_layers (int, optional): number of layers. In the 2D case this 
-            changes how many AH residual/GCN/Refine modules there are, in the
-            3D case this changes how many AH decoders are instantiated. 
-            Defaults to 5.
+                changes how many AH residual/GCN/Refine modules there are, in the
+                3D case this changes how many AH decoders are instantiated. 
+                Defaults to 5.
             adn_fn (torch.nn.Module, optional): module applied after 
-            convolutions. Defaults to ActDropNorm.
+                convolutions. Defaults to ActDropNorm.
             adn_args (dict, optional): args for the module applied after 
-            convolutions. Defaults to {}.
+                convolutions. Defaults to {}.
         """
         super().__init__()
         self.in_channels = in_channels
@@ -36,7 +36,7 @@ class AHNet(torch.nn.Module):
         self.adn_args = adn_args
 
         self.gcn_k_size = [63,31,15,9,7,5]
-        self.psp_levels = [[2,2,1],[4,4,2],[8,8,4],[16,16,4]]
+        self.psp_levels = [[2,2,1],[4,4,2],[8,8,4]]
 
         self.init_layers_2d()
         self.init_layers_3d()
