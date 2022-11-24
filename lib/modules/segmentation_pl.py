@@ -55,15 +55,18 @@ def update_metrics(cls:pl.LightningModule,
     if y_class is not None:
         y_class = y_class.long()
         pc = pred_class.detach()
+        if cls.n_classes == 2:
+            pc = F.sigmoid(pc)
+        else:
+            pc = F.softmax(pc,1)
     for k in metrics:
         if 'cl:' in k:
-            if cls.n_classes == 2:
-                pc = F.sigmoid(pc)
-            else:
-                pc = F.softmax(pc,1)
             metrics[k].update(pc,y_class)
         else:
-            metrics[k].update(p,y)
+            if "Dice" in k:
+                metrics[k].update(p.round().long(),y)
+            else:
+                metrics[k].update(p,y)
         cls.log(k,metrics[k],**kwargs,batch_size=y.shape[0],
                 sync_dist=True)
 
@@ -208,7 +211,7 @@ class UNetPL(UNet,pl.LightningModule):
         pred_final,pred_class,loss,class_loss,output_loss = self.loss_wrapper(
             x,y,y_class,x_cond,x_fc)
         
-        self.log("train_loss", loss,batch_size=y.shape[0],
+        self.log("train_loss",loss,batch_size=y.shape[0],
                  sync_dist=True)
         if class_loss is not None:
             self.log("train_cl_loss",class_loss,batch_size=y.shape[0],
@@ -331,7 +334,8 @@ class UNetPL(UNet,pl.LightningModule):
         # is not terribly compatible with starting and stopping training
         opt = self.optimizers()
         if self.polynomial_lr_decay == True:
-            poly_lr_decay(opt,self.current_epoch,initial_lr=self.learning_rate,
+            poly_lr_decay(opt,self.trainer.current_epoch,
+                          initial_lr=self.learning_rate,
                           max_decay_steps=self.n_epochs,end_lr=1e-6,power=0.9)
         try:
             last_lr = [x["lr"] for x in opt.param_groups][-1]
@@ -377,7 +381,7 @@ class UNetPL(UNet,pl.LightningModule):
                 "Pr":lambda: tmc.BinaryPrecision(),
                 "F1":lambda: tmc.BinaryFBetaScore(1.0),
                 "Dice":lambda: torchmetrics.Dice(
-                    num_classes=nc,ignore_index=0)}
+                    num_classes=1,multiclass=False)}
         else:
             md = {"IoU":lambda: torchmetrics.JaccardIndex(nc,average="macro"),
                   "Pr":lambda: torchmetrics.Precision(nc,average="macro"),
@@ -658,7 +662,7 @@ class UNetPlusPlusPL(UNetPlusPlus,pl.LightningModule):
                 "Pr":lambda: tmc.BinaryPrecision(),
                 "F1":lambda: tmc.BinaryFBetaScore(1.0),
                 "Dice":lambda: torchmetrics.Dice(
-                    num_classes=nc,ignore_index=0)}
+                    num_classes=1,multiclass=False)}
         else:
             md = {"IoU":lambda: torchmetrics.JaccardIndex(nc,average="macro"),
                   "Pr":lambda: torchmetrics.Precision(nc,average="macro"),
@@ -962,7 +966,7 @@ class BrUNetPL(BrUNet,pl.LightningModule):
                 "Pr":lambda: tmc.BinaryPrecision(),
                 "F1":lambda: tmc.BinaryFBetaScore(1.0),
                 "Dice":lambda: torchmetrics.Dice(
-                    num_classes=nc,ignore_index=0)}
+                    num_classes=1,multiclass=False)}
         else:
             md = {"IoU":lambda: torchmetrics.JaccardIndex(nc,average="macro"),
                   "Pr":lambda: torchmetrics.Precision(nc,average="macro"),
