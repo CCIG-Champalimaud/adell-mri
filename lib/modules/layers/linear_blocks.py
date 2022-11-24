@@ -98,7 +98,7 @@ class MultiHeadAttention(torch.nn.Module):
                  hidden_dim:int,
                  output_dim:int,
                  input_dim_context:int=None,
-                 n_heads=4):
+                 n_heads:int=4):
         super().__init__()
         self.input_dim_primary = input_dim_primary
         self.attention_dim = attention_dim
@@ -109,7 +109,7 @@ class MultiHeadAttention(torch.nn.Module):
 
         self.init_attention_heads()
         self.init_output_layer()
-    
+
     def init_attention_heads(self):
         self.heads = torch.nn.ModuleList([])
         for _ in range(self.n_heads):
@@ -129,7 +129,7 @@ class MultiHeadAttention(torch.nn.Module):
     def init_output_layer(self):
         self.output_layer = torch.nn.Linear(
             self.hidden_dim * self.n_heads,self.output_dim)
-
+        
     def forward(self,X_primary:torch.Tensor,X_context:torch.Tensor=None):
         outputs = []
         for head in self.heads:
