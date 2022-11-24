@@ -11,12 +11,18 @@ class LinearEmbedding(torch.nn.Module):
     def __init__(self,
                  image_size:Size2dOr3d,
                  patch_size:Size2dOr3d,
-                 n_channels:int):
+                 n_channels:int,
+                 dropout_prob:float=0.0,
+                 embed_method:str="linear"):
         super().__init__()
         self.image_size = image_size
         self.patch_size = patch_size
         self.n_channels = n_channels
+        self.dropout_prob = dropout_prob
+        self.embed_method = embed_method
         
+        assert self.embed_method in ["linear","convolutional"],\
+            "embed_method must be one of 'linear' or 'convolutional'"
         assert len(self.image_size) == len(self.patch_size),\
             "image_size and patch_size should have the same length"
         assert len(self.image_size) in [2,3],\
@@ -26,9 +32,29 @@ class LinearEmbedding(torch.nn.Module):
             "the elements of image_size should be divisible by those in patch_size"
         
         self.calculate_parameters()
+        self.init_conv_if_necessary()
+        self.init_dropout()
         self.initialize_positional_embeddings()
         self.get_einop_params()
+        self.linearized_dim = [-1,self.n_patches,self.n_tokens]
         
+    def init_conv_if_necessary(self):
+        """Initializes a convolutional if embed_method == "convolutional"
+        """
+        if self.embed_method == "convolutional":
+            self.n_tokens = self.n_tokens // self.n_channels
+            if self.n_dims == 2:
+                self.conv = torch.nn.Conv2d(
+                    self.n_channels,self.n_tokens,
+                    self.patch_size,stride=self.patch_size)
+            elif self.n_dims == 3:
+                self.conv = torch.nn.Conv3d(
+                    self.n_channels,self.n_tokens,
+                    self.patch_size,stride=self.patch_size)
+
+    def init_dropout(self):
+        self.drop_op = torch.nn.Dropout(self.dropout_prob)
+
     def calculate_parameters(self):
         """Calculates a few handy parameters for the linear embedding.
         """
@@ -37,30 +63,42 @@ class LinearEmbedding(torch.nn.Module):
             x // y for x,y in zip(self.image_size,self.patch_size)]
         self.n_patches = np.prod(self.n_patches_split)
         self.n_tokens = np.prod(self.patch_size) * self.n_channels
-        self.linearized_dim = [-1,self.n_patches,self.n_tokens]
         
     def initialize_positional_embeddings(self):
         """Initilizes the positional embedding.
         """
         self.positional_embedding = torch.nn.Parameter(
-            1,self.n_patches,self.n_tokens)
+            torch.rand([1,self.n_patches,self.n_tokens]))
         
     def get_einop_params(self):
         """Defines all necessary einops constants. This reduces the amount of 
         inference that einops.rearrange has to do internally and ensurest that
         this operation is a bit easier to inspect.
         """
-        if self.n_dims == 2:
-            self.einop_str = "b c (h x) (w y) -> b (h w) (c x y)"
-            self.einop_inv_str = "b (h w) (c x y) -> b c (h x) (w y)"
-        elif self.n_dims:
-            self.einop_str = "b c (h x) (w y) (d z) -> b (h w d) (c x y z)"
-            self.einop_inv_str = "b (h w d) (c x y z) -> b c (h x) (w y) (d z)"
-        self.einop_dict = {
-            k:s for s,k in zip(self.patch_size,["x","y","z"])}
-        self.einop_dict["c"] = self.n_channels
-        self.einop_dict.update(
-            {k:s for s,k in zip(self.n_patches_split,["h","w","d"])})
+        if self.embed_method == "linear":
+            if self.n_dims == 2:
+                self.einop_str = "b c (h x) (w y) -> b (h w) (c x y)"
+                self.einop_inv_str = "b (h w) (c x y) -> b c (h x) (w y)"
+            elif self.n_dims == 3:
+                self.einop_str = "b c (h x) (w y) (d z) -> b (h w d) (c x y z)"
+                self.einop_inv_str = "b (h w d) (c x y z) -> b c (h x) (w y) (d z)"
+            self.einop_dict = {
+                k:s for s,k in zip(self.patch_size,["x","y","z"])}
+            self.einop_dict["c"] = self.n_channels
+            self.einop_dict.update(
+                {k:s for s,k in zip(self.n_patches_split,["h","w","d"])})
+
+        elif self.embed_method == "convolutional":
+            if self.n_dims == 2:
+                self.einop_str = "b c h w -> b (h w) c"
+                self.einop_inv_str = "b (h w) c -> b c h w"
+            elif self.n_dims == 3:
+                self.einop_str = "b c h w d -> b (h w d) c"
+                self.einop_inv_str = "b (h w d) c -> b c h w d"
+            self.einop_dict = {}
+            self.einop_dict["c"] = self.n_tokens
+            self.einop_dict.update(
+                {k:s for s,k in zip(self.n_patches_split,["h","w","d"])})
     
     def rearrange(self,x:torch.Tensor)->torch.Tensor:
         """Applies einops.rearrange given the parameters inferred in 
@@ -88,7 +126,9 @@ class LinearEmbedding(torch.nn.Module):
     
     def forward(self,X):
         # output should always be [X.shape[0],self.n_patches,self.n_tokens]
-        return self.rearrange(X) + self.positional_embedding
+        if self.embed_method == "convolutional":
+            X = self.conv(X)
+        return self.drop_op(self.rearrange(X) + self.positional_embedding)
     
 class TransformerBlock(torch.nn.Module):
     def __init__(self,
