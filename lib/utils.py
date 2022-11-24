@@ -155,13 +155,18 @@ def get_loss_param_dict(
     comb = torch.as_tensor(comb)
     scale = torch.as_tensor(scale)
     
+    inverted_weights = invert_weights(weights)
+    s = weights + inverted_weights
+    weights_tv = weights / s
+    inverted_weights_tv = inverted_weights / s
+    
     loss_param_dict = {
         "cross_entropy":{"weight":weights,"scale":scale,"eps":eps},
         "focal":{"alpha":weights,"gamma":gamma,"scale":scale,"eps":eps},
         "focal_alt":{"alpha":weights,"gamma":gamma},
         "dice":{"weight":weights},
         "tversky_focal":{
-            "alpha":invert_weights(weights),"beta":weights,
+            "alpha":inverted_weights_tv,"beta":weights_tv,
             "gamma":gamma,"scale":scale},
         "combo":{
             "alpha":comb,"beta":weights,"gamma":gamma,"scale":scale},
@@ -1249,6 +1254,30 @@ class ExposeTransformKeyd(monai.transforms.Transform):
                 X[self.output_key] = curr
         return X
     
+class ExposeTransformKeyMetad(monai.transforms.Transform):
+    def __init__(self,
+                 key: str,
+                 transform_class: str,
+                 nested_pattern: List[str],
+                 output_key: str=None):
+        self.key = key
+        self.transform_class = transform_class
+        self.nested_pattern = nested_pattern
+        self.output_key = output_key
+    
+    def __call__(self,X):
+        if self.output_key is None:
+            output_key = "box_" + self.key
+        else:
+            output_key = self.output_key
+        for t in X[self.key].applied_operations:
+            if t["class"] == self.transform_class:
+                curr = t
+                for k in self.nested_pattern:
+                    curr = curr[k]
+                X[output_key] = curr
+        return X
+
 class Dropout(monai.transforms.Transform):
     def __init__(self,
                  channel:int,
