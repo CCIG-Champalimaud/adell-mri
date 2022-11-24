@@ -11,6 +11,7 @@ activation_factory = {
     "hard_tanh": torch.nn.Hardtanh,
     "leaky_relu": torch.nn.LeakyReLU,
     "logsigmoid": torch.nn.LogSigmoid,
+    "gelu":torch.nn.GELU,
     "prelu": torch.nn.PReLU,
     "relu": torch.nn.ReLU,
     "relu6": torch.nn.ReLU6,
