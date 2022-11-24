@@ -6,9 +6,9 @@ import torch
 from lib.modules.segmentation import UNet
 from lib.modules.layers import ResNet,ActDropNormBuilder,resnet_to_encoding_ops
 
-h,w,d,c = 64,64,20,1
+h,w,d,c = 32,32,20,1
 
-depths = [[16,32,64,128],[16,32,64,128,256]]
+depths = [[16,32,64],[16,32,64,128]]
 spatial_dims = [2,3]
 
 resnet_args = {'backbone_args': 

@@ -5,9 +5,9 @@ sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)),'..'))
 import torch
 from lib.modules.segmentation import BrUNet
 
-h,w,d,c = 64,64,20,1
+h,w,d,c = 32,32,20,1
 
-depths = [[16,32,64,128],[16,32,64,128,256]]
+depths = [[16,32,64],[16,32,64,128]]
 spatial_dims = [2,3]
 n_input = 2
 

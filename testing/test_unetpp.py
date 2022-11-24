@@ -5,9 +5,9 @@ sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)),'..'))
 import torch
 from lib.modules.segmentation_plus import *
 
-h,w,d,c = 128,128,32,1
+h,w,d,c = 32,32,16,1
 
-depths = [[16,32,64,128],[16,32,64,128,256]]
+depths = [[16,32,64],[16,32,64,128]]
 spatial_dims = [2,3]
 conv_types = ["regular","resnet"]
 

@@ -5,9 +5,9 @@ sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)),'..'))
 from lib.modules.layers import ActDropNorm, FeaturePyramidNetworkBackbone, ResNetBackbone
 import torch
 
-resnet_structure = [(64,128,3,3),(128,256,3,3),(256,512,3,3),(512,1024,3,3)]
-maxpool_structure =[(2,2,2),(2,2,2),(2,2,1),(2,2,1)]
-h,w,d,c = 84,128,19,1
+resnet_structure = [(64,128,3,3),(128,256,3,3),(256,512,3,3)]
+maxpool_structure =[(2,2,2),(2,2,2),(2,2,1)]
+h,w,d,c = 64,64,19,1
 
 def test_fpn_2d():
     sd = 2
