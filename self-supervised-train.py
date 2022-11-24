@@ -20,7 +20,7 @@ from lib.utils import (
     collate_last_slice,
     RandomSlices,
     ConditionalRescalingd,
-    ExposeTransformKeyd,
+    ExposeTransformKeyMetad,
     safe_collate)
 from lib.modules.augmentations import *
 from lib.modules.self_supervised_pl import NonContrastiveSelfSLPL,NonContrastiveSelfSLUNetPL
@@ -37,9 +37,6 @@ def force_cudnn_initialization():
     dev = torch.device('cuda')
     torch.nn.functional.conv2d(torch.zeros(s,s,s,s,device=dev), 
                                torch.zeros(s,s,s,s,device=dev))
-
-def flatten_box(box):
-    return np.array(box).T.reshape(-1).astype(np.float32)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -257,8 +254,8 @@ if __name__ == "__main__":
             crop_op = []
         if x == "pre":
             return [
-                monai.transforms.LoadImaged(all_keys),
-                monai.transforms.AddChanneld(all_keys),
+                monai.transforms.LoadImaged(
+                    all_keys,ensure_channel_first=True,image_only=True),
                 monai.transforms.Orientationd(all_keys,"RAS"),
                 *rs,
                 *crop_op,
@@ -273,7 +270,14 @@ if __name__ == "__main__":
                     ["augmented_image_1","augmented_image_2"])]
 
     def get_augmentations():
+        def flatten_box(box):
+            box1 = np.array(box[::2])
+            box2 = np.array(args.crop_size) - np.array(box[1::2])
+            out = np.concatenate([box1,box2]).astype(np.float32)
+            return out
+        
         aug_list = generic_augments+mri_specific_augments+spatial_augments
+        
         if len(roi_size) == 0:
             cropping_strategy = []
         if args.vicregl == True:
@@ -282,12 +286,15 @@ if __name__ == "__main__":
                     all_keys,roi_size=roi_size,random_size=False),
                 monai.transforms.RandSpatialCropd(
                     copied_keys,roi_size=roi_size,random_size=False),
-                ExposeTransformKeyd(all_keys[0]+"_transforms",
-                                    "RandSpatialCropd",["extra_info","slices"],
-                                    "box_1"),
-                ExposeTransformKeyd(copied_keys[0]+"_transforms",
-                                    "RandSpatialCropd",["extra_info","slices"],
-                                    "box_2"),
+                # exposes the value associated with the random crop as a key
+                # in the data element dict
+                ExposeTransformKeyMetad(
+                    all_keys[0],"RandSpatialCrop",
+                    ["extra_info","cropped"],"box_1"),
+                ExposeTransformKeyMetad(
+                    copied_keys[0],"RandSpatialCrop",
+                    ["extra_info","cropped"],"box_2"),
+                # transforms the bounding box into (x1,y1,z1,x2,y2,z2) format
                 monai.transforms.Lambdad(["box_1","box_2"],flatten_box),
             ]
         else:
