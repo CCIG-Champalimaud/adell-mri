@@ -238,6 +238,9 @@ if __name__ == "__main__":
         '--checkpoint_name',dest='checkpoint_name',type=str,default=None,
         help='Checkpoint ID.')
     parser.add_argument(
+        '--metric_monitor',dest='metric_monitor',type=str,default="val_loss",
+        help='Metric to monitor when saving the best ckpt.')
+    parser.add_argument(
         '--summary_dir',dest='summary_dir',type=str,default="summaries",
         help='Path to summary directory (for wandb).')
     parser.add_argument(
@@ -459,10 +462,11 @@ if __name__ == "__main__":
         if args.checkpoint_name is not None:
             ckpt_name = args.checkpoint_name + "_fold" + str(val_fold)
             ckpt_name = ckpt_name + "_best"
+            mode = "min" if "loss" in args.metric_monitor else "max"
             ckpt_callback = ModelCheckpoint(
                 dirpath=args.checkpoint_dir,
-                filename=ckpt_name,monitor="val_loss",
-                save_last=True,save_top_k=1,mode="min")
+                filename=ckpt_name,monitor=args.metric_monitor,
+                save_last=True,save_top_k=1,mode=mode)
             ckpt_last = \
                 args.checkpoint_name + "_fold" + str(val_fold) + "_last"
             ckpt_callback.CHECKPOINT_NAME_LAST = ckpt_last
@@ -630,7 +634,7 @@ if __name__ == "__main__":
 
         if args.res_config_file is not None:
             _,network_config_ssl = parse_config_ssl(
-                args.res_config_file,0.,len(keys),network_config["batch_size"])
+                args.res_config_file,0.,len(keys))
             for k in ['weight_decay','learning_rate','batch_size']:
                 if k in network_config_ssl:
                     del network_config_ssl[k]
@@ -777,7 +781,7 @@ if __name__ == "__main__":
         
         print("Validating...")
         test_metrics = trainer.test(
-            unet,validation_loader)[0]
+            unet,validation_loader,ckpt_path="best")[0]
         for k in test_metrics:
             out = test_metrics[k]
             if n_classes == 2:
