@@ -74,7 +74,7 @@ def get_transforms_unet(x,
         return [
             monai.transforms.LoadImaged(
                 all_keys,ensure_channel_first=True,
-                allow_missing_keys=fill_missing),
+                allow_missing_keys=fill_missing,image_only=True),
             *create_images_op,
             monai.transforms.Orientationd(all_keys,"RAS"),
             *rs,
