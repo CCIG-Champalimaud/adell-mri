@@ -2,9 +2,11 @@ from .adn_fn import *
 from .ah_blocks import *
 from .batch_ensemble import *
 from .gaussian_process import *
+from .linear_blocks import *
 from .multi_resolution import *
 from .regularization import *
 from .res_blocks import *
 from .res_net import *
 from .self_attention import *
 from .standard_blocks import *
+from .vit import *
