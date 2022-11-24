@@ -5,8 +5,83 @@ from .layers import *
 from ..types import *
 
 from typing import List
+from dataclasses import dataclass
 
 class UNet(torch.nn.Module):
+    """Standard U-Net [1] implementation. Features some useful additions 
+    such as residual links, different upsampling types, normalizations 
+    (batch or instance) and ropouts (dropout and U-out). This version of 
+    the U-Net has been implemented in such a way that it can be easily 
+    expanded.
+
+    Args:
+        spatial_dimensions (int, optional): number of dimensions for the 
+            input (not counting batch or channels). Defaults to 2.
+        encoding_operations (List[ModuleList], optional): backbone operations 
+            (uses these rather than a standard U-Net encoder). 
+            Must be a list where each element is a list containing a 
+            convolutional operation and a downsampling operation.
+        conv_type (str, optional): types of base convolutional operations.
+            For now it supports regular convolutions ("regular"), residual
+            convolutions ("resnet") and convolutions followed by squeeze
+            and excite modules ("sae"). Defaults to "regular".
+        link_type (str, optional): link type for the skip connections.
+            Can be a regular convolution ("conv"), residual block ("residual) or
+            the identity ("identity"). Defaults to "identity".
+        upscale_type (str, optional): upscaling type for decoder. Can be 
+            regular interpolate upsampling ("upsample") or transpose 
+            convolutions ("transpose"). Defaults to "upsample".
+        interpolation (str, optional): interpolation for the upsampling
+            operation (if `upscale_type="upsample"`). Defaults to "bilinear".
+        norm_type (str, optional): type of normalization. Can be batch
+            normalization ("batch") or instance normalization ("instance"). 
+            Defaults to "batch".
+        dropout_type (str, optional): type of dropout. Can be either 
+            regular dropout ("dropout") or U-out [2] ("uout"). Defaults to 
+            "dropout".
+        padding (int, optional): amount of padding for convolutions. 
+            Defaults to 0.
+        dropout_param (float, optional): parameter for dropout layers. 
+            Sets the dropout rate for "dropout" and beta for "uout". Defaults 
+            to 0.1.
+        activation_fn (torch.nn.Module, optional): activation function to
+            be applied after normalizing. Defaults to torch.nn.PReLU.
+        n_channels (int, optional): number of channels in input. Defaults
+            to 1.
+        n_classes (int, optional): number of output classes. Defaults to 2.
+        depth (list, optional): defines the depths of each layer of the 
+            U-Net (the decoder will be the opposite). Defaults to [16,32,64].
+        kernel_sizes (list, optional): defines the kernels of each layer 
+            of the U-Net. Defaults to [3,3,3].
+        strides (list, optional): defines the strides of each layer of the
+            U-Net. Defaults to [2,2,2].
+        bottleneck_classification (bool, optional): sets up a 
+            classification task using the channel-wise maximum of the 
+            bottleneck layer. Defaults to False.
+        skip_conditioning (int, optional): assumes that the skip 
+            layers will be conditioned by an image provided as the 
+            second argument of forward. This parameter specifies the 
+            number of channels in that image. Useful if any priors 
+            (complementary segmentation masks) are available.
+        feature_conditioning (int,optional): linearly transforms tabular 
+            features and adds them to each channel of the skip connections.
+            Useful to include tabular features in the prediction algorithm.
+            Defaults to None.
+        feature_conditioning_params (Dict[str,torch.Tensor], optional): 
+            dictionary with keys "mean" and "std" to normalize the tabular 
+            features. Must be present if feature conditioning is used. 
+            Defaults to None.
+        deep_supervision (bool, optional): forward method returns 
+            segmentation predictions obtained from each decoder block.
+        parent_class (bool, optional): does not initialise any layer, only
+            sets constants. Helpful for inheritance.
+        encoder_only (bool, optional): makes only encoder.
+    [1] https://www.nature.com/articles/s41592-018-0261-2
+    [2] https://openaccess.thecvf.com/content_CVPR_2019/papers/Li_Understanding_the_Disharmony_Between_Dropout_and_Batch_Normalization_by_Variance_CVPR_2019_paper.pdf
+
+    Returns:
+        torch.nn.Module: a U-Net module.
+    """
     def __init__(
         self,
         spatial_dimensions: int=2,
@@ -32,80 +107,6 @@ class UNet(torch.nn.Module):
         deep_supervision: bool=False,
         parent_class: bool=False,
         encoder_only: bool=False) -> torch.nn.Module:
-        """Standard U-Net [1] implementation. Features some useful additions 
-        such as residual links, different upsampling types, normalizations 
-        (batch or instance) and ropouts (dropout and U-out). This version of 
-        the U-Net has been implemented in such a way that it can be easily 
-        expanded.
-
-        Args:
-            spatial_dimensions (int, optional): number of dimensions for the 
-                input (not counting batch or channels). Defaults to 2.
-            encoding_operations (List[ModuleList], optional): backbone operations 
-                (uses these rather than a standard U-Net encoder). 
-                Must be a list where each element is a list containing a 
-                convolutional operation and a downsampling operation.
-            conv_type (str, optional): types of base convolutional operations.
-                For now it supports regular convolutions ("regular"), residual
-                convolutions ("resnet") and convolutions followed by squeeze
-                and excite modules ("sae"). Defaults to "regular".
-            link_type (str, optional): link type for the skip connections.
-                Can be a regular convolution ("conv"), residual block ("residual) or
-                the identity ("identity"). Defaults to "identity".
-            upscale_type (str, optional): upscaling type for decoder. Can be 
-                regular interpolate upsampling ("upsample") or transpose 
-                convolutions ("transpose"). Defaults to "upsample".
-            interpolation (str, optional): interpolation for the upsampling
-                operation (if `upscale_type="upsample"`). Defaults to "bilinear".
-            norm_type (str, optional): type of normalization. Can be batch
-                normalization ("batch") or instance normalization ("instance"). 
-                Defaults to "batch".
-            dropout_type (str, optional): type of dropout. Can be either 
-                regular dropout ("dropout") or U-out [2] ("uout"). Defaults to 
-                "dropout".
-            padding (int, optional): amount of padding for convolutions. 
-                Defaults to 0.
-            dropout_param (float, optional): parameter for dropout layers. 
-                Sets the dropout rate for "dropout" and beta for "uout". Defaults 
-                to 0.1.
-            activation_fn (torch.nn.Module, optional): activation function to
-                be applied after normalizing. Defaults to torch.nn.PReLU.
-            n_channels (int, optional): number of channels in input. Defaults
-                to 1.
-            n_classes (int, optional): number of output classes. Defaults to 2.
-            depth (list, optional): defines the depths of each layer of the 
-                U-Net (the decoder will be the opposite). Defaults to [16,32,64].
-            kernel_sizes (list, optional): defines the kernels of each layer 
-                of the U-Net. Defaults to [3,3,3].
-            strides (list, optional): defines the strides of each layer of the
-                U-Net. Defaults to [2,2,2].
-            bottleneck_classification (bool, optional): sets up a 
-                classification task using the channel-wise maximum of the 
-                bottleneck layer. Defaults to False.
-            skip_conditioning (int, optional): assumes that the skip 
-                layers will be conditioned by an image provided as the 
-                second argument of forward. This parameter specifies the 
-                number of channels in that image. Useful if any priors 
-                (complementary segmentation masks) are available.
-            feature_conditioning (int,optional): linearly transforms tabular 
-                features and adds them to each channel of the skip connections.
-                Useful to include tabular features in the prediction algorithm.
-                Defaults to None.
-            feature_conditioning_params (Dict[str,torch.Tensor], optional): 
-                dictionary with keys "mean" and "std" to normalize the tabular 
-                features. Must be present if feature conditioning is used. 
-                Defaults to None.
-            deep_supervision (bool, optional): forward method returns 
-                segmentation predictions obtained from each decoder block.
-            parent_class (bool, optional): does not initialise any layer, only
-                sets constants. Helpful for inheritance.
-            encoder_only (bool, optional): makes only encoder.
-        [1] https://www.nature.com/articles/s41592-018-0261-2
-        [2] https://openaccess.thecvf.com/content_CVPR_2019/papers/Li_Understanding_the_Disharmony_Between_Dropout_and_Batch_Normalization_by_Variance_CVPR_2019_paper.pdf
-
-        Returns:
-            torch.nn.Module: a U-Net module.
-        """
         
         super().__init__()
         self.spatial_dimensions = spatial_dimensions
@@ -640,6 +641,82 @@ class UNet(torch.nn.Module):
         return curr,bn_out
 
 class BrUNet(UNet,torch.nn.Module):
+    """BrUNet - UNet module supporting multiple inputs. Rather than 
+    constructing a multi-channel input, we process each channel separately
+    and merge them before applying link operations and at the end of the 
+    encoder. This allows us to pre-train different encoders in situations
+    where data is not equally available for all channels. 
+    
+    BrUNet merges the input by applying squeeze and excite (SAE) operations
+    at each merging point and summing them. SAE are self-attention 
+    mechanisms, and here they serve as a way of performing a weighted sum of
+    each input.
+
+    Args:
+        spatial_dimensions (int, optional): number of dimensions for the 
+            input (not counting batch or channels). Defaults to 2.
+        encoder (List[ModuleList], optional): a list of backbone operations 
+            which will be executed in parallel and whose output at each 
+            layer must be conformant (have the same channels).
+        conv_type (str, optional): types of base convolutional operations.
+            For now it supports regular convolutions ("regular"), residual
+            convolutions ("resnet") and convolutions followed by squeeze
+            and excite modules ("sae"). Defaults to "regular".
+        link_type (str, optional): link type for the skip connections.
+            Can be a regular convolution ("conv"), residual block ("residual) or
+            the identity ("identity"). Defaults to "identity".
+        upscale_type (str, optional): upscaling type for decoder. Can be 
+            regular interpolate upsampling ("upsample") or transpose 
+            convolutions ("transpose"). Defaults to "upsample".
+        interpolation (str, optional): interpolation for the upsampling
+            operation (if `upscale_type="upsample"`). Defaults to "bilinear".
+        norm_type (str, optional): type of normalization. Can be batch
+            normalization ("batch") or instance normalization ("instance"). 
+            Defaults to "batch".
+        dropout_type (str, optional): type of dropout. Can be either 
+            regular dropout ("dropout") or U-out [2] ("uout"). Defaults to 
+            "dropout".
+        padding (int, optional): amount of padding for convolutions. 
+            Defaults to 0.
+        dropout_param (float, optional): parameter for dropout layers. 
+            Sets the dropout rate for "dropout" and beta for "uout". Defaults 
+            to 0.1.
+        activation_fn (torch.nn.Module, optional): activation function to
+            be applied after normalizing. Defaults to torch.nn.PReLU.
+        n_channels (int, optional): number of channels in input. Defaults
+            to 1.
+        n_classes (int, optional): number of output classes. Defaults to 2.
+        depth (list, optional): defines the depths of each layer of the 
+            U-Net (the decoder will be the opposite). Defaults to [16,32,64].
+        kernel_sizes (list, optional): defines the kernels of each layer 
+            of the U-Net. Defaults to [3,3,3].
+        strides (list, optional): defines the strides of each layer of the
+            U-Net. Defaults to [2,2,2].
+        bottleneck_classification (bool, optional): sets up a 
+            classification task using the channel-wise maximum of the 
+            bottleneck layer. Defaults to False.
+        skip_conditioning (int, optional): assumes that the skip 
+            layers will be conditioned by an image provided as the 
+            second argument of forward. This parameter specifies the 
+            number of channels in that image. Useful if any priors 
+            (complementary segmentation masks) are available.
+        feature_conditioning (int,optional): linearly transforms tabular 
+            features and adds them to each channel of the skip connections.
+            Useful to include tabular features in the prediction algorithm.
+            Defaults to None.
+        feature_conditioning_params (Dict[str,torch.Tensor], optional): 
+            dictionary with keys "mean" and "std" to normalize the tabular 
+            features. Must be present if feature conditioning is used. 
+            Defaults to None.
+        deep_supervision (bool, optional): forward method returns 
+            segmentation predictions obtained from each decoder block.
+    [1] https://www.nature.com/articles/s41592-018-0261-2
+    [2] https://openaccess.thecvf.com/content_CVPR_2019/papers/Li_Understanding_the_Disharmony_Between_Dropout_and_Batch_Normalization_by_Variance_CVPR_2019_paper.pdf
+
+    Returns:
+        torch.nn.Module: a U-Net module.
+    """
+
     def __init__(
         self,
         spatial_dimensions: int=2,
@@ -664,81 +741,7 @@ class BrUNet(UNet,torch.nn.Module):
         feature_conditioning: int=None,
         feature_conditioning_params: Dict[str,torch.Tensor]=None,
         deep_supervision: bool=False) -> torch.nn.Module:
-        """BrUNet - UNet module supporting multiple inputs. Rather than 
-        constructing a multi-channel input, we process each channel separately
-        and merge them before applying link operations and at the end of the 
-        encoder. This allows us to pre-train different encoders in situations
-        where data is not equally available for all channels. 
-        
-        BrUNet merges the input by applying squeeze and excite (SAE) operations
-        at each merging point and summing them. SAE are self-attention 
-        mechanisms, and here they serve as a way of performing a weighted sum of
-        each input.
 
-        Args:
-            spatial_dimensions (int, optional): number of dimensions for the 
-                input (not counting batch or channels). Defaults to 2.
-            encoder (List[ModuleList], optional): a list of backbone operations 
-                which will be executed in parallel and whose output at each 
-                layer must be conformant (have the same channels).
-            conv_type (str, optional): types of base convolutional operations.
-                For now it supports regular convolutions ("regular"), residual
-                convolutions ("resnet") and convolutions followed by squeeze
-                and excite modules ("sae"). Defaults to "regular".
-            link_type (str, optional): link type for the skip connections.
-                Can be a regular convolution ("conv"), residual block ("residual) or
-                the identity ("identity"). Defaults to "identity".
-            upscale_type (str, optional): upscaling type for decoder. Can be 
-                regular interpolate upsampling ("upsample") or transpose 
-                convolutions ("transpose"). Defaults to "upsample".
-            interpolation (str, optional): interpolation for the upsampling
-                operation (if `upscale_type="upsample"`). Defaults to "bilinear".
-            norm_type (str, optional): type of normalization. Can be batch
-                normalization ("batch") or instance normalization ("instance"). 
-                Defaults to "batch".
-            dropout_type (str, optional): type of dropout. Can be either 
-                regular dropout ("dropout") or U-out [2] ("uout"). Defaults to 
-                "dropout".
-            padding (int, optional): amount of padding for convolutions. 
-                Defaults to 0.
-            dropout_param (float, optional): parameter for dropout layers. 
-                Sets the dropout rate for "dropout" and beta for "uout". Defaults 
-                to 0.1.
-            activation_fn (torch.nn.Module, optional): activation function to
-                be applied after normalizing. Defaults to torch.nn.PReLU.
-            n_channels (int, optional): number of channels in input. Defaults
-                to 1.
-            n_classes (int, optional): number of output classes. Defaults to 2.
-            depth (list, optional): defines the depths of each layer of the 
-                U-Net (the decoder will be the opposite). Defaults to [16,32,64].
-            kernel_sizes (list, optional): defines the kernels of each layer 
-                of the U-Net. Defaults to [3,3,3].
-            strides (list, optional): defines the strides of each layer of the
-                U-Net. Defaults to [2,2,2].
-            bottleneck_classification (bool, optional): sets up a 
-                classification task using the channel-wise maximum of the 
-                bottleneck layer. Defaults to False.
-            skip_conditioning (int, optional): assumes that the skip 
-                layers will be conditioned by an image provided as the 
-                second argument of forward. This parameter specifies the 
-                number of channels in that image. Useful if any priors 
-                (complementary segmentation masks) are available.
-            feature_conditioning (int,optional): linearly transforms tabular 
-                features and adds them to each channel of the skip connections.
-                Useful to include tabular features in the prediction algorithm.
-                Defaults to None.
-            feature_conditioning_params (Dict[str,torch.Tensor], optional): 
-                dictionary with keys "mean" and "std" to normalize the tabular 
-                features. Must be present if feature conditioning is used. 
-                Defaults to None.
-            deep_supervision (bool, optional): forward method returns 
-                segmentation predictions obtained from each decoder block.
-        [1] https://www.nature.com/articles/s41592-018-0261-2
-        [2] https://openaccess.thecvf.com/content_CVPR_2019/papers/Li_Understanding_the_Disharmony_Between_Dropout_and_Batch_Normalization_by_Variance_CVPR_2019_paper.pdf
-
-        Returns:
-            torch.nn.Module: a U-Net module.
-        """
         super().__init__(parent_class=True)
         self.spatial_dimensions = spatial_dimensions
         self.n_input_branches = n_input_branches
