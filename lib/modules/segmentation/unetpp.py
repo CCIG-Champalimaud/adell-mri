@@ -1,10 +1,10 @@
 import torch
 import torch.nn.functional as F
 
-from .layers import *
-from ..types import *
+from ..layers import *
+from ...types import *
 
-from .segmentation import UNet
+from .unet import UNet
 from typing import List
 
 class UNetPlusPlus(UNet):
@@ -133,9 +133,6 @@ class UNetPlusPlus(UNet):
             self.init_bottleneck_classifier()
         if self.feature_conditioning is not None:
             self.init_feature_conditioning_operations()
-                
-        self.loss_accumulator = 0.
-        self.loss_accumulator_d = 0.
           
     def init_link_ops(self):
         """Initializes linking (skip) operations.

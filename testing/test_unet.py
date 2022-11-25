@@ -4,7 +4,7 @@ sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)),'..'))
 import pytest
 
 import torch
-from lib.modules.segmentation import UNet
+from lib.modules.segmentation.unet import UNet
 from lib.modules.layers.res_net import ResNet,resnet_to_encoding_ops
 from lib.modules.layers.adn_fn import ActDropNormBuilder
 

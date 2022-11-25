@@ -1,11 +1,10 @@
 import torch
 import torch.nn.functional as F
 
-from .layers import *
-from ..types import *
+from ..layers import *
+from ...types import *
 
 from typing import List
-from dataclasses import dataclass
 
 class UNet(torch.nn.Module):
     """Standard U-Net [1] implementation. Features some useful additions 

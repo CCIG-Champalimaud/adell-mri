@@ -1,9 +1,9 @@
 import torch
 import time 
 
-from ..types import *
-from .layers import *
-from .object_detection import resnet_default,maxpool_default
+from ...types import *
+from ..layers import *
+from ..object_detection import resnet_default,maxpool_default
 
 resnet_default = [(64,128,5,2),(128,256,3,5)]
 maxpool_default = [(2,2,2),(2,2,2)]

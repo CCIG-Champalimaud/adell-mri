@@ -8,10 +8,10 @@ from typing import Callable,Dict
 from copy import deepcopy
 from picai_eval import evaluate
 
-from .segmentation import UNet,BrUNet
-from .segmentation_plus import UNetPlusPlus
-from .learning_rate import poly_lr_decay
-from .extract_lesion_candidates import extract_lesion_candidates
+from .unet import UNet,BrUNet
+from .unetpp import UNetPlusPlus
+from ..learning_rate import poly_lr_decay
+from ..extract_lesion_candidates import extract_lesion_candidates
 
 def split(x,n_splits,dim):
     size = int(x.shape[dim]//n_splits)
