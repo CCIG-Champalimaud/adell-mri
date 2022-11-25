@@ -5,8 +5,18 @@ from copy import deepcopy
 
 from .linear_blocks import MultiHeadAttention
 from .linear_blocks import MLP
-from .adn_fn import get_adn_fn
-from ...types import Size2dOr3d,List,Union
+from ...types import Size2dOr3d,List,Union,Dict
+
+def downsample_ein_op_dict(ein_op_dict:Dict[str,int],scale:int=1):
+    ein_op_dict = deepcopy(ein_op_dict)
+    pairs = (("h","x"),("w","y"),("d","z"))
+    p = 0
+    for dim,coord in pairs:
+        if dim in ein_op_dict:
+            p += 1
+            ein_op_dict[coord] = ein_op_dict[coord] // scale
+    ein_op_dict["c"] = ein_op_dict["c"] * scale**p
+    return ein_op_dict
 
 class LinearEmbedding(torch.nn.Module):
     def __init__(self,
@@ -101,24 +111,24 @@ class LinearEmbedding(torch.nn.Module):
             self.einop_dict.update(
                 {k:s for s,k in zip(self.n_patches_split,["h","w","d"])})
     
-    def rearrange(self,x:torch.Tensor)->torch.Tensor:
+    def rearrange(self,X:torch.Tensor)->torch.Tensor:
         """Applies einops.rearrange given the parameters inferred in 
         self.get_einop_params.
 
         Args:
-            x (torch.Tensor): a tensor of size (b,c,h,w,(d))
+            X (torch.Tensor): a tensor of size (b,c,h,w,(d))
 
         Returns:
             torch.Tensor: a tensor of size (b,h*x,w*y,(d*z))
         """
-        return einops.rearrange(x,self.einop_str,**self.einop_dict)
+        return einops.rearrange(X,self.einop_str,**self.einop_dict)
 
-    def rearrange_inverse(self,x:torch.Tensor,**kwargs)->torch.Tensor:
+    def rearrange_inverse(self,X:torch.Tensor,**kwargs)->torch.Tensor:
         """Reverses the self.rearrange operation using the parameters inferred
         in self.get_einop_params.
 
         Args:
-            x (torch.Tensor): a tensor of size (b,h*x,w*y,(d*z))
+            X (torch.Tensor): a tensor of size (b,h*x,w*y,(d*z))
             kwargs: arguments that will be appended to self.einop_dict
 
         Returns:
@@ -127,7 +137,22 @@ class LinearEmbedding(torch.nn.Module):
         einop_dict = deepcopy(self.einop_dict)
         for k in kwargs:
             einop_dict[k] = kwargs[k]
-        return einops.rearrange(x,self.einop_inv_str,**self.einop_dict)
+        return einops.rearrange(X,self.einop_inv_str,**einop_dict)
+
+    def rearrange_rescale(self,X:torch.Tensor,scale:int)->torch.Tensor:
+        """Reverses the self.rearrange operation using the parameters inferred
+        in self.get_einop_params but rescales the resolution so that the "extra"
+        features are stacked on the channel dimension (for UNETR, etc.).
+
+        Args:
+            X (torch.Tensor): a tensor of size (b,h*x,w*y,(d*z))
+            scale: factor by which resolution will be downsampled
+
+        Returns:
+            x torch.Tensor: a tensor of size (b,c,h,w,(d))
+        """
+        einop_dict = downsample_ein_op_dict(deepcopy(self.einop_dict),scale)
+        return einops.rearrange(X,self.einop_inv_str,**einop_dict)
     
     def forward(self,X):
         # output should always be [X.shape[0],self.n_patches,self.n_tokens]
