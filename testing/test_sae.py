@@ -3,7 +3,8 @@ import os
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)),'..'))
 
 import torch
-from lib.modules.layers import ConcurrentSqueezeAndExcite2d,ConcurrentSqueezeAndExcite3d
+from lib.modules.layers.self_attention import (ConcurrentSqueezeAndExcite2d,
+                                               ConcurrentSqueezeAndExcite3d)
 
 b,c,h,w,d = 1,16,64,64,16
 input_tensor_2d = torch.ones([b,c,h,w])

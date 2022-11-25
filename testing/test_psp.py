@@ -3,7 +3,7 @@ import os
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)),'..'))
 
 import torch
-from lib.modules.layers import *
+from lib.modules.layers.multi_resolution import PyramidSpatialPooling3d
 
 def test_psp():
       h,w,d,c = 128,128,32,16

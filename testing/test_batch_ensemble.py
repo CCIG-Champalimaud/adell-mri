@@ -3,7 +3,8 @@ import os
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)),'..'))
 
 import torch
-from lib.modules.layers import BatchEnsemble, BatchEnsembleWrapper,get_adn_fn
+from lib.modules.layers.batch_ensemble import BatchEnsemble, BatchEnsembleWrapper
+from lib.modules.layers.adn_fn import get_adn_fn
 
 c,h,w,d = [16,32,32,16]
 adn_fn = {0:get_adn_fn(1),

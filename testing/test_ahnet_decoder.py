@@ -3,7 +3,7 @@ import os
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)),'..'))
 
 import torch
-from lib.modules.layers import AHNetDecoder3d
+from lib.modules.layers.ah_blocks import AHNetDecoder3d
 
 def test_ah_net_decoder():
       h,w,d,c = 128,128,32,16

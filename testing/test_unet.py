@@ -5,7 +5,8 @@ import pytest
 
 import torch
 from lib.modules.segmentation import UNet
-from lib.modules.layers import ResNet,ActDropNormBuilder,resnet_to_encoding_ops
+from lib.modules.layers.res_net import ResNet,resnet_to_encoding_ops
+from lib.modules.layers.adn_fn import ActDropNormBuilder
 
 h,w,d,c = 32,32,20,1
 

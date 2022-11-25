@@ -2,7 +2,9 @@ import sys
 import os
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)),'..'))
 
-from lib.modules.layers import ActDropNorm, FeaturePyramidNetworkBackbone, ResNetBackbone
+from lib.modules.layers.adn_fn import ActDropNorm
+from lib.modules.layers.multi_resolution import FeaturePyramidNetworkBackbone
+from lib.modules.layers.res_net import ResNetBackbone
 import torch
 
 resnet_structure = [(64,128,3,3),(128,256,3,3),(256,512,3,3)]

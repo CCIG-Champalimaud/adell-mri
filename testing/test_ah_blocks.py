@@ -3,7 +3,7 @@ import os
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)),'..'))
 
 import torch
-from lib.modules.layers import AnysotropicHybridResidual,AnysotropicHybridInput
+from lib.modules.layers.ah_blocks import AnysotropicHybridResidual,AnysotropicHybridInput
 
 import numpy as np
 
