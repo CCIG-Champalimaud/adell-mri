@@ -27,10 +27,10 @@ adn_fn = get_adn_fn(1,"identity","gelu",0.1)
     ("convolution",4)])
 def test_transformer(embed_method,scale):
     vit = ViT(
-        image_size,patch_size,n_channels,4,
-        attention_dim,hidden_dim,n_heads,dropout_rate=0.1,
-        embed_method=embed_method,mlp_structure=[64,64],
-        adn_fn=adn_fn)
+        image_size=image_size,patch_size=patch_size,n_channels=n_channels,
+        number_of_blocks=4,attention_dim=attention_dim,hidden_dim=hidden_dim,
+        n_heads=n_heads,dropout_rate=0.1,embed_method=embed_method,
+        mlp_structure=[64,64],adn_fn=adn_fn)
     im_size = [batch_size] + [n_channels] + image_size
     output_image_size = [batch_size,n_channels*scale**len(image_size)] + [x//scale for x in image_size]
     im = torch.rand(im_size)
@@ -38,5 +38,5 @@ def test_transformer(embed_method,scale):
     token_size = vit.input_dim_primary
     n_patches = vit.embedding.n_patches
     assert list(out.shape) == [batch_size,n_patches,token_size]
-    assert list(vit.embedding.rearrange_rescale(out,sscale).shape) == output_image_size
+    assert list(vit.embedding.rearrange_rescale(out,scale).shape) == output_image_size
     assert list(vit.embedding.rearrange_inverse(out).shape) == im_size
