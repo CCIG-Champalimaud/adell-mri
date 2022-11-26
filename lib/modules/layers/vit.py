@@ -8,6 +8,19 @@ from .linear_blocks import MultiHeadAttention
 from .linear_blocks import MLP
 from ...types import *
 
+def cyclic_shift_batch(X:torch.Tensor,shift:List[int]):
+    """Applies what the authors from SWIN call a "cyclic shift".
+
+    Args:
+        X (:torch.Tensors): input tensor.
+        shift (List[int]): size of shift along all dimensions.
+
+    Returns:
+        torch.Tensor: rolled input.
+    """
+    dims = [i for i in range(2,len(shift)+2)]
+    return torch.roll(X,shifts=shift,dims=dims)
+
 def downsample_ein_op_dict(ein_op_dict:Dict[str,int],
                            scale:int=1)->Dict[str,int]:
     """Downsamples a einops constant dictionary given a downsampling scale 
@@ -46,14 +59,19 @@ class LinearEmbedding(torch.nn.Module):
     so that it *always* uses einops, making operations more easily 
     reversible.
     
+    Here, I also included an argument that enables the support of windows as 
+    in SWIN.
+    
     [1] https://arxiv.org/pdf/2010.11929.pdf
     [2] https://arxiv.org/pdf/2103.10504.pdf
     [3] https://docs.monai.io/en/stable/_modules/monai/networks/blocks/patchembedding.html
+    [4] https://arxiv.org/pdf/2103.14030.pdf
     """
     def __init__(self,
                  image_size:Size2dOr3d,
                  patch_size:Size2dOr3d,
                  n_channels:int,
+                 n_windows:Size2dOr3d=None,
                  dropout_rate:float=0.0,
                  embed_method:str="linear"):
         """    
@@ -61,6 +79,8 @@ class LinearEmbedding(torch.nn.Module):
             image_size (Size2dOr3d): size of the input image.
             patch_size (Size2dOr3d): size of the patch size.
             n_channels (int): number of channels in the input image.
+            n_windows (Size2dOr3d, optional): number of windows for windowed
+                multi-head attention. Defaults to None (no windowing)
             dropout_rate (float, optional): dropout rate of the dropout 
                 operation that is applied after the sum of the linear 
                 embeddings with the positional embeddings. Defaults to 0.0.
@@ -70,6 +90,7 @@ class LinearEmbedding(torch.nn.Module):
         self.image_size = image_size
         self.patch_size = patch_size
         self.n_channels = n_channels
+        self.n_windows = n_windows
         self.dropout_rate = dropout_rate
         self.embed_method = embed_method
         
@@ -88,20 +109,20 @@ class LinearEmbedding(torch.nn.Module):
         self.init_dropout()
         self.initialize_positional_embeddings()
         self.get_einop_params()
-        self.linearized_dim = [-1,self.n_patches,self.n_tokens]
+        self.linearized_dim = [-1,self.n_patches,self.n_features]
         
     def init_conv_if_necessary(self):
         """Initializes a convolutional if embed_method == "convolutional"
         """
         if self.embed_method == "convolutional":
-            self.n_tokens = self.n_tokens // self.n_channels
+            self.n_features = self.n_features // self.n_channels
             if self.n_dims == 2:
                 self.conv = torch.nn.Conv2d(
-                    self.n_channels,self.n_tokens,
+                    self.n_channels,self.n_features,
                     self.patch_size,stride=self.patch_size)
             elif self.n_dims == 3:
                 self.conv = torch.nn.Conv3d(
-                    self.n_channels,self.n_tokens,
+                    self.n_channels,self.n_features,
                     self.patch_size,stride=self.patch_size)
 
     def init_dropout(self):
@@ -114,46 +135,74 @@ class LinearEmbedding(torch.nn.Module):
         """Calculates a few handy parameters for the linear embedding.
         """
         self.n_dims = len(self.image_size)
-        self.n_patches_split = [
-            x // y for x,y in zip(self.image_size,self.patch_size)]
+        if self.n_windows is None:
+            self.n_patches_split = [
+                x // y for x,y in zip(self.image_size,self.patch_size)]
+        else:
+            # number of patches will be smaller but the number of features
+            # remains the same
+            self.n_patches_split = [
+                x // z // y for x,y,z in zip(self.image_size,
+                                             self.patch_size,
+                                             self.n_windows)]
         self.n_patches = np.prod(self.n_patches_split)
-        self.n_tokens = np.prod(self.patch_size) * self.n_channels
+        self.n_features = np.prod(self.patch_size) * self.n_channels
         
     def initialize_positional_embeddings(self):
         """Initilizes the positional embedding.
         """
         self.positional_embedding = torch.nn.Parameter(
-            torch.rand([1,self.n_patches,self.n_tokens]))
+            torch.ones([1,self.n_patches,self.n_features]))
         
     def get_einop_params(self):
         """Defines all necessary einops constants. This reduces the amount of 
         inference that einops.rearrange has to do internally and ensurest that
         this operation is a bit easier to inspect.
         """
+        def einops_tuple(l):
+            if isinstance(l,list):
+                return "({})".format(" ".join(l))
+            else:
+                return l
         if self.embed_method == "linear":
-            if self.n_dims == 2:
-                self.einop_str = "b c (h x) (w y) -> b (h w) (c x y)"
-                self.einop_inv_str = "b (h w) (c x y) -> b c (h x) (w y)"
-            elif self.n_dims == 3:
-                self.einop_str = "b c (h x) (w y) (d z) -> b (h w d) (c x y z)"
-                self.einop_inv_str = "b (h w d) (c x y z) -> b c (h x) (w y) (d z)"
+            self.lh = ["b","c",["h","x"],["w","y"]]
+            self.rh = ["b",["h","w"],["c","x","y"]]
             self.einop_dict = {
                 k:s for s,k in zip(self.patch_size,["x","y","z"])}
             self.einop_dict["c"] = self.n_channels
             self.einop_dict.update(
                 {k:s for s,k in zip(self.n_patches_split,["h","w","d"])})
+            if self.n_dims == 3:
+                self.lh.append(["d","z"])
+                self.rh[-2].append("d")
+                self.rh[-1].append("z")
+            if self.n_windows is not None:
+                windowing_vars = ["w{}".format(i+1) 
+                                  for i in range(self.n_dims)]
+                for i,w in enumerate(windowing_vars):
+                    self.lh[i+2].append(w)
+                self.rh.insert(1,einops_tuple(windowing_vars))
 
         elif self.embed_method == "convolutional":
-            if self.n_dims == 2:
-                self.einop_str = "b c h w -> b (h w) c"
-                self.einop_inv_str = "b (h w) c -> b c h w"
-            elif self.n_dims == 3:
-                self.einop_str = "b c h w d -> b (h w d) c"
-                self.einop_inv_str = "b (h w d) c -> b c h w d"
+            self.lh = ["b","c","h","w"]
+            self.rh = ["b",["h","w"],"c"]
             self.einop_dict = {}
-            self.einop_dict["c"] = self.n_tokens
+            self.einop_dict["c"] = self.n_features
             self.einop_dict.update(
                 {k:s for s,k in zip(self.n_patches_split,["h","w","d"])})
+            if self.n_windows is not None:
+                self.lh.insert(1,"w")
+                self.rh.insert(1,"w")
+            if self.n_dims == 3:
+                self.lh.append("d")
+                self.rh[-2].append("d")
+
+        self.einop_str = "{lh} -> {rh}".format(
+            lh=" ".join([einops_tuple(x) for x in self.lh]),
+            rh=" ".join([einops_tuple(x) for x in self.rh]))
+        self.einop_inv_str = "{lh} -> {rh}".format(
+            lh=" ".join([einops_tuple(x) for x in self.rh]),
+            rh=" ".join([einops_tuple(x) for x in self.lh]))
     
     def rearrange(self,X:torch.Tensor)->torch.Tensor:
         """Applies einops.rearrange given the parameters inferred in 
@@ -207,9 +256,9 @@ class LinearEmbedding(torch.nn.Module):
 
         Returns:
             torch.Tensor: the embedding of X, with size 
-                [X.shape[0],self.n_patches,self.n_tokens].
+                [X.shape[0],self.n_patches,self.n_features].
         """
-        # output should always be [X.shape[0],self.n_patches,self.n_tokens]
+        # output should always be [X.shape[0],self.n_patches,self.n_features]
         if self.embed_method == "convolutional":
             X = self.conv(X)
         return self.drop_op(self.rearrange(X) + self.positional_embedding)
@@ -222,6 +271,94 @@ class TransformerBlock(torch.nn.Module):
                                 |---------------|
     input -> MHA -> Add -> LayerNorm -> MLP -> Add -> LayerNorm -> Output
         |--------------|
+        
+    First introduced, to the best of my knowledge, in [1].
+    
+    [1] https://arxiv.org/abs/1706.03762
+    """
+    def __init__(self,
+                 input_dim_primary:int,
+                 attention_dim:int,
+                 hidden_dim:int,
+                 n_heads:int=4,
+                 mlp_structure:List[int]=[128,128],
+                 dropout_rate:float=0.0,
+                 adn_fn:Callable=torch.nn.Identity):
+        """
+        Args:
+            input_dim_primary (int): size of input.
+            attention_dim (int): size of attention.
+            hidden_dim (int): size of hidden dimension (output of attention
+                modules).
+            n_heads (int, optional): number of attention heads. Defaults to 4.
+            mlp_structure (List[int], optional): hidden layer structure. 
+                Should be a list of ints. Defaults to [32,32].
+            dropout_rate (float, optional): dropout rate, applied to the output
+                of each sub-layer. Defaults to 0.0.
+            adn_fn (Callable, optional): function that returns a 
+                torch.nn.Module that does activation/dropout/normalization,
+                used in the MLP sub-layer. Should take as arguments the number
+                of channels in a given layer. Defaults to torch.nn.Identity.
+        """
+        super().__init__()
+        self.input_dim_primary = input_dim_primary
+        self.attention_dim = attention_dim
+        self.hidden_dim = hidden_dim
+        self.n_heads = n_heads
+        self.mlp_structure = mlp_structure
+        self.dropout_rate = dropout_rate
+        self.adn_fn = adn_fn
+        
+        self.mha = MultiHeadAttention(
+            self.input_dim_primary,
+            self.attention_dim,
+            self.hidden_dim,
+            self.input_dim_primary,
+            n_heads=self.n_heads)
+        
+        self.init_drop_ops()
+        self.init_layer_norm_ops()
+        self.init_mlp()
+    
+    def init_drop_ops(self):
+        """Initializes the dropout operations.
+        """
+        self.drop_op_1 = torch.nn.Dropout(self.dropout_rate)
+        self.drop_op_2 = torch.nn.Dropout(self.dropout_rate)
+
+    def init_layer_norm_ops(self):
+        """Initializes the MLP in the last step of the transformer.
+        """
+        self.norm_op_1 = torch.nn.LayerNorm(self.input_dim_primary)
+        self.norm_op_2 = torch.nn.LayerNorm(self.input_dim_primary)
+
+    def init_mlp(self):
+        """Initializes the MLP in the last step of the transformer.
+        """
+        self.mlp = MLP(self.input_dim_primary,self.input_dim_primary,
+                       self.mlp_structure,self.adn_fn)
+    
+    def forward(self,X:torch.Tensor)->torch.Tensor:
+        """Forward pass.
+
+        Args:
+            X (torch.Tensor): tensor of shape [...,self.input_dim_primary]
+
+        Returns:
+            torch.Tensor: tensor of shape [...,self.input_dim_primary]
+        """
+        X = self.norm_op_1(X + self.drop_op_1(self.mha(X)))
+        X = self.norm_op_2(X + self.drop_op_2(self.mlp(X)))
+        return X
+
+class SWINTransformerBlock(torch.nn.Module):
+    """
+    Transformer block. Built on top of shifted window multi-head attention 
+    (SW-MHA), it can be summarised as:
+    
+                                  |----------------|
+    input -> SW-MHA -> Add -> LayerNorm -> MLP -> Add -> LayerNorm -> Output
+      |-----------------|
         
     First introduced, to the best of my knowledge, in [1].
     
@@ -502,7 +639,7 @@ class ViT(torch.nn.Module):
             dropout_rate=self.dropout_rate
         )
         
-        self.input_dim_primary = self.embedding.n_tokens
+        self.input_dim_primary = self.embedding.n_features
         
         self.tbs = TransformerBlockStack(
             number_of_blocks=self.number_of_blocks,
