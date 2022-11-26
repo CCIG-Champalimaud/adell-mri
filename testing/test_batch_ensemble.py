@@ -119,4 +119,3 @@ def test_3d_wrapper_with_idx_list():
     D.training = False
     out = D(input_tensor)
     assert list(out.shape) == size, "testing forward failed"
-

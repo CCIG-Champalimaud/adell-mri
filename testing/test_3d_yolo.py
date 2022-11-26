@@ -46,5 +46,3 @@ def test_yolo():
 
     assert len(bb.shape) == 2,"length of bb shape is wrong for nms"
     assert len(scores.shape) == 1,"length of scores shape is wrong for nms"
-
-test_yolo()

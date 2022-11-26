@@ -21,11 +21,27 @@ def test_transformer():
         hidden_dim=hidden_dim,n_heads=4,mlp_structure=[64,64],adn_fn=adn_fn)(
             torch.rand(size=[batch_size,token_size,input_dim_primary]))
     assert list(out.shape) == [batch_size,token_size,input_dim_primary]
-    
+
+def test_transformer_non_standard_shape():
+    out = TransformerBlock(
+        input_dim_primary=input_dim_primary,attention_dim=attention_dim,
+        hidden_dim=hidden_dim,n_heads=4,mlp_structure=[64,64],adn_fn=adn_fn)(
+            torch.rand(size=[batch_size,4,token_size,input_dim_primary]))
+    assert list(out.shape) == [batch_size,4,token_size,input_dim_primary]
+
 def test_transformer_stack():
     out,_ = TransformerBlockStack(
         number_of_blocks=3,
         input_dim_primary=input_dim_primary,attention_dim=attention_dim,
         hidden_dim=hidden_dim,n_heads=4,mlp_structure=[64,64],adn_fn=adn_fn)(
+            torch.rand(size=[batch_size,token_size,input_dim_primary]))
+    assert list(out.shape) == [batch_size,token_size,input_dim_primary]
+
+def test_transformer_windowed():
+    out,_ = TransformerBlockStack(
+        number_of_blocks=3,
+        input_dim_primary=input_dim_primary,attention_dim=attention_dim,
+        hidden_dim=hidden_dim,n_heads=4,mlp_structure=[64,64],adn_fn=adn_fn,
+        window_size=[4,4])(
             torch.rand(size=[batch_size,token_size,input_dim_primary]))
     assert list(out.shape) == [batch_size,token_size,input_dim_primary]

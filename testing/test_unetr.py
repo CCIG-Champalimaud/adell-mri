@@ -19,7 +19,7 @@ def get_vit_params():
         "attention_dim":64,
         "hidden_dim":64,
         "return_at":[2,4,5],
-        "n_heads":6,
+        "n_heads":8,
         "dropout_rate":0.1,
         "embed_method":"linear",
     }

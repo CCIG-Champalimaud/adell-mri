@@ -74,6 +74,3 @@ def test_missing():
         assert k + "_weight" in out.keys()
         assert list(out[k].shape) == [1] + crop_size
         assert out[k + "_weight"] == correct_weights[k]
-
-test_complete()
-test_missing()

@@ -19,6 +19,3 @@ def test_sae_3d():
     sae = ConcurrentSqueezeAndExcite3d(c)
     output = sae(input_tensor_3d)
     assert list(output.shape) == list(input_tensor_3d.shape)
-
-test_sae_2d()
-test_sae_3d()

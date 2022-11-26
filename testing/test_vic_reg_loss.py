@@ -32,5 +32,3 @@ def test_vic_reg_local_loss():
     box2 = make_random_box()
     out = [x.cpu().detach().numpy() for x in vrl(inp1,inp2,box1,box2)]
     assert np.all([np.isfinite(out)]),"non-finite values in loss"
-
-test_vic_reg_local_loss()

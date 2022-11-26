@@ -9,7 +9,7 @@ from lib.modules.layers.vit import LinearEmbedding
 
 image_size = [32,32,32]
 patch_size = [4,4,4]
-n_windows = [2,2,2]
+window_size = [16,16,16]
 n_channels = 1
 
 @pytest.mark.parametrize("d",[2,3])
@@ -32,8 +32,8 @@ def test_conv_embedding(d):
 
 @pytest.mark.parametrize("d",[2,3])
 def test_windowed_linear_embedding(d):
-    i_s,p_s,w_s = image_size[:d],patch_size[:d],n_windows[:d]
+    i_s,p_s,w_s = image_size[:d],patch_size[:d],window_size[:d]
     t = torch.rand(size=[1] + [n_channels] + i_s)
-    le = LinearEmbedding(i_s,p_s,n_channels,n_windows=w_s)
+    le = LinearEmbedding(i_s,p_s,n_channels,window_size=w_s)
     out = le(t)
-    assert list(out.shape) == [1,np.prod(w_s),le.n_patches,le.n_features]
+    assert list(out.shape) == [1,np.prod(le.n_windows),le.n_patches,le.n_features]

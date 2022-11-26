@@ -53,8 +53,3 @@ def test_gp_4d():
     gp.get_cov()
     assert list(output.shape) == [n,o,a,b,c]
     assert list(gp.cov.shape) == [1,o,o]
-
-test_gp_1d()
-test_gp_2d()
-test_gp_3d()
-test_gp_4d()

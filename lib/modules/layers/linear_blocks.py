@@ -6,7 +6,39 @@ tried to keep these as close as possible to the algorithms presented in [1].
 """
 
 import torch
+import numpy as np
 from typing import List
+
+from ...types import Size2dOr3d
+
+def get_relative_position_indices(window_size:Size2dOr3d)->torch.Tensor:
+    """Relative position indices generalized to n dimensions. The original
+    version is in [1].
+    
+    [1] https://github.com/microsoft/Swin-Transformer/blob/main/models/swin_transformer.py
+
+    Args:
+        window_size (Size2dOr3d): size of window.
+
+    Returns:
+        torch.Tensor: indices used to index a relative position embedding 
+            table.
+    """
+    n = len(window_size)
+    coords = torch.stack(
+        torch.meshgrid(
+            [torch.arange(ws) for ws in window_size]))  # n, Wh, Ww
+    coords_flatten = torch.flatten(coords, 1)  # n, Wh*Ww
+    relative_coords = coords_flatten[:, :, None] - coords_flatten[:, None, :]  # n, Wh*Ww, Wh*Ww
+    relative_coords = relative_coords.permute(1, 2, 0).contiguous()  # Wh*Ww, Wh*Ww, n
+    for i in range(n):
+        # shift to start from 0
+        relative_coords[:,:,i] = relative_coords[:,:,i] + window_size[i]-1
+        l = [2*w-1 for w in window_size[(i+1):]]
+        if len(l) > 0:
+            relative_coords[:,:,i] = relative_coords[:,:,i] * float(np.prod(l))
+    relative_position_index = relative_coords.sum(-1)
+    return relative_position_index
 
 class MLP(torch.nn.Module):
     """Standard multilayer perceptron.
@@ -120,7 +152,7 @@ class Attention(torch.nn.Module):
         S = self.sm(S / self.reg_const)
         V_tilde = V * S
         return V_tilde
-    
+
 class SelfAttention(torch.nn.Module):
     """Self-attention module. Same as the attention module but the primary and
     context sequences are the same [1].
@@ -176,87 +208,112 @@ class SelfAttention(torch.nn.Module):
         S = self.sm(S / self.reg_const)
         V_tilde = S @ V
         return V_tilde
-    
-class MultiHeadAttention(torch.nn.Module):
-    """Module composed of several (self-)attention modules which calculate
-    a set of (self-)attention outputs, concatenates them, and applies a 
+
+class MultiHeadSelfAttention(torch.nn.Module):
+    """Module composed of several self-attention modules which calculate
+    a set of self-attention outputs, concatenates them, and applies a 
     linear operation (matrix mul and addition of bias) on the output [1].
+    This implementation is greatly inspired by the SWIN implementation [2].
     
     [1] https://arxiv.org/abs/2207.09238
+    [2] https://github.com/microsoft/Swin-Transformer/blob/main/models/swin_transformer.py
     """
     def __init__(self,
-                 input_dim_primary:int,
+                 input_dim:int,
                  attention_dim:int,
                  hidden_dim:int,
                  output_dim:int,
-                 input_dim_context:int=None,
-                 n_heads:int=4):
+                 n_heads:int=4,
+                 window_size:bool=False):
         """        
         Args:
-            input_dim_primary (int): size of primary input.
+            input_dim (int): size of primary input.
             attention_dim (int): size of attention.
-            hidden_dim (int): size of (self-)attention outputs.
+            hidden_dim (int): size of self-attention outputs.
             output_dim (int): size of last linear operation output.
-            input_dim_context (int): size of context input (used to calculate
-                the attention). Defaults to None (triggers self-attention).
-            n_heads (int, optional): number of concurrent (self-)attention 
+            n_heads (int, optional): number of concurrent self-attention 
                 heads. Defaults to 4.
+            window_size (bool, optional): window_size for windowed W-MSA.
+                Defaults to None (regular MSA).
         """
         super().__init__()
-        self.input_dim_primary = input_dim_primary
+        self.input_dim = input_dim
         self.attention_dim = attention_dim
         self.hidden_dim = hidden_dim
         self.output_dim = output_dim
-        self.input_dim_context = input_dim_context
         self.n_heads = n_heads
+        self.window_size = window_size
+        
+        assert (attention_dim % n_heads) == 0, \
+            "attention_dim must be divisible by n_heads"
+        assert (hidden_dim % n_heads) == 0, \
+            "hidden_dim must be divisible by n_heads"
 
-        self.init_attention_heads()
+        self.init_layers()
         self.init_output_layer()
 
-    def init_attention_heads(self):
-        """Initialises all attention heads.
+    def init_layers(self):
+        """Initialises all attention heads as a single set of Linear models,
+        makes computation more efficient and is equivalent to initialising 
+        multiple attention heads.
         """
-        self.heads = torch.nn.ModuleList([])
-        for _ in range(self.n_heads):
-            if self.input_dim_context is not None:
-                head = Attention(
-                    self.input_dim_primary,
-                    self.input_dim_context,
-                    self.attention_dim,
-                    self.hidden_dim)
-            else:
-                head = SelfAttention(
-                    self.input_dim_primary,
-                    self.attention_dim,
-                    self.hidden_dim)
-            self.heads.append(head)
+        real_attention_dim = self.attention_dim // self.n_heads
+        real_hidden_dim = self.hidden_dim // self.n_heads
+        self.qkv_dim = self.attention_dim*2+self.hidden_dim
+        self.qkv = torch.nn.Linear(self.input_dim,self.qkv_dim)
+        a,b,c = (real_attention_dim,
+                 real_attention_dim*2,
+                 real_attention_dim*2 + real_hidden_dim)
+        self.q_idx = torch.arange(a).long()
+        self.k_idx = torch.arange(a,b).long()
+        self.v_idx = torch.arange(b,c).long()
+        self.sm = torch.nn.Softmax(-1)
+        self.reg_const = torch.sqrt(torch.as_tensor(self.attention_dim))
+        if self.window_size:
+            self.relative_position_bias_table = torch.nn.Parameter(
+                torch.zeros(
+                    np.prod([2*ws-1 for ws in self.window_size]),
+                    self.n_heads))
+            torch.nn.init.trunc_normal_(self.relative_position_bias_table)
+            self.relative_position_index = get_relative_position_indices(
+                self.window_size)
     
     def init_output_layer(self):
         """Initialises the last (linear) output layer.
         """
         self.output_layer = torch.nn.Linear(
-            self.hidden_dim * self.n_heads,self.output_dim)
+            self.hidden_dim,self.output_dim)
         
-    def forward(self,
-                X_primary:torch.Tensor,
-                X_context:torch.Tensor=None)->torch.Tensor:
+    def forward(self,X:torch.Tensor,mask=None)->torch.Tensor:
         """Forward pass. Expects the input to have two or more dimensions.
 
         Args:
-            X_primary (torch.Tensor): tensor with shape 
-                [...,self.input_dim_primary]
-            X_context (torch.Tensor, optional): tensor with shape 
-                [...,self.input_dim_context]. Defaults to None (only used if
-                input_dim_context is specified in init)
+            X (torch.Tensor): tensor with shape 
+                [...,self.input_dim]
+            mask (torch.Tensor): attention masking tensor. Should have shape
+                [].
 
         Returns:
             torch.Tensor: tensor with shape [...,self.output_dim]
         """
-        outputs = []
-        for head in self.heads:
-            if self.input_dim_context is not None:
-                outputs.append(head(X_primary,X_context))
-            else:
-                outputs.append(head(X_primary))
-        output = torch.cat(outputs,-1)
-        return self.output_layer(output)
+        sh = X.shape
+        b,t,f = sh[:-2],sh[-2],sh[-1]
+        QKV = self.qkv(X)
+        permute_shape = [*[i for i in range(len(b))],
+                         len(b)+1,len(b),len(b)+2]
+        QKV = QKV.reshape(*b,t,self.n_heads,
+                          self.qkv_dim // self.n_heads).permute(*permute_shape)
+        Q,K,V = QKV[...,self.q_idx],QKV[...,self.k_idx],QKV[...,self.v_idx]
+        S = Q @ torch.transpose(K,-1,-2)
+        S = S / self.reg_const
+        if self.window_size:
+            relative_position_bias = self.relative_position_bias_table[
+                self.relative_position_index.clone()[:t,:t].reshape(-1)
+            ].reshape(-1,t,t)
+            S = S + relative_position_bias
+        if mask is not None:
+            S = S + mask.unsqueeze(1).unsqueeze(0)
+        S = self.sm(S)
+        V_tilde = S @ V
+        V_tilde = V_tilde.transpose(1,2).reshape(*b,t,self.hidden_dim)
+        return self.output_layer(V_tilde)
