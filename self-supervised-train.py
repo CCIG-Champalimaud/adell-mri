@@ -337,13 +337,13 @@ if __name__ == "__main__":
         devices = args.dev.split(":")[-1].split(",")
         devices = [int(i) for i in devices]
         if len(devices) > 1:
-            strategy = "ddp"
+            strategy = "deepspeed_stage_2"
         else:
             strategy = None
     else:
         devices = args.n_devices
         if devices > 1:
-            strategy = "ddp"
+            strategy = "deepspeed_stage_2"
         else:
             strategy = None
 
