@@ -121,7 +121,7 @@ class Attention(torch.nn.Module):
         V_tilde = V * S
         return V_tilde
     
-class SelfAttention(Attention):
+class SelfAttention(torch.nn.Module):
     """Self-attention module. Same as the attention module but the primary and
     context sequences are the same [1].
     
@@ -137,30 +137,41 @@ class SelfAttention(Attention):
             attention_dim (int): size of attention.
             output_dim (int): size of output.
         """
-        super().__init__(
-            input_dim,
-            input_dim,
-            attention_dim,
-            output_dim
-        )
+        super().__init__()
         self.input_dim = input_dim
+        self.attention_dim = attention_dim
+        self.output_dim = output_dim
         
         self.init_layers()
-        
-    def forward(self,
-                X_primary:torch.Tensor):
+
+    def init_layers(self):
+        """Initialises layers.
+        """
+        self.qkv_dim = self.attention_dim*2+self.output_dim
+        self.qkv = MLP(self.input_dim,
+                       self.qkv_dim)
+        self.q_idx = torch.arange(self.attention_dim).long()
+        self.k_idx = torch.arange(self.attention_dim,
+                                  self.attention_dim*2).long()
+        self.v_idx = torch.arange(self.attention_dim*2,
+                                  self.qkv_dim).long()
+        self.sm = torch.nn.Softmax(1)
+        self.reg_const = torch.sqrt(torch.as_tensor(self.attention_dim))
+
+    def forward(self,X:torch.Tensor)->torch.Tensor:
         """Forward pass. Expects the input to have two or more dimensions.
 
         Args:
             X_primary (torch.Tensor): tensor with shape 
-                [...,self.input_dim_primary]
+                [...,self.input_dim]
 
         Returns:
             torch.Tensor: tensor with shape [...,self.output_dim]
         """
-        Q = self.q(X_primary)
-        K = self.k(X_primary)
-        V = self.v(X_primary)
+        QKV = self.qkv(X)
+        Q,K,V = (QKV[:,...,self.q_idx],
+                 QKV[:,...,self.k_idx],
+                 QKV[:,...,self.v_idx])
         S = Q @ torch.transpose(K,-1,-2)
         S = self.sm(S / self.reg_const)
         V_tilde = S @ V
