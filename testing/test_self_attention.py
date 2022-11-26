@@ -24,3 +24,4 @@ def test_multi_head_attention():
                              hidden_dim,output_dim,n_heads=n_heads)(
         torch.rand(size=[batch_size,token_size,input_dim_primary]))
     assert list(out.shape) == [batch_size,token_size,output_dim]
+    
