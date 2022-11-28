@@ -231,7 +231,7 @@ class LinearEmbedding(torch.nn.Module):
         """Initilizes the positional embedding.
         """
         self.positional_embedding = torch.nn.Parameter(
-            torch.ones([1,self.n_patches,self.n_features]))
+            torch.zeros([1,self.n_patches,self.n_features]))
         
     def get_einop_params(self):
         """Defines all necessary einops constants. This reduces the amount of 
@@ -240,7 +240,10 @@ class LinearEmbedding(torch.nn.Module):
         """
         def einops_tuple(l):
             if isinstance(l,list):
-                return "({})".format(" ".join(l))
+                if len(l) > 1:
+                    return "({})".format(" ".join(l))
+                else:
+                    return l[0]
             else:
                 return l
         if self.embed_method == "linear":
@@ -259,7 +262,7 @@ class LinearEmbedding(torch.nn.Module):
                 windowing_vars = ["w{}".format(i+1) 
                                   for i in range(self.n_dims)]
                 for i,w in enumerate(windowing_vars):
-                    self.lh[i+2].insert(1,w)
+                    self.lh[i+2].insert(0,w)
                 self.rh.insert(1,einops_tuple(windowing_vars))
                 self.einop_dict.update(
                     {k:w for w,k in zip(self.n_windows,["w1","w2","w3"])})
@@ -275,7 +278,7 @@ class LinearEmbedding(torch.nn.Module):
                 windowing_vars = ["w{}".format(i+1) 
                                   for i in range(self.n_dims)]
                 for i,w in enumerate(windowing_vars):
-                    self.lh[i+2].insert(1,w)
+                    self.lh[i+2].insert(0,w)
                 self.rh.insert(1,einops_tuple(windowing_vars))
             if self.n_dims == 3:
                 self.lh.append("d")
@@ -287,7 +290,7 @@ class LinearEmbedding(torch.nn.Module):
         self.einop_inv_str = "{lh} -> {rh}".format(
             lh=" ".join([einops_tuple(x) for x in self.rh]),
             rh=" ".join([einops_tuple(x) for x in self.lh]))
-            
+                    
     def rearrange(self,X:torch.Tensor)->torch.Tensor:
         """Applies einops.rearrange given the parameters inferred in 
         self.get_einop_params.
@@ -455,7 +458,7 @@ class TransformerBlockStack(torch.nn.Module):
                  dropout_rate:float=0.0,
                  adn_fn:Callable=torch.nn.Identity,
                  window_size:Size2dOr3d=None,
-                 post_transformer_act:Union[Callable,torch.nn.Module]=F.gelu):
+                 post_transformer_act:Callable=F.gelu):
         """
         Args:
             number_of_blocks (int): number of blocks to be stacked.
@@ -474,7 +477,7 @@ class TransformerBlockStack(torch.nn.Module):
                 of channels in a given layer. Defaults to torch.nn.Identity.
             window_size (bool, optional): window_size for windowed W-MSA.
                 Defaults to None (regular block of transformers).
-            post_transformer_act (Union[Callable,torch.nn.Module], optional): 
+            post_transformer_act (Callable, optional): 
                 activation applied to the output of each transformer.
         """
         super().__init__()
@@ -667,12 +670,16 @@ class SWINTransformerBlock(torch.nn.Module):
             window_size=[x//y for x,y in zip(window_size,patch_size)],
             shift_size=shift_size)
     
-    def forward(self,X:torch.Tensor,scale:int=1)->Tuple[torch.Tensor,TensorList]:
+    def forward(self,
+                X:torch.Tensor,
+                scale:int=None)->Tuple[torch.Tensor,TensorList]:
         """Forward pass.
 
         Args:
             X (torch.Tensor): tensor of shape 
                 [-1,self.n_channels,*self.image_size]
+            scale (int): downsampling scale for output. Defaults to None
+                (returns the non-rearranged output).
 
         Returns:
             torch.Tensor: tensor of shape [...,self.input_dim_primary]
@@ -686,7 +693,167 @@ class SWINTransformerBlock(torch.nn.Module):
         embeded_X = self.embedding(X)
         output = self.tb(embeded_X,mask=self.attention_mask)
         output = self.embedding.rearrange_rescale(output,scale)
+        if scale is not None:
+            if self.shift_size > 0:
+                output = cyclic_shift_batch(output,[-s * self.shift_size 
+                                                    for s in self.patch_size])
         return output
+
+class SWINTransformerBlockStack(torch.nn.Module):
+    """Shifted window transformer module.
+    """
+    def __init__(self,
+                 image_size:Size2dOr3d,
+                 patch_size:Size2dOr3d,
+                 window_size:Size2dOr3d,
+                 shift_sizes:List[int],
+                 n_channels:int,
+                 attention_dim:int,
+                 hidden_dim:int,
+                 n_heads:int=4,
+                 dropout_rate:float=0.0,
+                 embed_method:str="linear",
+                 mlp_structure:List[int]=[32,32],
+                 adn_fn=torch.nn.Identity,
+                 post_transformer_act:Callable=F.gelu):
+        """
+        Args:
+            image_size (Size2dOr3d): size of the input image.
+            patch_size (Size2dOr3d): size of the patch size.
+            window_size (Size2dOr3d, optional): window size for windowed
+                multi-head attention. Defaults to None (no windowing)
+            shift_sizes (List[int], optional): list of shift sizes in 
+                patches.
+            n_channels (int): number of channels in the input image.
+            input_dim_primary (int): size of input.
+            attention_dim (int): size of attention.
+            hidden_dim (int): size of hidden dimension (output of attention
+                modules).
+            dropout_rate (float, optional): dropout rate of the dropout 
+                operations applied throughout this module. Defaults to 0.0.
+            embed_method (str, optional): . Defaults to "linear".
+            n_heads (int, optional): number of attention heads. Defaults to 4.
+            mlp_structure (List[int], optional): hidden layer structure. 
+                Should be a list of ints. Defaults to [32,32].
+            adn_fn (Callable, optional): function that returns a 
+                torch.nn.Module that does activation/dropout/normalization,
+                used in the MLP sub-layer. Should take as arguments the number
+                of channels in a given layer. Defaults to torch.nn.Identity.
+            post_transformer_act (Callable, optional): 
+                activation applied to the output of each transformer.
+        """
+        super().__init__()
+        self.image_size = image_size
+        self.patch_size = patch_size
+        self.window_size = window_size
+        self.shift_sizes = shift_sizes
+        self.n_channels = n_channels
+        self.attention_dim = attention_dim
+        self.hidden_dim = hidden_dim
+        self.n_heads = n_heads
+        self.dropout_rate = dropout_rate
+        self.embed_method = embed_method
+        self.mlp_structure = mlp_structure
+        self.adn_fn = adn_fn
+        self.post_transformer_act = post_transformer_act
+        
+        self.init_swin_transformers()
+                    
+    def convert_to_list_of_lists_if_necessary(
+        self,
+        x:Union[List[List[int]],
+                List[int]])->List[List[int]]:
+        """Checks and corrects list structure to see that everything is 
+        as expected.
+
+        Args:
+            x (Union[List[List[int]], List[int]]): list structure or list of
+                lists structure.
+
+        Returns:
+            List[List[int]]: list of lists structures.
+        """
+        if isinstance(x[0],list) == False:
+            return [x for _ in self.shift_sizes]
+        else:
+            return x
+
+    def convert_to_list_if_necessary(self,
+                                     x:Union[List[int],int])->List[int]:
+        """Checks and corrects inputs if necessary.
+
+        Args:
+            x (Union[List[int],int]): integer or list of integers
+
+        Returns:
+            List[int]: list of integers.
+        """
+        if isinstance(x,list) == False:
+            return [x for _ in self.shift_sizes]
+        else:
+            return self.check_if_consistent(x)
+    
+    def check_if_consistent(self,x:Sequence):
+        """Checks that the size of x is self.number_of_blocks
+
+        Args:
+            x (_type_): _description_
+        """
+        assert len(x) == len(self.shift_sizes)
+
+    def init_swin_transformers(self):
+        attention_dim = self.convert_to_list_if_necessary(
+            self.attention_dim)
+        hidden_dim = self.convert_to_list_if_necessary(
+            self.hidden_dim)
+        n_heads = self.convert_to_list_if_necessary(
+            self.n_heads)
+        dropout_rate = self.convert_to_list_if_necessary(
+            self.dropout_rate)
+        mlp_structure = self.convert_to_list_of_lists_if_necessary(
+            self.mlp_structure)
+        self.stbs = torch.nn.ModuleList([])
+        for ss,ad,hd,nh,dr,mlp_s in zip(self.shift_sizes,
+                                        attention_dim,
+                                        hidden_dim,
+                                        n_heads,
+                                        dropout_rate,
+                                        mlp_structure):
+            stb = SWINTransformerBlock(
+                image_size=self.image_size,
+                patch_size=self.patch_size,
+                window_size=self.window_size,
+                n_channels=self.n_channels,
+                attention_dim=ad,
+                hidden_dim=hd,
+                shift_size=ss,
+                n_heads=nh,
+                dropout_rate=dr,
+                embed_method=self.embed_method,
+                mlp_structure=mlp_s,
+                adn_fn=self.adn_fn
+            )
+            self.stbs.append(stb)
+
+    def forward(self,
+                X:torch.Tensor,
+                scale:int=1)->Tuple[torch.Tensor,TensorList]:
+        """Forward pass.
+
+        Args:
+            X (torch.Tensor): tensor of shape 
+                [-1,self.n_channels,*self.image_size]
+
+        Returns:
+            torch.Tensor: tensor of shape [...,self.input_dim_primary]
+            List[torch.Tensor]: list of intermediary tensors corresponding to
+                the ith transformer outputs, where i is contained in return_at.
+                Same shape as the final output.
+        """
+        for block in self.stbs[:-1]:
+            X = self.post_transformer_act(block(X,scale=1))
+        X = self.stbs[-1](X,scale=scale)
+        return X
 
 class ViT(torch.nn.Module):
     """Vision transformer module. Put more simply, it is the 
@@ -707,7 +874,7 @@ class ViT(torch.nn.Module):
                  embed_method:str="linear",
                  mlp_structure:List[int]=[32,32],
                  adn_fn=torch.nn.Identity,
-                 post_transformer_act:Union[Callable,torch.nn.Module]=F.gelu):
+                 post_transformer_act:Callable=F.gelu):
         """
         Args:
             image_size (Size2dOr3d): size of the input image.
@@ -730,7 +897,7 @@ class ViT(torch.nn.Module):
                 torch.nn.Module that does activation/dropout/normalization,
                 used in the MLP sub-layer. Should take as arguments the number
                 of channels in a given layer. Defaults to torch.nn.Identity.
-            post_transformer_act (Union[Callable,torch.nn.Module], optional): 
+            post_transformer_act (Callable, optional): 
                 activation applied to the output of each transformer.
         """
         super().__init__()
