@@ -18,6 +18,8 @@ Then, using some minor JSON manipulation and [`MONAI`](https://monai.io/) I am a
 * [**U-Net++**](https://pubmed.ncbi.nlm.nih.gov/32613207/) - very similar to U-Net but features [DenseNet](https://arxiv.org/abs/1608.06993)-like skip connections and skip connections between different resolutions. Also features deep supervision at the level of intermediate skip connections
 * [**Anysotropic Hybrid network (AHNet)**](https://arxiv.org/abs/1711.08580) - this network is first trained to segment 2D images and some of the (enconding) layers are then transferred to 3D (mostly by either concatenating weights or adding an extra dimension to the layer).
 * **Branched input U-Net (BrUNet)** - a U-Net model that has different encoders for each input channel
+* [**UNETR**](https://arxiv.org/abs/2103.10504) - transformer-based U-Net
+* [**SWINUNet**](https://arxiv.org/pdf/2103.14030.pdf) - transformer-based U-Net with shifted windows. Has better performance than UNETR while keeping a relatively similar complexity in terms of flops
 
 ## Implemented methods for detection
 
@@ -27,6 +29,7 @@ Then, using some minor JSON manipulation and [`MONAI`](https://monai.io/) I am a
 ## Implemented methods for object classification
 
 * ResNet-based methods mostly, but others can be easily constructed with the building blocks in `lib/modules/layers.py`
+* **Vision transformer**[https://arxiv.org/abs/2010.11929v2] - A transformer, but for images
 
 ## Implemented methods for self-supervised learning
 
