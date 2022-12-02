@@ -2,7 +2,7 @@ import numpy as np
 import torch
 from .utils import crop_to_size
 from .utils import split_int_into_n
-from ...types import *
+from ...custom_types import *
 
 class ResidualBlock2d(torch.nn.Module):
     def __init__(

@@ -1,8 +1,9 @@
 import torch
 import torch.nn.functional as F
 
-from ..layers import *
-from ...types import *
+from ..layers.standard_blocks import DenseBlock
+from ..layers.utils import crop_to_size
+from ...custom_types import *
 
 from .unet import UNet
 from typing import List
@@ -170,18 +171,26 @@ class UNetPlusPlus(UNet):
             # to a multiclass problem with two classes
             self.final_act = torch.nn.Sigmoid()
             nc = 1
+        if self.spatial_dimensions == 2:
+            op = torch.nn.Conv2d 
+        elif self.spatial_dimensions == 3:
+            op = torch.nn.Conv3d
         o = self.depth[0]
         self.final_layer = torch.nn.Sequential(
-            self.conv_op_dec(o,o,3,padding="same"),
-            self.conv_op_dec(o,o,1,padding="same"),
-            self.conv_op_dec(o,nc,1))
+            op(o,o,3,padding="same"),
+            self.adn_fn(o),
+            op(o,o,1,padding="same"),
+            self.adn_fn(o),
+            op(o,nc,1))
         S = [o+ex for _ in self.depth[:-1]]
         S[-1] = S[-1] - ex
         self.final_layer_aux = torch.nn.ModuleList(
             [torch.nn.Sequential(
-                self.conv_op_dec(s,s-ex,3,padding="same"),
-                self.conv_op_dec(s-ex,s-ex,1,padding="same"),
-                self.conv_op_dec(s-ex,nc,1))
+                op(s,s-ex,3,padding="same"),
+                self.adn_fn(s-ex),
+                op(s-ex,s-ex,1,padding="same"),
+                self.adn_fn(s-ex),
+                op(s-ex,nc,1))
              for s in S])
 
     def forward(self,X:torch.Tensor,

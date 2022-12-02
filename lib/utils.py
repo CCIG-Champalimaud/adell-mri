@@ -9,11 +9,12 @@ import monai
 from glob import glob
 from itertools import product
 from collections import OrderedDict
+from skimage.morphology import convex_hull_image
 
 from typing import Dict,List,Tuple,Any
 from .modules.losses import *
 from .modules.layers import activation_factory
-from .types import *
+from .custom_types import *
 
 loss_factory = {
     "binary":{
@@ -179,12 +180,14 @@ def get_loss_param_dict(
 
 def collate_last_slice(X:List[TensorIterable])->TensorIterable:
     def swap(x):
-        return x.unsqueeze(1).swapaxes(1,-1).squeeze(-1)
+        out = x.permute(0,3,1,2)
+        return out
     def swap_cat(x):
         try:
             o = torch.cat([swap(y) for y in x])
             return o
-        except: pass
+        except:
+            pass
 
     example = X[0]
     if isinstance(example,list):
@@ -212,16 +215,17 @@ def safe_collate(X:List[TensorIterable])->List[TensorIterable]:
         input).
     """
     def cat(x):
-        try:
-            x = [torch.as_tensor(y) for y in x]
-        except:
-            return x
-        try:
-            return torch.stack(x)
-        except:
-            return x
+        try: x = [torch.as_tensor(y) for y in x]
+        except: return x
+        try: return torch.stack(x)
+        except: return x
 
     example = X[0]
+    # this small check unpacks the batch in case RandCropByPosNegLabeld
+    # was used since it returns a list (?????)
+    if len(example) == 1:
+        X = [x[0] for x in X]
+        example = X[0]
     if isinstance(example,list):
         output = []
         for elements in zip(*X):
@@ -410,6 +414,18 @@ class PrintRanged(monai.transforms.Transform):
             except: pass
         return X
 
+class PrintTyped(monai.transforms.Transform):
+    """Convenience MONAI transform that prints the type of elements in a 
+    dictionary of tensors. Used for debugging.
+    """
+    def __init__(self,prefix=""):
+        self.prefix = prefix
+
+    def __call__(self,X):
+        for k in X:
+            print(self.prefix,k,type(X[k]))
+        return X
+
 class RandomSlices(monai.transforms.RandomizableTransform):
     def __init__(self,keys:List[str],label_key:List[str],
                  n:int=1,base:float=0.001,seed=None):
@@ -470,66 +486,7 @@ class RandomSlices(monai.transforms.RandomizableTransform):
             slice_weight = torch.ones([X[k][0]].shape[-1])
         slice_idxs = torch.multinomial(slice_weight,self.n,generator=self.g)
         for k in self.keys:
-            X[k] = np.take(X[k],slice_idxs,-1).swapaxes(0,-1)
-        return X
-
-class RandomCubesWithClassd(monai.transforms.RandomizableTransform):
-    def __init__(self,key:str,label_key:str,
-                 output_sh,positive_proba,n,
-                 cubes_out_key:str="cubes",classes_out_key:str="labels"):
-        self.key = key
-        self.label_key = label_key
-        self.output_sh = np.array(output_sh)
-        self.positive_proba = positive_proba
-        self.n = n
-        self.cubes_out_key = cubes_out_key
-        self.classes_out_key = classes_out_key
-
-        self.half_size = self.output_sh//2
-
-    def get_coords_from_centers(self,centers,sh):
-        for center in centers:
-            uc = np.int32(center - self.half_size)
-            uc = np.where(uc<0,0,uc)
-            lc = uc + self.output_sh
-            diff = sh - lc
-            lc = np.where(diff < 0,lc-np.abs(diff),lc)
-            uc = np.where(diff < 0,uc-np.abs(diff),uc)
-            yield uc,lc
-
-    def __call__(self,X):
-        cubes = []
-        classes = []
-        labels = X[self.label_key]
-        sh = np.array(labels.shape)[1:]
-        positive = np.stack(np.where(labels > 0),axis=1)[:,-3:]
-        is_positive = np.random.uniform(size=self.n)<self.positive_proba
-        n_positive = np.sum(is_positive)
-        n_negative = self.n - n_positive
-        positive_idx = np.random.randint(positive.shape[0],size=n_positive)
-        positive_centers = positive[positive_idx]
-        negative_centers = np.random.randint(sh,size=[n_negative,3])
-        for uc,lc in self.get_coords_from_centers(positive_centers,sh):
-            L = labels[:,uc[0]:lc[0],uc[1]:lc[1],uc[2]:lc[2]]
-            if np.count_nonzero(L) > 0: 
-                C = 1
-            else:
-                C = 0
-            cube = X[self.key][:,uc[0]:lc[0],uc[1]:lc[1],uc[2]:lc[2]]
-            classes.append(C)
-            cubes.append(cube)
-        for uc,lc in self.get_coords_from_centers(negative_centers,sh):
-            L = labels[:,uc[0]:lc[0],uc[1]:lc[1],uc[2]:lc[2]]
-            if np.count_nonzero(L) > 0: 
-                C = 1
-            else:
-                C = 0
-            cube = X[self.key][:,uc[0]:lc[0],uc[1]:lc[1],uc[2]:lc[2]]
-            classes.append(C)
-            cubes.append(cube)
-        
-        X[self.cubes_out_key] = np.concatenate(cubes,0)
-        X[self.classes_out_key] = np.stack(classes,0)
+            X[k] = X[k][...,slice_idxs].swapaxes(0,-1)
         return X
 
 class SlicesToFirst(monai.transforms.Transform):
@@ -1374,4 +1331,89 @@ class CreateImageAndWeightsd(monai.transforms.Transform):
                 X[weight_key] = 0
             else:
                 X[weight_key] = 1
+        return X
+    
+class BiasFieldCorrection(monai.transforms.Transform):
+    def __init__(self,n_fitting_levels,n_iter,shrink_factor):
+        self.n_fitting_levels = n_fitting_levels
+        self.n_iter = n_iter
+        self.shrink_factor = shrink_factor
+        
+    def correct_bias_field(self,image):
+        image_ = image
+        mask_image = sitk.OtsuThreshold(image_)
+        if self.shrink_factor > 1:
+            image_ = sitk.Shrink(
+                image_,[self.shrink_factor]*image_.GetDimension())
+            mask_image = sitk.Shrink(
+                mask_image,[self.shrink_factor]*mask_image.GetDimension())
+        corrector = sitk.N4BiasFieldCorrectionImageFilter()
+        corrector.SetMaximumNumberOfIterations(self.n_fitting_levels*[self.n_iter])
+        corrector.SetConvergenceThreshold(0.001)
+        corrected_image = corrector.Execute(image_,mask_image)
+        log_bf = corrector.GetLogBiasFieldAsImage(image)
+        corrected_input_image = image/sitk.Exp(log_bf)
+        corrected_input_image = sitk.Cast(
+            corrected_input_image,sitk.sitkFloat32)
+        corrected_input_image.CopyInformation(image)
+        for k in image.GetMetaDataKeys():
+            v = image.GetMetaData(k)
+            corrected_input_image.SetMetaData(k,v)
+        return corrected_input_image
+
+    def correct_bias_field_from_metadata_tensor(self,X):
+        X_ = sitk.GetImageFromArray(X.data.numpy())
+        X_ = self.correct_bias_field(X_)
+        X_ = sitk.GetArrayFromImage(X_)
+        X.data = X_
+        return X_
+
+    def __call__(self,X):
+        return self.correct_bias_field_from_array(X)
+
+class BiasFieldCorrectiond(monai.transforms.Transform):
+    def __init__(self,keys,n_fitting_levels,n_iter,shrink_factor):
+        self.keys = keys
+        self.n_fitting_levels = n_fitting_levels
+        self.n_iter = n_iter
+        self.shrink_factor = shrink_factor
+        
+        self.transform = BiasFieldCorrection(
+            self.n_fitting_levels,
+            self.n_iter,
+            self.shrink_factor)
+
+    def __call__(self,X):
+        for k in self.keys:
+            X[k] = self.transform(X[k])
+        return X
+
+class ConvexHull(monai.transforms.Transform):
+    backend = [monai.utils.TransformBackends.NUMPY]
+
+    def __init__(self) -> None:
+        super().__init__()
+
+    def __call__(self,
+                 img: TensorOrNDarray) -> TensorOrNDarray:
+        img = monai.utils.convert_to_tensor(
+            img,track_meta=monai.data.meta_obj.get_track_meta())
+        img_np, *_ = monai.utils.convert_data_type(img, np.ndarray)
+        out_np = convex_hull_image(img_np)
+        out, *_ = monai.utils.type_conversion.convert_to_dst_type(
+            out_np, img)
+        return out
+
+class ConvexHulld(monai.transforms.Transform):
+    backend = [monai.utils.TransformBackends.NUMPY]
+
+    def __init__(self,keys:List[str]) -> None:
+        super().__init__()
+        self.keys = keys
+        
+        self.transform = ConvexHull()
+
+    def __call__(self,X:NDArrayOrTensorDict) -> NDArrayOrTensorDict:
+        for k in self.keys:
+            X[k] = self.transform(X[k])
         return X

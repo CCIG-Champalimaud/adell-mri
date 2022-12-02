@@ -1,7 +1,7 @@
 import torch
 import torchmetrics
 
-from ..types import *
+from ..custom_types import *
 from .layers import *
 
 resnet_default = [

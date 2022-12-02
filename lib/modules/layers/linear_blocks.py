@@ -9,7 +9,7 @@ import torch
 import numpy as np
 from typing import List
 
-from ...types import Size2dOr3d
+from ...custom_types import Size2dOr3d
 
 def get_relative_position_indices(window_size:Size2dOr3d)->torch.Tensor:
     """Relative position indices generalized to n dimensions. The original
@@ -79,7 +79,9 @@ class MLP(torch.nn.Module):
                 ops.append(self.adn_fn(curr_out))
                 curr_in = curr_out
                 curr_out = self.structure[i]    
-            ops.append(torch.nn.Linear(curr_in,curr_out))
+            ops.append(torch.nn.Sequential(
+                torch.nn.Linear(curr_in,curr_out),
+                self.adn_fn(curr_out)))
         else:
             curr_out = curr_in
         ops.append(torch.nn.Linear(curr_out,self.output_dim))
@@ -224,6 +226,7 @@ class MultiHeadSelfAttention(torch.nn.Module):
                  hidden_dim:int,
                  output_dim:int,
                  n_heads:int=4,
+                 dropout_rate:float=0.0,
                  window_size:bool=False):
         """        
         Args:
@@ -233,6 +236,8 @@ class MultiHeadSelfAttention(torch.nn.Module):
             output_dim (int): size of last linear operation output.
             n_heads (int, optional): number of concurrent self-attention 
                 heads. Defaults to 4.
+            dropout_rate (float, optional): rate for the dropout applied to 
+                the attention scores.
             window_size (bool, optional): window_size for windowed W-MSA.
                 Defaults to None (regular MSA).
         """
@@ -242,6 +247,7 @@ class MultiHeadSelfAttention(torch.nn.Module):
         self.hidden_dim = hidden_dim
         self.output_dim = output_dim
         self.n_heads = n_heads
+        self.dropout_rate = dropout_rate
         self.window_size = window_size
         
         assert (attention_dim % n_heads) == 0, \
@@ -251,6 +257,7 @@ class MultiHeadSelfAttention(torch.nn.Module):
 
         self.init_layers()
         self.init_output_layer()
+        self.init_weights()
 
     def init_layers(self):
         """Initialises all attention heads as a single set of Linear models,
@@ -268,7 +275,9 @@ class MultiHeadSelfAttention(torch.nn.Module):
         self.k_idx = torch.arange(a,b).long()
         self.v_idx = torch.arange(b,c).long()
         self.sm = torch.nn.Softmax(-1)
-        self.reg_const = torch.sqrt(torch.as_tensor(self.attention_dim))
+        self.reg_const = torch.sqrt(torch.as_tensor(
+            self.attention_dim / self.n_heads))
+        self.drop_op = torch.nn.Dropout(self.dropout_rate)
         if self.window_size:
             self.relative_position_bias_table = torch.nn.Parameter(
                 torch.zeros(
@@ -283,7 +292,14 @@ class MultiHeadSelfAttention(torch.nn.Module):
         """
         self.output_layer = torch.nn.Linear(
             self.hidden_dim,self.output_dim)
-        
+    
+    def init_weights(self):
+        """Initialize weights with Xavier uniform (got this from the original
+        transformer code and from the Annotated Transformer).
+        """
+        torch.nn.init.xavier_uniform_(self.qkv.weight)
+        torch.nn.init.xavier_uniform_(self.output_layer.weight)
+
     def forward(self,X:torch.Tensor,mask=None)->torch.Tensor:
         """Forward pass. Expects the input to have two or more dimensions.
 
@@ -299,10 +315,10 @@ class MultiHeadSelfAttention(torch.nn.Module):
         sh = X.shape
         b,t,f = sh[:-2],sh[-2],sh[-1]
         QKV = self.qkv(X)
-        permute_shape = [*[i for i in range(len(b))],
-                         len(b)+1,len(b),len(b)+2]
+        permute_dims = [*[i for i in range(len(b))],
+                        len(b)+1,len(b),len(b)+2]
         QKV = QKV.reshape(*b,t,self.n_heads,
-                          self.qkv_dim // self.n_heads).permute(*permute_shape)
+                          self.qkv_dim // self.n_heads).permute(*permute_dims)
         Q,K,V = QKV[...,self.q_idx],QKV[...,self.k_idx],QKV[...,self.v_idx]
         S = Q @ torch.transpose(K,-1,-2)
         S = S / self.reg_const
@@ -313,7 +329,7 @@ class MultiHeadSelfAttention(torch.nn.Module):
             S = S + relative_position_bias
         if mask is not None:
             S = S + mask.unsqueeze(1).unsqueeze(0)
-        S = self.sm(S)
+        S = self.drop_op(self.sm(S))
         V_tilde = S @ V
         V_tilde = V_tilde.transpose(1,2).reshape(*b,t,self.hidden_dim)
         return self.output_layer(V_tilde)

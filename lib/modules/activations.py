@@ -2,7 +2,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-from ..types import *
+from ..custom_types import *
 
 activation_factory = {
     "identity": torch.nn.Identity,

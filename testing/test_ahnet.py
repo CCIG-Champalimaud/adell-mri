@@ -3,7 +3,7 @@ import os
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)),'..'))
 
 import torch
-from lib.modules.ahnet import AHNet
+from lib.modules.segmentation.ahnet import AHNet
 
 h,w,d = 64,64,32
 

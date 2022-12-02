@@ -1,9 +1,10 @@
 from re import M
+import torch
 import pytorch_lightning as pl
 import torch.nn.functional as F
 
 from copy import deepcopy
-from ..types import *
+from ..custom_types import *
 
 def reshape_weight_to_matrix(weight: torch.Tensor,dim:int=0) -> torch.Tensor:
     """Reshapes an n-dimensional tensor into a matrix.

@@ -1,3 +1,3 @@
 from . import utils
-from . import types
+from . import custom_types
 from . import modules

@@ -1,8 +1,18 @@
 import torch
 import torch.nn.functional as F
 
-from ..layers import *
-from ...types import *
+#from ..layers import *
+from ..layers.regularization import UOut
+from ..layers.res_blocks import (
+    ResidualBlock2d,ResidualBlock3d)
+from ..layers.self_attention import (
+    ConcurrentSqueezeAndExcite2d,ConcurrentSqueezeAndExcite3d)
+from ..layers.multi_resolution import (
+    AtrousSpatialPyramidPooling2d,AtrousSpatialPyramidPooling3d)
+from ..layers.adn_fn import (
+    get_adn_fn,ActDropNorm)
+from ..layers.utils import crop_to_size
+from ...custom_types import *
 
 from typing import List
 
@@ -13,7 +23,36 @@ class UNet(torch.nn.Module):
     the U-Net has been implemented in such a way that it can be easily 
     expanded.
 
-    Args:
+    [1] https://www.nature.com/articles/s41592-018-0261-2
+    [2] https://openaccess.thecvf.com/content_CVPR_2019/papers/Li_Understanding_the_Disharmony_Between_Dropout_and_Batch_Normalization_by_Variance_CVPR_2019_paper.pdf
+    """
+    def __init__(
+        self,
+        spatial_dimensions: int=2,
+        encoding_operations: List[ModuleList]=None,
+        conv_type: str="regular",
+        link_type: str="identity",
+        upscale_type: str="upsample",
+        interpolation: str="bilinear",
+        norm_type: str="batch",
+        dropout_type: str="dropout",
+        padding: int=0,
+        dropout_param: float=0.1,
+        activation_fn: torch.nn.Module=torch.nn.PReLU,
+        n_channels: int=1,
+        n_classes: int=2,
+        depth: list=[16,32,64],
+        kernel_sizes: list=[3,3,3],
+        strides: list=[2,2,2],
+        bottleneck_classification: bool=False,
+        skip_conditioning: int=None,
+        feature_conditioning: int=None,
+        feature_conditioning_params: Dict[str,torch.Tensor]=None,
+        deep_supervision: bool=False,
+        parent_class: bool=False,
+        encoder_only: bool=False):
+        """    
+        Args:
         spatial_dimensions (int, optional): number of dimensions for the 
             input (not counting batch or channels). Defaults to 2.
         encoding_operations (List[ModuleList], optional): backbone operations 
@@ -75,37 +114,7 @@ class UNet(torch.nn.Module):
         parent_class (bool, optional): does not initialise any layer, only
             sets constants. Helpful for inheritance.
         encoder_only (bool, optional): makes only encoder.
-    [1] https://www.nature.com/articles/s41592-018-0261-2
-    [2] https://openaccess.thecvf.com/content_CVPR_2019/papers/Li_Understanding_the_Disharmony_Between_Dropout_and_Batch_Normalization_by_Variance_CVPR_2019_paper.pdf
-
-    Returns:
-        torch.nn.Module: a U-Net module.
-    """
-    def __init__(
-        self,
-        spatial_dimensions: int=2,
-        encoding_operations: List[ModuleList]=None,
-        conv_type: str="regular",
-        link_type: str="identity",
-        upscale_type: str="upsample",
-        interpolation: str="bilinear",
-        norm_type: str="batch",
-        dropout_type: str="dropout",
-        padding: int=0,
-        dropout_param: float=0.1,
-        activation_fn: torch.nn.Module=torch.nn.PReLU,
-        n_channels: int=1,
-        n_classes: int=2,
-        depth: list=[16,32,64],
-        kernel_sizes: list=[3,3,3],
-        strides: list=[2,2,2],
-        bottleneck_classification: bool=False,
-        skip_conditioning: int=None,
-        feature_conditioning: int=None,
-        feature_conditioning_params: Dict[str,torch.Tensor]=None,
-        deep_supervision: bool=False,
-        parent_class: bool=False,
-        encoder_only: bool=False) -> torch.nn.Module:
+        """
         
         super().__init__()
         self.spatial_dimensions = spatial_dimensions
@@ -228,6 +237,8 @@ class UNet(torch.nn.Module):
             inter_d = int(in_d//2)
         else:
             inter_d = None
+        if stride is None:
+            stride = 1
         if isinstance(stride,int):
             stride = [stride for _ in range(self.spatial_dimensions)]
         if isinstance(padding,int):
@@ -255,6 +266,8 @@ class UNet(torch.nn.Module):
             inter_d = int(in_d//2)
         else:
             inter_d = None
+        if stride is None:
+            stride = 1
         if isinstance(stride,int):
             stride = [stride for _ in range(self.spatial_dimensions)]
         if isinstance(padding,int):
@@ -336,31 +349,30 @@ class UNet(torch.nn.Module):
         else:
             ex = 0
         if self.link_type == "identity":
-            self.link_ops = [
-                torch.nn.Identity() for _ in self.depth[:-1]]
-            self.link_ops = torch.nn.ModuleList(self.link_ops)
+            self.link_ops = torch.nn.ModuleList([
+                torch.nn.Identity() for _ in self.depth[:-1]])
         elif self.link_type == "conv":
             if self.spatial_dimensions == 2:
-                self.link_ops = [
-                    torch.nn.Conv2d(d+ex,d,3,padding=self.padding)
-                    for d in self.depth[-2::-1]]
-                self.link_ops = torch.nn.ModuleList(self.link_ops)
+                self.link_ops = torch.nn.ModuleList([
+                    torch.nn.Sequential(
+                        torch.nn.Conv2d(d+ex,d,3,padding=self.padding),
+                        self.adn_fn(d))
+                    for d in self.depth[-2::-1]])
             elif self.spatial_dimensions == 3:
-                self.link_ops = [
-                    torch.nn.Conv3d(d+ex,d,3,padding=self.padding)
-                    for d in self.depth[-2::-1]]
-                self.link_ops = torch.nn.ModuleList(self.link_ops)
+                self.link_ops = torch.nn.ModuleList([
+                    torch.nn.Sequential(
+                        torch.nn.Conv3d(d+ex,d,3,padding=self.padding),
+                        self.adn_fn(d))
+                    for d in self.depth[-2::-1]])
         elif self.link_type == "residual":
             if self.spatial_dimensions == 2:
-                self.link_ops =[
+                self.link_ops = torch.nn.ModuleList([
                     ResidualBlock2d(d+ex,3,out_channels=d,adn_fn=self.adn_fn) 
-                    for d in self.depth[-2::-1]]
-                self.link_ops = torch.nn.ModuleList(self.link_ops)
+                    for d in self.depth[-2::-1]])
             elif self.spatial_dimensions == 3:
-                self.link_ops =[
+                self.link_ops =torch.nn.ModuleList([
                     ResidualBlock3d(d+ex,3,out_channels=d,adn_fn=self.adn_fn) 
-                    for d in self.depth[-2::-1]]
-                self.link_ops = torch.nn.ModuleList(self.link_ops)
+                    for d in self.depth[-2::-1]])
     
     def interpolate_depths(self,a:int,b:int,n=3)->List[int]:
         """Interpolates between two whole numbers. Not really used.
@@ -463,8 +475,6 @@ class UNet(torch.nn.Module):
             # to a multiclass problem with two classes
             return torch.nn.Sequential(
                 op(d,d,3,padding=1),
-                self.adn_fn(d),
-                op(d,d,1),
                 self.adn_fn(d),
                 op(d,1,1),
                 torch.nn.Sigmoid())
@@ -651,7 +661,36 @@ class BrUNet(UNet,torch.nn.Module):
     mechanisms, and here they serve as a way of performing a weighted sum of
     each input.
 
-    Args:
+    [1] https://www.nature.com/articles/s41592-018-0261-2
+    [2] https://openaccess.thecvf.com/content_CVPR_2019/papers/Li_Understanding_the_Disharmony_Between_Dropout_and_Batch_Normalization_by_Variance_CVPR_2019_paper.pdf
+    """
+
+    def __init__(
+        self,
+        spatial_dimensions: int=2,
+        n_input_branches: int=1,
+        encoders: List[ModuleList]=None,
+        conv_type: str="regular",
+        link_type: str="identity",
+        upscale_type: str="upsample",
+        interpolation: str="bilinear",
+        norm_type: str="batch",
+        dropout_type: str="dropout",
+        padding: int=0,
+        dropout_param: float=0.1,
+        activation_fn: torch.nn.Module=torch.nn.PReLU,
+        n_channels: int=1,
+        n_classes: int=2,
+        depth: list=[16,32,64],
+        kernel_sizes: list=[3,3,3],
+        strides: list=[2,2,2],
+        bottleneck_classification: bool=False,
+        skip_conditioning: int=None,
+        feature_conditioning: int=None,
+        feature_conditioning_params: Dict[str,torch.Tensor]=None,
+        deep_supervision: bool=False) -> torch.nn.Module:
+        """
+        Args:
         spatial_dimensions (int, optional): number of dimensions for the 
             input (not counting batch or channels). Defaults to 2.
         encoder (List[ModuleList], optional): a list of backbone operations 
@@ -709,37 +748,7 @@ class BrUNet(UNet,torch.nn.Module):
             Defaults to None.
         deep_supervision (bool, optional): forward method returns 
             segmentation predictions obtained from each decoder block.
-    [1] https://www.nature.com/articles/s41592-018-0261-2
-    [2] https://openaccess.thecvf.com/content_CVPR_2019/papers/Li_Understanding_the_Disharmony_Between_Dropout_and_Batch_Normalization_by_Variance_CVPR_2019_paper.pdf
-
-    Returns:
-        torch.nn.Module: a U-Net module.
-    """
-
-    def __init__(
-        self,
-        spatial_dimensions: int=2,
-        n_input_branches: int=1,
-        encoders: List[ModuleList]=None,
-        conv_type: str="regular",
-        link_type: str="identity",
-        upscale_type: str="upsample",
-        interpolation: str="bilinear",
-        norm_type: str="batch",
-        dropout_type: str="dropout",
-        padding: int=0,
-        dropout_param: float=0.1,
-        activation_fn: torch.nn.Module=torch.nn.PReLU,
-        n_channels: int=1,
-        n_classes: int=2,
-        depth: list=[16,32,64],
-        kernel_sizes: list=[3,3,3],
-        strides: list=[2,2,2],
-        bottleneck_classification: bool=False,
-        skip_conditioning: int=None,
-        feature_conditioning: int=None,
-        feature_conditioning_params: Dict[str,torch.Tensor]=None,
-        deep_supervision: bool=False) -> torch.nn.Module:
+        """
 
         super().__init__(parent_class=True)
         self.spatial_dimensions = spatial_dimensions

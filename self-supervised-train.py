@@ -23,7 +23,7 @@ from lib.utils import (
     ExposeTransformKeyMetad,
     safe_collate)
 from lib.modules.augmentations import *
-from lib.modules.self_supervised_pl import NonContrastiveSelfSLPL,NonContrastiveSelfSLUNetPL
+from lib.modules.self_supervised.pl import NonContrastiveSelfSLPL,NonContrastiveSelfSLUNetPL
 from lib.utils import ExponentialMovingAverage
 from lib.modules.config_parsing import parse_config_ssl,parse_config_unet
 

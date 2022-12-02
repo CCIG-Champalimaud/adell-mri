@@ -97,6 +97,7 @@ def binary_focal_loss(pred:torch.Tensor,
     bce = -torch.log(p+eps)
     
     x = w * ((1-p+eps)**gamma)
+    print(scale,x,bce)
     x = scale*x*bce
     loss = torch.mean(x,dim=-1)
     return loss

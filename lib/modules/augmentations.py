@@ -3,7 +3,7 @@ import numpy as np
 import torch
 import monai
 
-from ..types import *
+from ..custom_types import *
 
 n_dim = 3
 

@@ -3,11 +3,12 @@ import torchmetrics
 import pytorch_lightning as pl
 import warnings
 
-from ..types import *
+from ...custom_types import *
 
-from .layers import ResNet
+from ..layers import ResNet
 from .self_supervised import BarlowTwinsLoss, VICRegLocalLoss,byol_loss,simsiam_loss,VICRegLoss
-from .segmentation import UNet
+from ..segmentation.unet import UNet
+from ..segmentation.unetr import UNETR
 
 class BarlowTwinsPL(ResNet,pl.LightningModule):
     def __init__(

@@ -5,7 +5,7 @@ from .res_blocks import ResNeXtBlock2d
 from .res_blocks import ResNeXtBlock3d
 from typing import OrderedDict
 from .batch_ensemble import BatchEnsembleWrapper
-from ...types import List,ModuleList,Tuple,Union
+from ...custom_types import List,ModuleList,Tuple,Union
 
 def resnet_to_encoding_ops(res_net:List[torch.nn.Module])->ModuleList:
     """Convenience function generating UNet encoder from ResNet.

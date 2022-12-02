@@ -8,7 +8,6 @@ import torch
 import monai
 import wandb
 import gc
-from copy import deepcopy
 from sklearn.model_selection import KFold,train_test_split
 from tqdm import tqdm
 
@@ -28,7 +27,13 @@ from lib.utils import (
 from lib.monai_transforms import get_transforms_unet as get_transforms
 from lib.monai_transforms import get_augmentations_unet as get_augmentations
 from lib.modules.layers import ResNet
-from lib.modules.segmentation_pl import UNetPL,UNetPlusPlusPL,BrUNetPL
+from lib.modules.segmentation.pl import (
+    UNetPL,
+    UNetPlusPlusPL,
+    BrUNetPL,
+    UNETRPL,
+    SWINUNetPL
+    )
 from lib.modules.config_parsing import parse_config_unet,parse_config_ssl
 
 torch.backends.cudnn.benchmark = True
@@ -41,6 +46,13 @@ def if_none_else(x,obj):
 def inter_size(a,b):
     return len(set.intersection(set(a),set(b)))
 
+def get_size(*size_list):
+    for size in size_list:
+        if size is not None:
+            return size
+    raise Exception("One of --random_crop_size, --crop_size or --resize_size\
+        has to be defined.")
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
@@ -49,7 +61,7 @@ if __name__ == "__main__":
         '--dataset_json',dest='dataset_json',type=str,
         help="JSON containing dataset information",required=True)
     parser.add_argument(
-        '--input_size',dest='input_size',type=float,nargs='+',default=None,
+        '--resize_size',dest='resize_size',type=float,nargs='+',default=None,
         help="Input size for network")
     parser.add_argument(
         '--resize_keys',dest='resize_keys',type=str,nargs='+',default=None,
@@ -59,6 +71,10 @@ if __name__ == "__main__":
         default=None,type=float,nargs='+',
         help="Size of central crop after resizing (if none is specified then\
             no cropping is performed).")
+    parser.add_argument(
+        '--random_crop_size',dest='random_crop_size',action="store",
+        default=None,type=float,nargs='+',
+        help="Size of random crop (last step of the preprocessing pipeline).")
     parser.add_argument(
         '--target_spacing',dest='target_spacing',action="store",default=None,
         help="Resamples all images to target spacing",nargs='+',type=float)
@@ -137,11 +153,9 @@ if __name__ == "__main__":
         help="Path to network configuration file (yaml)",
         required=True)
     parser.add_argument(
-        '--unet_pp',dest='unet_pp',action="store_true",
-        help="Uses U-Net++ rather than U-Net")
-    parser.add_argument(
-        '--brunet',dest='brunet',action="store_true",
-        help="Uses BrU-Net rather than U-Net")
+        '--unet_model',dest='unet_model',action="store",
+        choices=["unet","unetpp","brunet","unetr","swin"],
+        default="unet",help="Specifies which UNet model is used")
     parser.add_argument(
         '--res_config_file',dest='res_config_file',action="store",default=None,
         help="Uses a ResNet as a backbone (depths are inferred from this). \
@@ -181,7 +195,7 @@ if __name__ == "__main__":
         help="Number of devices",default=1,type=int)
     parser.add_argument(
         '--augment',dest='augment',action="store",
-        choices=["full","light","lightest"],
+        choices=["full","light","lightest","none"],
         help="Sets data augmentation. Light skips shear + RBF, lightest skips\
             all affine transforms + RBF",default="none")
     parser.add_argument(
@@ -319,8 +333,12 @@ if __name__ == "__main__":
     intp_resampling_augmentations.extend(["nearest"]*len(aux_mask_keys))
     all_keys = [*keys,*label_keys,*aux_keys,*aux_mask_keys]
     all_keys_t = [*all_keys,*feature_keys]
-    if args.input_size is not None:
-        args.input_size = [round(x) for x in args.input_size]
+    if args.resize_size is not None:
+        args.resize_size = [round(x) for x in args.resize_size]
+    if args.crop_size is not None:
+        args.crop_size = [round(x) for x in args.crop_size]
+    if args.random_crop_size is not None:
+        args.random_crop_size = [round(x) for x in args.random_crop_size]
 
     data_dict = json.load(open(args.dataset_json,'r'))
     if args.missing_to_empty is None:
@@ -376,16 +394,18 @@ if __name__ == "__main__":
         "feature_keys": feature_keys,
         "aux_key_net": aux_key_net,
         "feature_key_net": feature_key_net,
-        "input_size": args.input_size,
+        "resize_size": args.resize_size,
         "crop_size": args.crop_size,
+        "random_crop_size": args.random_crop_size,
         "label_mode": label_mode,
         "fill_missing": args.missing_to_empty is not None,
-        "brunet": args.brunet}
+        "brunet": args.unet_model == "brunet"}
     augment_arguments = {
         "augment":args.augment,
         "all_keys":all_keys,
         "image_keys":keys,
-        "intp_resampling_augmentations":intp_resampling_augmentations}
+        "intp_resampling_augmentations":intp_resampling_augmentations,
+        "random_crop_size":args.random_crop_size}
     if args.pre_load == False:
         transforms_train = [
             *get_transforms("pre",**transform_arguments),
@@ -424,7 +444,7 @@ if __name__ == "__main__":
 
     if network_config["spatial_dimensions"] == 2:
         transforms_train.append(
-            RandomSlices(["image","mask"],"mask",8,base=0.05))
+            RandomSlices(["image","mask"],"mask",n=8,base=0.05))
         transforms_train_val.append(
             SlicesToFirst(["image","mask"]))
         transforms_val.append(
@@ -455,6 +475,7 @@ if __name__ == "__main__":
         print("="*80)
         print("Starting fold={}".format(val_fold))
         torch.cuda.empty_cache()
+        gc.collect()
         callbacks = [RichProgressBar()]
 
         ckpt_path = None
@@ -510,7 +531,8 @@ if __name__ == "__main__":
                 num_workers=args.n_workers,cache_rate=args.cache_rate)
             train_dataset_val = monai.data.CacheDataset(
                 train_val_list,
-                monai.transforms.Compose(transforms_train_val))
+                monai.transforms.Compose(transforms_train_val),
+                num_workers=args.n_workers)
             validation_dataset = monai.data.Dataset(
                 val_list,
                 monai.transforms.Compose(transforms_val))
@@ -633,12 +655,15 @@ if __name__ == "__main__":
             collate_fn=collate_fn,persistent_workers=True)
 
         if args.res_config_file is not None:
+            if args.unet_model in ["unetr","swin"]:
+                raise NotImplementedError("You can't use a ResNet backbone with\
+                    a UNETR or SWINUNet model - what's the point?!")
             _,network_config_ssl = parse_config_ssl(
                 args.res_config_file,0.,len(keys))
             for k in ['weight_decay','learning_rate','batch_size']:
                 if k in network_config_ssl:
                     del network_config_ssl[k]
-            if args.brunet == True:
+            if args.unet_model == "brunet":
                 n = len(keys)
                 nc = network_config_ssl["backbone_args"]["in_channels"]
                 network_config_ssl["backbone_args"]["in_channels"] = nc // n
@@ -682,7 +707,7 @@ if __name__ == "__main__":
         else:
             encoding_operations = [None]
 
-        if args.brunet == True:
+        if args.unet_model == "brunet":
             nc = network_config["n_channels"]
             network_config["n_channels"] = nc // len(keys)
             unet = BrUNetPL(
@@ -705,7 +730,7 @@ if __name__ == "__main__":
             if args.encoder_checkpoint is not None and args.res_config_file is None:
                 for encoder,ckpt in zip(unet.encoders,args.encoder_checkpoint):
                     encoder.load_state_dict(torch.load(ckpt)["state_dict"])
-        elif args.unet_pp == True:
+        elif args.unet_model == "unetpp":
             encoding_operations = encoding_operations[0]
             unet = UNetPlusPlusPL(
                 training_dataloader_call=train_loader_call,
@@ -723,7 +748,7 @@ if __name__ == "__main__":
                 lr_encoder=args.lr_encoder,
                 polynomial_lr_decay=args.polynomial_lr_decay,
                 **network_config)
-        else:
+        elif args.unet_model == "unet":
             encoding_operations = encoding_operations[0]
             unet = UNetPL(
                 training_dataloader_call=train_loader_call,
@@ -742,7 +767,53 @@ if __name__ == "__main__":
                 lr_encoder=args.lr_encoder,
                 polynomial_lr_decay=args.polynomial_lr_decay,
                 **network_config)
-        
+        elif args.unet_model == "unetr":
+            sd = network_config["spatial_dimensions"]
+            size = get_size(args.random_crop_size,
+                            args.crop_size,
+                            args.resize_size)
+            network_config["image_size"] = size[:sd]
+            network_config["patch_size"] = network_config["patch_size"][:sd]
+
+            unet = UNETRPL(
+                training_dataloader_call=train_loader_call,
+                image_key="image",label_key="mask",
+                loss_params=loss_params,n_classes=n_classes,
+                bottleneck_classification=args.bottleneck_classification,
+                skip_conditioning=len(all_aux_keys),
+                skip_conditioning_key=aux_key_net,
+                feature_conditioning=len(feature_keys),
+                feature_conditioning_params=all_params,
+                feature_conditioning_key=feature_key_net,
+                deep_supervision=args.deep_supervision,
+                n_epochs=args.max_epochs,
+                picai_eval=args.picai_eval,
+                lr_encoder=args.lr_encoder,
+                polynomial_lr_decay=args.polynomial_lr_decay,
+                **network_config)
+        elif args.unet_model == "swin":
+            size = get_size(args.random_crop_size,
+                            args.crop_size,
+                            args.resize_size)
+            sd = network_config["spatial_dimensions"]
+            network_config["image_size"] = size[:sd]
+            unet = SWINUNetPL(
+                training_dataloader_call=train_loader_call,
+                image_key="image",label_key="mask",
+                loss_params=loss_params,n_classes=n_classes,
+                bottleneck_classification=args.bottleneck_classification,
+                skip_conditioning=len(all_aux_keys),
+                skip_conditioning_key=aux_key_net,
+                feature_conditioning=len(feature_keys),
+                feature_conditioning_params=all_params,
+                feature_conditioning_key=feature_key_net,
+                deep_supervision=args.deep_supervision,
+                n_epochs=args.max_epochs,
+                picai_eval=args.picai_eval,
+                lr_encoder=args.lr_encoder,
+                polynomial_lr_decay=args.polynomial_lr_decay,
+                **network_config)            
+
         if args.early_stopping is not None:
             early_stopping = EarlyStopping(
                 'val_loss',patience=args.early_stopping,
@@ -775,13 +846,18 @@ if __name__ == "__main__":
             resume_from_checkpoint=ckpt_path,
             check_val_every_n_epoch=args.check_val_every_n_epoch,
             log_every_n_steps=10,precision=precision,
-            gradient_clip_val=args.gradient_clip_val)
+            gradient_clip_val=args.gradient_clip_val,
+            detect_anomaly=True)
 
         trainer.fit(unet,train_loader,train_val_loader)
         
         print("Validating...")
-        test_metrics = trainer.test(
-            unet,validation_loader,ckpt_path="best")[0]
+        if ckpt == True:
+            test_metrics = trainer.test(
+                unet,validation_loader,ckpt_path="best")[0]
+        else:
+            test_metrics = trainer.test(
+                unet,validation_loader)[0]
         for k in test_metrics:
             out = test_metrics[k]
             if n_classes == 2:

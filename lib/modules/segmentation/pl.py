@@ -7,6 +7,7 @@ import torchmetrics.classification as tmc
 from typing import Callable,Dict,List
 from copy import deepcopy
 from picai_eval import evaluate
+from abc import ABC
 
 from .unet import UNet,BrUNet
 from .unetpp import UNetPlusPlus
@@ -15,6 +16,14 @@ from .unetr import SWINUNet
 from ..learning_rate import poly_lr_decay
 from ..extract_lesion_candidates import extract_lesion_candidates
 
+def binary_iou_manual(pred,truth):
+    binary_pred = pred > 0.5
+    intersection = torch.logical_and(
+        binary_pred,truth == 1)
+    intersection = intersection.sum()
+    union = binary_pred.sum() + truth.sum() - intersection
+    return intersection,union
+ 
 def split(x,n_splits,dim):
     size = int(x.shape[dim]//n_splits)
     return torch.split(x,size,dim)
@@ -75,7 +84,7 @@ def update_metrics(cls:pl.LightningModule,
 def get_metric_dict(nc:int,
                     bottleneck_classification:bool,
                     metric_keys:List[str]=None,
-                    prefix:str=""):
+                    prefix:str="")->Dict[str,torchmetrics.Metric]:
     metric_dict = torch.nn.ModuleDict({})
     if nc == 2:
         md = {
@@ -96,16 +105,18 @@ def get_metric_dict(nc:int,
     for k in metric_keys:
         if k in md:
             metric_dict[prefix+k] = md[k]()
+    return metric_dict
 
-class UNetBasePL(pl.LightningModule):
+class UNetBasePL(pl.LightningModule,ABC):
     """
     UNet base class. Has convenient methods that can be inherited by other
     UNet PyTorch-Lightning modules.
     """
     def __init__(self):
-        raise NotImplementedError("This class is not implemented! \
-            UNetBasePL is supposed to be used *only* as a parent class on top\
-            of which other PL modules are built.")
+        super().__init__()
+        
+        self.raise_nan_loss = False
+
     def calculate_loss(self,prediction,y):
         loss = self.loss_fn(prediction,y,**self.loss_params)
         return loss.mean()
@@ -124,7 +135,6 @@ class UNetBasePL(pl.LightningModule):
         else:
             prediction,pred_class,deep_outputs = output
         prediction = prediction
-        y = y
 
         loss = self.calculate_loss(prediction,y)
         if self.deep_supervision == True:
@@ -144,6 +154,26 @@ class UNetBasePL(pl.LightningModule):
             output_loss = loss
 
         return prediction,pred_class,loss,class_loss,output_loss
+
+    def check_loss(self,x,y,pred,loss):
+        if self.raise_nan_loss == True and torch.isnan(loss) == True:
+            print("Nan loss detected! ({})".format(loss.detach()))
+            for i,sx in enumerate(x):
+                print("\t0",[sx.detach().max(),sx.detach().min()])
+            print("\tOutput:",[pred.detach().max(),pred.detach().min()])
+            print("\tTruth:",[y.min(),y.max()])
+            print("\tModel parameters:")
+            for n,p in self.named_parameters():
+                pn = p.norm()
+                if (torch.isnan(pn) == True) or (torch.isinf(pn) == True) or True:
+                    print("\t\tparameter norm({})={}".format(n,pn))
+            for n,p in self.named_parameters():
+                if p.grad is not None:
+                    pg = p.grad.mean()
+                    if (torch.isnan(pg) == True) or (torch.isinf(pg) == True) or True:
+                        print("\t\taverage grad({})={}".format(n,pg))
+            raise RuntimeError(
+                "nan found in loss (see above for details)")
 
     def training_step(self,batch,batch_idx):
         x, y = batch[self.image_key],batch[self.label_key]
@@ -169,27 +199,12 @@ class UNetBasePL(pl.LightningModule):
             self.log("train_cl_loss",class_loss,batch_size=y.shape[0],
                      sync_dist=True)
 
+        self.check_loss(x,y,pred_final,output_loss)
+
         update_metrics(
             self,self.train_metrics,pred_final,y,pred_class,y_class,
             on_epoch=True,on_step=False,prog_bar=True)
-        if torch.isnan(output_loss) == True:
-            print("Nan loss detected! ({})".format(output_loss.detach()))
-            for i,sx in enumerate(x):
-                print("\t0",[sx.detach().max(),sx.detach().min()])
-            print("\tOutput:",[pred_final.detach().max(),pred_final.detach().min()])
-            print("\tTruth:",[y.min(),y.max()])
-            print("\tModel parameters:")
-            for n,p in self.named_parameters():
-                pn = p.norm()
-                if (torch.isnan(pn) == True) or (torch.isinf(pn) == True):
-                    print("\t\tparameter norm({})={}".format(n,pn))
-            for n,p in self.named_parameters():
-                if p.grad is not None:
-                    pg = p.grad.mean()
-                    if (torch.isnan(pg) == True) or (torch.isinf(pg) == True):
-                        print("\t\taverage grad({})={}".format(n,pg))
-            raise RuntimeError(
-                "nan found in loss (see above for details)")
+        
         return output_loss
     
     def validation_step(self,batch,batch_idx):
@@ -253,7 +268,7 @@ class UNetBasePL(pl.LightningModule):
             on_epoch=True,on_step=False,prog_bar=True)
         
     def train_dataloader(self) -> torch.utils.data.DataLoader:
-        return self.training_dataloader_call()
+        return self.training_dataloader_call(self.batch_size)
 
     def configure_optimizers(self):
         encoder_params = []
@@ -328,7 +343,7 @@ class UNetBasePL(pl.LightningModule):
     def setup_metrics(self):
         self.train_metrics = get_metric_dict(
             self.n_classes,self.bottleneck_classification,
-            [],prefix="")
+            ["IoU"],prefix="")
         self.val_metrics = get_metric_dict(
             self.n_classes,self.bottleneck_classification,
             ["IoU","AUC_bn"],prefix="V_")
@@ -468,7 +483,6 @@ class UNETRPL(UNETR,UNetBasePL):
             kwargs: keyword arguments for UNet class.
         """
         super().__init__(*args,**kwargs)
-        
         self.image_key = image_key
         self.label_key = label_key
         self.skip_conditioning_key = skip_conditioning_key
@@ -492,7 +506,7 @@ class UNETRPL(UNETR,UNetBasePL):
         self.all_true = []
         
         self.bn_mult = 0.1
-        
+
 class SWINUNetPL(SWINUNet,UNetBasePL):
     """Standard U-Net [1] implementation for Pytorch Lightning.
 
@@ -775,8 +789,8 @@ class UNetPlusPlusPL(UNetPlusPlus,UNetBasePL):
 
         update_metrics(
             self,self.test_metrics,pred_final,y,pred_class,y_class)
-        
-class BrUNetPL(BrUNet,pl.LightningModule):
+
+class BrUNetPL(BrUNet,UNetBasePL):
     def __init__(
         self,
         image_keys: str=["image"],
@@ -889,20 +903,8 @@ class BrUNetPL(BrUNet,pl.LightningModule):
             class_loss = None
             output_loss = loss
         
-        if torch.isnan(output_loss) == True:
-            print("Nan loss detected! ({})".format(output_loss.detach()))
-            for i,sx in enumerate(x):
-                print("\t0",[sx.detach().max(),sx.detach().min()])
-            print("\tOutput:",[prediction.detach().max(),prediction.detach().min()])
-            print("\tTruth:",[y.min(),y.max()])
-            print("\Model parameters:")
-            for n,p in self.named_parameters():
-                print("\t\taverage norm({})={}".format(n,p.norm()))
-                if p.grad is not None:
-                    print("\t\taverage grad({})={}".format(n,p.grad.mean()))
-            raise RuntimeError(
-                "nan found in loss (see above for details)")
-
+        self.check_loss(x,y,prediction,output_loss)
+        
         return prediction,pred_class,loss,class_loss,output_loss
 
     def unpack_batch(self,batch):

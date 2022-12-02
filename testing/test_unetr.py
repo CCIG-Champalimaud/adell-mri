@@ -5,10 +5,9 @@ import pytest
 
 import torch
 from lib.modules.segmentation.unetr import UNETR
-from copy import deepcopy
 h,w,d,c = 32,32,16,1
 
-depths = [[16,32,64],[16,32,64,128]]
+depths = [[16,32,64]]
 spatial_dims = [2,3]
 
 def get_vit_params():
@@ -118,5 +117,3 @@ def test_unetr_skip_feature(D,sd):
               link_type="conv")
     o,bb = a(i,X_feature_conditioning=i_feat,X_skip_layer=i_skip)
     assert list(o.shape) == output_size
-
-test_unetr_base(depths[0],2,"regular")

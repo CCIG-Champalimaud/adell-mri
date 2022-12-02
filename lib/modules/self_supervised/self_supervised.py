@@ -1,10 +1,7 @@
-from cmath import inf
 import torch
 import torch.nn.functional as F
-from copy import deepcopy
-import time
 
-from ..types import *
+from ...custom_types import *
 
 def cos_sim(x:torch.Tensor,y:torch.Tensor)->torch.Tensor:
     """Calculates the cosine similarity between x and y.

@@ -5,10 +5,9 @@ import pytest
 
 import torch
 from lib.modules.segmentation.unetr import SWINUNet
-from copy import deepcopy
 h,w,d,c = 64,64,32,1
 
-depths = [[16,32,64],[16,32,64,128]]
+depths = [[16,32,64],[8,16,32,64]]
 spatial_dims = [2,3]
 
 def get_swin_params():
@@ -17,7 +16,6 @@ def get_swin_params():
         "patch_size":[4,4,2],
         "window_size":[16,16,8],
         "shift_sizes":[0,1],
-        "number_of_blocks":8,
         "attention_dim":1024,
         "hidden_dim":1024,
         "n_heads":4,
@@ -45,7 +43,6 @@ def test_swin_base(D,sd,conv_type):
     swin_params["image_size"] = swin_params["image_size"][:sd]
     swin_params["patch_size"] = swin_params["patch_size"][:sd]
     swin_params["window_size"] = swin_params["window_size"][:sd]
-    swin_params["number_of_blocks"] = len(D)
     
     a = SWINUNet(**swin_params,spatial_dimensions=sd,
                  depth=D,upscale_type="transpose",padding=1,
@@ -77,7 +74,6 @@ def test_swin_skip(D,sd,conv_type):
     swin_params["image_size"] = swin_params["image_size"][:sd]
     swin_params["patch_size"] = swin_params["patch_size"][:sd]
     swin_params["window_size"] = swin_params["window_size"][:sd]
-    swin_params["number_of_blocks"] = len(D)
 
     a = SWINUNet(**swin_params,spatial_dimensions=sd,
                  depth=D,upscale_type="transpose",padding=1,
@@ -111,7 +107,6 @@ def test_swin_skip_feature(D,sd):
     swin_params["image_size"] = swin_params["image_size"][:sd]
     swin_params["patch_size"] = swin_params["patch_size"][:sd]
     swin_params["window_size"] = swin_params["window_size"][:sd]
-    swin_params["number_of_blocks"] = len(D)
 
     a = SWINUNet(**swin_params,spatial_dimensions=sd,
                  depth=D,upscale_type="transpose",padding=1,
@@ -123,5 +118,3 @@ def test_swin_skip_feature(D,sd):
                  link_type="conv")
     o,bb = a(i,X_feature_conditioning=i_feat,X_skip_layer=i_skip)
     assert list(o.shape) == output_size
-
-test_swin_base(depths[1],3,"regular")

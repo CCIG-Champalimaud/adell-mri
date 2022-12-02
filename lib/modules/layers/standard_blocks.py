@@ -1,7 +1,7 @@
 import torch
 import torch.nn.functional as F
 from typing import List
-from ...types import TensorList
+from ...custom_types import TensorList
 
 class GlobalPooling(torch.nn.Module):
     def __init__(self,mode:str="max"):
