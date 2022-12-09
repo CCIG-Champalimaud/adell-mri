@@ -847,7 +847,7 @@ if __name__ == "__main__":
             check_val_every_n_epoch=args.check_val_every_n_epoch,
             log_every_n_steps=10,precision=precision,
             gradient_clip_val=args.gradient_clip_val,
-            detect_anomaly=True)
+            detect_anomaly=False)
 
         trainer.fit(unet,train_loader,train_val_loader)
         
