@@ -33,6 +33,18 @@ def test_linear_embedding_out_dim(d):
     assert list(out.shape) == [1,le.n_patches,out_dim]
     rev = le.rearrange_inverse(out - le.positional_embedding)
     assert list(rev.shape) == [1,n_channels,*i_s]
+
+@pytest.mark.parametrize("d",[2,3])
+def test_conv_embedding_out_dim(d):
+    i_s,p_s = image_size[:d],patch_size[:d]
+    t = torch.rand(size=[1] + [n_channels] + i_s)
+    out_dim = 256
+    le = LinearEmbedding(i_s,p_s,n_channels,out_dim=out_dim,
+                         embed_method="convolutional")
+    out = le(t)
+    assert list(out.shape) == [1,le.n_patches,out_dim]
+    rev = le.rearrange_inverse(out - le.positional_embedding)
+    assert list(rev.shape) == [1,n_channels,*i_s]
     
 @pytest.mark.parametrize("d",[2,3])
 def test_linear_embedding_scale(d):

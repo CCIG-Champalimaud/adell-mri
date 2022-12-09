@@ -21,16 +21,18 @@ def get_swin_params():
         "n_heads":4,
         "dropout_rate":0.1,
         "embed_method":"linear",
+        "embedding_size":[8,16,32,64]
     }
 
 param_list = []
 for dim in [2,3]:
     for D in depths:
         for conv_type in ["regular","resnet"]:
-            param_list.append((D,dim,conv_type))
+            for embed_method in ["linear","convolutional"]:
+                param_list.append((D,dim,conv_type,embed_method))
 
-@pytest.mark.parametrize("D,sd,conv_type",param_list)
-def test_swin_base(D,sd,conv_type):
+@pytest.mark.parametrize("D,sd,conv_type,embed_method",param_list)
+def test_swin_base(D,sd,conv_type,embed_method):
     K = [3 for _ in D]
     if sd == 2:
         i = torch.rand(size=[1,c,h,w])
@@ -43,12 +45,13 @@ def test_swin_base(D,sd,conv_type):
     swin_params["image_size"] = swin_params["image_size"][:sd]
     swin_params["patch_size"] = swin_params["patch_size"][:sd]
     swin_params["window_size"] = swin_params["window_size"][:sd]
+    swin_params["embed_method"] = embed_method
+    swin_params["embedding_size"] = swin_params["embedding_size"][:len(D)]
     
     a = SWINUNet(**swin_params,spatial_dimensions=sd,
                  depth=D,upscale_type="transpose",padding=1,
                  kernel_sizes=K,conv_type=conv_type,link_type="identity")
     o,bb = a(i)
-    print(o.shape)
     assert list(o.shape) == output_size
 
 param_list = []
@@ -74,6 +77,7 @@ def test_swin_skip(D,sd,conv_type):
     swin_params["image_size"] = swin_params["image_size"][:sd]
     swin_params["patch_size"] = swin_params["patch_size"][:sd]
     swin_params["window_size"] = swin_params["window_size"][:sd]
+    swin_params["embedding_size"] = swin_params["embedding_size"][:len(D)]
 
     a = SWINUNet(**swin_params,spatial_dimensions=sd,
                  depth=D,upscale_type="transpose",padding=1,
@@ -107,6 +111,7 @@ def test_swin_skip_feature(D,sd):
     swin_params["image_size"] = swin_params["image_size"][:sd]
     swin_params["patch_size"] = swin_params["patch_size"][:sd]
     swin_params["window_size"] = swin_params["window_size"][:sd]
+    swin_params["embedding_size"] = swin_params["embedding_size"][:len(D)]
 
     a = SWINUNet(**swin_params,spatial_dimensions=sd,
                  depth=D,upscale_type="transpose",padding=1,
@@ -118,3 +123,5 @@ def test_swin_skip_feature(D,sd):
                  link_type="conv")
     o,bb = a(i,X_feature_conditioning=i_feat,X_skip_layer=i_skip)
     assert list(o.shape) == output_size
+
+#test_swin_base(depths[0],2,"regular","convolutional")

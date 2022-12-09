@@ -332,4 +332,5 @@ class MultiHeadSelfAttention(torch.nn.Module):
         S = self.drop_op(self.sm(S))
         V_tilde = S @ V
         V_tilde = V_tilde.transpose(1,2).reshape(*b,t,self.hidden_dim)
-        return self.output_layer(V_tilde)
+        output = self.output_layer(V_tilde)
+        return output

@@ -143,7 +143,7 @@ class UNetBasePL(pl.LightningModule,ABC):
             for i,o in enumerate(deep_outputs):
                 S = o.shape[-self.spatial_dimensions:]
                 y_small = F.interpolate(y,S,mode="nearest")
-                l = self.calculate_loss(o,y_small).mean()/(2**(t-i))/t
+                l = self.calculate_loss(o,y_small).mean()/(2**(t-i))/(t+1)
                 additional_losses = additional_losses + l
             loss = loss + additional_losses
         if self.bottleneck_classification == True:
@@ -431,9 +431,7 @@ class UNetPL(UNet,UNetBasePL):
         self.bn_mult = 0.1
 
 class UNETRPL(UNETR,UNetBasePL):
-    """Standard U-Net [1] implementation for Pytorch Lightning.
-
-    [1] https://www.nature.com/articles/s41592-018-0261-2
+    """Standard UNETR implementation for Pytorch Lightning.
     """
     def __init__(
         self,
@@ -508,9 +506,7 @@ class UNETRPL(UNETR,UNetBasePL):
         self.bn_mult = 0.1
 
 class SWINUNetPL(SWINUNet,UNetBasePL):
-    """Standard U-Net [1] implementation for Pytorch Lightning.
-
-    [1] https://www.nature.com/articles/s41592-018-0261-2
+    """Standard SWIN-UNet implementation for Pytorch Lightning.
     """
     def __init__(
         self,
@@ -893,7 +889,7 @@ class BrUNetPL(BrUNet,UNetBasePL):
             for i,o in enumerate(deep_outputs):
                 S = o.shape[-self.spatial_dimensions:]
                 y_small = F.interpolate(y,S,mode="nearest")
-                l = self.calculate_loss(o,y_small).mean()/(2**(t-i))/t
+                l = self.calculate_loss(o,y_small).mean()/(2**(t-i))/(t+1)
                 additional_losses = additional_losses + l
             loss = loss + additional_losses
         if self.bottleneck_classification == True:

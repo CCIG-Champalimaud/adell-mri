@@ -23,11 +23,12 @@ for s in range(4):
     for image_size in [[32,32],[32,32,16]]:
         for patch_size in [[4,4],[4,4,2]]:
             for window_size in [[8,8],[8,8,4]]:
-                if len(image_size) == len(patch_size) and len(image_size) == len(window_size):
-                    args.append([s,image_size,patch_size,window_size])
-@pytest.mark.parametrize("s,image_size,patch_size,window_size",
+                for embed_method in ["linear","convolutional"]:
+                    if len(image_size) == len(patch_size) and len(image_size) == len(window_size):
+                        args.append([s,image_size,patch_size,window_size,embed_method])
+@pytest.mark.parametrize("s,image_size,patch_size,window_size,embed_method",
                          args)
-def test_swin(s,image_size,patch_size,window_size):
+def test_swin(s,image_size,patch_size,window_size,embed_method):
     st = SWINTransformerBlock(
         image_size=image_size,
         patch_size=patch_size,
@@ -51,11 +52,12 @@ for scale in range(1,3):
     for image_size in [[32,32],[32,32,16]]:
         for patch_size in [[4,4],[4,4,2]]:
             for window_size in [[8,8],[8,8,4]]:
-                if len(image_size) == len(patch_size) and len(image_size) == len(window_size):
-                    args.append([scale,image_size,patch_size,window_size])
-@pytest.mark.parametrize("scale,image_size,patch_size,window_size",
+                for embed_method in ["linear","convolutional"]:
+                    if len(image_size) == len(patch_size) and len(image_size) == len(window_size):
+                        args.append([scale,image_size,patch_size,window_size,embed_method])
+@pytest.mark.parametrize("scale,image_size,patch_size,window_size,embed_method",
                          args)
-def test_swin_stack(scale,image_size,patch_size,window_size):
+def test_swin_stack(scale,image_size,patch_size,window_size,embed_method):
     st = SWINTransformerBlockStack(
         image_size=image_size,
         patch_size=patch_size,
@@ -66,8 +68,8 @@ def test_swin_stack(scale,image_size,patch_size,window_size):
         shift_sizes=[0,1,2], 
         n_heads=n_heads,
         dropout_rate=0.1,
-        embed_method="linear",
-        mlp_structure=[512,1024],
+        embed_method=embed_method,
+        mlp_structure=[512],
         adn_fn=torch.nn.Identity)
     out = st(torch.rand(size=[batch_size,n_channels,*image_size]),
              scale=scale)

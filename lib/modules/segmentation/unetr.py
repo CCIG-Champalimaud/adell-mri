@@ -715,6 +715,8 @@ class SWINUNet(UNet):
         # if shift sizes is a list of ints convert to list of list of ints
         if isinstance(self.shift_sizes[0],int):
             self.shift_sizes = [self.shift_sizes for _ in self.depth]
+        if isinstance(self.embedding_size,int) or self.embedding_size is None:
+            self.embedding_size = [self.embedding_size for _ in self.depth]
         elif isinstance(self.shift_sizes[0],list):
             assert isinstance(self.shift_sizes[0][0],int),shift_size_msg
         else:
@@ -733,7 +735,7 @@ class SWINUNet(UNet):
             shift_sizes=self.shift_sizes[0],
             attention_dim=self.attention_dim,
             hidden_dim=self.hidden_dim,
-            embedding_size=self.embedding_size,
+            embedding_size=self.embedding_size[0],
             n_heads=self.n_heads,
             dropout_rate=self.dropout_rate,
             embed_method=self.embed_method,
@@ -757,13 +759,12 @@ class SWINUNet(UNet):
                 shift_sizes=self.shift_sizes[i+1],
                 attention_dim=self.attention_dim,
                 hidden_dim=self.hidden_dim,
-                embedding_size=self.embedding_size,
+                embedding_size=self.embedding_size[i+1],
                 n_heads=self.n_heads,
                 dropout_rate=self.dropout_rate,
                 embed_method=self.embed_method,
                 mlp_structure=self.mlp_structure,
-                adn_fn=self.adn_fn_mlp
-                )
+                adn_fn=self.adn_fn_mlp)
             self.swin_blocks.append(swin_block)
         self.n_channels_rec.append(self.n_channels * 2 ** ((i+1)*sd))
 
