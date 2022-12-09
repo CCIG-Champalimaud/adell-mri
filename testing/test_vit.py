@@ -22,11 +22,11 @@ adn_fn = get_adn_fn(1,"identity","gelu",0.1)
 
 @pytest.mark.parametrize("embed_method,scale",[
     ("linear",1),
-    ("convolution",1),
+    ("convolutional",1),
     ("linear",2),
-    ("convolution",2),
+    ("convolutional",2),
     ("linear",4),
-    ("convolution",4)])
+    ("convolutional",4)])
 def test_transformer(embed_method,scale):
     vit = ViT(
         image_size=image_size,patch_size=patch_size,n_channels=n_channels,
@@ -45,11 +45,11 @@ def test_transformer(embed_method,scale):
 
 @pytest.mark.parametrize("embed_method,scale",[
     ("linear",1),
-    ("convolution",1),
+    ("convolutional",1),
     ("linear",2),
-    ("convolution",2),
+    ("convolutional",2),
     ("linear",4),
-    ("convolution",4)])
+    ("convolutional",4)])
 def test_transformer_windowed(embed_method,scale):
     vit = ViT(
         image_size=image_size,patch_size=patch_size,n_channels=n_channels,
