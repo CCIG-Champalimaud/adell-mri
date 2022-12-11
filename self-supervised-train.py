@@ -208,7 +208,7 @@ if __name__ == "__main__":
             args.config_file,args.dropout_param,len(keys))
         n_dims = network_config["backbone_args"]["spatial_dim"]
 
-    if args.batch_size is not None:
+    if args.batch_size is not None and args.batch_size != "tune":
         network_config["batch_size"] = args.batch_size
 
     if args.ema == True:
@@ -350,7 +350,7 @@ if __name__ == "__main__":
     train_dataset = monai.data.CacheDataset(
         train_list,
         monai.transforms.Compose(transforms),
-        num_workers=args.n_workers,cache_rate=args.cache_rate)
+        num_workers=args.n_workers//2,cache_rate=args.cache_rate)
 
     def train_loader_call(batch_size,shuffle=True): 
         return monai.data.ThreadDataLoader(
@@ -388,6 +388,9 @@ if __name__ == "__main__":
             vic_reg_local=args.vicregl,
             ema=ema,
             **network_config_correct)
+    if "cuda" in args.dev:
+        ssl = ssl.to("cuda")
+
     if args.from_checkpoint is not None:
         state_dict = torch.load(
             args.from_checkpoint,map_location=args.dev)['state_dict']
@@ -442,10 +445,11 @@ if __name__ == "__main__":
         sync_batchnorm=True if strategy is not None else False,
         enable_checkpointing=ckpt,check_val_every_n_epoch=5,
         precision=precision,resume_from_checkpoint=ckpt_path,
-        auto_scale_batch_size=True,
+        auto_scale_batch_size="power" if args.batch_size == "tune" else None,
         accumulate_grad_batches=args.accumulate_grad_batches)
-    if strategy is None:
-        bs = trainer.tune(ssl)
+    if strategy is None and args.batch_size == "tune":
+        bs = trainer.tune(ssl,scale_batch_size_kwargs={"steps_per_trial":2,
+                                                       "init_val":16})
     
     torch.cuda.empty_cache()
     trainer.fit(ssl,val_dataloaders=validation_loader)
