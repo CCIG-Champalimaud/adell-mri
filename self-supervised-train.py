@@ -2,7 +2,6 @@ from copy import deepcopy
 import os
 import argparse
 import random
-import yaml
 import json
 import numpy as np
 import torch
@@ -11,6 +10,7 @@ import wandb
 
 from pytorch_lightning import Trainer
 from pytorch_lightning.loggers import WandbLogger
+from pytorch_lightning.strategies import DDPStrategy
 from pytorch_lightning.callbacks.model_checkpoint import ModelCheckpoint
 from pytorch_lightning.callbacks import RichProgressBar
 
@@ -208,11 +208,12 @@ if __name__ == "__main__":
             args.config_file,args.dropout_param,len(keys))
         n_dims = network_config["backbone_args"]["spatial_dim"]
 
-    if args.batch_size is not None and args.batch_size != "tune":
+    if (args.batch_size is not None) and (args.batch_size != "tune"):
         network_config["batch_size"] = args.batch_size
+        network_config_correct["batch_size"] = args.batch_size
 
     if args.ema == True:
-        bs = network_config["batch_size"]
+        bs = network_config_correct["batch_size"]
         ema_params = {
             "decay":0.99,
             "final_decay":1.0,
@@ -306,10 +307,10 @@ if __name__ == "__main__":
             *cropping_strategy,
             AugmentationWorkhorsed(
                 augmentations=aug_list,
-                keys=all_keys,mask_keys=[],max_mult=0.75,N=2),
+                keys=all_keys,mask_keys=[],max_mult=0.5,N=2),
             AugmentationWorkhorsed(
                 augmentations=aug_list,
-                keys=copied_keys,mask_keys=[],max_mult=0.75,N=2),
+                keys=copied_keys,mask_keys=[],max_mult=0.5,N=2),
             ]
 
     all_pids = [k for k in data_dict]
@@ -337,20 +338,25 @@ if __name__ == "__main__":
         devices = args.dev.split(":")[-1].split(",")
         devices = [int(i) for i in devices]
         if len(devices) > 1:
-            strategy = "ddp"
+            #strategy = "deepspeed_stage_2_offload"
+            strategy = DDPStrategy(find_unused_parameters=False,
+                                   static_graph=True)
         else:
             strategy = None
     else:
         devices = args.n_devices
         if devices > 1:
-            strategy = "ddp"
+            #strategy = "deepspeed_stage_2_offload"
+            strategy = DDPStrategy(find_unused_parameters=False,
+                                   static_graph=True)
         else:
             strategy = None
 
     train_dataset = monai.data.CacheDataset(
         train_list,
         monai.transforms.Compose(transforms),
-        num_workers=args.n_workers//2,cache_rate=args.cache_rate)
+        cache_rate=args.cache_rate,
+        num_workers=args.n_workers)
 
     def train_loader_call(batch_size,shuffle=True): 
         return monai.data.ThreadDataLoader(
@@ -360,9 +366,9 @@ if __name__ == "__main__":
             persistent_workers=True,drop_last=True)
 
     train_loader = train_loader_call(
-        network_config["batch_size"])
+        network_config_correct["batch_size"])
     validation_loader = train_loader_call(
-        network_config["batch_size"],False)
+        network_config_correct["batch_size"],False)
 
     if args.unet_encoder == True:
         ssl = NonContrastiveSelfSLUNetPL(
