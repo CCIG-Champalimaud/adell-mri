@@ -9,7 +9,6 @@ from ...custom_types import *
 from ..layers import ResNet
 from .self_supervised import BarlowTwinsLoss, VICRegLocalLoss,byol_loss,simsiam_loss,VICRegLoss
 from ..segmentation.unet import UNet
-from ..segmentation.unetr import UNETR
 
 class BarlowTwinsPL(ResNet,pl.LightningModule):
     def __init__(

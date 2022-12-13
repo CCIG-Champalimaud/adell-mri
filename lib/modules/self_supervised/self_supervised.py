@@ -206,7 +206,7 @@ class VICRegLoss(torch.nn.Module):
         X_mean = X.mean(0)
         X_centred = X - X_mean
         cov = (X_centred.T @ X_centred) / (X.shape[0]-1)
-        return self.off_diagonal(cov).pow_(2).sum()/X.shape[1]
+        return torch.sum(self.off_diagonal(cov).pow_(2)/X.shape[1])
 
     def invariance_loss(self,X1:torch.Tensor,X2:torch.Tensor)->torch.Tensor:
         """Calculates the invariance loss for VICReg (minimises the MSE 
