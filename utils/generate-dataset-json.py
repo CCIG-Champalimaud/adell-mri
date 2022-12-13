@@ -45,7 +45,7 @@ if __name__ == "__main__":
         help="Path to CSV with classes. Assumes first column is study ID and \
             last column is class.")
     parser.add_argument(
-        '--patterns',dest="patterns",default="*nii.gz",nargs="+",
+        '--patterns',dest="patterns",default=["*nii.gz"],nargs="+",
         help="Pattern to match for inputs (assumes each pattern corresponds to\
             a modality).")
     parser.add_argument(
