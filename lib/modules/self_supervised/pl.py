@@ -106,8 +106,8 @@ class BarlowTwinsPL(ResNet,pl.LightningModule):
         self.test_metrics = torch.nn.ModuleDict({})
         for k in metric_dict:
             self.train_metrics[k] = metric_dict[k]()
-            self.val_metrics["val"+k] = metric_dict[k]()
-            self.test_metrics["test"+k] = metric_dict[k]()
+            self.val_metrics["V"+k] = metric_dict[k]()
+            self.test_metrics["T"+k] = metric_dict[k]()
 
 class NonContrastiveBasePL(pl.LightningModule,ABC):
     """Abstract method for non-contrastive PL modules. Features some very
