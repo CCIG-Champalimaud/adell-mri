@@ -124,6 +124,10 @@ if __name__ == "__main__":
         help="Number batches to accumulate before backpropgating gradient",
         default=1,type=int)
     parser.add_argument(
+        '--gradient_clip_val',dest="gradient_clip_val",
+        help="Value for gradient clipping",
+        default=0.0,type=float)
+    parser.add_argument(
         '--checkpoint_dir',dest='checkpoint_dir',type=str,default="models",
         help='Path to directory where checkpoints will be saved.')
     parser.add_argument(
@@ -452,7 +456,8 @@ if __name__ == "__main__":
         enable_checkpointing=ckpt,check_val_every_n_epoch=5,
         precision=precision,resume_from_checkpoint=ckpt_path,
         auto_scale_batch_size="power" if args.batch_size == "tune" else None,
-        accumulate_grad_batches=args.accumulate_grad_batches)
+        accumulate_grad_batches=args.accumulate_grad_batches,
+        gradient_clip_val=args.gradient_clip_val)
     if strategy is None and args.batch_size == "tune":
         bs = trainer.tune(ssl,scale_batch_size_kwargs={"steps_per_trial":2,
                                                        "init_val":16})
