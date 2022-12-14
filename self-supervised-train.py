@@ -356,16 +356,17 @@ if __name__ == "__main__":
         else:
             strategy = None
 
+    # split workers across cache construction and data loading
     train_dataset = monai.data.CacheDataset(
         train_list,
         monai.transforms.Compose(transforms),
         cache_rate=args.cache_rate,
-        num_workers=args.n_workers)
+        num_workers=args.n_workers // 2)
 
     def train_loader_call(batch_size,shuffle=True): 
         return monai.data.ThreadDataLoader(
             train_dataset,batch_size=batch_size,
-            shuffle=shuffle,num_workers=args.n_workers,generator=g,
+            shuffle=shuffle,num_workers=args.n_workers // 2,generator=g,
             collate_fn=collate_fn,pin_memory=True,
             persistent_workers=True,drop_last=True)
 
