@@ -464,6 +464,7 @@ if __name__ == "__main__":
                                                        "init_val":16})
     
     torch.cuda.empty_cache()
+    force_cudnn_initialization()
     trainer.fit(ssl,val_dataloaders=validation_loader)
     
     print("Validating...")
