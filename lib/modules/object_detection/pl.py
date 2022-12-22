@@ -5,7 +5,8 @@ import torchmetrics
 import pytorch_lightning as pl
 from typing import Callable
 
-from .object_detection import YOLONet3d,CoarseDetector3d,mAP
+from .nets import YOLONet3d,CoarseDetector3d
+from .map import mAP
 
 class YOLONet3dPL(YOLONet3d,pl.LightningModule):
     def __init__(
