@@ -1,6 +1,5 @@
 import random
 import numpy as np
-import torch
 import monai
 
 from ..custom_types import *
@@ -169,7 +168,7 @@ class AugmentationWorkhorsed(monai.transforms.RandomizableTransform):
 
         self.param_dict = {k:{kk:AUG_PARAM_DICT[k][kk]*self.max_mult 
                               for kk in AUG_PARAM_DICT[k]}
-                           for k in AUG_PARAM_DICT}
+                           for k in self.augmentations}
 
         self.transforms = {
             k:get_transform_d(keys,k,self.param_dict,mask_keys)
@@ -216,52 +215,3 @@ class AugmentationStore(dict):
                     self.n_bins,AUG_PARAM_DICT[k])
             else:
                 raise Exception("Augmentation {} is unknown".format(k))
-
-class CTAugment:
-    def __init__(self, depth=2, th=0.85, decay=0.99):
-        self.decay = decay
-        self.depth = depth
-        self.th = th
-        self.rates = {}
-        for k, op in OPS.items():
-            self.rates[k] = tuple([np.ones(x, 'f') for x in op.bins])
-
-    def rate_to_p(self, rate):
-        p = rate + (1 - self.decay)
-        p = p / p.max()
-        p[p < self.th] = 0
-        return p
-
-    def policy(self, probe):
-        kl = list(OPS.keys())
-        v = []
-        if probe:
-            for _ in range(self.depth):
-                k = random.choice(kl)
-                bins = self.rates[k]
-                rnd = np.random.uniform(0, 1, len(bins))
-                v.append(OP(k, rnd.tolist()))
-            return v
-        for _ in range(self.depth):
-            vt = []
-            k = random.choice(kl)
-            bins = self.rates[k]
-            rnd = np.random.uniform(0, 1, len(bins))
-            for r, bin in zip(rnd, bins):
-                p = self.rate_to_p(bin)
-                segments = p[1:] + p[:-1]
-                segment = np.random.choice(segments.shape[0], p=segments / segments.sum())
-                vt.append((segment + r) / segments.shape[0])
-            v.append(OP(k, vt))
-        return v
-
-    def update_rates(self, policy, accuracy):
-        for k, bins in policy:
-            for p, rate in zip(bins, self.rates[k]):
-                p = int(p * len(rate) * 0.999)
-                rate[p] = rate[p] * self.decay + accuracy * (1 - self.decay)
-
-    def stats(self):
-        return '\n'.join('%-16s    %s' % (k, ' / '.join(' '.join('%.2f' % x for x in self.rate_to_p(rate))
-                                                        for rate in self.rates[k]))
-                         for k in sorted(OPS.keys()))
