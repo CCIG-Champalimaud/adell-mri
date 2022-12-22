@@ -122,7 +122,7 @@ activation_gradient_factory = {
 class NormalizedActivation(torch.nn.Module):
     def __init__(self,
                  act_str:str,
-                 f:Callable=lambda x: 0.3 * F.tanh(x),
+                 f:Callable=lambda x: 0.3 * torch.tanh(x),
                  momentum:float=0.9,
                  L:int=0.8,
                  U:int=1.2):
