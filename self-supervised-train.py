@@ -50,6 +50,11 @@ if __name__ == "__main__":
         default=None,type=str,nargs='+',
         help="IDs in dataset_json used for training")
     parser.add_argument(
+        '--pad_size',dest='pad_size',action="store",
+        default=None,type=float,nargs='+',
+        help="Size of central padded image after resizing (if none is specified\
+            then no padding is performed).")
+    parser.add_argument(
         '--crop_size',dest='crop_size',action="store",
         default=None,type=float,nargs='+',
         help="Size of central crop after resizing (if none is specified then\
@@ -249,14 +254,15 @@ if __name__ == "__main__":
             scaling_ops.append(
                 monai.transforms.ScaleIntensityd(
                     args.adc_image_keys,None,None,-(1-args.adc_factor)))
+        crop_op = []
         if args.crop_size is not None:
-            crop_op = [
+            crop_op.append(
                 monai.transforms.CenterSpatialCropd(
-                    all_keys,[int(j) for j in args.crop_size]),
+                    all_keys,[int(j) for j in args.crop_size]))
+        if args.pad_size is not None:
+            crop_op.append(
                 monai.transforms.SpatialPadd(
-                    all_keys,[int(j) for j in args.crop_size])]
-        else:
-            crop_op = []
+                    all_keys,[int(j) for j in args.pad_size]))
         if x == "pre":
             return [
                 monai.transforms.LoadImaged(
@@ -281,7 +287,13 @@ if __name__ == "__main__":
             out = np.concatenate([box1,box2]).astype(np.float32)
             return out
         
+        transforms_to_remove = [
+            # not super slow but not really a common artefact
+            "gaussian_smooth_x","gaussian_smooth_y","gaussian_smooth_z",
+            # the sharpens are remarkably slow, not worth it imo
+            "gaussian_sharpen_x","gaussian_sharpen_y","gaussian_sharpen_z"]
         aug_list = generic_augments+mri_specific_augments+spatial_augments
+        aug_list = [x for x in aug_list if x not in transforms_to_remove]
         
         if len(roi_size) == 0:
             cropping_strategy = []
@@ -342,7 +354,7 @@ if __name__ == "__main__":
         devices = args.dev.split(":")[-1].split(",")
         devices = [int(i) for i in devices]
         if len(devices) > 1:
-            #strategy = "deepspeed_stage_2_offload"
+            #strategy = "deepspeed_stage_2"
             strategy = DDPStrategy(find_unused_parameters=False,
                                    static_graph=True)
         else:
@@ -350,29 +362,28 @@ if __name__ == "__main__":
     else:
         devices = args.n_devices
         if devices > 1:
-            #strategy = "deepspeed_stage_2_offload"
+            #strategy = "deepspeed_stage_2"
             strategy = DDPStrategy(find_unused_parameters=False,
                                    static_graph=True)
         else:
             strategy = None
 
     # split workers across cache construction and data loading
+    a = args.n_workers // 2
+    b = args.n_workers - a
     train_dataset = monai.data.CacheDataset(
         train_list,
         monai.transforms.Compose(transforms),
-        cache_rate=args.cache_rate,
-        num_workers=args.n_workers // 2)
+        cache_rate=args.cache_rate,num_workers=a)
 
     def train_loader_call(batch_size,shuffle=True): 
         return monai.data.ThreadDataLoader(
             train_dataset,batch_size=batch_size,
-            shuffle=shuffle,num_workers=args.n_workers // 2,generator=g,
+            shuffle=shuffle,num_workers=b,generator=g,
             collate_fn=collate_fn,pin_memory=True,
             persistent_workers=True,drop_last=True)
 
     train_loader = train_loader_call(
-        network_config_correct["batch_size"])
-    validation_loader = train_loader_call(
         network_config_correct["batch_size"],False)
 
     if args.unet_encoder == True:
@@ -465,10 +476,10 @@ if __name__ == "__main__":
     
     torch.cuda.empty_cache()
     force_cudnn_initialization()
-    trainer.fit(ssl,val_dataloaders=validation_loader)
+    trainer.fit(ssl,val_dataloaders=train_loader)
     
     print("Validating...")
-    test_metrics = trainer.test(ssl,validation_loader)[0]
+    test_metrics = trainer.test(ssl,train_loader)[0]
     for k in test_metrics:
         out = test_metrics[k]
         try:
