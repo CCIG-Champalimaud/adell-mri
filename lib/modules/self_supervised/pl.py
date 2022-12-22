@@ -79,7 +79,7 @@ class BarlowTwinsPL(ResNet,pl.LightningModule):
         return self.training_dataloader_call(self.batch_size)
 
     def configure_optimizers(self):
-        optimizer = torch.optim.AdamW(
+        optimizer = torch.optim.Adam(
             self.parameters(),lr=self.learning_rate,
             weight_decay=self.weight_decay,amsgrad=True)
         lr_schedulers = torch.optim.lr_scheduler.ReduceLROnPlateau(
