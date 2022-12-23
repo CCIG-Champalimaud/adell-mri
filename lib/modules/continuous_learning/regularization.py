@@ -42,3 +42,4 @@ class ElasticWeightConsolidation(torch.nn.Module):
                         param - self.named_parameters[k],
                         p=self.p))
         return output
+    
