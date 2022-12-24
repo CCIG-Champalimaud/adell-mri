@@ -72,7 +72,8 @@ class MultiPhaseTraining(Callback):
         current_epoch = trainer["epoch"]
         changed = False
         if self.n_epochs[self.idx] == "adaptive":
-            if self.checker(trainer.callback_metrics.get(self.monitor))==True:
+            v = trainer.callback_metrics.get(self.monitor)
+            if self.checker(v)==True:
                 changed = True
         else:
             if current_epoch >= self.n_epochs[self.idx]:
@@ -82,10 +83,10 @@ class MultiPhaseTraining(Callback):
             self.idx += + 1
             self.checker = EarlyStopper(self.patience,self.min_delta)
             opt = self.optimizers()
-            if isinstance(lr,list):
-                for param_group,lr in zip(opt.param_groups,
-                                          self.learning_rates[self.idx]):
+            lrs = self.learning_rates[self.idx]
+            if isinstance(lrs,list):
+                for param_group,lr in zip(opt.param_groups,lrs):
                     param_group['lr'] = lr
-            elif isinstance(lr,str):
-                if lr == "stop":
+            elif isinstance(lrs,str):
+                if lrs == "stop":
                     trainer.should_stop = True
