@@ -1,6 +1,6 @@
-# Methods for prostate cancer segmentation and detection for multi-parametric MRI
+# Methods for classification, segmentation and detection using multi-parametric MRI
 
-Here I develop and present methods for segmenting prostate cancer from different MRI modalities, but these are more generically applicable to other problems - I try to follow a modular design and development, such that networks can be deployed to different problems as necessary. I prefer to organize data using `json` files so I have developed a number of scripts that allow me to achieve this (i.e. `utils/get-dataset-json.py`) and generate "dataset JSON files". By a dataset JSON file I merely mean a JSON file with the following format:
+Here I implement and develop methods for classification, segmentation and detection using different MRI modalities, but these are more generically applicable to other problems - I try to follow a modular design and development, such that networks can be deployed to different problems as necessary. I also do some work with self supervised learning methods, and have recently started to implement some building blocks for continuous learning. I prefer to organize data using `json` files so I have developed a number of scripts that allow me to achieve this (i.e. `utils/get-dataset-json.py`) and generate "dataset JSON files". By a dataset JSON file I merely mean a JSON file with the following format:
 
 ```
 entry_1
@@ -42,11 +42,11 @@ Then, using some minor JSON manipulation and [`MONAI`](https://monai.io/) I am a
 
 ### Modules and networks
 
-I have placed most of the scripts and implementations under `lib/modules/segmentation.py`, `lib/modules/classification.py`, `lib/modules/object_detection.py` and `lib/modules/self_supervised.py`. `lib/modules/layers.py` contain building blocks for 3D and 2D neural networks.
+I have placed most of the scripts and implementations under `lib/modules/segmentation`, `lib/modules/classification`, `lib/modules/object_detection` and `lib/modules/self_supervised`. `lib/modules/layers` contains building blocks for 3D and 2D neural networks.
 
 #### Adaptations to PyTorch Lightning
 
-I use PyTorch Lightning to train my models as it offers a very comprehensive set of tools for optimisation. I.e. in `lib/modules/segmentation_pl.py` I have implemented some classes which inherit from the networks implemented in `lib/modules/segmentation.py` so that they can be trained using PyTorch Lightning. The same has been done for the self-supervised learning models (in `lib/modules/self_supervised_pl.py`).
+I use PyTorch Lightning to train my models as it offers a very comprehensive set of tools for optimisation. I.e. in `lib/modules/segmentation/pl.py` I have implemented some classes which inherit from the networks implemented in `lib/modules/segmentation` so that they can be trained using PyTorch Lightning. The same has been done for the self-supervised learning models (in `lib/modules/self_supervised/pl.py`).
 
 ### Segmentation loss functions
 
@@ -54,7 +54,7 @@ In `lib/modules/losses.py` I have coded most losses necessary based loosely on a
 
 ### Self-supervised loss functions
 
-In `lib/modules/self_supervised.py` you can find all the relevant loss functions.
+In `lib/modules/self_supervised/` you can find all the relevant loss functions.
 
 ### Tests
 
