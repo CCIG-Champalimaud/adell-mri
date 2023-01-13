@@ -22,6 +22,7 @@ if __name__ == "__main__":
 
     data = pandas.read_csv(args.path)
     data_ids = data[args.id_columns].astype(str)
+    print(data.columns)
     data_features = data[args.feature_columns]
     output = {}
 

@@ -322,3 +322,123 @@ class ResNeXtBlock3d(torch.nn.Module):
 
     def forward(self,X):
         return self.final_op(self.op(X) + self.skip_op(X))
+
+class ConvNeXtBlock2d(torch.nn.Module):
+    """Two-dimensional ConvNeXt Block. Adapted from [1].
+    
+    [1] https://github.com/facebookresearch/ConvNeXt
+    """
+    def __init__(self,
+                 in_channels:int,kernel_size:int,
+                 inter_channels:int=None,out_channels:int=None,
+                 adn_fn:torch.nn.Module=torch.nn.Identity,
+                 layer_scale_init_value:float=1e-6):
+        """
+        Args:
+            in_channels (int): number of input channels.
+            kernel_size (int): kernel size.
+            inter_channels (int): number of intermediary channels. Defaults 
+                to None.
+            out_channels (int): number of output channels. Defaults to None.
+            adn_fn (torch.nn.Module, optional): for compability purposes.
+            layer_scale_init_value (float, optional): init value for gamma (
+                scales non-residual term). Defaults to 1e-6.
+        """
+        super().__init__()
+        self.dwconv = torch.nn.Conv2d(
+            in_channels,in_channels,kernel_size=kernel_size,
+            padding="same",groups=in_channels)
+        self.norm = torch.nn.LayerNorm(in_channels,eps=1e-6)
+        self.pwconv1 = torch.nn.Linear(in_channels,inter_channels)
+        self.act = torch.nn.GELU()
+        self.pwconv2 = torch.nn.Linear(inter_channels,out_channels)
+        self.gamma = torch.nn.Parameter(
+            layer_scale_init_value * torch.ones((out_channels)), 
+            requires_grad=True) if layer_scale_init_value > 0 else None
+        if out_channels != in_channels:
+            self.out_layer = torch.nn.Conv2d(
+                in_channels,out_channels,kernel_size=kernel_size,
+                padding="same")
+        else:
+            self.out_layer = None
+
+    def forward(self, x):
+        input = x
+        x = self.dwconv(x)
+        x = x.permute(0, 2, 3, 1) # (N, C, H, W) -> (N, H, W, C)
+        x = self.norm(x)
+        x = self.pwconv1(x)
+        x = self.act(x)
+        x = self.pwconv2(x)
+        if self.gamma is not None:
+            x = self.gamma * x
+        x = x.permute(0, 3, 1, 2) # (N, H, W, C) -> (N, C, H, W)
+
+        x = input + x
+        return x
+
+class ConvNeXtBlock3d(torch.nn.Module):
+    """Three-dimensional ConvNeXt Block. Adapted from [1].
+    
+    [1] https://github.com/facebookresearch/ConvNeXt
+    """
+    def __init__(self,
+                 in_channels:int,kernel_size:int,
+                 inter_channels:int,out_channels:int,
+                 adn_fn:torch.nn.Module=torch.nn.Identity,
+                 layer_scale_init_value:float=1e-6):
+        """
+        Args:
+            in_channels (int): number of input channels.
+            kernel_size (int): kernel size.
+            inter_channels (int): number of intermediary channels. Defaults 
+                to None.
+            out_channels (int): number of output channels. Defaults to None.
+            adn_fn (torch.nn.Module, optional): used only when the output 
+                channels are different. Defaults to torch.nn.Identity.
+            layer_scale_init_value (float, optional): init value for gamma (
+                scales non-residual term). Defaults to 1e-6.
+        """
+        super().__init__()
+        self.in_channels = in_channels
+        self.kernel_size = kernel_size
+        self.inter_channels = inter_channels
+        self.out_channels = out_channels
+        self.adn_fn = adn_fn
+        self.layer_scale_init_value = layer_scale_init_value
+        self.dwconv = torch.nn.Conv3d(
+            in_channels,in_channels,kernel_size=kernel_size,
+            padding="same",groups=in_channels)
+        self.norm = torch.nn.LayerNorm(in_channels,eps=1e-6)
+        self.pwconv1 = torch.nn.Linear(in_channels,inter_channels)
+        self.act = torch.nn.GELU()
+        self.pwconv2 = torch.nn.Linear(inter_channels,in_channels)
+        self.gamma = torch.nn.Parameter(
+            layer_scale_init_value * torch.ones((in_channels)), 
+            requires_grad=True) if layer_scale_init_value > 0 else None
+        if out_channels != in_channels:
+            self.out_layer = torch.nn.Sequential(
+                torch.nn.Conv3d(
+                    in_channels,out_channels,kernel_size=kernel_size,
+                    padding="same"),
+                self.adn_fn(out_channels),
+                torch.nn.GELU())
+        else:
+            self.out_layer = None
+
+    def forward(self, x):
+        input = x
+        x = self.dwconv(x)
+        x = x.permute(0,2,3,4,1) # (N, C, H, W) -> (N, H, W, C)
+        x = self.norm(x)
+        x = self.pwconv1(x)
+        x = self.act(x)
+        x = self.pwconv2(x)
+        if self.gamma is not None:
+            x = self.gamma * x
+        x = x.permute(0,4,1,2,3) # (N, H, W, C) -> (N, C, H, W)
+
+        x = input + x
+        if self.out_layer is not None:
+            x = self.out_layer(x)
+        return x

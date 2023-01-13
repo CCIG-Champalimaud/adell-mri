@@ -1,9 +1,19 @@
+import time
 import torch
-import time 
+import torch.nn.functional as F
+import einops
 
-from ...types import *
-from ..layers import *
+from ...custom_types import *
+from ..layers.adn_fn import ActDropNorm,get_adn_fn
+from ..layers.batch_ensemble import BatchEnsembleWrapper
+from ..layers.standard_blocks import GlobalPooling
+from ..layers.res_net import ResNet,ResNetBackboneAlt,ProjectionHead
+from ..layers.self_attention import (
+    ConcurrentSqueezeAndExcite2d,ConcurrentSqueezeAndExcite3d)
 from ..object_detection import resnet_default,maxpool_default
+from ..segmentation.unet import UNet,BrUNet
+from ..layers.linear_blocks import MLP
+from ..layers.vit import ViT,FactorizedViT
 
 resnet_default = [(64,128,5,2),(128,256,3,5)]
 maxpool_default = [(2,2,2),(2,2,2)]
@@ -87,13 +97,12 @@ class CatNet(torch.nn.Module):
                 self.adn_fn = lambda s:ActDropNorm(
                     s,norm_fn=torch.nn.BatchNorm3d)
 
-    def __post_init__(self):
         self.init_layers()
         self.init_classification_layer()
 
     def init_layers(self):
         if self.feature_extraction is None:
-            self.res_net = ResNetBackbone(
+            self.res_net = ResNetBackboneAlt(
                 self.spatial_dim,self.in_channels,self.resnet_structure,
                 adn_fn=self.adn_fn,maxpool_structure=self.maxpool_structure,
                 res_type=self.res_type,batch_ensemble=self.batch_ensemble)
@@ -115,9 +124,8 @@ class CatNet(torch.nn.Module):
             self.last_act = torch.nn.Softmax(1)
         self.classification_layer = torch.nn.Sequential(
             GlobalPooling(),
-            torch.nn.Linear(self.last_size,self.last_size),
-            torch.nn.ReLU(),
-            torch.nn.Linear(self.last_size,final_n))
+            MLP(self.last_size,final_n,[self.last_size for _ in range(3)],
+                adn_fn=get_adn_fn(1,"batch","gelu")))
         if self.batch_ensemble > 0:
             self.classification_layer = BatchEnsembleWrapper(
                 self.classification_layer,self.batch_ensemble,self.last_size,
@@ -245,6 +253,81 @@ class SegCatNet(torch.nn.Module):
         
         return classification
 
+class GenericEnsemble(torch.nn.Module):
+    """Generically combines multiple encoders to produce an ensemble model.
+    """
+    def __init__(self,
+                 spatial_dimensions:int,
+                 networks:List[torch.nn.Module],
+                 n_features:Union[List[int],int],
+                 head_structure:List[int],
+                 n_classes:int,
+                 head_adn_fn: Callable=None,
+                 sae: bool=False):
+        """
+        Args:
+            spatial_dimensions (int): spatial dimension of input.
+            networks (List[torch.nn.Module]): list of Torch modules.
+            n_features (List[int]): list of output sizes for networks.
+            head_structure (List[int]): structure for the prediction head.
+            n_classes (int): number of classes.
+            head_adn_fn (Callable, optional): activation-dropout-normalization
+                function for the prediction head. Defaults to None (no 
+                function).
+            sae (bool, optional): applies a squeeze and excite layer to the 
+                output of each network. Defaults to False
+        """
+        super().__init__()
+        self.spatial_dimensions = spatial_dimensions
+        self.networks = torch.nn.ModuleList(networks)
+        self.n_features = n_features
+        self.head_structure = head_structure
+        self.n_classes = n_classes
+        self.head_adn_fn = head_adn_fn
+        self.sae = sae
+
+        if isinstance(self.n_features,int):
+            self.n_features = [self.n_features for _ in self.networks]
+        self.n_features_final = sum(self.n_features)
+        self.initialize_sae_if_necessary()
+        self.initialize_head()
+
+    def initialize_head(self):
+        if self.n_classes == 2:
+            nc = 1
+        else:
+            nc = self.n_classes
+        self.prediction_head = MLP(
+            self.n_features_final,nc,
+            self.head_structure,
+            self.head_adn_fn)
+
+    def initialize_sae_if_necessary(self):
+        if self.sae == True:
+            if self.spatial_dimensions == 2:
+                self.preproc_method = torch.nn.ModuleList(
+                    [ConcurrentSqueezeAndExcite2d(f)
+                    for f in self.n_features])
+            elif self.spatial_dimensions == 3:
+                self.preproc_method = torch.nn.ModuleList(
+                    [ConcurrentSqueezeAndExcite3d(f)
+                    for f in self.n_features])
+        else:
+            self.preproc_method = torch.nn.ModuleList(
+                [torch.nn.Identity() for _ in self.n_features])
+    
+    def forward(self,X):
+        if isinstance(X,torch.Tensor):
+            X = [X for _ in self.networks]
+        outputs = []
+        for x,network,pp in zip(X,self.networks,self.preproc_method):
+            out = pp(network(x))
+            out = out.flatten(start_dim=2).max(-1).values
+            outputs.append(out)
+        outputs = torch.concat(outputs,1)
+        output = self.prediction_head(outputs)
+        return output
+    
 class EnsembleNet(torch.nn.Module):
     def __init__(self,
                  cat_net_args:Union[Dict[str,int],List[Dict[str,int]]]):
@@ -305,23 +388,197 @@ class EnsembleNet(torch.nn.Module):
                 predictions.append(self.final_activation(n(x)))
         return sum(predictions) / len(predictions)
 
-class BatchEnsembleNet(CatNet):
-    """Creates an ensemble network whose method of ensemble is through
-    batch ensembling (linear transforms to the input and output of its 
-    layers). Compared to EnsembleNet this trains only a small fraction of
-    the weights while still working *approximately* as an ensemble method.
+class UNetEncoder(UNet):
+    """U-Net encoder for classification.
     """
-    
-    def __post_init__(self):
-        assert self.batch_ensemble > 0,"batch_ensemble has to be > 0"
-        self.init_layers()
-        self.init_classification_layer()
+    def __init__(self,
+                 head_structure:List[int],
+                 n_classes:int,
+                 head_adn_fn: Callable=None,
+                 *args,**kwargs):
+        """
+        Args:
+            head_structure (List[int]): structure for the prediction head.
+            n_classes (int): number of classes.
+            head_adn_fn (Callable, optional): activation-dropout-normalization
+                function for the prediction head. Defaults to None (no 
+                function).
+        """
+        self.head_structure = head_structure
+        self.n_classes = n_classes
+        self.head_adn_fn = head_adn_fn
+        
+        kwargs["encoder_only"] = True
+        super().__init__(*args,**kwargs)
 
-    def forward(self,X:List[torch.Tensor]):
-        predictions = []
-        for i,x in enumerate(X):
-            if x is not None:
-                features = self.feature_extraction(X,i)
-                classification = self.classification_layer(features,i)
-                predictions.append(classification)
-        return sum(predictions) / len(predictions)
+        self.n_features = self.depth[-1]
+        if self.head_structure is not None:
+            self.prediction_head = MLP(
+                self.n_features,
+                self.n_classes,
+                self.head_structure,
+                self.head_adn_fn)
+        else:
+            self.prediction_head = None
+            
+        self.initialize_head()
+
+    def initialize_head(self):
+        if self.n_classes == 2:
+            nc = 1
+        else:
+            nc = self.n_classes
+        if self.head_structure is not None:
+            self.prediction_head = MLP(
+                self.n_features,nc,
+                self.head_structure,
+                self.head_adn_fn)
+        else:
+            self.prediction_head = None
+        
+    def forward(self,X:torch.Tensor)->torch.Tensor:
+        """Forward pass for this class.
+
+        Args:
+            X (torch.Tensor)
+
+        Returns:
+            torch.Tensor
+        """
+        encoding_out = []
+        curr = X
+        for op,op_ds in self.encoding_operations:
+            curr = op(curr)
+            encoding_out.append(curr)
+            curr = op_ds(curr)
+        if self.prediction_head is None:
+            return curr
+        out = curr.flatten(start_dim=2).max(-1).values
+        out = self.prediction_head(out)
+        return out
+
+class ViTClassifier(ViT):
+    def __init__(self,
+                 n_classes:int,
+                 use_class_token:bool=False,
+                 *args,**kwargs):
+        kwargs["use_class_token"] = use_class_token
+        super().__init__(*args,**kwargs)
+        self.n_classes = n_classes
+        
+        if self.n_classes == 2:
+            nc = 1
+        else:
+            nc = self.n_classes
+        self.classification_layer = torch.nn.Sequential(
+            torch.nn.LayerNorm(self.input_dim_primary),
+            torch.nn.Linear(self.input_dim_primary,nc))
+    
+    def forward(
+        self,
+        X:torch.Tensor)->Tuple[torch.Tensor,TensorList]:
+        """Forward pass.
+
+        Args:
+            X (torch.Tensor): tensor of shape 
+                [-1,self.n_channels,*self.image_size]
+
+        Returns:
+            torch.Tensor: tensor of shape [...,self.input_dim_primary]
+        """
+        embeded_X = self.embedding(X)
+        for block in self.tbs.transformer_blocks:
+            embeded_X = block(embeded_X)
+        if self.use_class_token == True:
+            embeded_X = embeded_X[:,0]
+        else:
+            embeded_X = embeded_X.max(1).values
+        classification = self.classification_layer(embeded_X)
+        return classification
+
+class FactorizedViTClassifier(FactorizedViT):
+    def __init__(self,
+                 n_classes:int,
+                 use_class_token:bool=False,
+                 *args,**kwargs):
+        kwargs["use_class_token"] = use_class_token
+        super().__init__(*args,**kwargs)
+        self.n_classes = n_classes
+        
+        if self.n_classes == 2:
+            nc = 1
+        else:
+            nc = self.n_classes
+        self.classification_layer = torch.nn.Sequential(
+            torch.nn.LayerNorm(self.input_dim_primary),
+            torch.nn.Linear(self.input_dim_primary,nc))
+    
+    def forward(
+        self,
+        X:torch.Tensor)->Tuple[torch.Tensor,TensorList]:
+        """Forward pass.
+
+        Args:
+            X (torch.Tensor): tensor of shape 
+                [-1,self.n_channels,*self.image_size]
+
+        Returns:
+            torch.Tensor: tensor of shape [...,self.input_dim_primary]
+        """
+        embeded_X = self.embedding(X)
+        embeded_X,_ = self.transformer_block_within(embeded_X)
+        # extract the maximum value of each token for all slices
+        if self.use_class_token == True:
+            embeded_X = embeded_X[:,:,0]
+            class_token = einops.repeat(
+                self.slice_class_token,'() n e -> b n e',b=X.shape[0])
+            embeded_X = torch.concat([class_token,embeded_X],1)
+        else:
+            embeded_X = embeded_X.max(-2).values
+        embeded_X,_ = self.transformer_block_between(embeded_X)
+        if self.use_class_token == True:
+            embeded_X = embeded_X[:,0]
+        classification = self.classification_layer(embeded_X)
+        return classification
+
+class MONAIViTClassifier(torch.nn.Module):
+    def __init__(self,
+                 n_classes:int,
+                 use_class_token:bool=False,
+                 *args,**kwargs):
+        import monai
+        kwargs["use_class_token"] = use_class_token
+        super().__init__()
+        
+        self.n_classes = n_classes
+        if self.n_classes == 2:
+            nc = 1
+        else:
+            nc = self.n_classes
+
+        self.network = monai.networks.nets.vit.ViT(
+            in_channels=kwargs["n_channels"],
+            img_size=[int(x) for x in kwargs["image_size"]],
+            patch_size=kwargs["patch_size"],
+            hidden_size=kwargs["hidden_dim"],
+            mlp_dim=kwargs["mlp_structure"][0],
+            num_layers=kwargs["number_of_blocks"],
+            num_heads=kwargs["n_heads"],
+            pos_embed="conv",
+            classification=True,
+            num_classes=nc
+        )
+    
+    def forward(
+        self,
+        X:torch.Tensor)->Tuple[torch.Tensor,TensorList]:
+        """Forward pass.
+
+        Args:
+            X (torch.Tensor): tensor of shape 
+                [-1,self.n_channels,*self.image_size]
+
+        Returns:
+            torch.Tensor: tensor of shape [...,self.input_dim_primary]
+        """
+        return self.network(X)[0]

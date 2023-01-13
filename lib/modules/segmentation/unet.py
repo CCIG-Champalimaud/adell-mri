@@ -688,7 +688,8 @@ class BrUNet(UNet,torch.nn.Module):
         skip_conditioning: int=None,
         feature_conditioning: int=None,
         feature_conditioning_params: Dict[str,torch.Tensor]=None,
-        deep_supervision: bool=False) -> torch.nn.Module:
+        deep_supervision: bool=False,
+        encoder_only: bool=False) -> torch.nn.Module:
         """
         Args:
         spatial_dimensions (int, optional): number of dimensions for the 
@@ -748,6 +749,7 @@ class BrUNet(UNet,torch.nn.Module):
             Defaults to None.
         deep_supervision (bool, optional): forward method returns 
             segmentation predictions obtained from each decoder block.
+        encoder_only (bool, optional): makes only encoders.
         """
 
         super().__init__(parent_class=True)
@@ -773,6 +775,7 @@ class BrUNet(UNet,torch.nn.Module):
         self.feature_conditioning = feature_conditioning
         self.feature_conditioning_params = feature_conditioning_params
         self.deep_supervision = deep_supervision
+        self.encoder_only = encoder_only
         
         # initialize all layers
         self.get_norm_op()
@@ -783,15 +786,17 @@ class BrUNet(UNet,torch.nn.Module):
             self.init_encoders()
         else:
             self.init_backbone_encoders()
-        self.init_upscale_ops()
-        self.init_link_ops()
-        self.init_decoder()
-        self.init_final_layer()
         self.init_merge_ops()
-        if self.bottleneck_classification == True:
-            self.init_bottleneck_classifier()
-        if self.feature_conditioning is not None:
-            self.init_feature_conditioning_operations()
+        
+        if self.encoder_only != True:            
+            self.init_upscale_ops()
+            self.init_link_ops()
+            self.init_decoder()
+            self.init_final_layer()
+            if self.bottleneck_classification == True:
+                self.init_bottleneck_classifier()
+            if self.feature_conditioning is not None:
+                self.init_feature_conditioning_operations()
 
     def init_encoders(self):
         """Initializes the encoder operations.
@@ -851,18 +856,22 @@ class BrUNet(UNet,torch.nn.Module):
         """
         """Initializes linking (skip) operations.
         """
+        if self.encoder_only == True:
+            D = [self.depth[-1]]
+        else:
+            D = self.depth
         if self.spatial_dimensions == 2:
             self.merge_ops = torch.nn.ModuleList([
                 torch.nn.ModuleList(
                     [ConcurrentSqueezeAndExcite2d(d)
                      for _ in range(self.n_input_branches)])
-                for d in self.depth])
+                for d in D])
         elif self.spatial_dimensions == 3:
             self.merge_ops = torch.nn.ModuleList([
                 torch.nn.ModuleList(
                     [ConcurrentSqueezeAndExcite3d(d)
                      for _ in range(self.n_input_branches)])
-                for d in self.depth])
+                for d in D])
     
     @staticmethod
     def fix_input(X:List[List[torch.Tensor]]):
@@ -887,7 +896,7 @@ class BrUNet(UNet,torch.nn.Module):
     
     def forward(self,
                 X:List[torch.Tensor],
-                X_weights:List[torch.Tensor],
+                X_weights:List[torch.Tensor]=None,
                 X_skip_layer:torch.Tensor=None,
                 X_feature_conditioning:torch.Tensor=None,
                 return_features=False,
@@ -896,13 +905,16 @@ class BrUNet(UNet,torch.nn.Module):
 
         Args:
             X (List[torch.Tensor]): list of tensors.
-            X_weights (List[torch.Tensor]): should be the same size as X and 
+            X_weights (List[torch.Tensor],optional): should be the same size as X and 
                 each element of X_weights should have size b, where b is the
-                batch size of each element of X.
+                batch size of each element of X. Defaults to None (no weights).
 
         Returns:
             torch.Tensor
         """
+        if X_weights is None:
+            X_weights = [torch.ones(X[0].shape[0]).to(X[0].device) 
+                         for _ in X]
         assert len(X) == len(X_weights),"X and X_weights should have identical length"
         assert all([x.shape[0] == xw.shape[0] for x,xw in zip(X,X_weights)]),\
             "The elements of X and X_weights should have identical batch sizes"
@@ -934,9 +946,11 @@ class BrUNet(UNet,torch.nn.Module):
         bottleneck = sum([
             self.merge_ops[-1][j](bottleneck_features_pre_merge[j]) / w_sum
             for j in range(self.n_input_branches)])
-        curr = bottleneck
+        if self.encoder_only == True:
+            return bottleneck
         if return_bottleneck == True:
             return None,None,bottleneck
+        curr = bottleneck
         
         # merge outputs from different branches as the weighted sum of each 
         # for the skip connections (link_ops).

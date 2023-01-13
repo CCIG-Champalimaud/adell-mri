@@ -173,16 +173,14 @@ class BatchEnsembleWrapper(torch.nn.Module):
             if isinstance(idx,int):
                 pre = torch.unsqueeze(self.all_weights['pre'][idx],0)
                 post = torch.unsqueeze(self.all_weights['post'][idx],0)
-                X = torch.multiply(
-                    self.mod(X * unsqueeze_to_target(pre,X)),
-                    unsqueeze_to_target(post,X))
+                X = self.mod(X * unsqueeze_to_target(pre,X))
+                X = torch.multiply(X,unsqueeze_to_target(post,X))
             elif isinstance(idx,list) or isinstance(idx,tuple):
                 assert len(idx) == X.shape[0], "len(idx) must be == X.shape[0]"
                 pre = self.all_weights['pre'][idx]
                 post = self.all_weights['post'][idx]
-                X = torch.multiply(
-                    self.mod(X * unsqueeze_to_target(pre,X)),
-                    unsqueeze_to_target(post,X))
+                X = self.mod(X * unsqueeze_to_target(pre,X))
+                X = torch.multiply(X,unsqueeze_to_target(post,X))
             else:
                 raise NotImplementedError("idx has to be int, list or tuple")
         elif self.training == True:
@@ -195,13 +193,14 @@ class BatchEnsembleWrapper(torch.nn.Module):
             X = self.mod(X)
             X = unsqueeze_to_target(post,X) * X
         else:
-            all_outputs = []
-            for idx in range(self.n):
-                pre = torch.unsqueeze(self.all_weights['pre'][idx],0)
-                post = torch.unsqueeze(self.all_weights['post'][idx],0)
-                o = torch.multiply(
-                    self.mod(X * unsqueeze_to_target(pre,X)),
-                    unsqueeze_to_target(post,X))
-                all_outputs.append(o)
-            X = torch.stack(all_outputs).mean(0)
+            with torch.no_grad():
+                all_outputs = []
+                for idx in range(self.n):
+                    pre = unsqueeze_to_target(
+                        torch.unsqueeze(self.all_weights['pre'][idx],0),X)
+                    post = torch.unsqueeze(self.all_weights['post'][idx],0)
+                    o = self.mod(X * pre)
+                    o = torch.multiply(o,unsqueeze_to_target(post,o))
+                    all_outputs.append(o)
+                X = torch.stack(all_outputs).mean(0)
         return self.adn_op(X)

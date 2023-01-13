@@ -65,3 +65,5 @@ def test_transformer_windowed(embed_method,scale):
     assert list(out.shape) == [batch_size,np.prod(vit.embedding.n_windows),n_patches,token_size]
     assert list(vit.embedding.rearrange_rescale(out,scale).shape) == output_image_size
     assert list(vit.embedding.rearrange_inverse(out).shape) == im_size
+    
+test_transformer("convolutional",1)

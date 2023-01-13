@@ -12,7 +12,7 @@ if __name__ == "__main__":
     parser.add_argument('--input_dir',dest='input_dir')
     parser.add_argument('--pattern',dest='pattern',default="*nii.gz")
     parser.add_argument('--parameter',dest='parameter',default="spacing",
-                        choices=["spacing","size"])
+                        choices=["spacing","size","min_max"])
     parser.add_argument('--spacing',dest='spacing',default=None,nargs='+',
                         help="spacing to calculate the size")
     parser.add_argument('--quantile',dest='quantile',default=0.5,type=float)

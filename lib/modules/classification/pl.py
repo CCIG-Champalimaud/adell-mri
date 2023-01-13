@@ -3,12 +3,156 @@ import torch
 import torch.nn.functional as F
 import torchmetrics
 import pytorch_lightning as pl
-from typing import Callable
+import torchmetrics.classification as tmc
+from typing import Callable,List,Dict
+from abc import ABC
 
 from .classification import (
-    CatNet,OrdNet,ordinal_prediction_to_class,SegCatNet)
+    CatNet,OrdNet,ordinal_prediction_to_class,SegCatNet,
+    UNetEncoder,GenericEnsemble,ViTClassifier,FactorizedViTClassifier)
+from ..learning_rate import CosineAnnealingWithWarmupLR
 
-class ClassNetPL(pl.LightningModule):
+def f1(prediction,y):
+    prediction = prediction.detach() > 0.5
+    tp = torch.logical_and(prediction == y,y == 1).sum().float()
+    tn = torch.logical_and(prediction == y,y == 0).sum().float()
+    fp = torch.logical_and(prediction != y,y == 0).sum().float()
+    fn = torch.logical_and(prediction != y,y == 1).sum().float()
+    tp,tn,fp,fn = [float(x) for x in [tp,tn,fp,fn]]
+    n = tp
+    d = (tp+0.5*(fp + fn))
+    if d > 0:
+        return n/d
+    else:
+        return 0
+
+def get_metric_dict(nc:int,
+                    metric_keys:List[str]=None,
+                    prefix:str="")->Dict[str,torchmetrics.Metric]:
+    metric_dict = torch.nn.ModuleDict({})
+    if nc == 2:
+        md = {
+            "Rec":lambda: tmc.BinaryRecall(),
+            "Spe":lambda: tmc.BinarySpecificity(),
+            "Pr":lambda: tmc.BinaryPrecision(),
+            "F1":lambda: tmc.BinaryFBetaScore(1.0),
+            "AUC":lambda: torchmetrics.AUROC()}
+    else:
+        md = {"Rec":lambda: torchmetrics.Recall(nc,average="macro"),
+              "Spe":lambda: torchmetrics.Specificity(),
+              "Pr":lambda: torchmetrics.Precision(nc,average="macro"),
+              "F1":lambda: torchmetrics.FBetaScore(nc,average="macro"),
+              "AUC":lambda: torchmetrics.AUROC()}
+    if metric_keys is None:
+        metric_keys = list(md.keys())
+    for k in metric_keys:
+        if k in md:
+            metric_dict[prefix+k] = md[k]()
+    return metric_dict
+
+class ClassPLABC(pl.LightningModule,ABC):
+    """Abstract classification class for LightningModules.
+    """
+    def __init__(self):
+        super().__init__()
+        
+        self.raise_nan_loss = False
+
+    def calculate_loss(self,prediction,y,with_params=False):
+        y = y.to(prediction.device)
+        if self.n_classes > 2:
+            if len(y.shape) > 1:
+                y = y.squeeze(1)
+            y = y.to(torch.int64)
+        else:
+            y = y.float()
+        if with_params == True:
+            d = y.device
+            params = {k:self.loss_params[k].to(d) for k in self.loss_params}
+            loss = self.loss_fn(prediction,y,**params)
+        else:
+            loss = self.loss_fn(prediction,y)
+        return loss.mean()
+
+    def training_step(self,batch,batch_idx):
+        x, y = batch[self.image_key],batch[self.label_key]
+        prediction = self.forward(x)
+        prediction = torch.squeeze(prediction,1)
+
+        loss = self.calculate_loss(prediction,y,with_params=True)
+        
+        self.log("loss",loss,on_epoch=True,
+                 on_step=False,prog_bar=True,
+                 batch_size=x.shape[0],sync_dist=True)
+        return loss
+    
+    def validation_step(self,batch,batch_idx):
+        x, y = batch[self.image_key],batch[self.label_key]
+        prediction = self.forward(x)
+        prediction = torch.squeeze(prediction,1)
+
+        loss = self.calculate_loss(prediction,y,with_params=True)
+        self.log("val_loss",loss,on_epoch=True,
+                 on_step=False,prog_bar=True,
+                 batch_size=x.shape[0],sync_dist=True)        
+        self.update_metrics(prediction,y,self.val_metrics)
+        return loss
+
+    def test_step(self,batch,batch_idx):
+        x, y = batch[self.image_key],batch[self.label_key]
+        prediction = self.forward(x)
+        prediction = torch.squeeze(prediction,1)
+
+        loss = self.calculate_loss(prediction,y)
+        self.log("test_loss",loss,on_epoch=True,
+                 on_step=False,prog_bar=True,
+                 batch_size=x.shape[0],sync_dist=True)        
+        self.update_metrics(prediction,y,self.test_metrics)
+        return loss
+
+    def train_dataloader(self) -> torch.utils.data.DataLoader:
+        return self.training_dataloader_call()
+
+    def configure_optimizers(self):
+        optimizer = torch.optim.Adam(
+            self.parameters(),lr=self.learning_rate,
+            weight_decay=self.weight_decay)
+        lr_schedulers = CosineAnnealingWithWarmupLR(
+            optimizer,T_max=self.n_epochs,n_warmup_steps=self.warmup_steps,
+            eta_min=1e-6)
+
+        return {"optimizer":optimizer,
+                "lr_scheduler":lr_schedulers,
+                "monitor":"val_loss"}
+    
+    def on_train_epoch_end(self):
+        sch = self.lr_schedulers().state_dict()
+        lr = self.learning_rate
+        last_lr = sch['_last_lr'][0] if '_last_lr' in sch else lr
+        self.log("lr",last_lr,sync_dist=True,prog_bar=True)
+    
+    def setup_metrics(self):
+        self.train_metrics = get_metric_dict(
+            self.n_classes,[],prefix="")
+        self.val_metrics = get_metric_dict(
+            self.n_classes,None,prefix="V_")
+        self.test_metrics = get_metric_dict(
+            self.n_classes,None,prefix="T_")
+
+    def update_metrics(self,prediction,y,metrics):
+        if self.n_classes > 2:
+            prediction = torch.softmax(prediction,1).to(torch.int64)
+        else:
+            prediction = torch.sigmoid(prediction)
+        if len(y.shape) > 1:
+            y.squeeze(1)
+        for k in metrics:
+            metrics[k](prediction,y)
+            self.log(
+                k,metrics[k],on_epoch=True,
+                on_step=False,prog_bar=True,sync_dist=True)
+
+class ClassNetPL(ClassPLABC):
     def __init__(
         self,
         net_type: str="cat",
@@ -16,12 +160,14 @@ class ClassNetPL(pl.LightningModule):
         label_key: str="label",
         learning_rate: float=0.001,
         batch_size: int=4,
-        weight_decay: float=0.005,
+        weight_decay: float=0.0,
         training_dataloader_call: Callable=None,
         loss_fn: Callable=F.binary_cross_entropy,
         loss_params: dict={},
+        n_epochs: int=100,
+        warmup_steps: int=0,
         *args,**kwargs) -> torch.nn.Module:
-        """YOLO-like network implementation for Pytorch Lightning.
+        """Classification network implementation for Pytorch Lightning.
 
         Args:
             image_key (str): key corresponding to the key from the train
@@ -38,6 +184,9 @@ class ClassNetPL(pl.LightningModule):
                 F.binary_cross_entropy
             loss_params (dict, optional): classification loss parameters. 
                 Defaults to {}.
+            n_epochs (int, optional): number of epochs. Defaults to 100.
+            warmup_steps (int, optional): number of warmup steps. Defaults 
+                to 0.
             args: arguments for classification network class.
             kwargs: keyword arguments for classification network class.
 
@@ -56,15 +205,14 @@ class ClassNetPL(pl.LightningModule):
         self.training_dataloader_call = training_dataloader_call
         self.loss_fn = loss_fn
         self.loss_params = loss_params
+        self.n_epochs = n_epochs
+        self.warmup_steps = warmup_steps
         self.args = args
         self.kwargs = kwargs
         
         self.setup_network()
         self.setup_metrics()
-        
-        self.loss_accumulator = 0.
-        self.loss_accumulator_d = 0.
-   
+           
     def setup_network(self):
         if self.net_type == "cat":
             self.network = CatNet(*self.args,**self.kwargs)
@@ -76,119 +224,20 @@ class ClassNetPL(pl.LightningModule):
         self.forward = self.network.forward
         self.n_classes = self.network.n_classes
 
-    def calculate_loss(self,prediction,y,with_params=True):
-        if self.n_classes > 2:
-            if len(y.shape) > 1:
-                y = y.squeeze(1)
-            y = y.to(torch.int64)
-        else:
-            y = y.float()
-        if with_params == True:
-            loss = self.loss_fn(prediction,y,**self.loss_params)
-        else:
-            loss = self.loss_fn(prediction,y)
-        return loss.mean()
-
-    def update_metrics(self,prediction,y,metrics,log=True):
+    def update_metrics(self,prediction,y,metrics):
         if self.net_type == "ord":
             prediction = ordinal_prediction_to_class(prediction)
         elif self.n_classes > 2:
-            prediction = torch.argmax(prediction,1).to(torch.int64)
+            prediction = torch.softmax(prediction,1).to(torch.int64)
+        else:
+            prediction = torch.sigmoid(prediction)
         if len(y.shape) > 1:
             y.squeeze(1)
         for k in metrics:
-            metrics[k].update(prediction,y)
-            if log == True:
-                self.log(
-                    k,metrics[k],on_epoch=True,
-                    on_step=False,prog_bar=True)
-
-    def training_step(self,batch,batch_idx):
-        x, y = batch[self.image_key],batch[self.label_key]
-        prediction = self.forward(x)
-        prediction = torch.squeeze(prediction,1)
-
-        loss = self.calculate_loss(prediction,y)
-        
-        self.log("train_loss", loss)
-        self.update_metrics(prediction,y,self.train_metrics)
-        return loss
-    
-    def validation_step(self,batch,batch_idx):
-        x, y = batch[self.image_key],batch[self.label_key]
-        prediction = self.forward(x)
-        prediction = torch.squeeze(prediction,1)
-
-        loss = self.calculate_loss(prediction,y)
-
-        self.loss_accumulator += loss.detach().cpu().numpy()
-        self.loss_accumulator_d += 1
-        
-        self.update_metrics(prediction,y,self.val_metrics,log=False)
-        return loss
-
-    def test_step(self,batch,batch_idx):
-        x, y = batch[self.image_key],batch[self.label_key]
-        prediction = self.forward(x)
-        prediction = torch.squeeze(prediction,1)
-
-        loss = self.calculate_loss(prediction,y)
-            
-        self.update_metrics(prediction,y,self.test_metrics,log=False)
-        return loss
-
-    def train_dataloader(self) -> torch.utils.data.DataLoader:
-        return self.training_dataloader_call()
-
-    def configure_optimizers(self):
-        optimizer = torch.optim.AdamW(
-            self.parameters(),lr=self.learning_rate,
-            weight_decay=self.weight_decay,amsgrad=True)
-        lr_schedulers = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer,patience=5,min_lr=1e-6,factor=0.5)
-
-        return {"optimizer":optimizer,
-                "lr_scheduler":lr_schedulers,
-                "monitor":"val_loss"}
-    
-    def on_validation_epoch_end(self):
-        for k in self.val_metrics: 
-            val = self.val_metrics[k].compute()
+            metrics[k](prediction,y)
             self.log(
-                k,val,prog_bar=True)
-            self.val_metrics[k].reset()
-        val_loss = self.loss_accumulator/self.loss_accumulator_d
-        sch = self.lr_schedulers().state_dict()
-        lr = self.learning_rate
-        last_lr = sch['_last_lr'][0] if '_last_lr' in sch else lr
-        self.log("lr",last_lr)
-        self.log("val_loss",val_loss,prog_bar=True)
-        self.loss_accumulator = 0.
-        self.loss_accumulator_d = 0.
-
-    def setup_metrics(self):
-        if self.n_classes == 2:
-            C,A,M = None,None,"micro"
-        else:
-            C,A,M = self.n_classes,None,"macro"
-        metric_dict = {
-            "Rec":torchmetrics.Recall,
-            "Prec":torchmetrics.Precision,
-            "F1":torchmetrics.F1Score}
-        self.train_metrics = torch.nn.ModuleDict({})
-        self.val_metrics = torch.nn.ModuleDict({})
-        self.test_metrics = torch.nn.ModuleDict({})
-        for k in metric_dict:
-            self.train_metrics[k] = metric_dict[k](
-                C,mdmc_average=A,average=M)
-            self.val_metrics["val"+k] = metric_dict[k](
-                C,mdmc_average=A,average=M)
-            if self.n_classes > 2:
-                self.test_metrics["test"+k] = metric_dict[k](
-                    C,mdmc_average=A,average="none")
-            else:
-                self.test_metrics["test"+k] = metric_dict[k](
-                    C,mdmc_average=A,average=M)
+                k,metrics[k],on_epoch=True,
+                on_step=False,prog_bar=True)
 
 class SegCatNetPL(SegCatNet,pl.LightningModule):
     def __init__(self,
@@ -198,10 +247,11 @@ class SegCatNetPL(SegCatNet,pl.LightningModule):
                  feature_conditioning_key: str=None,
                  learning_rate: float=0.001,
                  batch_size: int=4,
-                 weight_decay: float=0.005,
+                 weight_decay: float=0.0,
                  training_dataloader_call: Callable=None,
                  loss_fn: Callable=F.binary_cross_entropy_with_logits,
                  loss_params: dict={},
+                 n_epochs: int=100,
                  *args,**kwargs):
 
         super().__init__(*args,**kwargs)
@@ -216,12 +266,10 @@ class SegCatNetPL(SegCatNet,pl.LightningModule):
         self.trainig_dataloader_call = training_dataloader_call
         self.loss_fn = loss_fn
         self.loss_params = loss_params
+        self.n_epochs = n_epochs
 
         self.setup_metrics()
         
-        self.loss_accumulator = 0.
-        self.loss_accumulator_d = 0.
-   
     def calculate_loss(self,prediction,y):
         y = y.type(torch.float32)
         if len(y.shape) > 1:
@@ -248,7 +296,7 @@ class SegCatNetPL(SegCatNet,pl.LightningModule):
         else:
             pred = F.softmax(pred,-1)
         for k in metrics:
-            metrics[k].update(pred,y)
+            metrics[k](pred,y)
             self.log(k,metrics[k],**kwargs)
 
     def loss_wrapper(self,x,y,x_cond,x_fc):
@@ -280,11 +328,6 @@ class SegCatNetPL(SegCatNet,pl.LightningModule):
         pred_final,loss = self.loss_wrapper(x,y,x_cond,x_fc)
 
         self.log("train_loss", loss)
-        try: y = torch.round(y).int()
-        except: pass
-        self.update_metrics(
-            self.train_metrics,pred_final,y,
-            on_epoch=True,on_step=False,prog_bar=True)
         return loss
     
     def validation_step(self,batch,batch_idx):
@@ -300,8 +343,6 @@ class SegCatNetPL(SegCatNet,pl.LightningModule):
 
         pred_final,loss = self.loss_wrapper(x,y,x_cond,x_fc)
 
-        self.loss_accumulator += loss
-        self.loss_accumulator_d += 1.
         try: y = torch.round(y).int()
         except: pass
         self.update_metrics(
@@ -328,34 +369,6 @@ class SegCatNetPL(SegCatNet,pl.LightningModule):
             self.test_metrics,pred_final,y,
             on_epoch=True,on_step=False,prog_bar=True)
         return loss
-        
-    def train_dataloader(self) -> torch.utils.data.DataLoader:
-        return self.training_dataloader_call()
-
-    def configure_optimizers(self):
-        optimizer = torch.optim.AdamW(
-            self.parameters(),lr=self.learning_rate,
-            weight_decay=self.weight_decay)
-        lr_schedulers = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer,patience=10,min_lr=1e-6,factor=0.5)
-
-        return {"optimizer":optimizer,
-                "lr_scheduler":lr_schedulers,
-                "monitor":"val_loss"}
-    
-    def on_validation_epoch_end(self):
-        D = self.loss_accumulator_d
-        if D > 0:
-            val_loss = self.loss_accumulator/D
-        else:
-            val_loss = np.nan
-        self.log("val_loss",val_loss,prog_bar=True)
-        sch = self.lr_schedulers().state_dict()
-        lr = self.learning_rate
-        last_lr = sch['_last_lr'][0] if '_last_lr' in sch else lr
-        self.log("lr",last_lr)
-        self.loss_accumulator = 0.
-        self.loss_accumulator_d = 0.
 
     def setup_metrics(self):
         if self.n_classes == 2:
@@ -386,3 +399,298 @@ class SegCatNetPL(SegCatNet,pl.LightningModule):
             self.test_metrics["T_"+k] = md[k](
                 num_classes=C,mdmc_average=A,average=m,ignore_index=I).to(
                     self.device)
+
+class UNetEncoderPL(UNetEncoder,ClassPLABC):
+    """U-Net encoder-based classification network implementation for Pytorch
+    Lightning.
+    """
+    def __init__(
+        self,
+        image_key: str="image",
+        label_key: str="label",
+        learning_rate: float=0.001,
+        batch_size: int=4,
+        weight_decay: float=0.0,
+        training_dataloader_call: Callable=None,
+        loss_fn: Callable=F.binary_cross_entropy,
+        loss_params: dict={},
+        n_epochs: int=100,
+        warmup_steps: int=0,
+        *args,**kwargs) -> torch.nn.Module:
+        """
+        Args:
+            image_key (str): key corresponding to the key from the train
+                dataloader.
+            label_key (str): key corresponding to the label key from the train
+                dataloader.
+            learning_rate (float, optional): learning rate. Defaults to 0.001.
+                batch_size (int, optional): batch size. Defaults to 4.
+            weight_decay (float, optional): weight decay for optimizer. Defaults 
+                to 0.005.
+            training_dataloader_call (Callable, optional): call for the 
+                training dataloader. Defaults to None.
+            loss_fn (Callable, optional): loss function. Defaults to 
+                F.binary_cross_entropy
+            loss_params (dict, optional): classification loss parameters. 
+                Defaults to {}.
+            n_epochs (int, optional): number of epochs. Defaults to 100.
+            warmup_steps (int, optional): number of warmup steps. Defaults 
+                to 0.
+            args: arguments for classification network class.
+            kwargs: keyword arguments for classification network class.
+
+        Returns:
+            pl.LightningModule: a classification network module.
+        """
+        
+        super().__init__(*args,**kwargs)
+
+        self.image_key = image_key
+        self.label_key = label_key
+        self.learning_rate = learning_rate
+        self.batch_size = batch_size
+        self.weight_decay = weight_decay
+        self.training_dataloader_call = training_dataloader_call
+        self.loss_fn = loss_fn
+        self.loss_params = loss_params
+        self.n_epochs = n_epochs
+        self.warmup_steps = warmup_steps
+        self.args = args
+        self.kwargs = kwargs
+        
+        self.setup_metrics()
+
+class GenericEnsemblePL(GenericEnsemble,pl.LightningModule):
+    """Ensemble classification network for PL.
+    """
+    def __init__(
+        self,
+        image_keys: List[str]="image",
+        label_key: str="label",
+        learning_rate: float=0.001,
+        batch_size: int=4,
+        weight_decay: float=0.0,
+        training_dataloader_call: Callable=None,
+        loss_fn: Callable=F.binary_cross_entropy,
+        loss_params: dict={},
+        n_epochs: int=100,
+        *args,**kwargs) -> torch.nn.Module:
+        """
+        Args:
+            image_keys (str): key corresponding to the key from the train
+                dataloader.
+            label_key (str): key corresponding to the label key from the train
+                dataloader.
+            learning_rate (float, optional): learning rate. Defaults to 0.001.
+                batch_size (int, optional): batch size. Defaults to 4.
+            weight_decay (float, optional): weight decay for optimizer. Defaults 
+                to 0.005.
+            training_dataloader_call (Callable, optional): call for the 
+                training dataloader. Defaults to None.
+            loss_fn (Callable, optional): loss function. Defaults to 
+                F.binary_cross_entropy
+            loss_params (dict, optional): classification loss parameters. 
+                Defaults to {}.
+            n_epochs (int, optional): number of epochs. Defaults to 100.
+            args: arguments for classification network class.
+            kwargs: keyword arguments for classification network class.
+
+        Returns:
+            pl.LightningModule: a classification network module.
+        """
+        
+        super().__init__(*args,**kwargs)
+
+        self.image_keys = image_keys
+        self.label_key = label_key
+        self.learning_rate = learning_rate
+        self.batch_size = batch_size
+        self.weight_decay = weight_decay
+        self.training_dataloader_call = training_dataloader_call
+        self.loss_fn = loss_fn
+        self.loss_params = loss_params
+        self.n_epochs = n_epochs
+        self.args = args
+        self.kwargs = kwargs
+        
+        self.setup_metrics()
+
+    def training_step(self,batch,batch_idx):
+        x, y = [batch[k] for k in self.image_keys],batch[self.label_key]
+        prediction = self.forward(x)
+        prediction = torch.squeeze(prediction,1)
+
+        loss = self.calculate_loss(prediction,y)
+        
+        self.log("train_loss", loss)
+        return loss
+    
+    def validation_step(self,batch,batch_idx):
+        x, y = [batch[k] for k in self.image_keys],batch[self.label_key]
+        prediction = self.forward(x)
+        prediction = torch.squeeze(prediction,1)
+
+        loss = self.calculate_loss(prediction,y)
+        self.log("val_loss",loss,on_epoch=True,
+                 on_step=False,prog_bar=True,
+                 batch_size=x.shape[0])        
+        self.update_metrics(prediction,y,self.val_metrics)
+        return loss
+
+    def test_step(self,batch,batch_idx):
+        x, y = [batch[k] for k in self.image_keys],batch[self.label_key]
+        prediction = self.forward(x)
+        prediction = torch.squeeze(prediction,1)
+
+        loss = self.calculate_loss(prediction,y)
+            
+        self.update_metrics(prediction,y,self.test_metrics)
+        return loss
+
+    def train_dataloader(self) -> torch.utils.data.DataLoader:
+        return self.training_dataloader_call()
+
+    def configure_optimizers(self):
+        optimizer = torch.optim.Adam(
+            self.parameters(),lr=self.learning_rate,
+            weight_decay=self.weight_decay)
+        lr_schedulers = torch.optim.lr_scheduler.CosineAnnealingLR(
+            optimizer,self.n_epochs)
+
+        return {"optimizer":optimizer,
+                "lr_scheduler":lr_schedulers,
+                "monitor":"val_loss"}
+    
+    def on_train_epoch_end(self):
+        sch = self.lr_schedulers().state_dict()
+        lr = self.learning_rate
+        last_lr = sch['_last_lr'][0] if '_last_lr' in sch else lr
+        self.log("lr",last_lr)
+
+    def setup_metrics(self):
+        self.train_metrics = get_metric_dict(
+            self.n_classes,[],prefix="")
+        self.val_metrics = get_metric_dict(
+            self.n_classes,None,prefix="V_")
+        self.test_metrics = get_metric_dict(
+            self.n_classes,None,prefix="T_")
+
+class ViTClassifierPL(ViTClassifier,ClassPLABC):
+    """ViT classification network implementation for Pytorch
+    Lightning.
+    """
+    def __init__(
+        self,
+        image_key: str="image",
+        label_key: str="label",
+        learning_rate: float=0.001,
+        batch_size: int=4,
+        weight_decay: float=0.0,
+        training_dataloader_call: Callable=None,
+        loss_fn: Callable=F.binary_cross_entropy,
+        loss_params: dict={},
+        n_epochs: int=100,
+        warmup_steps: int=0,
+        *args,**kwargs) -> torch.nn.Module:
+        """
+        Args:
+            image_key (str): key corresponding to the key from the train
+                dataloader.
+            label_key (str): key corresponding to the label key from the train
+                dataloader.
+            learning_rate (float, optional): learning rate. Defaults to 0.001.
+                batch_size (int, optional): batch size. Defaults to 4.
+            weight_decay (float, optional): weight decay for optimizer. Defaults 
+                to 0.005.
+            training_dataloader_call (Callable, optional): call for the 
+                training dataloader. Defaults to None.
+            loss_fn (Callable, optional): loss function. Defaults to 
+                F.binary_cross_entropy
+            loss_params (dict, optional): classification loss parameters. 
+                Defaults to {}.
+            n_epochs (int, optional): number of epochs. Defaults to 100.
+            warmup_steps (int, optional): number of warmup steps. Defaults 
+                to 0.
+            args: arguments for classification network class.
+            kwargs: keyword arguments for classification network class.
+
+        Returns:
+            pl.LightningModule: a classification network module.
+        """
+        
+        super().__init__(*args,**kwargs)
+
+        self.image_key = image_key
+        self.label_key = label_key
+        self.learning_rate = learning_rate
+        self.batch_size = batch_size
+        self.weight_decay = weight_decay
+        self.training_dataloader_call = training_dataloader_call
+        self.loss_fn = loss_fn
+        self.loss_params = loss_params
+        self.n_epochs = n_epochs
+        self.warmup_steps = warmup_steps
+        self.args = args
+        self.kwargs = kwargs
+        
+        self.setup_metrics()
+
+class FactorizedViTClassifierPL(FactorizedViTClassifier,ClassPLABC):
+    """ViT classification network implementation for Pytorch
+    Lightning.
+    """
+    def __init__(
+        self,
+        image_key: str="image",
+        label_key: str="label",
+        learning_rate: float=0.001,
+        batch_size: int=4,
+        weight_decay: float=0.0,
+        training_dataloader_call: Callable=None,
+        loss_fn: Callable=F.binary_cross_entropy,
+        loss_params: dict={},
+        n_epochs: int=100,
+        warmup_steps: int=0,
+        *args,**kwargs) -> torch.nn.Module:
+        """
+        Args:
+            image_key (str): key corresponding to the key from the train
+                dataloader.
+            label_key (str): key corresponding to the label key from the train
+                dataloader.
+            learning_rate (float, optional): learning rate. Defaults to 0.001.
+                batch_size (int, optional): batch size. Defaults to 4.
+            weight_decay (float, optional): weight decay for optimizer. Defaults 
+                to 0.005.
+            training_dataloader_call (Callable, optional): call for the 
+                training dataloader. Defaults to None.
+            loss_fn (Callable, optional): loss function. Defaults to 
+                F.binary_cross_entropy
+            loss_params (dict, optional): classification loss parameters. 
+                Defaults to {}.
+            n_epochs (int, optional): number of epochs. Defaults to 100.
+            warmup_steps (int, optional): number of warmup steps. Defaults 
+                to 0.
+            args: arguments for classification network class.
+            kwargs: keyword arguments for classification network class.
+
+        Returns:
+            pl.LightningModule: a classification network module.
+        """
+            
+        super().__init__(*args,**kwargs)
+
+        self.image_key = image_key
+        self.label_key = label_key
+        self.learning_rate = learning_rate
+        self.batch_size = batch_size
+        self.weight_decay = weight_decay
+        self.training_dataloader_call = training_dataloader_call
+        self.loss_fn = loss_fn
+        self.loss_params = loss_params
+        self.n_epochs = n_epochs
+        self.warmup_steps = warmup_steps
+        self.args = args
+        self.kwargs = kwargs
+        
+        self.setup_metrics()

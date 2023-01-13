@@ -911,7 +911,7 @@ class LabelOperatord(monai.transforms.Transform):
                  mode:str="cat",positive_labels:List[int]=[1],
                  output_keys:Dict[str,str]={}):
         self.keys = keys
-        self.possible_labels = possible_labels
+        self.possible_labels = [str(x) for x in possible_labels]
         self.mode = mode
         self.positive_labels = positive_labels
         self.output_keys = output_keys
@@ -921,7 +921,9 @@ class LabelOperatord(monai.transforms.Transform):
             l:i for i,l in enumerate(self.possible_labels)}
 
     def binary(self,x):
-        if max(x) in self.positive_labels:
+        if isinstance(x,list) or isinstance(x,tuple):
+            x = max(x)
+        if str(x) in self.positive_labels:
             x = 1
         else:
             x = 0

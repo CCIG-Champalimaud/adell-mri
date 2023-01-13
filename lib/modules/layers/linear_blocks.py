@@ -78,12 +78,11 @@ class MLP(torch.nn.Module):
                 ops.append(torch.nn.Linear(curr_in,curr_out))
                 ops.append(self.adn_fn(curr_out))
                 curr_in = curr_out
-                curr_out = self.structure[i]    
-            ops.append(torch.nn.Sequential(
-                torch.nn.Linear(curr_in,curr_out),
-                self.adn_fn(curr_out)))
+                curr_out = self.structure[i]
+            ops.append(torch.nn.Linear(curr_in,curr_out))
         else:
             curr_out = curr_in
+        ops.append(self.adn_fn(curr_out))
         ops.append(torch.nn.Linear(curr_out,self.output_dim))
         self.op = torch.nn.Sequential(*ops)
     
@@ -182,8 +181,8 @@ class SelfAttention(torch.nn.Module):
         """Initialises layers.
         """
         self.qkv_dim = self.attention_dim*2+self.output_dim
-        self.qkv = MLP(self.input_dim,
-                       self.qkv_dim)
+        self.qkv = torch.nn.Linear(
+            self.input_dim,self.qkv_dim,bias=False)
         self.q_idx = torch.arange(self.attention_dim).long()
         self.k_idx = torch.arange(self.attention_dim,
                                   self.attention_dim*2).long()
@@ -267,7 +266,8 @@ class MultiHeadSelfAttention(torch.nn.Module):
         real_attention_dim = self.attention_dim // self.n_heads
         real_hidden_dim = self.hidden_dim // self.n_heads
         self.qkv_dim = self.attention_dim*2+self.hidden_dim
-        self.qkv = torch.nn.Linear(self.input_dim,self.qkv_dim)
+        self.qkv = torch.nn.Linear(
+            self.input_dim,self.qkv_dim,bias=False)
         a,b,c = (real_attention_dim,
                  real_attention_dim*2,
                  real_attention_dim*2 + real_hidden_dim)

@@ -124,6 +124,63 @@ def generate_mask(image_size:Size2dOr3d,
 
     return attn_mask
 
+class SliceLinearEmbedding(torch.nn.Module):
+    def __init__(self,
+                 n_channels:int,
+                 image_size:Tuple[int,int,int],
+                 patch_size:Union[Tuple[int,int],Tuple[int,int,int]],
+                 dropout_rate:float=0.0,
+                 use_class_token:bool=False):
+        super().__init__()
+        self.n_channels = n_channels
+        self.image_size = image_size
+        self.patch_size = patch_size
+        self.dropout_rate = dropout_rate
+        self.use_class_token = use_class_token
+        
+        self.drop_op = torch.nn.Dropout(self.dropout_rate)
+        
+        self.n_patches = np.prod([
+            s // p for s,p in zip(self.image_size[:2],self.patch_size[:2])])
+        self.embedding_size = np.prod([*patch_size[:2],n_channels])
+        self.positional_embedding = torch.nn.Parameter(
+            torch.zeros([1,self.image_size[-1],self.n_patches,
+                         self.embedding_size]))
+        if self.use_class_token == True:
+            self.class_token = torch.nn.Parameter(
+               torch.zeros([1,1,1,self.embedding_size]))
+        
+    def linearize_image_slices(self,image:torch.Tensor)->torch.Tensor:
+        b = image.shape[0]
+        h,w,s = self.image_size
+        c = self.n_channels
+        x,y,z = self.patch_size
+
+        return einops.rearrange(
+            image,"b c (h x) (w y) s -> b s (h w) (c x y)",
+            x=x,h=h//x,y=y,w=w//y,b=b,c=c,s=s)
+     
+    def forward(self,X):
+        """Forward pass.
+
+        Args:
+            X (torch.Tensor): a tensor with shape 
+                [-1,self.n_channels,*self.image_size]
+
+        Returns:
+            torch.Tensor: the embedding of X, with size 
+                [X.shape[0],self.n_patches,self.true_n_features].
+        """
+        # output should always be [X.shape[0],self.n_patches,self.true_n_features]
+        b,s = X.shape[0],X.shape[-1]
+        X = self.linearize_image_slices(X)
+        X = X + self.positional_embedding
+        if self.use_class_token == True:
+            class_token = einops.repeat(
+                self.class_token,'() () n e -> b s n e',b=b,s=s)
+            X = torch.concat([class_token,X],2)
+        return self.drop_op(X)
+        
 class LinearEmbedding(torch.nn.Module):
     """Linearly embeds images as described in the vision transformer paper
     [1]. Essentially, it rearranges a given image of size [b,c,h,w] with a 
@@ -151,7 +208,8 @@ class LinearEmbedding(torch.nn.Module):
                  out_dim:int=None,
                  window_size:Size2dOr3d=None,
                  dropout_rate:float=0.0,
-                 embed_method:str="linear"):
+                 embed_method:str="linear",
+                 use_class_token:bool=False):
         """    
         Args:
             image_size (Size2dOr3d): size of the input image.
@@ -163,7 +221,10 @@ class LinearEmbedding(torch.nn.Module):
             dropout_rate (float, optional): dropout rate of the dropout 
                 operation that is applied after the sum of the linear 
                 embeddings with the positional embeddings. Defaults to 0.0.
-            embed_method (str, optional): . Defaults to "linear".
+            embed_method (str, optional): embedding method. Defaults to 
+                "linear".
+            use_class_token (bool, optional): whether a class token should be
+                used. Defaults to False.
         """
         super().__init__()
         self.image_size = image_size
@@ -173,6 +234,7 @@ class LinearEmbedding(torch.nn.Module):
         self.window_size = window_size
         self.dropout_rate = dropout_rate
         self.embed_method = embed_method
+        self.use_class_token = use_class_token
         
         assert self.embed_method in ["linear","convolutional"],\
             "embed_method must be one of 'linear' or 'convolutional'"
@@ -188,6 +250,7 @@ class LinearEmbedding(torch.nn.Module):
         self.init_conv_if_necessary()
         self.init_linear_layers_if_necessary()
         self.init_dropout()
+        self.initialize_classification_token()
         self.initialize_positional_embeddings()
         self.get_einop_params()
         self.linearized_dim = [-1,self.n_patches,self.n_features]
@@ -252,12 +315,22 @@ class LinearEmbedding(torch.nn.Module):
                                              self.n_windows)]
         self.n_patches = int(np.prod(self.n_patches_split))
         self.n_features = np.prod(self.patch_size) * self.n_channels
+    
+    def initialize_classification_token(self):
+        """Initializes the classification token.
+        """
+        if self.use_class_token == True:
+            self.class_token = torch.nn.Parameter(
+               torch.zeros([1,1,self.true_n_features]))
         
     def initialize_positional_embeddings(self):
-        """Initilizes the positional embedding.
+        """Initilizes the positional embedding with a truncated normal 
+        distribution.
         """
         self.positional_embedding = torch.nn.Parameter(
-            torch.zeros([1,self.n_patches,self.true_n_features]))
+            torch.rand(1,self.n_patches,self.true_n_features))
+        torch.nn.init.trunc_normal_(
+            self.positional_embedding,mean=0.0,std=0.02,a=-2.0,b=2.0)
 
     def einops_tuple(self,l):
         if isinstance(l,list):
@@ -446,6 +519,10 @@ class LinearEmbedding(torch.nn.Module):
         X = self.rearrange(X)
         if no_pos_embed == False:
             X = X + self.positional_embedding
+        if self.use_class_token == True:
+            class_token = einops.repeat(self.class_token,'() n e -> b n e',
+                                        b=X.shape[0])
+            X = torch.concat([class_token,X],1)
         return self.drop_op(X)
     
 class TransformerBlock(torch.nn.Module):
@@ -1034,7 +1111,8 @@ class ViT(torch.nn.Module):
                  dropout_rate:float=0.0,
                  embed_method:str="linear",
                  mlp_structure:Union[List[int],float]=[32,32],
-                 adn_fn=get_adn_fn(1,"identity","gelu")):
+                 adn_fn=get_adn_fn(1,"identity","gelu"),
+                 use_class_token:bool=False):
         """
         Args:
             image_size (Size2dOr3d): size of the input image.
@@ -1063,6 +1141,8 @@ class ViT(torch.nn.Module):
                 used in the MLP sub-layer. Should take as arguments the number
                 of channels in a given layer. Defaults to 
                 get_adn_fn(1,"identity","gelu").
+            use_class_token (bool, optional): adds classification token to 
+                embedding layer. Defaults to False.
         """
         super().__init__()
         self.image_size = image_size
@@ -1077,6 +1157,7 @@ class ViT(torch.nn.Module):
         self.embed_method = embed_method
         self.mlp_structure = mlp_structure
         self.adn_fn = adn_fn
+        self.use_class_token = use_class_token
         
         self.embedding = LinearEmbedding(
             image_size=self.image_size,
@@ -1085,7 +1166,8 @@ class ViT(torch.nn.Module):
             window_size=self.window_size,
             out_dim=embedding_size,
             embed_method=self.embed_method,
-            dropout_rate=self.dropout_rate)
+            dropout_rate=self.dropout_rate,
+            use_class_token=self.use_class_token)
         
         self.input_dim_primary = self.embedding.true_n_features
         if isinstance(self.mlp_structure,float):
@@ -1148,3 +1230,141 @@ class ViT(torch.nn.Module):
             if i in return_at:
                 outputs.append(embeded_X)
         return embeded_X,outputs
+
+class FactorizedViT(torch.nn.Module):
+    """Factorized vision transformer module. Put more simply, it is the 
+    concatenation of a SliceLinearEmbedding and two TransformberBlockStack [1]
+    (corresponding to within and between slice interactions).
+    
+    [1] https://www.sciencedirect.com/science/article/pii/S0010482522008459?via%3Dihub
+    """
+    def __init__(self,
+                 image_size:Size2dOr3d,
+                 patch_size:Size2dOr3d,
+                 n_channels:int,
+                 number_of_blocks:int,
+                 attention_dim:int,
+                 hidden_dim:int=None,
+                 n_heads:int=4,
+                 dropout_rate:float=0.0,
+                 mlp_structure:Union[List[int],float]=[32,32],
+                 adn_fn=get_adn_fn(1,"identity","gelu"),
+                 use_class_token:bool=False):
+        """
+        Args:
+            image_size (Size2dOr3d): size of the input image.
+            patch_size (Size2dOr3d): size of the patch size.
+            n_channels (int): number of channels in the input image.
+            number_of_blocks (int): number of blocks to be stacked.
+            attention_dim (int): size of attention.
+            hidden_dim (int, optional): size of hidden dimension (output of 
+                attention modules). Defaults to None (same as inferred input
+                dimension).
+            dropout_rate (float, optional): dropout rate of the dropout 
+                operations applied throughout this module. Defaults to 0.0.
+            embed_method (str, optional): . Defaults to "linear".
+            window_size (Size2dOr3d, optional): window size for windowed MSA.
+                Defaults to None (regular ViT).
+            n_heads (int, optional): number of attention heads. Defaults to 4.
+            mlp_structure (Union[List[int],float], optional): hidden layer 
+                structure. Should be a list of ints or float. If float, the 
+                structure becomes a single layer whose number of hidden units
+                is the inferred input dimension scaled by mlp_strcture. 
+                Defaults to [32,32].
+            adn_fn (Callable, optional): function that returns a 
+                torch.nn.Module that does activation/dropout/normalization,
+                used in the MLP sub-layer. Should take as arguments the number
+                of channels in a given layer. Defaults to 
+                get_adn_fn(1,"identity","gelu").
+            use_class_token (bool, optional): adds classification token to 
+                embedding layer. Defaults to False.
+        """
+        super().__init__()
+        self.image_size = image_size
+        self.patch_size = patch_size
+        self.n_channels = n_channels
+        self.number_of_blocks = number_of_blocks
+        self.attention_dim = attention_dim
+        self.hidden_dim = hidden_dim
+        self.n_heads = n_heads
+        self.dropout_rate = dropout_rate
+        self.mlp_structure = mlp_structure
+        self.adn_fn = adn_fn
+        self.use_class_token = use_class_token
+        
+        self.embedding = SliceLinearEmbedding(
+            image_size=self.image_size,
+            patch_size=self.patch_size,
+            n_channels=self.n_channels,
+            dropout_rate=self.dropout_rate,
+            use_class_token=self.use_class_token)
+
+        self.input_dim_primary = self.embedding.embedding_size
+
+        input_dim_primary = self.input_dim_primary
+
+        if self.hidden_dim is None:
+            hidden_dim = input_dim_primary
+        else:
+            hidden_dim = self.hidden_dim
+
+        if self.attention_dim is None:
+            attention_dim = input_dim_primary
+        else:
+            attention_dim = self.attention_dim
+
+        a = self.number_of_blocks // 2
+        b = self.number_of_blocks - a
+        self.transformer_block_within = TransformerBlockStack(
+            number_of_blocks=a,
+            input_dim_primary=input_dim_primary,
+            attention_dim=attention_dim,
+            hidden_dim=hidden_dim,
+            n_heads=self.n_heads,
+            mlp_structure=self.mlp_structure,
+            dropout_rate=self.dropout_rate,
+            adn_fn=self.adn_fn)
+        
+        self.transformer_block_between = TransformerBlockStack(
+            number_of_blocks=b,
+            input_dim_primary=input_dim_primary,
+            attention_dim=attention_dim,
+            hidden_dim=hidden_dim,
+            n_heads=self.n_heads,
+            mlp_structure=self.mlp_structure,
+            dropout_rate=self.dropout_rate,
+            adn_fn=self.adn_fn)
+
+        if self.use_class_token == True:
+            self.slice_class_token = torch.nn.Parameter(
+                torch.zeros([1,1,input_dim_primary]))
+            torch.nn.init.trunc_normal_(
+                self.slice_class_token,0,0.02,-2,2)
+    
+    def forward(
+        self,
+        X:torch.Tensor)->Tuple[torch.Tensor,TensorList]:
+        """Forward pass.
+
+        Args:
+            X (torch.Tensor): tensor of shape 
+                [-1,self.n_channels,*self.image_size]
+
+        Returns:
+            torch.Tensor: tensor of shape [...,self.input_dim_primary]
+            List[torch.Tensor]: list of intermediary tensors corresponding to
+                the ith transformer outputs, where i is contained in return_at.
+                Same shape as the final output.
+        """
+        embeded_X = self.embedding(X)
+        embeded_X,_ = self.transformer_block_within(embeded_X)
+        # extract the maximum value of each token for all slices
+        if self.use_class_token == True:
+            embeded_X = embeded_X[:,:,0]
+            class_token = einops.repeat(
+                self.slice_class_token,'() n e -> b n e',b=X.shape[0])
+            embeded_X = torch.concat([class_token,embeded_X],1)
+        else:
+            embeded_X = embeded_X.max(-2).values
+        embeded_X,_ = self.transformer_block_between(embeded_X)
+        return embeded_X

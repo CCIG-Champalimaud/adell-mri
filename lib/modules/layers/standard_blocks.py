@@ -27,7 +27,7 @@ class GlobalPooling(torch.nn.Module):
     def forward(self,X):
         X = self.op(X.flatten(start_dim=2),-1)
         if self.mode == "max":
-            X = X[0]
+            X = X.values
         return X
 
 class DepthWiseSeparableConvolution2d(torch.nn.Module):

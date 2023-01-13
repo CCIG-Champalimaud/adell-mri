@@ -15,6 +15,11 @@ def get_adn_fn(spatial_dim,norm_fn="batch",
             2:torch.nn.InstanceNorm2d,
             3:torch.nn.InstanceNorm3d,
         },
+        "layer":{
+            1:torch.nn.LayerNorm,
+            2:torch.nn.LayerNorm,
+            3:torch.nn.LayerNorm,
+        },
         "identity":{
             1:torch.nn.Identity,
             2:torch.nn.Identity,

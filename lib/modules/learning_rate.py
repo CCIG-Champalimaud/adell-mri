@@ -1,4 +1,6 @@
 import torch
+import math
+import warnings
 from torch.optim.lr_scheduler import _LRScheduler
 
 class PolynomialLRDecay(_LRScheduler):
@@ -42,7 +44,41 @@ class PolynomialLRDecay(_LRScheduler):
             for param_group, lr in zip(self.optimizer.param_groups, decay_lrs):
                 param_group['lr'] = lr
                 self._last_lr.append(lr)
-            
+          
+class CosineAnnealingWithWarmupLR(_LRScheduler):
+    """
+    """
+
+    def __init__(self, 
+                 optimizer,
+                 T_max,
+                 n_warmup_steps=0,
+                 eta_min=0, 
+                 last_epoch=-1, 
+                 verbose=False):
+        self.T_max = T_max - n_warmup_steps
+        self.n_warmup_steps = n_warmup_steps
+        self.eta_min = eta_min
+        self.initial_lr = eta_min
+        
+        self.last_lr = None
+        super(CosineAnnealingWithWarmupLR, self).__init__(optimizer, last_epoch, verbose)
+
+    def get_lr(self):
+        return self._get_closed_form_lr()
+
+    def _get_closed_form_lr(self):
+        le = self.last_epoch
+        nws = float(self.n_warmup_steps)
+        if self.last_epoch < (nws + 1):
+            lrs = [(base_lr-self.initial_lr) * (le/nws)
+                   for base_lr in self.base_lrs]
+        else:
+            lrs = [self.eta_min + (base_lr - self.eta_min) *
+                   (1 + math.cos(math.pi * (le-nws) / self.T_max)) / 2
+                   for base_lr in self.base_lrs]
+        return lrs
+  
 def poly_lr_decay(optimizer:torch.optim.Optimizer,
                         step:int,
                         initial_lr:float,

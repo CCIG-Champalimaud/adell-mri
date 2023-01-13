@@ -120,3 +120,5 @@ def unet_skip_feature(D,sd):
     weights = [torch.ones([2]) for _ in range(n_input)]
     o,bb = a(i,weights,X_feature_conditioning=i_feat,X_skip_layer=i_skip)
     assert list(o.shape) == output_size
+
+test_unet_base(depths[0],2,"regular","irregular")

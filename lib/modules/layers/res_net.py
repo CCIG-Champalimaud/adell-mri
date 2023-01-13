@@ -3,6 +3,8 @@ from .res_blocks import ResidualBlock2d
 from .res_blocks import ResidualBlock3d
 from .res_blocks import ResNeXtBlock2d
 from .res_blocks import ResNeXtBlock3d
+from .res_blocks import ConvNeXtBlock2d
+from .res_blocks import ConvNeXtBlock3d
 from typing import OrderedDict
 from .batch_ensemble import BatchEnsembleWrapper
 from ...custom_types import List,ModuleList,Tuple,Union
@@ -30,7 +32,6 @@ def resnet_to_encoding_ops(res_net:List[torch.nn.Module])->ModuleList:
                 torch.nn.ModuleList([a,b]))
     encoding_operations = torch.nn.ModuleList(encoding_operations)
     return encoding_operations
-
 
 class ResNetBackbone(torch.nn.Module):
     def __init__(
@@ -134,6 +135,141 @@ class ResNetBackbone(torch.nn.Module):
                 op.append(self.batch_ensemble_op(inp,inter,inp,k))
             prev_inp = inp
             op = torch.nn.Sequential(*op)
+            self.operations.append(op)
+            self.pooling_operations.append(self.max_pool_op(mp,mp))
+    
+    def forward_with_intermediate(self,X,after_pool=False):
+        X = self.input_layer(X)
+        X = self.first_pooling(X)
+        output_list = []
+        for op,pool_op in zip(self.operations,self.pooling_operations):
+            if after_pool == False:
+                X = op(X)
+                output_list.append(X)
+                X = pool_op(X)
+            else:
+                X = pool_op(op(X))
+                output_list.append(X)
+        return X,output_list
+
+    def forward_regular(self,X,batch_idx=None):
+        X = self.input_layer(X)
+        X = self.first_pooling(X)
+        for op,pool_op in zip(self.operations,self.pooling_operations):
+            if self.batch_ensemble > 0:
+                X = op(X,idx=batch_idx)
+            else:
+                X = op(X)
+            X = pool_op(X)
+        return X
+
+    def forward(self,X,return_intermediate:bool=False,after_pool:bool=False,
+                batch_idx:bool=None):
+        if return_intermediate == True:
+            return self.forward_with_intermediate(X,after_pool=after_pool)
+        else:
+            return self.forward_regular(X,batch_idx=batch_idx)
+
+class ResNetBackboneAlt(torch.nn.Module):
+    def __init__(
+        self,
+        spatial_dim:int,
+        in_channels:int,
+        structure:List[Tuple[int,int,int,int]],
+        maxpool_structure:List[Union[Tuple[int,int],Tuple[int,int,int]]]=None,
+        padding=None,
+        adn_fn:torch.nn.Module=torch.nn.Identity,
+        res_type:str="resnet",
+        batch_ensemble:int=0):
+        """Default ResNet backbone. Takes a `structure` and `maxpool_structure`
+        to parameterize the entire network.
+
+        Args:
+            spatial_dim (int): number of dimensions.
+            in_channels (int): number of input channels.
+            structure (List[Tuple[int,int,int,int]]): Structure of the 
+                backbone. Each element of this list should contain 4 integers 
+                corresponding to the input channels, output channels, filter
+                size and number of consecutive, identical blocks.
+            maxpool_structure (List[Union[Tuple[int,int],Tuple[int,int,int]]],
+                optional): The maxpooling structure used for the backbone. 
+                Defaults to size and stride 2 maxpooling.
+            adn_fn (torch.nn.Module, optional): the 
+                activation-dropout-normalization module used. Defaults to
+                torch.nn.Identity.
+            res_type (str, optional): the type of residual operation. Can be 
+                either "resnet" (normal residual block) or "resnext" (ResNeXt 
+                block)
+            batch_ensemble (int, optional): triggers batch-ensemble layers. 
+                Defines number of batch ensemble modules. Defaults to 0.
+        """
+        super().__init__()
+        self.spatial_dim = spatial_dim
+        self.in_channels = in_channels
+        self.structure = structure
+        self.maxpool_structure = maxpool_structure
+        if self.maxpool_structure is None:
+            self.maxpool_structure = [2 for _ in self.structure]
+        self.adn_fn = adn_fn
+        self.res_type = res_type
+        self.batch_ensemble = batch_ensemble
+        
+        self.get_ops()
+        self.init_layers()
+
+    def get_ops(self):
+        if self.spatial_dim == 2:
+            if self.res_type == "resnet":
+                self.res_op = ResidualBlock2d
+            elif self.res_type == "resnext":
+                self.res_op = ResNeXtBlock2d
+            elif self.res_type == "convnext":
+                self.res_op = ConvNeXtBlock2d
+            self.conv_op = torch.nn.Conv2d
+            self.max_pool_op = torch.nn.MaxPool2d
+        elif self.spatial_dim == 3:
+            if self.res_type == "resnet":
+                self.res_op = ResidualBlock3d
+            elif self.res_type == "resnext":
+                self.res_op = ResNeXtBlock3d
+            elif self.res_type == "convnext":
+                self.res_op = ConvNeXtBlock3d
+            self.conv_op = torch.nn.Conv3d
+            self.max_pool_op = torch.nn.MaxPool3d
+
+    def init_layers(self):
+        f = self.structure[0][0]
+        self.input_layer = torch.nn.Sequential(
+            self.conv_op(
+                self.in_channels,f,7,padding="same"),
+            self.adn_fn(f),
+            self.conv_op(
+                f,f,3,padding="same"))
+        if self.batch_ensemble > 0:
+            self.input_layer = BatchEnsembleWrapper(
+                self.input_layer,self.batch_ensemble,
+                self.in_channels,f,self.adn_fn)
+        self.first_pooling = self.max_pool_op(2,2)
+        self.operations = torch.nn.ModuleList([])
+        self.pooling_operations = torch.nn.ModuleList([])
+        prev_inp = f
+        for s,mp in zip(self.structure,self.maxpool_structure):
+            op = torch.nn.ModuleList([])
+            inp,inter,k,N = s
+            op.append(self.res_op(
+                prev_inp,k,inter,inp,self.adn_fn))
+            for _ in range(1,N-1):
+                op.append(self.res_op(inp,k,inter,inp,self.adn_fn))
+            if self.batch_ensemble > 0:
+                op.append(self.res_op(inp,k,inter,inp,torch.nn.Identity))
+                op = torch.nn.Sequential(*op)
+                op = BatchEnsembleWrapper(
+                    op,self.batch_ensemble,prev_inp,inp,self.adn_fn)
+            else:
+                op.append(self.res_op(inp,k,inter,inp,self.adn_fn))
+                op = torch.nn.Sequential(*op)
+
+            prev_inp = inp
             self.operations.append(op)
             self.pooling_operations.append(self.max_pool_op(mp,mp))
     
