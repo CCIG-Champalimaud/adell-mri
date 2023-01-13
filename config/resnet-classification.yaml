@@ -1,0 +1,18 @@
+---
+backbone_args: 
+  spatial_dim: 3
+  in_channels: 1
+  structure: [[32,32,5,2],[64,64,3,2],[128,128,3,2],[256,256,3,2],[512,512,3,2]]
+  maxpool_structure: [[2,2,1],[2,2,1],[2,2,2],[2,2,2],[2,2,1]]
+  res_type: "resnet"
+projection_head_args:
+  in_channels: 512
+  structure: [1024,512,256]
+prediction_head_args:
+  in_channels: 256
+  structure: [512,256]
+batch_size: 32
+norm_fn: "batch"
+act_fn: "swish"
+weight_decay: 0.001
+learning_rate: 0.005
