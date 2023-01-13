@@ -7,6 +7,7 @@ from .utils import (
     CombineBinaryLabelsd,
     LabelOperatorSegmentationd,
     CreateImageAndWeightsd,
+    LabelOperatord,
     PrintShaped)
 
 def unbox(x):
@@ -116,24 +117,64 @@ def get_transforms_unet(x,
                                                          track_meta=False))
         return transforms
 
+def get_transforms_classification(x,
+                                  keys,
+                                  target_spacing,
+                                  crop_size,
+                                  pad_size,
+                                  branched,
+                                  possible_labels,
+                                  positive_labels,
+                                  label_key,
+                                  label_mode=None):
+    if x == "pre":
+        transforms = [
+            monai.transforms.LoadImaged(keys,ensure_channel_first=True),
+            monai.transforms.Orientationd(keys,"RAS"),
+            monai.transforms.ScaleIntensityd(keys)]
+        if target_spacing is not None:
+            transforms.append(
+                monai.transforms.Spacingd(keys,pixdim=target_spacing))
+        if crop_size is not None:
+            transforms.append(
+                monai.transforms.CenterSpatialCropd(
+                    keys,[int(j) for j in crop_size]))
+        if pad_size is not None:
+            transforms.append(
+                monai.transforms.SpatialPadd(
+                    keys,[int(j) for j in pad_size]))
+        transforms.append(monai.transforms.EnsureTyped(keys))
+    elif x == "post":
+        transforms = []
+        if isinstance(positive_labels,int):
+            positive_labels = [positive_labels]
+        if branched == False:
+            transforms.append(
+                monai.transforms.ConcatItemsd(keys,"image"))
+        transforms.append(
+            LabelOperatord(
+                [label_key],possible_labels,
+                mode=label_mode,positive_labels=positive_labels,
+                output_keys={label_key:"label"}))
+    return transforms
+
 def get_augmentations_unet(augment,
                            all_keys,
                            image_keys,
                            intp_resampling_augmentations,
                            random_crop_size: List[int]=None):
-    valid_arg_list = ["full","light","lightest","none"]
+    valid_arg_list = ["full","light","lightest","none",True]
     if augment not in valid_arg_list:
         raise NotImplementedError(
             "augment must be one of {}".format(valid_arg_list))
-    if augment == "full":
+    if augment == "full" or augment == True:
         augments = [
-            monai.transforms.RandBiasFieldd(image_keys,degree=2,prob=0.1),
+            monai.transforms.RandBiasFieldd(image_keys,degree=3,prob=0.1),
             monai.transforms.RandAdjustContrastd(image_keys,prob=0.25),
             monai.transforms.RandRicianNoised(
                 image_keys,std=0.05,prob=0.25),
             monai.transforms.RandGibbsNoised(
                 image_keys,alpha=(0.0,0.6),prob=0.25),
-            monai.transforms.RandGaussianSmoothd(image_keys,prob=0.25),
             monai.transforms.RandAffined(
                 all_keys,
                 scale_range=[0.1,0.1,0.1],
@@ -149,7 +190,6 @@ def get_augmentations_unet(augment,
                 image_keys,std=0.05,prob=0.25),
             monai.transforms.RandGibbsNoised(
                 image_keys,alpha=(0.0,0.6),prob=0.25),
-            monai.transforms.RandGaussianSmoothd(image_keys,prob=0.25),
             monai.transforms.RandAffined(
                 all_keys,
                 scale_range=[0.1,0.1,0.1],
@@ -164,8 +204,7 @@ def get_augmentations_unet(augment,
             monai.transforms.RandRicianNoised(
                 image_keys,std=0.05,prob=0.25),
             monai.transforms.RandGibbsNoised(
-                image_keys,alpha=(0.0,0.6),prob=0.25),
-            monai.transforms.RandGaussianSmoothd(image_keys,prob=0.25)]
+                image_keys,alpha=(0.0,0.6),prob=0.25)]
 
     #augments.append(
     #    monai.transforms.RandFlipd(
@@ -177,5 +216,55 @@ def get_augmentations_unet(augment,
                 ["image","mask"],"mask",random_crop_size,
                 fg_indices_key="mask_fg_indices",
                 bg_indices_key="mask_fg_indices"))
+    
+    return augments
+
+def get_augmentations_class(augment,
+                            all_keys,
+                            image_keys,
+                            intp_resampling_augmentations):
+    valid_arg_list = ["intensity","noise","rbf","affine","shear"]
+    for a in augment:
+        if a not in valid_arg_list:
+            raise NotImplementedError(
+                "augment can only contain {}".format(valid_arg_list))
+    augments = []
+    
+    if "intensity" in augment:
+        augments.extend([
+            monai.transforms.RandAdjustContrastd(
+                image_keys,gamma=(0.5,1.5),prob=0.1),
+            monai.transforms.RandStdShiftIntensityd(
+                image_keys,factors=0.1,prob=0.1),
+            monai.transforms.RandShiftIntensityd(
+                image_keys,offsets=0.1,prob=0.1)])
+    
+    if "noise" in augment:
+        augments.extend([
+            monai.transforms.RandRicianNoised(
+                image_keys,std=0.05,prob=0.1),
+            monai.transforms.RandGibbsNoised(
+                image_keys,alpha=(0.0,0.4),prob=0.1)])
+    
+    if "rbf" in augment:
+        augments.append(
+            monai.transforms.RandBiasFieldd(image_keys,degree=3,prob=0.1))
+        
+    if "affine" in augment:
+        augments.append(
+            monai.transforms.RandAffined(
+                all_keys,
+                scale_range=[0.1,0.1,0.1],
+                rotate_range=[np.pi/16,np.pi/16,np.pi/16],
+                prob=0.25,mode=intp_resampling_augmentations,
+                padding_mode="zeros"))
+        
+    if "shear" in augment:
+        augments.append(
+            monai.transforms.RandAffined(
+                all_keys,
+                shear_range=((0.9,1.1),(0.9,1.1),(0.9,1.1)),
+                prob=0.5,mode=intp_resampling_augmentations,
+                padding_mode="zeros"))
     
     return augments
