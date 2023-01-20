@@ -1,6 +1,6 @@
 ---
 patch_size: [16,16,4]
-number_of_blocks: 9
+number_of_blocks: 6
 n_heads: 12
 embedding_size: 768
 attention_dim: 768
