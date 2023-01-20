@@ -187,13 +187,13 @@ class UNETR(UNet,torch.nn.Module):
         self.get_conv_op()
         self.init_vit()
         
-        if self.encoder_only == False:            
+        if self.encoder_only is False:            
             self.init_reconstruction_ops()
             self.init_upscale_ops()
             self.init_link_ops()
             self.init_decoder()
             self.init_final_layer()
-            if self.bottleneck_classification == True:
+            if self.bottleneck_classification is True:
                 self.init_bottleneck_classifier()
             if self.feature_conditioning is not None:
                 self.init_feature_conditioning_operations()
@@ -291,9 +291,9 @@ class UNETR(UNet,torch.nn.Module):
                                             self.reconstruction_ops)]
         encoding_out.append(curr)
         bottleneck = curr
-        if return_bottleneck == True:
+        if return_bottleneck is True:
             return None,None,bottleneck
-        elif self.encoder_only == True:
+        elif self.encoder_only is True:
             return bottleneck
                 
         deep_outputs = []
@@ -323,16 +323,16 @@ class UNETR(UNet,torch.nn.Module):
         final_features = curr
 
         curr = self.final_layer(curr)
-        if return_features == True:
+        if return_features is True:
             return curr,final_features,bottleneck
 
-        if self.bottleneck_classification == True:
+        if self.bottleneck_classification is True:
             bottleneck = bottleneck.flatten(start_dim=2).max(-1).values
             bn_out = self.bottleneck_classifier(bottleneck)
         else:
             bn_out = None
         
-        if self.deep_supervision == True:
+        if self.deep_supervision is True:
             for i in range(len(deep_outputs)):
                 o = deep_outputs[i]
                 op = self.deep_supervision_ops[i]
@@ -701,7 +701,7 @@ class SWINUNet(UNet):
         self.init_link_ops()
         self.init_decoder()
         self.init_final_layer()
-        if self.bottleneck_classification == True:
+        if self.bottleneck_classification is True:
             self.init_bottleneck_classifier()
         if self.feature_conditioning is not None:
             self.init_feature_conditioning_operations()
@@ -818,9 +818,9 @@ class SWINUNet(UNet):
         
         curr = encoding_out[-1]
         bottleneck = curr
-        if return_bottleneck == True:
+        if return_bottleneck is True:
             return None,None,bottleneck
-        elif self.encoder_only == True:
+        elif self.encoder_only is True:
             return bottleneck
                 
         deep_outputs = []
@@ -850,16 +850,16 @@ class SWINUNet(UNet):
         final_features = curr
 
         curr = self.final_layer(curr)
-        if return_features == True:
+        if return_features is True:
             return curr,final_features,bottleneck
 
-        if self.bottleneck_classification == True:
+        if self.bottleneck_classification is True:
             bottleneck = bottleneck.flatten(start_dim=2).max(-1).values
             bn_out = self.bottleneck_classifier(bottleneck)
         else:
             bn_out = None
         
-        if self.deep_supervision == True:
+        if self.deep_supervision is True:
             for i in range(len(deep_outputs)):
                 o = deep_outputs[i]
                 op = self.deep_supervision_ops[i]

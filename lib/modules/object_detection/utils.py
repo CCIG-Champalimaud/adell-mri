@@ -44,7 +44,7 @@ def nms_nd(bb:torch.Tensor,scores:torch.Tensor,
     # iteratively remove boxes which have a high overlap with other boxes,
     # keeping those with higher confidence
     for i in range(bb.shape[0]):
-        if excluded[i] == False:
+        if excluded[i] is False:
             cur_bb = torch.unsqueeze(bb[i],0)
             cur_excluded = excluded[(i+1):]
             cur_idxs = idxs[(i+1):][~cur_excluded]

@@ -5,7 +5,6 @@ import torchmetrics
 import pytorch_lightning as pl
 import torchmetrics.classification as tmc
 from typing import Callable,Dict,List
-from copy import deepcopy
 from picai_eval import evaluate
 from abc import ABC
 
@@ -98,7 +97,7 @@ def get_metric_dict(nc:int,
                 "Pr":lambda: torchmetrics.Precision(nc,average="macro"),
                 "F1":lambda: torchmetrics.FBetaScore(nc,average="macro"),
                 "Dice":lambda: torchmetrics.Dice(nc,average="macro")}
-    if bottleneck_classification == True:
+    if bottleneck_classification is True:
         md["AUC_bn"] = torchmetrics.AUROC
     if metric_keys is None:
         metric_keys = list(md.keys())
@@ -130,14 +129,14 @@ class UNetBasePL(pl.LightningModule,ABC):
         y = torch.round(y)
         output = self.forward(
             x,X_skip_layer=x_cond,X_feature_conditioning=x_fc)
-        if self.deep_supervision == False:
+        if self.deep_supervision is False:
             prediction,pred_class = output
         else:
             prediction,pred_class,deep_outputs = output
         prediction = prediction
 
         loss = self.calculate_loss(prediction,y)
-        if self.deep_supervision == True:
+        if self.deep_supervision is True:
             t = len(deep_outputs)
             additional_losses = torch.zeros_like(loss)
             for i,o in enumerate(deep_outputs):
@@ -146,7 +145,7 @@ class UNetBasePL(pl.LightningModule,ABC):
                 l = self.calculate_loss(o,y_small).mean()/(2**(t-i))/(t+1)
                 additional_losses = additional_losses + l
             loss = loss + additional_losses
-        if self.bottleneck_classification == True:
+        if self.bottleneck_classification is True:
             class_loss = self.calculate_loss_class(pred_class,y_class)
             output_loss = loss + class_loss * self.bn_mult
         else:
@@ -156,7 +155,7 @@ class UNetBasePL(pl.LightningModule,ABC):
         return prediction,pred_class,loss,class_loss,output_loss
 
     def check_loss(self,x,y,pred,loss):
-        if self.raise_nan_loss == True and torch.isnan(loss) == True:
+        if self.raise_nan_loss is True and torch.isnan(loss) is True:
             print("Nan loss detected! ({})".format(loss.detach()))
             for i,sx in enumerate(x):
                 print("\t0",[sx.detach().max(),sx.detach().min()])
@@ -165,12 +164,12 @@ class UNetBasePL(pl.LightningModule,ABC):
             print("\tModel parameters:")
             for n,p in self.named_parameters():
                 pn = p.norm()
-                if (torch.isnan(pn) == True) or (torch.isinf(pn) == True) or True:
+                if (torch.isnan(pn) is True) or (torch.isinf(pn) is True) or True:
                     print("\t\tparameter norm({})={}".format(n,pn))
             for n,p in self.named_parameters():
                 if p.grad is not None:
                     pg = p.grad.mean()
-                    if (torch.isnan(pg) == True) or (torch.isinf(pg) == True) or True:
+                    if (torch.isnan(pg) is True) or (torch.isinf(pg) is True) or True:
                         print("\t\taverage grad({})={}".format(n,pg))
             raise RuntimeError(
                 "nan found in loss (see above for details)")
@@ -181,7 +180,7 @@ class UNetBasePL(pl.LightningModule,ABC):
             x_cond = batch[self.skip_conditioning_key]
         else:
             x_cond = None
-        if self.bottleneck_classification == True:
+        if self.bottleneck_classification is True:
             y_class = y.flatten(start_dim=1).max(1).values
         else:
             y_class = None
@@ -213,7 +212,7 @@ class UNetBasePL(pl.LightningModule,ABC):
             x_cond = batch[self.skip_conditioning_key]
         else:
             x_cond = None
-        if self.bottleneck_classification == True:
+        if self.bottleneck_classification is True:
             y_class = y.flatten(start_dim=1).max(1).values
         else:
             y_class = None
@@ -225,7 +224,7 @@ class UNetBasePL(pl.LightningModule,ABC):
         pred_final,pred_class,loss,class_loss,output_loss = self.step(
             x,y,y_class,x_cond,x_fc)
         
-        if self.picai_eval == True:
+        if self.picai_eval is True:
             for s_p,s_y in zip(pred_final.squeeze(1).detach().cpu().numpy(),
                                y.squeeze(1).detach().cpu().numpy()):
                 self.all_pred.append(s_p)
@@ -245,7 +244,7 @@ class UNetBasePL(pl.LightningModule,ABC):
             x_cond = batch[self.skip_conditioning_key]
         else:
             x_cond = None
-        if self.bottleneck_classification == True:
+        if self.bottleneck_classification is True:
             y_class = y.flatten(start_dim=1).max(1).values
         else:
             y_class = None
@@ -257,7 +256,7 @@ class UNetBasePL(pl.LightningModule,ABC):
         pred_final,pred_class,loss,class_loss,output_loss = self.step(
             x,y,y_class,x_cond,x_fc)
         
-        if self.picai_eval == True:
+        if self.picai_eval is True:
             for s_p,s_y in zip(pred_final.squeeze(1).detach().cpu().numpy(),
                                y.squeeze(1).detach().cpu().numpy()):
                 self.all_pred.append(s_p)
@@ -300,7 +299,7 @@ class UNetBasePL(pl.LightningModule,ABC):
         # basically the lr_scheduler (as I was using it at least)
         # is not terribly compatible with starting and stopping training
         opt = self.optimizers()
-        if self.polynomial_lr_decay == True:
+        if self.polynomial_lr_decay is True:
             poly_lr_decay(opt,self.trainer.current_epoch,
                           initial_lr=self.learning_rate,
                           max_decay_steps=self.n_epochs,end_lr=1e-6,power=0.9)
@@ -675,7 +674,7 @@ class UNetPlusPlusPL(UNetPlusPlus,UNetBasePL):
             return_aux=True)
 
         loss = self.calculate_loss(prediction,prediction_aux,y)
-        if self.bottleneck_classification == True:
+        if self.bottleneck_classification is True:
             class_loss = self.calculate_loss_class(pred_class,y_class)
             output_loss = loss + class_loss * self.bn_mult
         else:
@@ -702,7 +701,7 @@ class UNetPlusPlusPL(UNetPlusPlus,UNetBasePL):
             x_cond = batch[self.skip_conditioning_key]
         else:
             x_cond = None
-        if self.bottleneck_classification == True:
+        if self.bottleneck_classification is True:
             y_class = y.flatten(start_dim=1).max(1).values
         else:
             y_class = None
@@ -731,7 +730,7 @@ class UNetPlusPlusPL(UNetPlusPlus,UNetBasePL):
             x_cond = batch[self.skip_conditioning_key]
         else:
             x_cond = None
-        if self.bottleneck_classification == True:
+        if self.bottleneck_classification is True:
             y_class = y.flatten(start_dim=1).max(1).values
         else:
             y_class = None
@@ -743,7 +742,7 @@ class UNetPlusPlusPL(UNetPlusPlus,UNetBasePL):
         pred_final,pred_class,output_loss,loss,class_loss = self.step(
             x,y,y_class,x_cond,x_fc)
 
-        if self.picai_eval == True:
+        if self.picai_eval is True:
             for s_p,s_y in zip(pred_final.squeeze(1).detach().cpu().numpy(),
                                y.squeeze(1).detach().cpu().numpy()):
                 self.all_pred.append(s_p)
@@ -765,7 +764,7 @@ class UNetPlusPlusPL(UNetPlusPlus,UNetBasePL):
             x_cond = batch[self.skip_conditioning_key]
         else:
             x_cond = None
-        if self.bottleneck_classification == True:
+        if self.bottleneck_classification is True:
             y_class = y.flatten(start_dim=1).max(1).values
         else:
             y_class = None
@@ -777,7 +776,7 @@ class UNetPlusPlusPL(UNetPlusPlus,UNetBasePL):
         pred_final,pred_class,output_loss,loss,class_loss = self.step(
             x,y,y_class,x_cond,x_fc)
         
-        if self.picai_eval == True:
+        if self.picai_eval is True:
             for s_p,s_y in zip(pred_final.squeeze(1).detach().cpu().numpy(),
                                y.squeeze(1).detach().cpu().numpy()):
                 self.all_pred.append(s_p)
@@ -877,13 +876,13 @@ class BrUNetPL(BrUNet,UNetBasePL):
         y = torch.round(y)
         output = self.forward(
             x,x_weights,X_skip_layer=x_cond,X_feature_conditioning=x_fc)
-        if self.deep_supervision == False:
+        if self.deep_supervision is False:
             prediction,pred_class = output
         else:
             prediction,pred_class,deep_outputs = output
 
         loss = self.calculate_loss(prediction,y)
-        if self.deep_supervision == True:
+        if self.deep_supervision is True:
             t = len(deep_outputs)
             additional_losses = torch.zeros_like(loss)
             for i,o in enumerate(deep_outputs):
@@ -892,7 +891,7 @@ class BrUNetPL(BrUNet,UNetBasePL):
                 l = self.calculate_loss(o,y_small).mean()/(2**(t-i))/(t+1)
                 additional_losses = additional_losses + l
             loss = loss + additional_losses
-        if self.bottleneck_classification == True:
+        if self.bottleneck_classification is True:
             class_loss = self.calculate_loss_class(pred_class,y_class)
             output_loss = loss + class_loss * self.bn_mult
         else:
@@ -910,7 +909,7 @@ class BrUNetPL(BrUNet,UNetBasePL):
             x_cond = batch[self.skip_conditioning_key]
         else:
             x_cond = None
-        if self.bottleneck_classification == True:
+        if self.bottleneck_classification is True:
             y_class = y.flatten(start_dim=1).max(1).values
         else:
             y_class = None
@@ -943,7 +942,7 @@ class BrUNetPL(BrUNet,UNetBasePL):
         pred_final,pred_class,loss,class_loss,output_loss = self.step(
             x,x_weights,y,y_class,x_cond,x_fc)
         
-        if self.picai_eval == True:
+        if self.picai_eval is True:
             for s_p,s_y in zip(pred_final.squeeze(1).detach().cpu().numpy(),
                                y.squeeze(1).detach().cpu().numpy()):
                 self.all_pred.append(s_p)
@@ -965,7 +964,7 @@ class BrUNetPL(BrUNet,UNetBasePL):
         pred_final,pred_class,loss,class_loss,output_loss = self.step(
             x,x_weights,y,y_class,x_cond,x_fc)
 
-        if self.picai_eval == True:
+        if self.picai_eval is True:
             for s_p,s_y in zip(pred_final.squeeze(1).detach().cpu().numpy(),
                                y.squeeze(1).detach().cpu().numpy()):
                 self.all_pred.append(s_p)

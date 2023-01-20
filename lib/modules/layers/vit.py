@@ -1,6 +1,5 @@
 import numpy as np
 import torch
-import torch.nn.functional as F
 import einops
 from itertools import product
 from copy import deepcopy
@@ -97,9 +96,9 @@ def generate_mask(image_size:Size2dOr3d,
     Returns:
         torch.Tensor: tensor used to mask attention outputs.
     """
-    if isinstance(window_size,list) == False:
+    if isinstance(window_size, list) is False:
         window_size = [window_size for _ in image_size]
-    if isinstance(shift_size,list) == False:
+    if isinstance(shift_size, list) is False:
         shift_size = [shift_size for _ in image_size]
     attn_mask = None
     if any([x > 0 for x in shift_size]):
@@ -147,7 +146,7 @@ class SliceLinearEmbedding(torch.nn.Module):
         self.positional_embedding = torch.nn.Parameter(
             torch.zeros([1,self.image_size[-1],self.n_patches,
                          self.embedding_size]))
-        if self.use_class_token == True:
+        if self.use_class_token is True:
             self.class_token = torch.nn.Parameter(
                torch.zeros([1,1,1,self.embedding_size]))
         
@@ -176,7 +175,7 @@ class SliceLinearEmbedding(torch.nn.Module):
         b,s = X.shape[0],X.shape[-1]
         X = self.linearize_image_slices(X)
         X = X + self.positional_embedding
-        if self.use_class_token == True:
+        if self.use_class_token is True:
             class_token = einops.repeat(
                 self.class_token,'() () n e -> b s n e',b=b,s=s)
             X = torch.concat([class_token,X],2)
@@ -320,7 +319,7 @@ class LinearEmbedding(torch.nn.Module):
     def initialize_classification_token(self):
         """Initializes the classification token.
         """
-        if self.use_class_token == True:
+        if self.use_class_token is True:
             self.class_token = torch.nn.Parameter(
                torch.zeros([1,1,self.true_n_features]))
         
@@ -518,9 +517,9 @@ class LinearEmbedding(torch.nn.Module):
         if self.embed_method == "convolutional":
             X = self.conv(X)
         X = self.rearrange(X)
-        if no_pos_embed == False:
+        if no_pos_embed is False:
             X = X + self.positional_embedding
-        if self.use_class_token == True:
+        if self.use_class_token is True:
             class_token = einops.repeat(self.class_token,'() n e -> b n e',
                                         b=X.shape[0])
             X = torch.concat([class_token,X],1)
@@ -850,7 +849,7 @@ class TransformerBlockStack(torch.nn.Module):
         Returns:
             List[List[int]]: list of MLP structures.
         """
-        if isinstance(x[0],list) == False:
+        if isinstance(x[0], list) is False:
             return [x for _ in range(self.number_of_blocks)]
         else:
             return x
@@ -865,7 +864,7 @@ class TransformerBlockStack(torch.nn.Module):
         Returns:
             List[int]: list of integers.
         """
-        if isinstance(x,list) == False:
+        if isinstance(x, list) is False:
             return [x for _ in range(self.number_of_blocks)]
         else:
             return self.check_if_consistent(x)
@@ -927,7 +926,7 @@ class TransformerBlockStack(torch.nn.Module):
         if isinstance(return_at,list):
             assert max(return_at) < self.number_of_blocks,\
                 "max(return_at) should be smaller than self.number_of_blocks"
-        if return_at == "end" or return_at == None:
+        if return_at == "end" or return_at is None:
             return_at = []
         outputs = []
         for i,block in enumerate(self.transformer_blocks):
@@ -1015,9 +1014,9 @@ class SWINTransformerBlockStack(torch.nn.Module):
         Returns:
             List[List[int]]: list of lists structures.
         """
-        if isinstance(x,float) == True:
+        if isinstance(x, float) is True:
             return [x for _ in self.shift_sizes]
-        if isinstance(x[0],list) == False:
+        if isinstance(x[0], list) is False:
             return [x for _ in self.shift_sizes]
         else:
             return x
@@ -1032,7 +1031,7 @@ class SWINTransformerBlockStack(torch.nn.Module):
         Returns:
             List[int]: list of integers.
         """
-        if isinstance(x,list) == False:
+        if isinstance(x, list) is False:
             return [x for _ in self.shift_sizes]
         else:
             return self.check_if_consistent(x)
@@ -1229,7 +1228,7 @@ class ViT(torch.nn.Module):
             assert max(return_at) < self.number_of_blocks,\
                 "max(return_at) should be smaller than self.number_of_blocks"
         embeded_X = self.embedding(X)
-        if return_at == "end" or return_at == None:
+        if return_at == "end" or return_at is None:
             return_at = []
         outputs = []
         for i,block in enumerate(self.tbs.transformer_blocks):
@@ -1347,7 +1346,7 @@ class FactorizedViT(torch.nn.Module):
             dropout_rate=self.dropout_rate,
             adn_fn=self.adn_fn)
 
-        if self.use_class_token == True:
+        if self.use_class_token is True:
             self.slice_class_token = torch.nn.Parameter(
                 torch.zeros([1,1,input_dim_primary]))
             torch.nn.init.trunc_normal_(
@@ -1371,7 +1370,7 @@ class FactorizedViT(torch.nn.Module):
         embeded_X = self.embedding(X)
         embeded_X,_ = self.transformer_block_within(embeded_X)
         # extract the maximum value of each token for all slices
-        if self.use_class_token == True:
+        if self.use_class_token is True:
             embeded_X = embeded_X[:,:,0]
             class_token = einops.repeat(
                 self.slice_class_token,'() n e -> b n e',b=X.shape[0])

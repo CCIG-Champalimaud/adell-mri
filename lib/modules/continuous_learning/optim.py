@@ -35,7 +35,7 @@ def create_param_groups(model:torch.nn.Module,
             torch.optim.Optimizer objects.
     """
     if kwargs_groups is None: kwargs_groups = [{} for _ in var_groups]
-    if include_leftovers == True: leftovers = {"params":[]}
+    if include_leftovers is True: leftovers = {"params":[]}
     assert len(kwargs_groups) == len(var_groups), \
         "len(kwargs_groups) should be the same as len(var_groups)"
     params = []
@@ -55,9 +55,9 @@ def create_param_groups(model:torch.nn.Module,
                 if var_group in k:
                     params[i]["params"].append(param)
                     included = True
-        if included == False and include_leftovers == True:
+        if included is False and include_leftovers is True:
             leftovers["params"].append(param)
-    if include_leftovers == True:
+    if include_leftovers is True:
         params.append(leftovers)
     return params
 

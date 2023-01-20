@@ -130,7 +130,7 @@ class UNetPlusPlus(UNet):
         self.init_link_ops()
         self.init_decoder()
         self.init_final_layer()
-        if self.bottleneck_classification == True:
+        if self.bottleneck_classification is True:
             self.init_bottleneck_classifier()
         if self.feature_conditioning is not None:
             self.init_feature_conditioning_operations()
@@ -261,11 +261,11 @@ class UNetPlusPlus(UNet):
 
         curr = self.final_layer(curr)
         curr = self.final_act(curr)
-        if return_features == True:
+        if return_features is True:
             return curr,final_features,bottleneck
 
         # return auxiliary classification layers
-        if return_aux == True:
+        if return_aux is True:
             curr_aux = []
             for op,x in zip(self.final_layer_aux,link_outputs[-1][1:-1]):
                 if X_skip_layer is not None:
@@ -274,7 +274,7 @@ class UNetPlusPlus(UNet):
         else:
             curr_aux = None
         # return bottleneck classification
-        if self.bottleneck_classification == True:
+        if self.bottleneck_classification is True:
             bottleneck = bottleneck.flatten(start_dim=2).max(-1).values
             bn_out = self.bottleneck_classifier(bottleneck)
         else:

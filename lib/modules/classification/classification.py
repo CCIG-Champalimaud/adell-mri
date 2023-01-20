@@ -10,8 +10,7 @@ from ..layers.standard_blocks import GlobalPooling
 from ..layers.res_net import ResNet,ResNetBackboneAlt,ProjectionHead
 from ..layers.self_attention import (
     ConcurrentSqueezeAndExcite2d,ConcurrentSqueezeAndExcite3d)
-from ..object_detection import resnet_default,maxpool_default
-from ..segmentation.unet import UNet,BrUNet
+from ..segmentation.unet import UNet
 from ..layers.linear_blocks import MLP
 from ..layers.vit import ViT,FactorizedViT
 
@@ -20,7 +19,7 @@ maxpool_default = [(2,2,2),(2,2,2)]
 
 def label_to_ordinal(label:torch.Tensor,n_classes:int,ignore_0:bool=True):
     label = torch.squeeze(label,1)
-    if ignore_0 == True:
+    if ignore_0 is True:
         label = torch.clamp(label - 1,min=0)
     one_hot = F.one_hot(label,n_classes)
     one_hot = one_hot.unsqueeze(1).swapaxes(1,-1).squeeze(-1)
@@ -303,7 +302,7 @@ class GenericEnsemble(torch.nn.Module):
             self.head_adn_fn)
 
     def initialize_sae_if_necessary(self):
-        if self.sae == True:
+        if self.sae is True:
             if self.spatial_dimensions == 2:
                 self.preproc_method = torch.nn.ModuleList(
                     [ConcurrentSqueezeAndExcite2d(f)
@@ -489,7 +488,7 @@ class ViTClassifier(ViT):
         embeded_X = self.embedding(X)
         for block in self.tbs.transformer_blocks:
             embeded_X = block(embeded_X)
-        if self.use_class_token == True:
+        if self.use_class_token is True:
             embeded_X = embeded_X[:,0]
         else:
             embeded_X = embeded_X.max(1).values
@@ -528,7 +527,7 @@ class FactorizedViTClassifier(FactorizedViT):
         embeded_X = self.embedding(X)
         embeded_X,_ = self.transformer_block_within(embeded_X)
         # extract the maximum value of each token for all slices
-        if self.use_class_token == True:
+        if self.use_class_token is True:
             embeded_X = embeded_X[:,:,0]
             class_token = einops.repeat(
                 self.slice_class_token,'() n e -> b n e',b=X.shape[0])
@@ -536,7 +535,7 @@ class FactorizedViTClassifier(FactorizedViT):
         else:
             embeded_X = embeded_X.max(-2).values
         embeded_X,_ = self.transformer_block_between(embeded_X)
-        if self.use_class_token == True:
+        if self.use_class_token is True:
             embeded_X = embeded_X[:,0]
         else:
             embeded_X = embeded_X.max(1).values

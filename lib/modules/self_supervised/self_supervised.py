@@ -377,8 +377,7 @@ class VICRegLocalLoss(VICRegLoss):
             torch.Tensor: local loss for location
         """
         assert X1.shape[0] == X2.shape[0],"X1 and X2 need to have the same batch size"
-        g = self.gamma
-        b = X1.shape[0]
+        X1.shape[0]
         coords_X1 = self.transform_coords(self.sparse_coords_1,box_X1)
         coords_X2 = self.transform_coords(self.sparse_coords_2,box_X2)
         all_dists = torch.cdist(coords_X1,coords_X2,p=2)
@@ -515,7 +514,7 @@ class ContrastiveDistanceLoss(torch.nn.Module):
             (1-is_same.float())*torch.maximum(
                 torch.zeros_like(dist),
                 self.torch_margin - dist))
-        if self.random_sample == True:
+        if self.random_sample is True:
             # randomly samples one entry for each element
             n = dist.shape[0]
             x_idx = torch.arange(0,n,1,dtype=torch.int32)
@@ -573,7 +572,7 @@ class BarlowTwinsLoss(torch.nn.Module):
         self.std = None
 
     def standardize(self,x:torch.Tensor)->torch.Tensor:
-        if self.moving == False and self.sum is None:
+        if self.moving is False and self.sum is None:
             o = torch.divide(
                 x - torch.mean(x,0,keepdim=True),
                 torch.std(x,0,keepdim=True))
@@ -590,7 +589,7 @@ class BarlowTwinsLoss(torch.nn.Module):
         return n/d
 
     def calculate_loss(self,x,y,update=True):
-        if update == True:
+        if update is True:
             n = x.shape[0]
             f = x.shape[1]
             if self.sum is None:

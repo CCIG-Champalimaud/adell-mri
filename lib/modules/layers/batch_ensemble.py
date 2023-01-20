@@ -53,7 +53,7 @@ class BatchEnsemble(torch.nn.Module):
                 self.op_kwargs = {"kernel_size":3}
 
     def initialize_layers(self):
-        if self.res_blocks == False:
+        if self.res_blocks is False:
             if self.spatial_dim == 0:
                 self.mod = torch.nn.Linear(
                     self.in_channels,self.out_channels,
@@ -102,7 +102,7 @@ class BatchEnsemble(torch.nn.Module):
             X = torch.multiply(
                 self.mod(X * unsqueeze_to_target(pre,X)),
                 unsqueeze_to_target(post,X))
-        elif self.training == True:
+        elif self.training is True:
             idxs = np.random.randint(self.n,size=b)
             pre = torch.stack(
                 [self.all_weights['pre'][idx] for idx in idxs])
@@ -183,7 +183,7 @@ class BatchEnsembleWrapper(torch.nn.Module):
                 X = torch.multiply(X,unsqueeze_to_target(post,X))
             else:
                 raise NotImplementedError("idx has to be int, list or tuple")
-        elif self.training == True:
+        elif self.training is True:
             idxs = np.random.randint(self.n,size=b)
             pre = torch.stack(
                 [self.all_weights['pre'][idx] for idx in idxs])

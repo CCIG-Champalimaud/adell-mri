@@ -45,7 +45,7 @@ def get_transforms_unet(x,
                 all_keys,ensure_channel_first=True,
                 allow_missing_keys=fill_missing,image_only=True)]
         # "creates" empty images/masks if necessary
-        if fill_missing == True:
+        if fill_missing is True:
             transforms.append(CreateImageAndWeightsd(
                 all_keys,[1] + crop_size))
         # sets orientation
@@ -93,7 +93,7 @@ def get_transforms_unet(x,
     
     elif x == "post":
         transforms = []
-        if brunet == False:
+        if brunet is False:
             transforms.append(
                 monai.transforms.ConcatItemsd(image_keys,"image"))
             
@@ -109,7 +109,7 @@ def get_transforms_unet(x,
                     func=lambda x:np.reshape(x,[1])),
                 monai.transforms.ConcatItemsd(
                     feature_keys,feature_key_net)])
-        if brunet == False:
+        if brunet is False:
             transforms.append(monai.transforms.ToTensord(["image","mask"],
                                                          track_meta=False))
         else:
@@ -155,7 +155,7 @@ def get_transforms_classification(x,
                     keys,[int(j) for j in crop_size]))
         if isinstance(positive_labels,int):
             positive_labels = [positive_labels]
-        if branched == False:
+        if branched is False:
             transforms.append(
                 monai.transforms.ConcatItemsd(keys,"image"))
         transforms.append(
@@ -174,7 +174,7 @@ def get_augmentations_unet(augment,
     if augment not in valid_arg_list:
         raise NotImplementedError(
             "augment must be one of {}".format(valid_arg_list))
-    if augment == "full" or augment == True:
+    if augment == "full" or augment is True:
         augments = [
             monai.transforms.RandBiasFieldd(image_keys,degree=3,prob=0.1),
             monai.transforms.RandAdjustContrastd(image_keys,prob=0.25),

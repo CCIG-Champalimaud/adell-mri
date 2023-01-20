@@ -33,7 +33,7 @@ def get_ckpt_callback(checkpoint_dir:str,checkpoint_name:str,
         ckpt_callback.CHECKPOINT_NAME_LAST = ckpt_last
         ckpt_last_full = os.path.join(
             checkpoint_dir,ckpt_last+'.ckpt')
-        if os.path.exists(ckpt_last_full) and resume_from_last == True:
+        if os.path.exists(ckpt_last_full) and resume_from_last is True:
             ckpt_path = ckpt_last_full
             epoch = torch.load(ckpt_path)["epoch"]
             if epoch >= (max_epochs-1):

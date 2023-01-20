@@ -40,7 +40,7 @@ class BarlowTwinsPL(ResNet,pl.LightningModule):
     def update_metrics(self,y1,y2,metrics,log=True):
         for k in metrics:
             metrics[k].update(y1,y2)
-            if log == True:
+            if log is True:
                 self.log(
                     k,metrics[k],on_epoch=True,
                     on_step=False,prog_bar=True,sync_dist=True)
@@ -126,7 +126,7 @@ class NonContrastiveBasePL(pl.LightningModule,ABC):
         y2 = y2.flatten()
         for k in metrics:
             metrics[k].update(y1,y2)
-            if log == True:
+            if log is True:
                 self.log(
                     k,metrics[k],on_epoch=True,batch_size=y1.shape[0],
                     on_step=False,prog_bar=True,sync_dist=True)
@@ -135,13 +135,13 @@ class NonContrastiveBasePL(pl.LightningModule,ABC):
         self.loss = simsiam_loss
         if self.ema is not None:
             self.loss = byol_loss
-        if self.vic_reg == True:
+        if self.vic_reg is True:
             self.loss = VICRegLoss(**self.vic_reg_loss_params)
-        if self.vic_reg_local == True:
+        if self.vic_reg_local is True:
             self.loss = VICRegLocalLoss(**self.vic_reg_loss_params)
 
     def calculate_loss(self,y1,y2,*args):
-        if self.stop_gradient == False:
+        if self.stop_gradient is False:
             # no need to stop gradients with VICReg or VICRegL.
             l = self.loss(y1,y2,*args)
         else:
@@ -278,12 +278,12 @@ class NonContrastiveSelfSLPL(ResNet,NonContrastiveBasePL):
         self.stop_gradient = stop_gradient
         self.channels_to_batch = channels_to_batch
         
-        if channels_to_batch == True:
+        if channels_to_batch is True:
             kwargs["backbone_args"]["in_channels"] = 1
         
         super().__init__(*args,**kwargs)
 
-        if self.stop_gradient == False and self.vic_reg == False:
+        if self.stop_gradient is False and self.vic_reg is False:
             warnings.warn("stop_gradient=False should not (in theory) be used\
                 with vic_reg=False or vic_reg_local=False")
 
@@ -306,14 +306,14 @@ class NonContrastiveSelfSLPL(ResNet,NonContrastiveBasePL):
             op = self.ema.shadow.forward
         else:
             op = self.forward
-        if self.stop_gradient == True:
+        if self.stop_gradient is True:
             with torch.no_grad():
                 return op(x,ret)
         else:
             return op(x,ret)
 
     def step(self,batch,loss_str:str,metrics:dict,train=False):
-        if self.vic_reg_local == False:
+        if self.vic_reg_local is False:
             ret_string_1 = "prediction"
             ret_string_2 = "projection"
             other_args = []
@@ -325,7 +325,7 @@ class NonContrastiveSelfSLPL(ResNet,NonContrastiveBasePL):
             other_args = [box_1,box_2]
         
         x1,x2 = batch[self.aug_image_key_1],batch[self.aug_image_key_2]
-        if self.channels_to_batch == True:
+        if self.channels_to_batch is True:
             x1 = x1.reshape(-1,1,*x1.shape[2:])
             x2 = x2.reshape(-1,1,*x1.shape[2:])
         y1 = self.forward(x1,ret=ret_string_1)
@@ -335,13 +335,13 @@ class NonContrastiveSelfSLPL(ResNet,NonContrastiveBasePL):
         self.update_metrics(y1,y2,metrics)
         
         # loss is already symmetrised for VICReg and VICRegL
-        if (self.vic_reg == False) and (self.vic_reg_local == False):
+        if (self.vic_reg is False) and (self.vic_reg_local is False):
             y1_ = self.forward_ema_stop_grad(x1,ret=ret_string_1)
             y2_ = self.forward(x2,ret=ret_string_2)
             losses = losses + self.calculate_loss(y2_,y1_,*other_args)
             self.update_metrics(y2_,y1_,metrics)
         
-        if self.ema is not None and train == True:
+        if self.ema is not None and train is True:
             self.ema.update(self)
 
         loss = self.safe_sum(losses)
@@ -349,9 +349,9 @@ class NonContrastiveSelfSLPL(ResNet,NonContrastiveBasePL):
                  on_epoch=True,on_step=False,prog_bar=True,
                  sync_dist=True)
         
-        if self.vic_reg_local == True:
+        if self.vic_reg_local is True:
             loss_str_list = self.loss_str_dict["vicregl"]
-        elif self.vic_reg == True:
+        elif self.vic_reg is True:
             loss_str_list = self.loss_str_dict["vicreg"]
         else:
             return loss
@@ -458,13 +458,13 @@ class NonContrastiveSelfSLUNetPL(UNet,NonContrastiveBasePL):
         self.stop_gradient = stop_gradient
         self.channels_to_batch = channels_to_batch
         
-        if channels_to_batch == True:
+        if channels_to_batch is True:
             kwargs["n_channels"] = 1
 
         kwargs["encoder_only"] = True
         super().__init__(*args,**kwargs)
 
-        if self.stop_gradient == False and self.vic_reg == False:
+        if self.stop_gradient is False and self.vic_reg is False:
             warnings.warn("stop_gradient=False should not (in theory) be used\
                 with vic_reg=False or vic_reg_local=False")
 
@@ -487,14 +487,14 @@ class NonContrastiveSelfSLUNetPL(UNet,NonContrastiveBasePL):
             op = self.ema.shadow.forward
         else:
             op = self.forward
-        if self.stop_gradient == True:
+        if self.stop_gradient is True:
             with torch.no_grad():
                 return op(x)
         else:
             return op(x)
 
     def step(self,batch,loss_str:str,metrics:dict,train=False):
-        if self.vic_reg_local == False:
+        if self.vic_reg_local is False:
             other_args = []
         else:
             box_1 = batch[self.box_key_1]
@@ -502,7 +502,7 @@ class NonContrastiveSelfSLUNetPL(UNet,NonContrastiveBasePL):
             other_args = [box_1,box_2]
 
         x1,x2 = batch[self.aug_image_key_1],batch[self.aug_image_key_2]
-        if self.channels_to_batch == True:
+        if self.channels_to_batch is True:
             x1 = x1.reshape(-1,1,*x1.shape[2:])
             x2 = x2.reshape(-1,1,*x1.shape[2:])
         y1 = self.forward(x1)
@@ -512,13 +512,13 @@ class NonContrastiveSelfSLUNetPL(UNet,NonContrastiveBasePL):
         self.update_metrics(y1,y2,metrics)
         
         # loss is already symmetrised for VICReg and VICRegL
-        if self.vic_reg == False and self.vic_reg_local == False:
+        if self.vic_reg is False and self.vic_reg_local is False:
             y1_ = self.forward_ema_stop_grad(x1)
             y2_ = self.forward(x2)
             losses = losses + self.calculate_loss(y2_,y1_,*other_args)
             self.update_metrics(y2_,y1_,metrics)
         
-        if self.ema is not None and train == True:
+        if self.ema is not None and train is True:
             self.ema.update(self)
 
         loss = self.safe_sum(losses)
@@ -526,9 +526,9 @@ class NonContrastiveSelfSLUNetPL(UNet,NonContrastiveBasePL):
                  on_epoch=True,on_step=False,prog_bar=True,
                  sync_dist=True)
         
-        if self.vic_reg_local == True:
+        if self.vic_reg_local is True:
             loss_str_list = self.loss_str_dict["vicregl"]
-        elif self.vic_reg == True:
+        elif self.vic_reg is True:
             loss_str_list = self.loss_str_dict["vicreg"]
         else:
             return loss

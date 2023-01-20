@@ -13,7 +13,6 @@ from skimage.morphology import convex_hull_image
 
 from typing import Dict,List,Tuple,Any
 from .modules.losses import *
-from .modules.layers import activation_factory
 from .custom_types import *
 
 loss_factory = {
@@ -372,7 +371,7 @@ class ConvertToOneHot(monai.transforms.Transform):
             if k != self.priority_key:
                 rel[k] = rel[k] * p_inv
         out = [rel[k] for k in self.keys]
-        if self.bg == True:
+        if self.bg is True:
             bg_tensor = torch.where(
                 torch.cat(out,0).sum(0)>0,
                 torch.zeros_like(p,device=dev),
@@ -467,7 +466,7 @@ class RandomSlices(monai.transforms.RandomizableTransform):
     def __call__(self,X):
         if self.label_key is not None:
             X_label = X[self.label_key]
-            if isinstance(X_label,torch.Tensor) == False:
+            if isinstance(X_label, torch.Tensor) is False:
                 X_label = torch.as_tensor(X_label)
             if self.is_multiclass is None:
                 M = X_label.max()
@@ -479,7 +478,7 @@ class RandomSlices(monai.transforms.RandomizableTransform):
                     self.M = M
                 else:
                     self.is_multiclass = False
-            elif self.is_multiclass == True:
+            elif self.is_multiclass is True:
                 M = X_label.max()
                 X_label = F.one_hot(X_label,M+1)
                 X_label = torch.squeeze(X_label.swapaxes(-1,0))
@@ -604,7 +603,7 @@ class MaskToAdjustedAnchors(monai.transforms.Transform):
             size adjustments (3) to the anchor.
         """
         bb_vertices = np.array(bb_vertices)
-        bb_size = bb_vertices[:,:,1]-bb_vertices[:,:,0]
+        bb_vertices[:,:,1]-bb_vertices[:,:,0]
         if shape is None:
             shape = self.input_sh
             rel_sh = self.rel_sh
@@ -906,7 +905,7 @@ class RandomAffined(monai.transforms.RandomizableTransform):
 
     def __call__(self,data):
         self.randomize()
-        if self.copy == True:
+        if self.copy is True:
             data = data.copy()
         for k in self.keys:
             if self.R.uniform() < self.prob:
@@ -1170,7 +1169,7 @@ class ExponentialMovingAverage(torch.nn.Module):
 
     def set_requires_grad_false(self,model):
         for k,p in model.named_parameters():
-            if p.requires_grad == True:
+            if p.requires_grad is True:
                 p.requires_grad = False
 
     @torch.no_grad()
@@ -1360,7 +1359,7 @@ class BiasFieldCorrection(monai.transforms.Transform):
         corrector = sitk.N4BiasFieldCorrectionImageFilter()
         corrector.SetMaximumNumberOfIterations(self.n_fitting_levels*[self.n_iter])
         corrector.SetConvergenceThreshold(0.001)
-        corrected_image = corrector.Execute(image_,mask_image)
+        corrector.Execute(image_,mask_image)
         log_bf = corrector.GetLogBiasFieldAsImage(image)
         corrected_input_image = image/sitk.Exp(log_bf)
         corrected_input_image = sitk.Cast(

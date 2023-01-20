@@ -77,7 +77,7 @@ class FeaturePyramidNetworkBackbone(torch.nn.Module):
             prev_x = up_op(prev_x)
             # shouldn't be necessary but cannot be easily avoided when working with
             # MRI scans with weird numbers of slices...
-            if self.shape_check == False:
+            if self.shape_check is False:
                 if prev_x.shape != x.shape:
                     prev_x = F.interpolate(
                         prev_x,x.shape[2:],mode='nearest')

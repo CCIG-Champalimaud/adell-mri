@@ -316,7 +316,7 @@ def hybrid_focal_loss(pred:torch.Tensor,
         dimension of `pred`).
     """
     a = focal_params["alpha"]
-    if a is None or isinstance(a,int)==True or isinstance(a,float)==True:
+    if a is None or isinstance(a, int) is True or isinstance(a, float) is True:
         focal_params["alpha"] = torch.ones([1])
     bfl = binary_focal_loss(pred,target,**focal_params)
     bftl = binary_focal_tversky_loss(pred,target,**tversky_params)
@@ -440,7 +440,7 @@ def cat_cross_entropy(pred:torch.Tensor,
 
     if pred.shape != target.shape:
         target = classes_to_one_hot(target)
-    if isinstance(weight,torch.Tensor) == True:
+    if isinstance(weight, torch.Tensor) is True:
         weight = unsqueeze_to_shape(weight,pred.shape,1)
     out = -target*torch.log(pred+eps)
     out = torch.flatten(out*weight,start_dim=1)
@@ -582,7 +582,7 @@ def mc_hybrid_focal_loss(pred:torch.Tensor,
         dimension of `pred`).
     """
     a = focal_params["alpha"]
-    if a is None or isinstance(a,int)==True or isinstance(a,float)==True:
+    if a is None or isinstance(a, int) is True or isinstance(a, float) is True:
         focal_params["alpha"] = torch.ones(pred.shape[1])
     fl = mc_focal_loss(pred,target,**focal_params)
     ftl = mc_focal_tversky_loss(pred,target,**tversky_params)
@@ -692,7 +692,7 @@ def ordinal_sigmoidal_loss(pred:torch.Tensor,
         one_hot_cumsum = torch.cumsum(one_hot,axis=1) - one_hot
         output = torch.ones_like(one_hot_cumsum,device=one_hot_cumsum.device)
         output = output - one_hot_cumsum
-        if ignore_0 == True:
+        if ignore_0 is True:
             output = output[:,1:]
         return output
 

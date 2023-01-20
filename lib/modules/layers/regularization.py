@@ -33,7 +33,7 @@ class UOut(torch.nn.Module):
         Returns:
             torch.Tensor: Tensor
         """
-        if self.training == True:
+        if self.training is True:
             sh = list(X.shape)
             for i in range(2,len(sh)):
                 sh[i] = 1

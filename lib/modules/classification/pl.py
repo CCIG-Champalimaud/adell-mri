@@ -1,4 +1,3 @@
-import numpy as np
 import torch
 import torch.nn.functional as F
 import torchmetrics
@@ -66,7 +65,7 @@ class ClassPLABC(pl.LightningModule,ABC):
             y = y.to(torch.int64)
         else:
             y = y.float()
-        if with_params == True:
+        if with_params is True:
             d = y.device
             params = {k:self.loss_params[k].to(d) for k in self.loss_params}
             loss = self.loss_fn(prediction,y,**params)

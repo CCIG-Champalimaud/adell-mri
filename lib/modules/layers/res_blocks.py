@@ -176,7 +176,7 @@ class ParallelOperationsAndSum(torch.nn.Module):
         outputs = []
         for operation in self.operation_list:
             outputs.append(operation(X))
-        if self.crop_to_smallest == True:
+        if self.crop_to_smallest is True:
             sh = []
             for output in outputs:
                 sh.append(list(output.shape))

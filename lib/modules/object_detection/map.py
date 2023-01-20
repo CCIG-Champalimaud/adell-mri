@@ -86,7 +86,7 @@ class mAP(torch.nn.Module):
                 iou_array[i,overlap] = iou
                 any_hit = True
         
-        if any_hit == True:
+        if any_hit is True:
             # step 3 - filter by highest iou
             best_pred = torch.argmax(iou_array,1)
 

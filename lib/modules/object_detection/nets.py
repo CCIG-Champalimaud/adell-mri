@@ -175,7 +175,7 @@ class YOLONet3d(torch.nn.Module):
         upper_corner = long_centers - long_sizes/2
         lower_corner = long_centers + long_sizes/2
         long_bb = torch.cat([upper_corner,lower_corner],1)
-        if nms == True:
+        if nms is True:
             bb_idxs = nms_nd(
                 long_bb,object_scores.reshape(-1),0.7,0.5)
             return (
@@ -229,7 +229,7 @@ class YOLONet3d(torch.nn.Module):
             o = self.recover_boxes(
                 bb_size_pred[b],bb_center_pred[b],
                 bb_object_pred[b],class_pred[b],nms=nms)
-            if to_dict == True:
+            if to_dict is True:
                 o = convert_to_dict(o)
             output.append(o)
         return output

@@ -314,7 +314,7 @@ class DenseBlock(torch.nn.Module):
             out = torch.cat([out,*outputs[:-1],*xs],1)
             out = self.ops[i](out)
             outputs.append(out)
-        if self.return_all == True:
+        if self.return_all is True:
             return outputs
         else:
             return outputs[-1]

@@ -140,7 +140,7 @@ class UNet(torch.nn.Module):
         self.deep_supervision = deep_supervision
         self.encoder_only = encoder_only
 
-        if self.encoder_only == True:
+        if self.encoder_only is True:
             # initialize all layers
             self.get_norm_op()
             self.get_drop_op()
@@ -151,7 +151,7 @@ class UNet(torch.nn.Module):
             else:
                 self.init_encoder_backbone()
 
-        elif parent_class == False:
+        elif parent_class is False:
             # initialize all layers
             self.get_norm_op()
             self.get_drop_op()
@@ -165,7 +165,7 @@ class UNet(torch.nn.Module):
             self.init_link_ops()
             self.init_decoder()
             self.init_final_layer()
-            if self.bottleneck_classification == True:
+            if self.bottleneck_classification is True:
                 self.init_bottleneck_classifier()
             if self.feature_conditioning is not None:
                 self.init_feature_conditioning_operations()
@@ -330,7 +330,7 @@ class UNet(torch.nn.Module):
         elif self.upscale_type == "transpose":
             upscale_ops = []
             for d1,d2,s in zip(depths_a,depths_b,self.strides[::-1][1:]):
-                if isinstance(s,int) == True:
+                if isinstance(s, int) is True:
                     s = [s for _ in range(self.spatial_dimensions)]
                 p = [np.maximum(i-2,0) for i in s]
                 if self.spatial_dimensions == 2:
@@ -394,9 +394,9 @@ class UNet(torch.nn.Module):
         previous_d = self.n_channels
         for i in range(len(self.depth)-1):
             d,k,s = self.depth[i],self.kernel_sizes[i],self.strides[i]
-            if isinstance(s,int) == True:
+            if isinstance(s, int) is True:
                 s = [s for _ in range(self.spatial_dimensions)]
-            if isinstance(k,int) == True:
+            if isinstance(k, int) is True:
                 k = [k for _ in range(self.spatial_dimensions)]
             p = [int(i//2) for i in k]
             op = torch.nn.Sequential(
@@ -448,7 +448,7 @@ class UNet(torch.nn.Module):
                                  padding=self.padding),
                 self.adn_fn(d))
             self.decoding_operations.append(op)
-            if self.deep_supervision == True:
+            if self.deep_supervision is True:
                 self.deep_supervision_ops.append(self.get_ds_final_layer(d))
 
     def get_final_layer(self,d:int)->torch.nn.Module:
@@ -593,9 +593,9 @@ class UNet(torch.nn.Module):
             encoding_out.append(curr)
             curr = op_ds(curr)
         bottleneck = curr
-        if return_bottleneck == True:
+        if return_bottleneck is True:
             return None,None,bottleneck
-        elif self.encoder_only == True:
+        elif self.encoder_only is True:
             return bottleneck
                 
         deep_outputs = []
@@ -631,16 +631,16 @@ class UNet(torch.nn.Module):
         final_features = curr
 
         curr = self.final_layer(curr)
-        if return_features == True:
+        if return_features is True:
             return curr,final_features,bottleneck
 
-        if self.bottleneck_classification == True:
+        if self.bottleneck_classification is True:
             bottleneck = bottleneck.flatten(start_dim=2).max(-1).values
             bn_out = self.bottleneck_classifier(bottleneck)
         else:
             bn_out = None
         
-        if self.deep_supervision == True:
+        if self.deep_supervision is True:
             for i in range(len(deep_outputs)):
                 o = deep_outputs[i]
                 op = self.deep_supervision_ops[i]
@@ -788,12 +788,12 @@ class BrUNet(UNet,torch.nn.Module):
             self.init_backbone_encoders()
         self.init_merge_ops()
         
-        if self.encoder_only != True:            
+        if self.encoder_only is not True:            
             self.init_upscale_ops()
             self.init_link_ops()
             self.init_decoder()
             self.init_final_layer()
-            if self.bottleneck_classification == True:
+            if self.bottleneck_classification is True:
                 self.init_bottleneck_classifier()
             if self.feature_conditioning is not None:
                 self.init_feature_conditioning_operations()
@@ -807,9 +807,9 @@ class BrUNet(UNet,torch.nn.Module):
             previous_d = self.n_channels
             for i in range(len(self.depth)-1):
                 d,k,s = self.depth[i],self.kernel_sizes[i],self.strides[i]
-                if isinstance(s,int) == True:
+                if isinstance(s, int) is True:
                     s = [s for _ in range(self.spatial_dimensions)]
-                if isinstance(k,int) == True:
+                if isinstance(k, int) is True:
                     k = [k for _ in range(self.spatial_dimensions)]
                 p = [int(i//2) for i in k]
                 op = torch.nn.Sequential(
@@ -856,7 +856,7 @@ class BrUNet(UNet,torch.nn.Module):
         """
         """Initializes linking (skip) operations.
         """
-        if self.encoder_only == True:
+        if self.encoder_only is True:
             D = [self.depth[-1]]
         else:
             D = self.depth
@@ -946,9 +946,9 @@ class BrUNet(UNet,torch.nn.Module):
         bottleneck = sum([
             self.merge_ops[-1][j](bottleneck_features_pre_merge[j]) / w_sum
             for j in range(self.n_input_branches)])
-        if self.encoder_only == True:
+        if self.encoder_only is True:
             return bottleneck
-        if return_bottleneck == True:
+        if return_bottleneck is True:
             return None,None,bottleneck
         curr = bottleneck
         
@@ -997,16 +997,16 @@ class BrUNet(UNet,torch.nn.Module):
         final_features = curr
 
         curr = self.final_layer(curr)
-        if return_features == True:
+        if return_features is True:
             return curr,final_features,bottleneck
 
-        if self.bottleneck_classification == True:
+        if self.bottleneck_classification is True:
             bottleneck = bottleneck.flatten(start_dim=2).max(-1).values
             bn_out = self.bottleneck_classifier(bottleneck)
         else:
             bn_out = None
 
-        if self.deep_supervision == True:
+        if self.deep_supervision is True:
             for i in range(len(deep_outputs)):
                 o = deep_outputs[i]
                 op = self.deep_supervision_ops[i]

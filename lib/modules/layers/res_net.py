@@ -143,7 +143,7 @@ class ResNetBackbone(torch.nn.Module):
         X = self.first_pooling(X)
         output_list = []
         for op,pool_op in zip(self.operations,self.pooling_operations):
-            if after_pool == False:
+            if after_pool is False:
                 X = op(X)
                 output_list.append(X)
                 X = pool_op(X)
@@ -165,7 +165,7 @@ class ResNetBackbone(torch.nn.Module):
 
     def forward(self,X,return_intermediate:bool=False,after_pool:bool=False,
                 batch_idx:bool=None):
-        if return_intermediate == True:
+        if return_intermediate is True:
             return self.forward_with_intermediate(X,after_pool=after_pool)
         else:
             return self.forward_regular(X,batch_idx=batch_idx)
@@ -278,7 +278,7 @@ class ResNetBackboneAlt(torch.nn.Module):
         X = self.first_pooling(X)
         output_list = []
         for op,pool_op in zip(self.operations,self.pooling_operations):
-            if after_pool == False:
+            if after_pool is False:
                 X = op(X)
                 output_list.append(X)
                 X = pool_op(X)
@@ -300,7 +300,7 @@ class ResNetBackboneAlt(torch.nn.Module):
 
     def forward(self,X,return_intermediate:bool=False,after_pool:bool=False,
                 batch_idx:bool=None):
-        if return_intermediate == True:
+        if return_intermediate is True:
             return self.forward_with_intermediate(X,after_pool=after_pool)
         else:
             return self.forward_regular(X,batch_idx=batch_idx)
