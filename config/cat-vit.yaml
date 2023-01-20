@@ -10,4 +10,4 @@ embed_method: "linear"
 mlp_structure: [1024]
 use_class_token: false
 learning_rate: 0.00002
-weight_decay: 0.03
+weight_decay: 0.05
