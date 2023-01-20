@@ -1,6 +1,7 @@
 import yaml
 from .layers import get_adn_fn
-from ..utils import activation_factory,loss_factory
+from ..modules.activations import activation_factory
+from ..utils import loss_factory
 
 unet_args = [
     "spatial_dimensions","encoding_operations","conv_type","link_type",
