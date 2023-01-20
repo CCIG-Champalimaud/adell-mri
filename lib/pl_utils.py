@@ -8,7 +8,7 @@ from typing import List,Union,Tuple
 
 def get_ckpt_callback(checkpoint_dir:str,checkpoint_name:str,
                       max_epochs:int,resume_from_last:bool,
-                      val_fold:int=None)->ModelCheckpoint:
+                      val_fold:int=None,monitor="val_loss")->ModelCheckpoint:
     ckpt_path = None
     ckpt_callback = None
     status = None
@@ -19,11 +19,15 @@ def get_ckpt_callback(checkpoint_dir:str,checkpoint_name:str,
             ckpt_last = checkpoint_name + "_fold" + str(val_fold)
         else:
             ckpt_last = checkpoint_name
-        ckpt_name = ckpt_name + "_best"
+        ckpt_name = ckpt_name + "_best_{epoch}_{" + monitor + ":.3f}"
+        if "loss" in monitor:
+            mode = "min"
+        else:
+            mode = "max"
         ckpt_callback = ModelCheckpoint(
             dirpath=checkpoint_dir,
-            filename=ckpt_name,monitor="val_loss",
-            save_last=True,save_top_k=1,mode="min")
+            filename=ckpt_name,monitor=monitor,
+            save_last=True,save_top_k=2,mode=mode)
         
         ckpt_last = ckpt_last + "_last"
         ckpt_callback.CHECKPOINT_NAME_LAST = ckpt_last

@@ -76,16 +76,17 @@ class ClassPLABC(pl.LightningModule,ABC):
 
     def training_step(self,batch,batch_idx):
         x, y = batch[self.image_key],batch[self.label_key]
+        if hasattr(self, 'training_batch_preproc'):
+            if self.training_batch_preproc is not None:
+                x,y = self.training_batch_preproc(x,y)
         prediction = self.forward(x)
         prediction = torch.squeeze(prediction,1)
 
         loss = self.calculate_loss(prediction,y,with_params=True)
         
-        self.log("loss",loss,on_epoch=True,
-                 on_step=False,prog_bar=True,
-                 batch_size=x.shape[0],sync_dist=True)
+        self.log("train_loss",loss,sync_dist=True)
         return loss
-    
+
     def validation_step(self,batch,batch_idx):
         x, y = batch[self.image_key],batch[self.label_key]
         prediction = self.forward(x)
@@ -118,19 +119,19 @@ class ClassPLABC(pl.LightningModule,ABC):
             self.parameters(),lr=self.learning_rate,
             weight_decay=self.weight_decay)
         lr_schedulers = CosineAnnealingWithWarmupLR(
-            optimizer,T_max=self.n_epochs,n_warmup_steps=self.warmup_steps,
-            eta_min=1e-6)
+            optimizer,T_max=self.n_epochs,
+            n_warmup_steps=self.warmup_steps,eta_min=1e-6)
 
         return {"optimizer":optimizer,
                 "lr_scheduler":lr_schedulers,
                 "monitor":"val_loss"}
-    
+
     def on_train_epoch_end(self):
         sch = self.lr_schedulers().state_dict()
         lr = self.learning_rate
         last_lr = sch['_last_lr'][0] if '_last_lr' in sch else lr
         self.log("lr",last_lr,sync_dist=True,prog_bar=True)
-    
+
     def setup_metrics(self):
         self.train_metrics = get_metric_dict(
             self.n_classes,[],prefix="")
@@ -166,6 +167,7 @@ class ClassNetPL(ClassPLABC):
         loss_params: dict={},
         n_epochs: int=100,
         warmup_steps: int=0,
+        training_batch_preproc: Callable=None,
         *args,**kwargs) -> torch.nn.Module:
         """Classification network implementation for Pytorch Lightning.
 
@@ -187,6 +189,10 @@ class ClassNetPL(ClassPLABC):
             n_epochs (int, optional): number of epochs. Defaults to 100.
             warmup_steps (int, optional): number of warmup steps. Defaults 
                 to 0.
+            training_batch_preproc (Callable): function to be applied to the
+                entire batch before feeding it to the model during training.
+                Can contain transformations such as mixup, which require access
+                to the entire training batch.
             args: arguments for classification network class.
             kwargs: keyword arguments for classification network class.
 
@@ -207,6 +213,7 @@ class ClassNetPL(ClassPLABC):
         self.loss_params = loss_params
         self.n_epochs = n_epochs
         self.warmup_steps = warmup_steps
+        self.training_batch_preproc = training_batch_preproc
         self.args = args
         self.kwargs = kwargs
         
@@ -416,6 +423,7 @@ class UNetEncoderPL(UNetEncoder,ClassPLABC):
         loss_params: dict={},
         n_epochs: int=100,
         warmup_steps: int=0,
+        training_batch_preproc: Callable=None,
         *args,**kwargs) -> torch.nn.Module:
         """
         Args:
@@ -436,6 +444,10 @@ class UNetEncoderPL(UNetEncoder,ClassPLABC):
             n_epochs (int, optional): number of epochs. Defaults to 100.
             warmup_steps (int, optional): number of warmup steps. Defaults 
                 to 0.
+            training_batch_preproc (Callable): function to be applied to the
+                entire batch before feeding it to the model during training.
+                Can contain transformations such as mixup, which require access
+                to the entire training batch.
             args: arguments for classification network class.
             kwargs: keyword arguments for classification network class.
 
@@ -455,6 +467,7 @@ class UNetEncoderPL(UNetEncoder,ClassPLABC):
         self.loss_params = loss_params
         self.n_epochs = n_epochs
         self.warmup_steps = warmup_steps
+        self.training_batch_preproc = training_batch_preproc
         self.args = args
         self.kwargs = kwargs
         
@@ -591,6 +604,7 @@ class ViTClassifierPL(ViTClassifier,ClassPLABC):
         loss_params: dict={},
         n_epochs: int=100,
         warmup_steps: int=0,
+        training_batch_preproc: Callable=None,
         *args,**kwargs) -> torch.nn.Module:
         """
         Args:
@@ -611,6 +625,10 @@ class ViTClassifierPL(ViTClassifier,ClassPLABC):
             n_epochs (int, optional): number of epochs. Defaults to 100.
             warmup_steps (int, optional): number of warmup steps. Defaults 
                 to 0.
+            training_batch_preproc (Callable): function to be applied to the
+                entire batch before feeding it to the model during training.
+                Can contain transformations such as mixup, which require access
+                to the entire training batch.
             args: arguments for classification network class.
             kwargs: keyword arguments for classification network class.
 
@@ -630,6 +648,7 @@ class ViTClassifierPL(ViTClassifier,ClassPLABC):
         self.loss_params = loss_params
         self.n_epochs = n_epochs
         self.warmup_steps = warmup_steps
+        self.training_batch_preproc = training_batch_preproc
         self.args = args
         self.kwargs = kwargs
         
@@ -651,6 +670,7 @@ class FactorizedViTClassifierPL(FactorizedViTClassifier,ClassPLABC):
         loss_params: dict={},
         n_epochs: int=100,
         warmup_steps: int=0,
+        training_batch_preproc: Callable=None,
         *args,**kwargs) -> torch.nn.Module:
         """
         Args:
@@ -671,6 +691,10 @@ class FactorizedViTClassifierPL(FactorizedViTClassifier,ClassPLABC):
             n_epochs (int, optional): number of epochs. Defaults to 100.
             warmup_steps (int, optional): number of warmup steps. Defaults 
                 to 0.
+            training_batch_preproc (Callable): function to be applied to the
+                entire batch before feeding it to the model during training.
+                Can contain transformations such as mixup, which require access
+                to the entire training batch.
             args: arguments for classification network class.
             kwargs: keyword arguments for classification network class.
 
@@ -690,6 +714,7 @@ class FactorizedViTClassifierPL(FactorizedViTClassifier,ClassPLABC):
         self.loss_params = loss_params
         self.n_epochs = n_epochs
         self.warmup_steps = warmup_steps
+        self.training_batch_preproc = training_batch_preproc
         self.args = args
         self.kwargs = kwargs
         

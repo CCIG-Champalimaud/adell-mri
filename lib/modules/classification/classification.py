@@ -465,7 +465,7 @@ class ViTClassifier(ViT):
         kwargs["use_class_token"] = use_class_token
         super().__init__(*args,**kwargs)
         self.n_classes = n_classes
-        
+
         if self.n_classes == 2:
             nc = 1
         else:
@@ -473,7 +473,7 @@ class ViTClassifier(ViT):
         self.classification_layer = torch.nn.Sequential(
             torch.nn.LayerNorm(self.input_dim_primary),
             torch.nn.Linear(self.input_dim_primary,nc))
-    
+
     def forward(
         self,
         X:torch.Tensor)->Tuple[torch.Tensor,TensorList]:
@@ -538,6 +538,8 @@ class FactorizedViTClassifier(FactorizedViT):
         embeded_X,_ = self.transformer_block_between(embeded_X)
         if self.use_class_token == True:
             embeded_X = embeded_X[:,0]
+        else:
+            embeded_X = embeded_X.max(1).values
         classification = self.classification_layer(embeded_X)
         return classification
 

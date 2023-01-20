@@ -130,22 +130,29 @@ def get_transforms_classification(x,
     if x == "pre":
         transforms = [
             monai.transforms.LoadImaged(keys,ensure_channel_first=True),
-            monai.transforms.Orientationd(keys,"RAS"),
-            monai.transforms.ScaleIntensityd(keys)]
+            monai.transforms.Orientationd(keys,"RAS")]
         if target_spacing is not None:
             transforms.append(
                 monai.transforms.Spacingd(keys,pixdim=target_spacing))
-        if crop_size is not None:
-            transforms.append(
-                monai.transforms.CenterSpatialCropd(
-                    keys,[int(j) for j in crop_size]))
         if pad_size is not None:
             transforms.append(
                 monai.transforms.SpatialPadd(
                     keys,[int(j) for j in pad_size]))
+        # initial crop with margin allows for rotation transforms to not create
+        # black pixels around the image (these transforms do not need to applied
+        # to the whole image)
+        if crop_size is not None:
+            transforms.append(
+                monai.transforms.CenterSpatialCropd(
+                    keys,[int(j)+16 for j in crop_size]))
+        transforms.append(monai.transforms.ScaleIntensityd(keys))
         transforms.append(monai.transforms.EnsureTyped(keys))
     elif x == "post":
         transforms = []
+        if crop_size is not None:
+            transforms.append(
+                monai.transforms.CenterSpatialCropd(
+                    keys,[int(j) for j in crop_size]))
         if isinstance(positive_labels,int):
             positive_labels = [positive_labels]
         if branched == False:
@@ -223,7 +230,7 @@ def get_augmentations_class(augment,
                             all_keys,
                             image_keys,
                             intp_resampling_augmentations):
-    valid_arg_list = ["intensity","noise","rbf","affine","shear"]
+    valid_arg_list = ["intensity","noise","rbf","affine","shear","flip"]
     for a in augment:
         if a not in valid_arg_list:
             raise NotImplementedError(
@@ -245,7 +252,11 @@ def get_augmentations_class(augment,
                 image_keys,std=0.05,prob=0.1),
             monai.transforms.RandGibbsNoised(
                 image_keys,alpha=(0.0,0.4),prob=0.1)])
-    
+        
+    if "flip" in augment:
+        augments.append(
+            monai.transforms.RandFlipd(image_keys,prob=0.1,spatial_axis=1))
+
     if "rbf" in augment:
         augments.append(
             monai.transforms.RandBiasFieldd(image_keys,degree=3,prob=0.1))
@@ -254,9 +265,10 @@ def get_augmentations_class(augment,
         augments.append(
             monai.transforms.RandAffined(
                 all_keys,
-                scale_range=[0.1,0.1,0.1],
-                rotate_range=[np.pi/16,np.pi/16,np.pi/16],
-                prob=0.25,mode=intp_resampling_augmentations,
+                scale_range=[0.05,0.05,0.05],
+                translate_range=[4,4,1],
+                rotate_range=[np.pi/8,np.pi/8,np.pi/32],
+                prob=0.1,mode=intp_resampling_augmentations,
                 padding_mode="zeros"))
         
     if "shear" in augment:

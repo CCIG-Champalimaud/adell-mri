@@ -1,13 +1,13 @@
 ---
 patch_size: [16,16,4]
-number_of_blocks: 9
+number_of_blocks: 12
 n_heads: 12
 embedding_size: 768
 attention_dim: 768
 hidden_dim: 768
 dropout_rate: 0.1
 embed_method: "convolutional"
-mlp_structure: [1024]
+mlp_structure: [3072]
 use_class_token: false
 learning_rate: 0.00002
-weight_decay: 0.03
+weight_decay: 0.05

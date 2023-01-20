@@ -1,7 +1,17 @@
 import torch
 import math
-import warnings
 from torch.optim.lr_scheduler import _LRScheduler
+
+class _enable_get_lr_call:
+    def __init__(self, o):
+        self.o = o
+
+    def __enter__(self):
+        self.o._get_lr_called_within_step = True
+        return self
+
+    def __exit__(self, type, value, traceback):
+        self.o._get_lr_called_within_step = False
 
 class PolynomialLRDecay(_LRScheduler):
     """Polynomial learning rate decay until step reach to max_decay_step
@@ -70,15 +80,33 @@ class CosineAnnealingWithWarmupLR(_LRScheduler):
     def _get_closed_form_lr(self):
         le = self.last_epoch
         nws = float(self.n_warmup_steps)
-        if self.last_epoch < (nws + 1):
-            lrs = [(base_lr-self.initial_lr) * (le/nws)
+        if le < (nws) and nws > 0:
+            lrs = [(base_lr-self.initial_lr) * ((le+1)/nws) + self.eta_min
                    for base_lr in self.base_lrs]
         else:
             lrs = [self.eta_min + (base_lr - self.eta_min) *
                    (1 + math.cos(math.pi * (le-nws) / self.T_max)) / 2
                    for base_lr in self.base_lrs]
         return lrs
-  
+
+    def step(self,epoch=None):
+        self._step_count += 1
+
+        with _enable_get_lr_call(self):
+            if epoch is None:
+                self.last_epoch += 1
+                values = self.get_lr()
+            else:
+                self.last_epoch = epoch
+                values = self.get_lr()
+
+        for i, data in enumerate(zip(self.optimizer.param_groups,values)):
+            param_group, lr = data
+            param_group['lr'] = lr
+            self.print_lr(self.verbose, i, lr, epoch)
+
+        self._last_lr = [group['lr'] for group in self.optimizer.param_groups]
+
 def poly_lr_decay(optimizer:torch.optim.Optimizer,
                         step:int,
                         initial_lr:float,

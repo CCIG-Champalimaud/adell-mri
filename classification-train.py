@@ -1,12 +1,10 @@
 import argparse
-import os
 import random
 import json
 import numpy as np
 import torch
 import torch.nn.functional as F
 import monai
-import wandb
 from copy import deepcopy
 from sklearn.model_selection import train_test_split,StratifiedKFold
 
@@ -15,8 +13,9 @@ from pytorch_lightning.callbacks import (
     EarlyStopping,StochasticWeightAveraging,RichProgressBar)
 
 from lib.utils import (
-    safe_collate)
+    safe_collate,set_classification_layer_bias)
 from lib.pl_utils import get_ckpt_callback,get_logger,get_devices
+from lib.batch_preprocessing import BatchPreprocessing
 from lib.monai_transforms import get_transforms_classification as get_transforms
 from lib.monai_transforms import get_augmentations_class as get_augmentations
 from lib.modules.classification.classification import (UNetEncoder)
@@ -24,10 +23,24 @@ from lib.modules.classification.pl import (
     ClassNetPL,UNetEncoderPL,GenericEnsemblePL,ViTClassifierPL,
     FactorizedViTClassifierPL)
 from lib.modules.layers.adn_fn import get_adn_fn
-from lib.modules.losses import ordinal_sigmoidal_loss
+from lib.modules.losses import OrdinalSigmoidalLoss
 from lib.modules.config_parsing import parse_config_unet,parse_config_cat
 
-def filter_dictionary(D,filters):
+def filter_dictionary_with_presence(D,filters):
+    print("Filtering on: {} presence".format(filters))
+    print("\tInput size: {}".format(len(D)))
+    out_dict = {}
+    for pid in D:
+        check = True
+        for k in filters:
+            if k not in D[pid]:
+                check = False
+        if check == True:
+            out_dict[pid] = D[pid]
+    print("\tOutput size: {}".format(len(out_dict)))
+    return out_dict
+
+def filter_dictionary_with_filters(D,filters):
     print("Filtering on: {}".format(filters))
     print("\tInput size: {}".format(len(D)))
     filters = [f.split(":") for f in filters]
@@ -97,6 +110,9 @@ if __name__ == "__main__":
     parser.add_argument(
         '--batch_size',dest='batch_size',type=int,default=None,
         help="Overrides batch size in config file")
+    parser.add_argument(
+        '--learning_rate',dest='learning_rate',type=float,default=None,
+        help="Overrides learning rate in config file")
 
     # network + training
     parser.add_argument(
@@ -121,6 +137,16 @@ if __name__ == "__main__":
         '--augment',dest='augment',type=str,nargs="+",
         help="Use data augmentations",default=[])
     parser.add_argument(
+        '--label_smoothing',dest="label_smoothing",
+        help="Label smoothing value",default=None,type=float)
+    parser.add_argument(
+        '--mixup_alpha',dest="mixup_alpha",
+        help="Alpha for mixup",default=None,type=float)
+    parser.add_argument(
+        '--partial_mixup',dest="partial_mixup",
+        help="Applies mixup only to this fraction of the batch",
+        default=None,type=float)
+    parser.add_argument(
         '--max_epochs',dest="max_epochs",
         help="Maximum number of training epochs",default=100,type=int)
     parser.add_argument(
@@ -138,6 +164,9 @@ if __name__ == "__main__":
     parser.add_argument(
         '--checkpoint',dest='checkpoint',type=str,default=None,
         nargs="+",help='Resumes training from this checkpoint.')
+    parser.add_argument(
+        '--monitor',dest='monitor',type=str,default="val_loss",
+        help="Metric that is monitored to determine the best checkpoint.")
     parser.add_argument(
         '--resume_from_last',dest='resume_from_last',action="store_true",
         help="Resumes from the last checkpoint stored for a given fold.")
@@ -163,7 +192,8 @@ if __name__ == "__main__":
         help="No. of checks before early stop (defaults to no early stop).")
     parser.add_argument(
         '--warmup_steps',dest='warmup_steps',type=int,default=0,
-        help="Number of warmup steps")
+        help="Number of warmup steps (if SWA is triggered it starts after\
+            this number of steps).")
     parser.add_argument(
         '--swa',dest='swa',action="store_true",
         help="Use stochastic gradient averaging.",default=False)
@@ -172,18 +202,23 @@ if __name__ == "__main__":
         help="Value for gradient clipping",
         default=0.0,type=float)
     parser.add_argument(
+        '--dropout_param',dest='dropout_param',type=float,
+        help="Parameter for dropout.",default=0.1)
+    parser.add_argument(
         '--accumulate_grad_batches',dest="accumulate_grad_batches",
         help="Number batches to accumulate before backpropgating gradient",
         default=1,type=int)
+    # strategies to handle imbalanced classes
     parser.add_argument(
         '--weighted_sampling',dest='weighted_sampling',action="store_true",
         help="Samples according to class proportions.",default=False)
     parser.add_argument(
-        '--class_weights',dest='class_weights',type=float,nargs='+',
-        help="Class weights (by alphanumeric order).",default=1.)
+        '--correct_classification_bias',dest='correct_classification_bias',
+        action="store_true",default=False,
+        help="Sets the final classification bias to log(pos/neg).")
     parser.add_argument(
-        '--dropout_param',dest='dropout_param',type=float,
-        help="Parameter for dropout.",default=0.1)
+        '--class_weights',dest='class_weights',type=str,nargs='+',
+        help="Class weights (by alphanumeric order).",default=None)
 
     args = parser.parse_args()
 
@@ -199,11 +234,10 @@ if __name__ == "__main__":
 
     data_dict = json.load(open(args.dataset_json,'r'))
     if len(args.filter_on_keys) > 0:
-        data_dict = filter_dictionary(data_dict,args.filter_on_keys)
-    data_dict = {
-        k:data_dict[k] for k in data_dict
-        if len(set.intersection(set(data_dict[k]),
-                                set(args.image_keys))) == len(args.image_keys)}
+        data_dict = filter_dictionary_with_filters(
+            data_dict,args.filter_on_keys)
+    data_dict = filter_dictionary_with_presence(
+        data_dict,args.image_keys + [args.label_keys])
     if args.subsample_size is not None:
         ss = np.random.choice(
             list(data_dict.keys()),args.subsample_size,replace=False)
@@ -218,6 +252,14 @@ if __name__ == "__main__":
         n_classes = len(args.possible_labels)
     else:
         n_classes = 2
+
+    if len(data_dict) == 0:
+        raise Exception(
+            "No data available for training \
+                (dataset={}; keys={}; labels={})".format(
+                    args.dataset_json,
+                    args.image_keys,
+                    args.label_keys()))
     
     keys = args.image_keys
 
@@ -229,16 +271,12 @@ if __name__ == "__main__":
     
     if args.batch_size is not None:
         network_config["batch_size"] = args.batch_size
+    if args.learning_rate is not None:
+        network_config["learning_rate"] = args.learning_rate
+
     if "batch_size" not in network_config:
         network_config["batch_size"] = 1
     
-    if n_classes == 2:
-        network_config["loss_fn"] = F.binary_cross_entropy_with_logits
-    elif args.net_type == "ord":
-        network_config["loss_fn"] = ordinal_sigmoidal_loss
-    else:
-        network_config["loss_fn"] = F.cross_entropy
-
     all_pids = [k for k in data_dict]
 
     print("Setting up transforms...")
@@ -262,10 +300,6 @@ if __name__ == "__main__":
     transforms_train = [
         *get_transforms("pre",**transform_arguments),
         *get_augmentations(**augment_arguments),
-        *get_transforms("post",**transform_arguments)]
-
-    transforms_train_val = [
-        *get_transforms("pre",**transform_arguments),
         *get_transforms("post",**transform_arguments)]
 
     transforms_val = [
@@ -292,12 +326,9 @@ if __name__ == "__main__":
 
     for val_fold in range(args.n_folds):
         train_idxs,val_idxs = next(fold_generator)
-        train_val_idxs = val_idxs
         train_pids = [all_pids[i] for i in train_idxs]
-        train_val_pids = [all_pids[i] for i in train_val_idxs]
         val_pids = [all_pids[i] for i in val_idxs]
         train_list = [data_dict[pid] for pid in train_pids]
-        train_val_list = [data_dict[pid] for pid in train_val_pids]
         val_list = [data_dict[pid] for pid in val_pids]
         
         train_dataset = monai.data.CacheDataset(
@@ -306,21 +337,13 @@ if __name__ == "__main__":
             cache_rate=args.cache_rate,
             num_workers=args.n_workers)
         train_dataset_val = monai.data.CacheDataset(
-            train_val_list,
-            monai.transforms.Compose(transforms_train_val),
+            val_list,
+            monai.transforms.Compose(transforms_val),
             cache_rate=args.cache_rate,
             num_workers=args.n_workers)
         validation_dataset = monai.data.Dataset(
             val_list,
             monai.transforms.Compose(transforms_val))
-
-        class_weights = torch.as_tensor(
-            np.array(args.class_weights),device=args.dev.split(":")[0],
-            dtype=torch.float32)
-        print("Calculating weights...")
-        loss_params = {"weight":class_weights}
-        if args.net_type == "ord":
-            loss_params["n_classes"] = n_classes
 
         classes = []
         for p in train_list:
@@ -346,6 +369,47 @@ if __name__ == "__main__":
                 weight_vector,len(weight_vector),generator=g)
         else:
             sampler = None
+        
+        # PL needs a little hint to detect GPUs.
+        torch.ones([1]).to(args.dev)
+        
+        # get class weights if necessary  
+        class_weights = None
+        if args.class_weights is not None:
+            if args.class_weights[0] == "adaptive":
+                if n_classes == 2:
+                    pos = len([x for x in classes 
+                               if x in args.positive_labels])
+                    neg = len(classes) - pos
+                    weight_neg = (1 / neg) * (len(classes) / 2.0)
+                    weight_pos = (1 / pos) * (len(classes) / 2.0)
+                    class_weights = weight_pos/weight_neg
+                    class_weights = torch.as_tensor(
+                        np.array(class_weights),device=args.dev.split(":")[0],
+                        dtype=torch.float32)
+                else:
+                    pos = {k:0 for k in args.possible_labels}
+                    for c in classes:
+                        pos[c] += 1
+                    pos = np.array([pos[k] for k in pos])
+                    class_weights = (1 / pos) * (len(classes) / 2.0)
+                    class_weights = torch.as_tensor(
+                        np.array(class_weights),device=args.dev.split(":")[0],
+                        dtype=torch.float32)
+            else:
+                class_weights = [float(x) for x in args.class_weights]
+                if class_weights is not None:
+                    class_weights = torch.as_tensor(
+                        np.array(class_weights),device=args.dev.split(":")[0],
+                        dtype=torch.float32)
+                
+        print("Initializing loss with class_weights: {}".format(class_weights))
+        if n_classes == 2:
+            network_config["loss_fn"] = torch.nn.BCEWithLogitsLoss(class_weights)
+        elif args.net_type == "ord":
+            network_config["loss_fn"] = OrdinalSigmoidalLoss(class_weights,n_classes)
+        else:
+            network_config["loss_fn"] = torch.nn.CrossEntropy(class_weights)
 
         def train_loader_call(): 
             return monai.data.ThreadDataLoader(
@@ -358,9 +422,9 @@ if __name__ == "__main__":
         train_val_loader = monai.data.ThreadDataLoader(
             train_dataset_val,batch_size=network_config["batch_size"],
             shuffle=False,num_workers=args.n_workers,
-            collate_fn=safe_collate,drop_last=True)
+            collate_fn=safe_collate)
         validation_loader = monai.data.ThreadDataLoader(
-            validation_dataset,batch_size=1,
+            validation_dataset,batch_size=network_config["batch_size"],
             shuffle=False,num_workers=args.n_workers,
             collate_fn=safe_collate)
 
@@ -371,51 +435,46 @@ if __name__ == "__main__":
             act_fn = "swish"
         adn_fn = get_adn_fn(3,"identity",act_fn=act_fn,
                             dropout_param=args.dropout_param)
+        batch_preprocessing = BatchPreprocessing(
+            args.label_smoothing,args.mixup_alpha,args.partial_mixup,args.seed)
+        boilerplate_args = {
+            "n_channels":len(keys),
+            "n_classes":n_classes,
+            "training_dataloader_call":train_loader_call,
+            "image_key":"image",
+            "label_key":"label",
+            "n_epochs":args.max_epochs,
+            "warmup_steps":args.warmup_steps,
+            "training_batch_preproc":batch_preprocessing}
         if args.branched == False:
             if args.net_type == "unet":
                 network = UNetEncoderPL(
-                    n_classes=n_classes,
-                    training_dataloader_call=train_loader_call,
-                    image_key="image",label_key="label",
                     head_structure=[
                         network_config["depth"][-1] for _ in range(3)],
                     head_adn_fn=get_adn_fn(
                         1,"batch",act_fn="gelu",
                         dropout_param=args.dropout_param),
-                    n_epochs=args.max_epochs,
-                    warmup_steps=args.warmup_steps,
+                    **boilerplate_args,
                     **network_config)
             elif "vit" in args.net_type:
                 image_size = [int(x) for x in args.crop_size]
                 network_config["image_size"] = image_size
                 if args.net_type == "vit":
                     network = ViTClassifierPL(
-                        n_channels=len(keys),
-                        n_classes=n_classes,
-                        training_dataloader_call=train_loader_call,
-                        image_key="image",label_key="label",
                         adn_fn=get_adn_fn(
                             1,"identity",act_fn="gelu",
                             dropout_param=args.dropout_param),
-                        n_epochs=args.max_epochs,
-                        loss_params=loss_params,
-                        warmup_steps=args.warmup_steps,
+                        **boilerplate_args,
                         **network_config)
                 elif args.net_type == "factorized_vit":
-                    for k in ["embedding_size","embed_method"]:
+                    for k in ["embed_method"]:
                         if k in network_config:
                             del network_config[k]
                     network = FactorizedViTClassifierPL(
-                        n_channels=len(keys),
-                        n_classes=n_classes,
-                        training_dataloader_call=train_loader_call,
-                        image_key="image",label_key="label",
                         adn_fn=get_adn_fn(
                             1,"identity",act_fn="gelu",
                             dropout_param=args.dropout_param),
-                        n_epochs=args.max_epochs,
-                        loss_params=loss_params,
-                        warmup_steps=args.warmup_steps,
+                        **boilerplate_args,
                         **network_config)                    
                 
             else:
@@ -424,8 +483,7 @@ if __name__ == "__main__":
                     n_classes=n_classes,
                     training_dataloader_call=train_loader_call,
                     image_key="image",label_key="label",
-                    adn_fn=adn_fn,
-                    loss_params=loss_params,n_epochs=args.max_epochs,
+                    adn_fn=adn_fn,n_epochs=args.max_epochs,
                     warmup_steps=args.warmup_steps,
                     **network_config)
         else:
@@ -462,11 +520,13 @@ if __name__ == "__main__":
                 strict=True,mode="min")
             callbacks.append(early_stopping)
         if args.swa == True:
-            swa_callback = StochasticWeightAveraging()
+            swa_callback = StochasticWeightAveraging(
+                network_config["learning_rate"],swa_epoch_start=args.warmup_steps)
             callbacks.append(swa_callback)
         ckpt_callback,ckpt_path,status = get_ckpt_callback(
             args.checkpoint_dir,args.checkpoint_name,
-            val_fold,args.max_epochs,args.resume_from_last)
+            val_fold,args.max_epochs,args.resume_from_last,
+            monitor=args.monitor)
         if ckpt_callback is not None:   
             callbacks.append(ckpt_callback)
         ckpt = ckpt_callback is not None
@@ -475,6 +535,11 @@ if __name__ == "__main__":
         logger = get_logger(args.summary_name,args.summary_dir,
                             args.project_name,args.resume,
                             fold=val_fold)
+        
+        if args.correct_classification_bias == True and n_classes == 2:
+            pos = len([x for x in classes if x in args.positive_labels])
+            neg = len(classes) - pos
+            set_classification_layer_bias(pos,neg,network)
         
         trainer = Trainer(
             accelerator=accelerator,
@@ -492,19 +557,25 @@ if __name__ == "__main__":
         # assessing performance on validation set
         print("Validating...")
         
-        test_metrics = trainer.test(network,validation_loader)[0]
-        for k in test_metrics:
-            out = test_metrics[k]
-            if n_classes == 2:
-                try:
-                    value = float(out.detach().numpy())
-                except:
-                    value = float(out)
-                x = "{},{},{},{}".format(k,val_fold,0,value)
-                output_file.write(x+'\n')
-                print(x)
-            else:
-                for i,v in enumerate(out):
-                    x = "{},{},{},{}".format(k,val_fold,i,v)
+        if ckpt == True:
+            ckpt_list = ["last","best"]
+        else:
+            ckpt_list = ["last"]
+        for ckpt_key in ckpt_list:
+            test_metrics = trainer.test(
+                network,validation_loader,ckpt_path=ckpt_key)[0]
+            for k in test_metrics:
+                out = test_metrics[k]
+                if n_classes == 2:
+                    try:
+                        value = float(out.detach().numpy())
+                    except:
+                        value = float(out)
+                    x = "{},{},{},{},{}".format(k,ckpt_key,val_fold,0,value)
                     output_file.write(x+'\n')
                     print(x)
+                else:
+                    for i,v in enumerate(out):
+                        x = "{},{},{},{},{}".format(k,ckpt_key,val_fold,i,v)
+                        output_file.write(x+'\n')
+                        print(x)

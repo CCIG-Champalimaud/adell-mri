@@ -707,3 +707,12 @@ def ordinal_sigmoidal_loss(pred:torch.Tensor,
         loss = loss * weight_sample
     
     return loss
+
+class OrdinalSigmoidalLoss(torch.nn.Module):
+    def __init__(self,weight:torch.Tensor,n_classes:int):
+        self.n_classes = n_classes
+        self.weight = torch.as_tensor(weight)
+    
+    def __call__(self,pred,target):
+        return ordinal_sigmoidal_loss(
+            pred,target,self.n_classes,self.weight)

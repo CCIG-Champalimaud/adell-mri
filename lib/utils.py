@@ -323,6 +323,14 @@ def resample_image(sitk_image,out_spacing=[1.0, 1.0, 1.0],
 
     return sitk_image
 
+def set_classification_layer_bias(pos,neg,network):
+    value = torch.as_tensor(np.log(pos/neg))
+    for k,v in network.named_parameters():
+        if "classification" in k:
+            if list(v.shape) == [1]:
+                with torch.no_grad():
+                    v[0] = value
+
 class ConvertToOneHot(monai.transforms.Transform):
     def __init__(self,keys:str,out_key:str,
                  priority_key:str,bg:bool=True)->monai.transforms.Transform:

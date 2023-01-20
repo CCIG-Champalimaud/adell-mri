@@ -129,6 +129,7 @@ class SliceLinearEmbedding(torch.nn.Module):
                  n_channels:int,
                  image_size:Tuple[int,int,int],
                  patch_size:Union[Tuple[int,int],Tuple[int,int,int]],
+                 embedding_size:int=None,
                  dropout_rate:float=0.0,
                  use_class_token:bool=False):
         super().__init__()
@@ -604,8 +605,14 @@ class TransformerBlock(torch.nn.Module):
     def init_mlp(self):
         """Initializes the MLP in the last step of the transformer.
         """
-        self.mlp = MLP(self.input_dim_primary,self.input_dim_primary,
-                       self.mlp_structure,self.adn_fn)
+        if isinstance(self.mlp_structure,list):
+            struc = self.mlp_structure[0]
+        else:
+            struc = self.mlp_structure
+        self.mlp = torch.nn.Sequential(
+            torch.nn.Linear(self.input_dim_primary,struc),
+            self.adn_fn(struc),
+            torch.nn.Linear(struc,self.input_dim_primary))
     
     def forward(self,X:torch.Tensor,mask=None)->torch.Tensor:
         """Forward pass.
@@ -1245,6 +1252,7 @@ class FactorizedViT(torch.nn.Module):
                  number_of_blocks:int,
                  attention_dim:int,
                  hidden_dim:int=None,
+                 embedding_size:int=None,
                  n_heads:int=4,
                  dropout_rate:float=0.0,
                  mlp_structure:Union[List[int],float]=[32,32],
@@ -1260,6 +1268,8 @@ class FactorizedViT(torch.nn.Module):
             hidden_dim (int, optional): size of hidden dimension (output of 
                 attention modules). Defaults to None (same as inferred input
                 dimension).
+            embedding_size (int, optional): size of the embedding. Defaults to
+                None (same as inferred output dimension).
             dropout_rate (float, optional): dropout rate of the dropout 
                 operations applied throughout this module. Defaults to 0.0.
             embed_method (str, optional): . Defaults to "linear".
@@ -1286,6 +1296,7 @@ class FactorizedViT(torch.nn.Module):
         self.number_of_blocks = number_of_blocks
         self.attention_dim = attention_dim
         self.hidden_dim = hidden_dim
+        self.embedding_size = embedding_size
         self.n_heads = n_heads
         self.dropout_rate = dropout_rate
         self.mlp_structure = mlp_structure
@@ -1296,6 +1307,7 @@ class FactorizedViT(torch.nn.Module):
             image_size=self.image_size,
             patch_size=self.patch_size,
             n_channels=self.n_channels,
+            embedding_size=self.embedding_size,
             dropout_rate=self.dropout_rate,
             use_class_token=self.use_class_token)
 
