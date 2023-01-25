@@ -8,6 +8,8 @@ import monai
 from torchmetrics import JaccardIndex,Precision,FBetaScore
 from tqdm import tqdm
 
+import sys
+sys.path.append(r"..")
 from lib.utils import (
     activation_factory,
     collate_last_slice,

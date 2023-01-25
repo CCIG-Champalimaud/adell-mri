@@ -60,16 +60,21 @@ class CosineAnnealingWithWarmupLR(_LRScheduler):
     """
 
     def __init__(self, 
-                 optimizer,
-                 T_max,
-                 n_warmup_steps=0,
-                 eta_min=0, 
-                 last_epoch=-1, 
-                 verbose=False):
-        self.T_max = T_max - n_warmup_steps
+                 optimizer:torch.optim.Optimizer,
+                 T_max:int,
+                 n_warmup_steps:int=0,
+                 eta_min:int=0, 
+                 last_epoch:int=-1, 
+                 verbose:bool=False,
+                 start_decay:int=None):
+        self.T_max = T_max
         self.n_warmup_steps = n_warmup_steps
         self.eta_min = eta_min
         self.initial_lr = eta_min
+        self.start_decay = start_decay
+        
+        if self.start_decay is None:
+            self.start_decay = self.n_warmup_steps
         
         self.last_lr = None
         super(CosineAnnealingWithWarmupLR, self).__init__(optimizer, last_epoch, verbose)
@@ -80,12 +85,17 @@ class CosineAnnealingWithWarmupLR(_LRScheduler):
     def _get_closed_form_lr(self):
         le = self.last_epoch
         nws = float(self.n_warmup_steps)
+        ssd = float(self.start_decay)
         if le < (nws) and nws > 0:
             lrs = [(base_lr-self.initial_lr) * ((le+1)/nws) + self.eta_min
                    for base_lr in self.base_lrs]
+        elif le <= ssd:
+            lrs = [base_lr for base_lr in self.base_lrs]
         else:
+            r = max(nws,ssd)
+            T_max = self.T_max - r
             lrs = [self.eta_min + (base_lr - self.eta_min) *
-                   (1 + math.cos(math.pi * (le-nws) / self.T_max)) / 2
+                   (1 + math.cos(math.pi * (le-r) / T_max)) / 2
                    for base_lr in self.base_lrs]
         return lrs
 

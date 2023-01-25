@@ -5,18 +5,19 @@ import time
 import numpy as np
 import torch
 import monai
+import SimpleITK as sitk
 from tqdm import tqdm
 from multiprocessing import Queue, Process
 
-import SimpleITK as sitk
-
+import sys
+sys.path.append(r"..")
 from lib.utils import (
     collate_last_slice,
     SlicesToFirst,
     safe_collate)
 from lib.modules.layers import ResNet
 from lib.modules.segmentation import UNet
-from lib.modules.segmentation_plus import UNetPlusPlus
+from lib.modules.segmentation.unetpp import UNetPlusPlus
 from lib.modules.config_parsing import parse_config_unet,parse_config_ssl
 from lib.modules.extract_lesion_candidates import (
     extract_lesion_candidates,extract_lesion_candidates_dynamic)

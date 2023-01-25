@@ -3,7 +3,6 @@ import random
 import json
 import numpy as np
 import torch
-import torch.nn.functional as F
 import monai
 from copy import deepcopy
 from sklearn.model_selection import train_test_split,StratifiedKFold
@@ -12,6 +11,8 @@ from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import (
     EarlyStopping,StochasticWeightAveraging,RichProgressBar)
 
+import sys
+sys.path.append(r"..")
 from lib.utils import (
     safe_collate,set_classification_layer_bias)
 from lib.pl_utils import get_ckpt_callback,get_logger,get_devices
@@ -69,6 +70,9 @@ if __name__ == "__main__":
         '--image_keys',dest='image_keys',type=str,nargs='+',
         help="Image keys in the dataset JSON.",
         required=True)
+    parser.add_argument(
+        '--adc_keys',dest='adc_keys',type=str,nargs='+',
+        help="Image keys corresponding to ADC.",default=None)
     parser.add_argument(
         '--label_keys',dest='label_keys',type=str,default="image_labels",
         help="Label keys in the dataset JSON.")
@@ -195,6 +199,10 @@ if __name__ == "__main__":
         help="Number of warmup steps (if SWA is triggered it starts after\
             this number of steps).")
     parser.add_argument(
+        '--start_decay',dest='start_decay',type=int,default=None,
+        help="Step at which decay starts. Defaults to starting right after \
+            warmup ends.")
+    parser.add_argument(
         '--swa',dest='swa',action="store_true",
         help="Use stochastic gradient averaging.",default=False)
     parser.add_argument(
@@ -227,6 +235,7 @@ if __name__ == "__main__":
     np.random.seed(args.seed)
     g = torch.Generator()
     g.manual_seed(args.seed)
+    rng = np.random.default_rng(args.seed)
 
     accelerator,devices,strategy = get_devices(args.dev)
     
@@ -239,8 +248,17 @@ if __name__ == "__main__":
     data_dict = filter_dictionary_with_presence(
         data_dict,args.image_keys + [args.label_keys])
     if args.subsample_size is not None:
-        ss = np.random.choice(
-            list(data_dict.keys()),args.subsample_size,replace=False)
+        strata = {}
+        for k in data_dict:
+            l = data_dict[k][args.label_keys]
+            if l not in strata:
+                strata[l] = []
+            strata[l].append(k)
+        p = [len(strata[k]) / len(data_dict) for k in strata]
+        split = rng.multinomial(args.subsample_size,p)
+        ss = []
+        for k,s in zip(strata,split):
+            ss.extend(rng.choice(strata[k],size=s,replace=False,shuffle=False))
         data_dict = {k:data_dict[k] for k in ss}
     all_classes = []
     for k in data_dict:
@@ -262,6 +280,7 @@ if __name__ == "__main__":
                     args.label_keys()))
     
     keys = args.image_keys
+    adc_keys = args.adc_keys if args.adc_keys is not None else []
 
     if args.net_type == "unet":
         network_config,_ = parse_config_unet(args.config_file,
@@ -283,6 +302,7 @@ if __name__ == "__main__":
     label_mode = "binary" if n_classes == 2 else "cat"
     transform_arguments = {
         "keys":keys,
+        "adc_keys":adc_keys,
         "target_spacing":args.target_spacing,
         "crop_size":args.crop_size,
         "pad_size":args.pad_size,
@@ -297,14 +317,17 @@ if __name__ == "__main__":
         "image_keys":keys,
         "intp_resampling_augmentations":["bilinear" for _ in keys]}
 
-    transforms_train = [
+    transforms_train = monai.transforms.Compose([
         *get_transforms("pre",**transform_arguments),
         *get_augmentations(**augment_arguments),
-        *get_transforms("post",**transform_arguments)]
+        *get_transforms("post",**transform_arguments)])
+    transforms_train.set_random_state(args.seed)
 
-    transforms_val = [
+    transforms_val = monai.transforms.Compose([
         *get_transforms("pre",**transform_arguments),
-        *get_transforms("post",**transform_arguments)]
+        *get_transforms("post",**transform_arguments)])
+    
+    transforms_train.set_random_state(args.seed)
 
     if args.folds is None:
         if args.n_folds > 1:
@@ -332,18 +355,15 @@ if __name__ == "__main__":
         val_list = [data_dict[pid] for pid in val_pids]
         
         train_dataset = monai.data.CacheDataset(
-            train_list,
-            monai.transforms.Compose(transforms_train),
+            train_list,transforms_train,
             cache_rate=args.cache_rate,
             num_workers=args.n_workers)
         train_dataset_val = monai.data.CacheDataset(
-            val_list,
-            monai.transforms.Compose(transforms_val),
+            val_list,transforms_val,
             cache_rate=args.cache_rate,
             num_workers=args.n_workers)
         validation_dataset = monai.data.Dataset(
-            val_list,
-            monai.transforms.Compose(transforms_val))
+            val_list,transforms_val)
 
         classes = []
         for p in train_list:
@@ -371,7 +391,7 @@ if __name__ == "__main__":
             sampler = None
         
         # PL needs a little hint to detect GPUs.
-        torch.ones([1]).to(args.dev)
+        torch.ones([1]).to("cuda" if "cuda" in args.dev else "cpu")
         
         # get class weights if necessary  
         class_weights = None
@@ -445,7 +465,8 @@ if __name__ == "__main__":
             "label_key":"label",
             "n_epochs":args.max_epochs,
             "warmup_steps":args.warmup_steps,
-            "training_batch_preproc":batch_preprocessing}
+            "training_batch_preproc":batch_preprocessing,
+            "start_decay":args.start_decay}
         if args.branched == False:
             if args.net_type == "unet":
                 network = UNetEncoderPL(

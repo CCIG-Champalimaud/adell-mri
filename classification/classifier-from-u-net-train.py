@@ -13,7 +13,9 @@ from pytorch_lightning.callbacks import EarlyStopping,StochasticWeightAveraging
 from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.callbacks.model_checkpoint import ModelCheckpoint
 
-from lib.utils import (
+import sys
+sys.path.append(r"..")
+from ..lib.utils import (
     LabelOperatord,
     PrintShaped,    
     collate_last_slice,
@@ -24,8 +26,8 @@ from lib.utils import (
     safe_collate)
 from lib.modules.layers import ResNet
 from lib.modules.segmentation import UNet
-from lib.modules.segmentation_plus import UNetPlusPlus
-from lib.modules.classification_pl import SegCatNetPL
+from lib.modules.segmentation.unetpp import UNetPlusPlus
+from lib.modules.classification.pl import SegCatNetPL
 from lib.modules.config_parsing import parse_config_unet,parse_config_ssl,unet_args
 
 if __name__ == "__main__":

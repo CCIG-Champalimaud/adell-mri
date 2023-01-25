@@ -54,7 +54,7 @@ class ClassPLABC(pl.LightningModule,ABC):
     """
     def __init__(self):
         super().__init__()
-        
+
         self.raise_nan_loss = False
 
     def calculate_loss(self,prediction,y,with_params=False):
@@ -118,7 +118,7 @@ class ClassPLABC(pl.LightningModule,ABC):
             self.parameters(),lr=self.learning_rate,
             weight_decay=self.weight_decay)
         lr_schedulers = CosineAnnealingWithWarmupLR(
-            optimizer,T_max=self.n_epochs,
+            optimizer,T_max=self.n_epochs,start_decay=self.start_decay,
             n_warmup_steps=self.warmup_steps,eta_min=1e-6)
 
         return {"optimizer":optimizer,
@@ -166,6 +166,7 @@ class ClassNetPL(ClassPLABC):
         loss_params: dict={},
         n_epochs: int=100,
         warmup_steps: int=0,
+        start_decay: int=None,
         training_batch_preproc: Callable=None,
         *args,**kwargs) -> torch.nn.Module:
         """Classification network implementation for Pytorch Lightning.
@@ -188,6 +189,8 @@ class ClassNetPL(ClassPLABC):
             n_epochs (int, optional): number of epochs. Defaults to 100.
             warmup_steps (int, optional): number of warmup steps. Defaults 
                 to 0.
+            start_decay (int, optional): number of steps after which decay
+                begins. Defaults to None (decay starts after warmup).
             training_batch_preproc (Callable): function to be applied to the
                 entire batch before feeding it to the model during training.
                 Can contain transformations such as mixup, which require access
@@ -212,6 +215,7 @@ class ClassNetPL(ClassPLABC):
         self.loss_params = loss_params
         self.n_epochs = n_epochs
         self.warmup_steps = warmup_steps
+        self.start_decay = start_decay
         self.training_batch_preproc = training_batch_preproc
         self.args = args
         self.kwargs = kwargs
@@ -422,6 +426,7 @@ class UNetEncoderPL(UNetEncoder,ClassPLABC):
         loss_params: dict={},
         n_epochs: int=100,
         warmup_steps: int=0,
+        start_decay: int=None,
         training_batch_preproc: Callable=None,
         *args,**kwargs) -> torch.nn.Module:
         """
@@ -443,6 +448,8 @@ class UNetEncoderPL(UNetEncoder,ClassPLABC):
             n_epochs (int, optional): number of epochs. Defaults to 100.
             warmup_steps (int, optional): number of warmup steps. Defaults 
                 to 0.
+            start_decay (int, optional): number of steps after which decay
+                begins. Defaults to None (decay starts after warmup).
             training_batch_preproc (Callable): function to be applied to the
                 entire batch before feeding it to the model during training.
                 Can contain transformations such as mixup, which require access
@@ -466,6 +473,7 @@ class UNetEncoderPL(UNetEncoder,ClassPLABC):
         self.loss_params = loss_params
         self.n_epochs = n_epochs
         self.warmup_steps = warmup_steps
+        self.start_decay = start_decay
         self.training_batch_preproc = training_batch_preproc
         self.args = args
         self.kwargs = kwargs
@@ -603,6 +611,7 @@ class ViTClassifierPL(ViTClassifier,ClassPLABC):
         loss_params: dict={},
         n_epochs: int=100,
         warmup_steps: int=0,
+        start_decay: int=None,
         training_batch_preproc: Callable=None,
         *args,**kwargs) -> torch.nn.Module:
         """
@@ -624,6 +633,8 @@ class ViTClassifierPL(ViTClassifier,ClassPLABC):
             n_epochs (int, optional): number of epochs. Defaults to 100.
             warmup_steps (int, optional): number of warmup steps. Defaults 
                 to 0.
+            start_decay (int, optional): number of steps after which decay
+                begins. Defaults to None (decay starts after warmup).
             training_batch_preproc (Callable): function to be applied to the
                 entire batch before feeding it to the model during training.
                 Can contain transformations such as mixup, which require access
@@ -647,6 +658,7 @@ class ViTClassifierPL(ViTClassifier,ClassPLABC):
         self.loss_params = loss_params
         self.n_epochs = n_epochs
         self.warmup_steps = warmup_steps
+        self.start_decay = start_decay
         self.training_batch_preproc = training_batch_preproc
         self.args = args
         self.kwargs = kwargs
@@ -669,6 +681,7 @@ class FactorizedViTClassifierPL(FactorizedViTClassifier,ClassPLABC):
         loss_params: dict={},
         n_epochs: int=100,
         warmup_steps: int=0,
+        start_decay: int=None,
         training_batch_preproc: Callable=None,
         *args,**kwargs) -> torch.nn.Module:
         """
@@ -690,6 +703,8 @@ class FactorizedViTClassifierPL(FactorizedViTClassifier,ClassPLABC):
             n_epochs (int, optional): number of epochs. Defaults to 100.
             warmup_steps (int, optional): number of warmup steps. Defaults 
                 to 0.
+            start_decay (int, optional): number of steps after which decay
+                begins. Defaults to None (decay starts after warmup).
             training_batch_preproc (Callable): function to be applied to the
                 entire batch before feeding it to the model during training.
                 Can contain transformations such as mixup, which require access
@@ -713,6 +728,7 @@ class FactorizedViTClassifierPL(FactorizedViTClassifier,ClassPLABC):
         self.loss_params = loss_params
         self.n_epochs = n_epochs
         self.warmup_steps = warmup_steps
+        self.start_decay = start_decay
         self.training_batch_preproc = training_batch_preproc
         self.args = args
         self.kwargs = kwargs

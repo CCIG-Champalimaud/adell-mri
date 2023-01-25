@@ -119,6 +119,7 @@ def get_transforms_unet(x,
 
 def get_transforms_classification(x,
                                   keys,
+                                  adc_keys,
                                   target_spacing,
                                   crop_size,
                                   pad_size,
@@ -127,10 +128,20 @@ def get_transforms_classification(x,
                                   positive_labels,
                                   label_key,
                                   label_mode=None):
+    non_adc_keys = [k for k in keys if k not in adc_keys]
     if x == "pre":
         transforms = [
             monai.transforms.LoadImaged(keys,ensure_channel_first=True),
             monai.transforms.Orientationd(keys,"RAS")]
+        if len(non_adc_keys) > 0:
+            transforms.append(
+                monai.transforms.ScaleIntensityd(non_adc_keys,0,1))
+        if len(adc_keys) > 0:
+            transforms.append(
+                ConditionalRescalingd(adc_keys,1000,0.001))
+            transforms.append(
+                monai.transforms.ScaleIntensityd(
+                    adc_keys,None,None,-2/3))
         if target_spacing is not None:
             transforms.append(
                 monai.transforms.Spacingd(keys,pixdim=target_spacing))
@@ -145,7 +156,6 @@ def get_transforms_classification(x,
             transforms.append(
                 monai.transforms.CenterSpatialCropd(
                     keys,[int(j)+16 for j in crop_size]))
-        transforms.append(monai.transforms.ScaleIntensityd(keys))
         transforms.append(monai.transforms.EnsureTyped(keys))
     elif x == "post":
         transforms = []
@@ -230,6 +240,7 @@ def get_augmentations_class(augment,
                             all_keys,
                             image_keys,
                             intp_resampling_augmentations):
+    prob = 0.1
     valid_arg_list = ["intensity","noise","rbf","affine","shear","flip"]
     for a in augment:
         if a not in valid_arg_list:
@@ -240,26 +251,24 @@ def get_augmentations_class(augment,
     if "intensity" in augment:
         augments.extend([
             monai.transforms.RandAdjustContrastd(
-                image_keys,gamma=(0.5,1.5),prob=0.1),
+                image_keys,gamma=(0.5,1.5),prob=prob),
             monai.transforms.RandStdShiftIntensityd(
-                image_keys,factors=0.1,prob=0.1),
+                image_keys,factors=0.1,prob=prob),
             monai.transforms.RandShiftIntensityd(
-                image_keys,offsets=0.1,prob=0.1)])
+                image_keys,offsets=0.1,prob=prob)])
     
     if "noise" in augment:
         augments.extend([
             monai.transforms.RandRicianNoised(
-                image_keys,std=0.05,prob=0.1),
-            monai.transforms.RandGibbsNoised(
-                image_keys,alpha=(0.0,0.4),prob=0.1)])
+                image_keys,std=0.02,prob=prob)])
         
     if "flip" in augment:
         augments.append(
-            monai.transforms.RandFlipd(image_keys,prob=0.1,spatial_axis=1))
+            monai.transforms.RandFlipd(image_keys,prob=prob,spatial_axis=1))
 
     if "rbf" in augment:
         augments.append(
-            monai.transforms.RandBiasFieldd(image_keys,degree=3,prob=0.1))
+            monai.transforms.RandBiasFieldd(image_keys,degree=3,prob=prob))
         
     if "affine" in augment:
         augments.append(
@@ -267,8 +276,8 @@ def get_augmentations_class(augment,
                 all_keys,
                 scale_range=[0.05,0.05,0.05],
                 translate_range=[4,4,1],
-                rotate_range=[np.pi/8,np.pi/8,np.pi/32],
-                prob=0.1,mode=intp_resampling_augmentations,
+                rotate_range=[np.pi/8,np.pi/8,np.pi/16],
+                prob=prob,mode=intp_resampling_augmentations,
                 padding_mode="zeros"))
         
     if "shear" in augment:
@@ -276,7 +285,7 @@ def get_augmentations_class(augment,
             monai.transforms.RandAffined(
                 all_keys,
                 shear_range=((0.9,1.1),(0.9,1.1),(0.9,1.1)),
-                prob=0.5,mode=intp_resampling_augmentations,
+                prob=prob,mode=intp_resampling_augmentations,
                 padding_mode="zeros"))
     
     return augments

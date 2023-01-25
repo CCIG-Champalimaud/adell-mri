@@ -17,6 +17,8 @@ from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.callbacks.model_checkpoint import ModelCheckpoint
 from pytorch_lightning.callbacks import RichProgressBar
 
+import sys
+sys.path.append(r"..")
 from lib.utils import (
     PartiallyRandomSampler,
     get_loss_param_dict,

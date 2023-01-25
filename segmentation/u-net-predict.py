@@ -10,11 +10,13 @@ import SimpleITK as sitk
 from skimage import filters
 from tqdm import tqdm
 
+import sys
+sys.path.append(r"..")
 from lib.utils import (
     ConditionalRescalingd,split,resample_image)
 from lib.modules.layers import ResNet
 from lib.modules.segmentation import UNet
-from lib.modules.segmentation_plus import UNetPlusPlus
+from lib.modules.segmentation.unetpp import UNetPlusPlus
 from lib.modules.config_parsing import parse_config_unet,parse_config_ssl
 
 if __name__ == "__main__":
