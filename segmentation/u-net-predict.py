@@ -13,7 +13,7 @@ from tqdm import tqdm
 import sys
 sys.path.append(r"..")
 from lib.utils import (
-    ConditionalRescalingd,split,resample_image)
+    ConditionalRescalingd,resample_image)
 from lib.modules.layers import ResNet
 from lib.modules.segmentation import UNet
 from lib.modules.segmentation.unetpp import UNetPlusPlus
