@@ -1,4 +1,3 @@
-import random
 import numpy as np
 import monai
 
@@ -96,7 +95,8 @@ AUG_PARAM_DICT = {
 for i,c in enumerate(["x","y","z"]):
     # these have to be updated 
     t = 30 if c != "z" else 5
-    AUG_PARAM_DICT["rotate_"+c] = {"rotate_range":np.pi/6}
+    a = np.pi/6 if c != "z" else np.pi/16
+    AUG_PARAM_DICT["rotate_"+c] = {"rotate_range":a}
     AUG_PARAM_DICT["translate_"+c] = {"translate_range":t}
     AUG_PARAM_DICT["shear_"+c] = {"shear_range":0.5}
     AUG_PARAM_DICT["scale_"+c] = {"scale_range":0.3}
@@ -158,16 +158,18 @@ class AugmentationWorkhorsed(monai.transforms.RandomizableTransform):
     def __init__(self,
                  augmentations:List[str],
                  keys:List[str]=None,mask_keys:List[str]=[],
-                 max_mult:float=1.0,N:int=5):
+                 max_mult:float=1.0,N:int=5,
+                 aug_param_dict:Dict[str,Dict[Union[int,float]]]=AUG_PARAM_DICT):
         super().__init__()
         self.augmentations = augmentations
         self.keys = keys
         self.mask_keys = mask_keys
         self.max_mult = max_mult
         self.N = N
+        self.aug_param_dict = aug_param_dict
 
-        self.param_dict = {k:{kk:AUG_PARAM_DICT[k][kk]*self.max_mult 
-                              for kk in AUG_PARAM_DICT[k]}
+        self.param_dict = {k:{kk:self.aug_param_dict[k][kk]*self.max_mult 
+                              for kk in self.aug_param_dict[k]}
                            for k in self.augmentations}
 
         self.transforms = {
@@ -179,39 +181,3 @@ class AugmentationWorkhorsed(monai.transforms.RandomizableTransform):
         for t in t_list:
             X = self.transforms[t](X)
         return X
-
-class AugmentationParameters():
-    def __init__(self,n_bins,M,decay):
-        self.n_bins = n_bins
-        self.M = M
-        self.decay = decay
-        self.values = np.linspace(0,M,num=n_bins)
-        self.bins = np.arange(0,n_bins,np.int32)
-        self.prob = np.ones(n_bins)
-    
-    def sample(self):
-        p = np.where(self.prob < 0.8,0,self.prob)
-        idx = np.random.choice(self.bins,p=p/p.sum())
-        return self.values[idx]
-    
-    def update(self,idx,acc):
-        self.prob[idx] = self.prob[idx]*self.decay + acc*(1-self.decay)
-
-class AugmentationStore(dict):
-    def __init__(self,augmentations:List[str],n_bins=20,
-                 keys:List[str]=None,mask_keys:List[str]=[]):
-        super().__init__()
-        self.augmentations = augmentations
-        self.n_bins = n_bins
-        self.keys = keys
-        self.mask_keys = mask_keys
-        self.D = AUG_DICT if keys is None else AUG_DICT_DICT
-    
-    def init_params(self):
-        self.augmentation_params = {}
-        for k in self.augmentations:
-            if k in self.D:
-                self.augmentation_params[k] = AugmentationParameters(
-                    self.n_bins,AUG_PARAM_DICT[k])
-            else:
-                raise Exception("Augmentation {} is unknown".format(k))
