@@ -114,12 +114,12 @@ class ClassPLABC(pl.LightningModule,ABC):
         return self.training_dataloader_call()
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(
+        optimizer = torch.optim.AdamW(
             self.parameters(),lr=self.learning_rate,
             weight_decay=self.weight_decay)
         lr_schedulers = CosineAnnealingWithWarmupLR(
             optimizer,T_max=self.n_epochs,start_decay=self.start_decay,
-            n_warmup_steps=self.warmup_steps,eta_min=1e-6)
+            n_warmup_steps=self.warmup_steps,eta_min=1e-7)
 
         return {"optimizer":optimizer,
                 "lr_scheduler":lr_schedulers,
@@ -571,7 +571,7 @@ class GenericEnsemblePL(GenericEnsemble,pl.LightningModule):
         return self.training_dataloader_call()
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(
+        optimizer = torch.optim.AdamW(
             self.parameters(),lr=self.learning_rate,
             weight_decay=self.weight_decay)
         lr_schedulers = torch.optim.lr_scheduler.CosineAnnealingLR(
