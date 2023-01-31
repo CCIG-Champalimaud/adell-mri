@@ -42,16 +42,32 @@ def filter_dictionary_with_presence(D,filters):
 def filter_dictionary_with_filters(D,filters):
     print("Filtering on: {}".format(filters))
     print("\tInput size: {}".format(len(D)))
-    filters = [f.split(":") for f in filters]
+    processed_filters = {
+        "eq":[],"gt":[],"lt":[]}
+    for f in filters:
+        if "=" in f:
+            processed_filters["eq"].append(f.split("="))
+        elif ">" in f:
+            processed_filters["gt"].append(f.split(">"))
+        elif "=" in f:
+            processed_filters["lt"].append(f.split("<"))
     out_dict = {}
     for pid in D:
         check = True
-        for k,v in filters:
-            if k in D[pid]:
-                if D[pid][k] != v:
+        for k in processed_filters:
+            for kk,v in processed_filters[k]:
+                if kk in D[pid]:
+                    if k == "eq":
+                        if D[pid][kk] != v:
+                            check = False
+                    elif k == "gt":
+                        if float(D[pid][kk]) <= float(v):
+                            check = False
+                    elif k == "lt":
+                        if float(D[pid][kk]) >= float(v):
+                            check = False
+                else:
                     check = False
-            else:
-                check = False
         if check == True:
             out_dict[pid] = D[pid]
     print("\tOutput size: {}".format(len(out_dict)))
