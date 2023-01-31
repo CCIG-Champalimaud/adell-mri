@@ -19,10 +19,8 @@ from lib.pl_utils import get_ckpt_callback,get_logger,get_devices
 from lib.batch_preprocessing import BatchPreprocessing
 from lib.monai_transforms import get_transforms_classification as get_transforms
 from lib.monai_transforms import get_augmentations_class as get_augmentations
-from lib.modules.classification.classification import (UNetEncoder)
 from lib.modules.classification.pl import (
-    ClassNetPL,UNetEncoderPL,GenericEnsemblePL,ViTClassifierPL,
-    FactorizedViTClassifierPL)
+    ClassNetPL,UNetEncoderPL,ViTClassifierPL,FactorizedViTClassifierPL)
 from lib.modules.layers.adn_fn import get_adn_fn
 from lib.modules.losses import OrdinalSigmoidalLoss
 from lib.modules.config_parsing import parse_config_unet,parse_config_cat
@@ -108,9 +106,6 @@ if __name__ == "__main__":
         '--subsample_size',dest='subsample_size',type=int,
         help="Subsamples data to a given size",
         default=None)
-    parser.add_argument(
-        '--branched',dest='branched',action="store_true",
-        help="Uses one encoder for each image key.",default=False)
     parser.add_argument(
         '--batch_size',dest='batch_size',type=int,default=None,
         help="Overrides batch size in config file")
@@ -281,6 +276,7 @@ if __name__ == "__main__":
     
     keys = args.image_keys
     adc_keys = args.adc_keys if args.adc_keys is not None else []
+    adc_keys = [k for k in adc_keys if k in keys]
 
     if args.net_type == "unet":
         network_config,_ = parse_config_unet(args.config_file,
@@ -306,7 +302,6 @@ if __name__ == "__main__":
         "target_spacing":args.target_spacing,
         "crop_size":args.crop_size,
         "pad_size":args.pad_size,
-        "branched":args.branched,
         "possible_labels":args.possible_labels,
         "positive_labels":args.positive_labels,
         "label_key":args.label_keys,
@@ -319,7 +314,7 @@ if __name__ == "__main__":
 
     transforms_train = monai.transforms.Compose([
         *get_transforms("pre",**transform_arguments),
-        *get_augmentations(**augment_arguments),
+        get_augmentations(**augment_arguments),
         *get_transforms("post",**transform_arguments)])
     transforms_train.set_random_state(args.seed)
 
@@ -327,7 +322,7 @@ if __name__ == "__main__":
         *get_transforms("pre",**transform_arguments),
         *get_transforms("post",**transform_arguments)])
     
-    transforms_train.set_random_state(args.seed)
+    transforms_val.set_random_state(args.seed)
 
     if args.folds is None:
         if args.n_folds > 1:
@@ -467,71 +462,45 @@ if __name__ == "__main__":
             "warmup_steps":args.warmup_steps,
             "training_batch_preproc":batch_preprocessing,
             "start_decay":args.start_decay}
-        if args.branched == False:
-            if args.net_type == "unet":
-                network = UNetEncoderPL(
-                    head_structure=[
-                        network_config["depth"][-1] for _ in range(3)],
-                    head_adn_fn=get_adn_fn(
-                        1,"batch",act_fn="gelu",
+        if args.net_type == "unet":
+            network = UNetEncoderPL(
+                head_structure=[
+                    network_config["depth"][-1] for _ in range(3)],
+                head_adn_fn=get_adn_fn(
+                    1,"batch",act_fn="gelu",
+                    dropout_param=args.dropout_param),
+                **boilerplate_args,
+                **network_config)
+        elif "vit" in args.net_type:
+            image_size = [int(x) for x in args.crop_size]
+            network_config["image_size"] = image_size
+            if args.net_type == "vit":
+                network = ViTClassifierPL(
+                    adn_fn=get_adn_fn(
+                        1,"identity",act_fn="gelu",
                         dropout_param=args.dropout_param),
                     **boilerplate_args,
                     **network_config)
-            elif "vit" in args.net_type:
-                image_size = [int(x) for x in args.crop_size]
-                network_config["image_size"] = image_size
-                if args.net_type == "vit":
-                    network = ViTClassifierPL(
-                        adn_fn=get_adn_fn(
-                            1,"identity",act_fn="gelu",
-                            dropout_param=args.dropout_param),
-                        **boilerplate_args,
-                        **network_config)
-                elif args.net_type == "factorized_vit":
-                    for k in ["embed_method"]:
-                        if k in network_config:
-                            del network_config[k]
-                    network = FactorizedViTClassifierPL(
-                        adn_fn=get_adn_fn(
-                            1,"identity",act_fn="gelu",
-                            dropout_param=args.dropout_param),
-                        **boilerplate_args,
-                        **network_config)                    
-                
-            else:
-                network = ClassNetPL(
-                    net_type=args.net_type,n_channels=len(keys),
-                    n_classes=n_classes,
-                    training_dataloader_call=train_loader_call,
-                    image_key="image",label_key="label",
-                    adn_fn=adn_fn,n_epochs=args.max_epochs,
-                    warmup_steps=args.warmup_steps,
-                    **network_config)
+            elif args.net_type == "factorized_vit":
+                for k in ["embed_method"]:
+                    if k in network_config:
+                        del network_config[k]
+                network = FactorizedViTClassifierPL(
+                    adn_fn=get_adn_fn(
+                        1,"identity",act_fn="gelu",
+                        dropout_param=args.dropout_param),
+                    **boilerplate_args,
+                    **network_config)                    
+            
         else:
-            n_channels = 1
-            if args.net_type == "unet":
-                nc = deepcopy(network_config)
-                if "n_channels" in nc:
-                    del nc["n_channels"]
-                networks = [
-                    UNetEncoder(n_channels=n_channels,**nc)
-                    for _ in args.image_keys]
-            else:
-                raise NotImplementedError("branched only works with net_type=='unet'")
-            config = {}
-            for k in network_config:
-                if k in ["learning_rate","batch_size",
-                         "spatial_dimensions","weight_decay"]:
-                    config[k] = network_config[k]
-            network = GenericEnsemblePL(
-                image_keys=args.image_keys,label_key="label",
-                n_classes=n_classes,training_dataloader_call=train_loader_call,
-                head_structure=[network_config["depth"][-1] for _ in range(3)],
-                head_adn_fn=get_adn_fn(
-                    1,"batch",act_fn="swish",
-                    dropout_param=args.dropout_param),
-                n_epochs=args.max_epochs,
-                **config)
+            network = ClassNetPL(
+                net_type=args.net_type,n_channels=len(keys),
+                n_classes=n_classes,
+                training_dataloader_call=train_loader_call,
+                image_key="image",label_key="label",
+                adn_fn=adn_fn,n_epochs=args.max_epochs,
+                warmup_steps=args.warmup_steps,
+                **network_config)
 
         # instantiate callbacks and loggers
         callbacks = [RichProgressBar()]
@@ -545,8 +514,11 @@ if __name__ == "__main__":
                 network_config["learning_rate"],swa_epoch_start=args.warmup_steps)
             callbacks.append(swa_callback)
         ckpt_callback,ckpt_path,status = get_ckpt_callback(
-            args.checkpoint_dir,args.checkpoint_name,
-            val_fold,args.max_epochs,args.resume_from_last,
+            checkpoint_dir=args.checkpoint_dir,
+            checkpoint_name=args.checkpoint_name,
+            max_epochs=args.max_epochs,
+            resume_from_last=args.resume_from_last,
+            val_fold=val_fold,
             monitor=args.monitor)
         if ckpt_callback is not None:   
             callbacks.append(ckpt_callback)
