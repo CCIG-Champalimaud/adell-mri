@@ -491,7 +491,7 @@ class ViTClassifier(ViT):
         if self.use_class_token is True:
             embeded_X = embeded_X[:,0]
         else:
-            embeded_X = embeded_X.max(1).values
+            embeded_X = embeded_X.mean(1)
         classification = self.classification_layer(embeded_X)
         return classification
 
@@ -533,12 +533,12 @@ class FactorizedViTClassifier(FactorizedViT):
                 self.slice_class_token,'() n e -> b n e',b=X.shape[0])
             embeded_X = torch.concat([class_token,embeded_X],1)
         else:
-            embeded_X = embeded_X.max(-2).values
+            embeded_X = embeded_X.mean(-2)
         embeded_X,_ = self.transformer_block_between(embeded_X)
         if self.use_class_token is True:
             embeded_X = embeded_X[:,0]
         else:
-            embeded_X = embeded_X.max(1).values
+            embeded_X = embeded_X.mean(1)
         classification = self.classification_layer(embeded_X)
         return classification
 
