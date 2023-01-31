@@ -7,8 +7,7 @@ from .utils import (
     CombineBinaryLabelsd,
     LabelOperatorSegmentationd,
     CreateImageAndWeightsd,
-    LabelOperatord,
-    PrintShaped)
+    LabelOperatord)
 
 def unbox(x):
     if isinstance(x,list):
@@ -123,7 +122,6 @@ def get_transforms_classification(x,
                                   target_spacing,
                                   crop_size,
                                   pad_size,
-                                  branched,
                                   possible_labels,
                                   positive_labels,
                                   label_key,
@@ -163,11 +161,10 @@ def get_transforms_classification(x,
             transforms.append(
                 monai.transforms.CenterSpatialCropd(
                     keys,[int(j) for j in crop_size]))
+        transforms.append(
+            monai.transforms.ConcatItemsd(keys,"image"))
         if isinstance(positive_labels,int):
             positive_labels = [positive_labels]
-        if branched is False:
-            transforms.append(
-                monai.transforms.ConcatItemsd(keys,"image"))
         transforms.append(
             LabelOperatord(
                 [label_key],possible_labels,
@@ -240,14 +237,19 @@ def get_augmentations_class(augment,
                             all_keys,
                             image_keys,
                             intp_resampling_augmentations):
-    prob = 0.1
-    valid_arg_list = ["intensity","noise","rbf","affine","shear","flip"]
+    valid_arg_list = ["intensity","noise","rbf","affine","shear","flip",
+                      "trivial"]
     for a in augment:
         if a not in valid_arg_list:
             raise NotImplementedError(
                 "augment can only contain {}".format(valid_arg_list))
     augments = []
     
+    prob = 0.1
+    if "trivial" in augment:
+        augments.append(monai.transforms.Identityd(all_keys))
+        prob = 1.0
+
     if "intensity" in augment:
         augments.extend([
             monai.transforms.RandAdjustContrastd(
@@ -288,4 +290,8 @@ def get_augmentations_class(augment,
                 prob=prob,mode=intp_resampling_augmentations,
                 padding_mode="zeros"))
     
+    if "trivial" in augment:
+        augments = monai.transforms.OneOf(augments)
+    else:
+        augments = monai.transforms.Compose(augments)
     return augments
