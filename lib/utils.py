@@ -1040,7 +1040,7 @@ class ConditionalRescalingd(monai.transforms.Transform):
         self.transforms = {
             k:ConditionalRescaling(self.max_value,self.scale) 
             for k in self.keys}
-    
+
     def __call__(self,data):
         for k in data:
             if k in self.transforms:
