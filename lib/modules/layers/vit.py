@@ -123,6 +123,16 @@ def generate_mask(image_size:Size2dOr3d,
 
     return attn_mask
 
+def sinusoidal_positional_encoding(n_tokens,dim_size):
+    token_range = np.arange(0,n_tokens)[:,np.newaxis]
+    dim_range = np.arange(0,dim_size)[np.newaxis,:]
+    
+    radians = token_range / (10000 ** (2*dim_range/dim_size))
+    output = np.zeros((n_tokens,dim_size))
+    output[:,::2] = np.sin(radians)[:,::2]
+    output[:,1::2] = np.cos(radians)[:,1::2]
+    return output
+
 class SliceLinearEmbedding(torch.nn.Module):
     def __init__(self,
                  n_channels:int,
@@ -130,22 +140,34 @@ class SliceLinearEmbedding(torch.nn.Module):
                  patch_size:Union[Tuple[int,int],Tuple[int,int,int]],
                  embedding_size:int=None,
                  dropout_rate:float=0.0,
-                 use_class_token:bool=False):
+                 use_class_token:bool=False,
+                 learnable_embedding:bool=True):
         super().__init__()
         self.n_channels = n_channels
         self.image_size = image_size
         self.patch_size = patch_size
         self.dropout_rate = dropout_rate
         self.use_class_token = use_class_token
+        self.learnable_embedding = learnable_embedding
         
         self.drop_op = torch.nn.Dropout(self.dropout_rate)
         
         self.n_patches = np.prod([
             s // p for s,p in zip(self.image_size[:2],self.patch_size[:2])])
         self.embedding_size = np.prod([*patch_size[:2],n_channels])
-        self.positional_embedding = torch.nn.Parameter(
-            torch.zeros([1,self.image_size[-1],self.n_patches,
-                         self.embedding_size]))
+        if self.learnable_embedding is True:
+            self.positional_embedding = torch.nn.Parameter(
+                torch.zeros([1,1,self.n_patches,self.embedding_size]))
+            torch.nn.init.trunc_normal_(
+                self.positional_embedding,mean=0.0,std=0.02,a=-2.0,b=2.0)
+        else:
+            sin_embed = sinusoidal_positional_encoding(
+                self.n_patches,self.embedding_size).reshape(
+                    1,1,self.n_patches,self.embedding_size)
+            self.positional_embedding = torch.nn.Parameter(
+                torch.as_tensor(sin_embed,dtype=torch.float32),
+                requires_grad=False)
+
         if self.use_class_token is True:
             self.class_token = torch.nn.Parameter(
                torch.zeros([1,1,1,self.embedding_size]))
@@ -157,7 +179,7 @@ class SliceLinearEmbedding(torch.nn.Module):
         x,y,z = self.patch_size
 
         return einops.rearrange(
-            image,"b c (h x) (w y) s -> b s (h w) (c x y)",
+            image,"b c (h x) (w y) s -> b s (h w) (x y c)",
             x=x,h=h//x,y=y,w=w//y,b=b,c=c,s=s)
      
     def forward(self,X):
@@ -209,7 +231,8 @@ class LinearEmbedding(torch.nn.Module):
                  window_size:Size2dOr3d=None,
                  dropout_rate:float=0.0,
                  embed_method:str="linear",
-                 use_class_token:bool=False):
+                 use_class_token:bool=False,
+                 learnable_embedding:bool=True):
         """    
         Args:
             image_size (Size2dOr3d): size of the input image.
@@ -225,6 +248,9 @@ class LinearEmbedding(torch.nn.Module):
                 "linear".
             use_class_token (bool, optional): whether a class token should be
                 used. Defaults to False.
+            learnable_embedding (bool, optional): if embedding is 
+                non-trainable, a sinusoidal positional embedding is used.
+                Defaults to True.
         """
         super().__init__()
         self.image_size = image_size
@@ -235,6 +261,7 @@ class LinearEmbedding(torch.nn.Module):
         self.dropout_rate = dropout_rate
         self.embed_method = embed_method
         self.use_class_token = use_class_token
+        self.learnable_embedding = learnable_embedding
         
         assert self.embed_method in ["linear","convolutional"],\
             "embed_method must be one of 'linear' or 'convolutional'"
@@ -327,10 +354,18 @@ class LinearEmbedding(torch.nn.Module):
         """Initilizes the positional embedding with a truncated normal 
         distribution.
         """
-        self.positional_embedding = torch.nn.Parameter(
-            torch.rand(1,self.n_patches,self.true_n_features))
-        torch.nn.init.trunc_normal_(
-            self.positional_embedding,mean=0.0,std=0.02,a=-2.0,b=2.0)
+        if self.learnable_embedding is True:
+            self.positional_embedding = torch.nn.Parameter(
+                torch.rand(1,self.n_patches,self.true_n_features))
+            torch.nn.init.trunc_normal_(
+                self.positional_embedding,mean=0.0,std=0.02,a=-2.0,b=2.0)
+        else:
+            sin_embed = sinusoidal_positional_encoding(
+                    self.n_patches,self.true_n_features)[np.newaxis,:,:]
+            self.positional_embedding = torch.nn.Parameter(
+                torch.as_tensor(sin_embed,dtype=torch.float32),
+                requires_grad=False)
+            
 
     def einops_tuple(self,l):
         if isinstance(l,list):
@@ -343,7 +378,7 @@ class LinearEmbedding(torch.nn.Module):
 
     def get_linear_einop_params(self):
         lh = ["b","c",["h","x"],["w","y"]]
-        rh = ["b",["h","w"],["c","x","y"]]
+        rh = ["b",["h","w"],["x","y","c"]]
         einop_dict = {
             k:int(s) for s,k in zip(self.patch_size,["x","y","z"])}
         einop_dict.update(
@@ -1118,7 +1153,8 @@ class ViT(torch.nn.Module):
                  embed_method:str="linear",
                  mlp_structure:Union[List[int],float]=[32,32],
                  adn_fn=get_adn_fn(1,"identity","gelu"),
-                 use_class_token:bool=False):
+                 use_class_token:bool=False,
+                 learnable_embedding:bool=True):
         """
         Args:
             image_size (Size2dOr3d): size of the input image.
@@ -1149,6 +1185,9 @@ class ViT(torch.nn.Module):
                 get_adn_fn(1,"identity","gelu").
             use_class_token (bool, optional): adds classification token to 
                 embedding layer. Defaults to False.
+            learnable_embedding (bool, optional): if embedding is 
+                non-trainable, a sinusoidal positional embedding is used.
+                Defaults to True.
         """
         super().__init__()
         self.image_size = image_size
@@ -1164,6 +1203,7 @@ class ViT(torch.nn.Module):
         self.mlp_structure = mlp_structure
         self.adn_fn = adn_fn
         self.use_class_token = use_class_token
+        self.learnable_embedding = learnable_embedding
         
         self.embedding = LinearEmbedding(
             image_size=self.image_size,
@@ -1173,7 +1213,8 @@ class ViT(torch.nn.Module):
             out_dim=embedding_size,
             embed_method=self.embed_method,
             dropout_rate=self.dropout_rate,
-            use_class_token=self.use_class_token)
+            use_class_token=self.use_class_token,
+            learnable_embedding=self.learnable_embedding)
         
         self.input_dim_primary = self.embedding.true_n_features
         if isinstance(self.mlp_structure,float):
@@ -1256,7 +1297,8 @@ class FactorizedViT(torch.nn.Module):
                  dropout_rate:float=0.0,
                  mlp_structure:Union[List[int],float]=[32,32],
                  adn_fn=get_adn_fn(1,"identity","gelu"),
-                 use_class_token:bool=False):
+                 use_class_token:bool=False,
+                 learnable_embedding:bool=True):
         """
         Args:
             image_size (Size2dOr3d): size of the input image.
@@ -1287,6 +1329,9 @@ class FactorizedViT(torch.nn.Module):
                 get_adn_fn(1,"identity","gelu").
             use_class_token (bool, optional): adds classification token to 
                 embedding layer. Defaults to False.
+            learnable_embedding (bool, optional): if embedding is 
+                non-trainable, a sinusoidal positional embedding is used.
+                Defaults to True.
         """
         super().__init__()
         self.image_size = image_size
@@ -1301,6 +1346,7 @@ class FactorizedViT(torch.nn.Module):
         self.mlp_structure = mlp_structure
         self.adn_fn = adn_fn
         self.use_class_token = use_class_token
+        self.learnable_embedding = learnable_embedding
         
         self.embedding = SliceLinearEmbedding(
             image_size=self.image_size,
@@ -1308,7 +1354,8 @@ class FactorizedViT(torch.nn.Module):
             n_channels=self.n_channels,
             embedding_size=self.embedding_size,
             dropout_rate=self.dropout_rate,
-            use_class_token=self.use_class_token)
+            use_class_token=self.use_class_token,
+            learnable_embedding=self.learnable_embedding)
 
         self.input_dim_primary = self.embedding.embedding_size
 
@@ -1327,7 +1374,7 @@ class FactorizedViT(torch.nn.Module):
         a = self.number_of_blocks // 2
         b = self.number_of_blocks - a
         self.transformer_block_within = TransformerBlockStack(
-            number_of_blocks=a,
+            number_of_blocks=b,
             input_dim_primary=input_dim_primary,
             attention_dim=attention_dim,
             hidden_dim=hidden_dim,
@@ -1337,7 +1384,7 @@ class FactorizedViT(torch.nn.Module):
             adn_fn=self.adn_fn)
         
         self.transformer_block_between = TransformerBlockStack(
-            number_of_blocks=b,
+            number_of_blocks=a,
             input_dim_primary=input_dim_primary,
             attention_dim=attention_dim,
             hidden_dim=hidden_dim,
@@ -1349,8 +1396,6 @@ class FactorizedViT(torch.nn.Module):
         if self.use_class_token is True:
             self.slice_class_token = torch.nn.Parameter(
                 torch.zeros([1,1,input_dim_primary]))
-            torch.nn.init.trunc_normal_(
-                self.slice_class_token,0,0.02,-2,2)
     
     def forward(
         self,
@@ -1376,6 +1421,6 @@ class FactorizedViT(torch.nn.Module):
                 self.slice_class_token,'() n e -> b n e',b=X.shape[0])
             embeded_X = torch.concat([class_token,embeded_X],1)
         else:
-            embeded_X = embeded_X.max(-2).values
+            embeded_X = embeded_X.mean(-2)
         embeded_X,_ = self.transformer_block_between(embeded_X)
         return embeded_X
