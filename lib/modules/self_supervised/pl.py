@@ -569,8 +569,8 @@ class NonContrastiveSelfSLPL(ConvNeXt,NonContrastiveBasePL):
     * VICReg (when vic_reg==True)
     * VICRegL (when vic_reg_local==True)
     
-    Uses a ResNet backbone, to enable the transfer of this network to a 
-    standard ResNet.
+    Uses a ConvNeXt backbone, to enable the transfer of this network to a 
+    standard ConvNeXt.
     """
     def __init__(
         self,
