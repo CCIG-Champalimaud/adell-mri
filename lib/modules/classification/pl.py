@@ -82,7 +82,7 @@ class ClassPLABC(pl.LightningModule,ABC):
         prediction = torch.squeeze(prediction,1)
 
         loss = self.calculate_loss(prediction,y,with_params=True)
-        
+
         self.log("train_loss",loss,sync_dist=True)
         return loss
 
@@ -119,7 +119,7 @@ class ClassPLABC(pl.LightningModule,ABC):
             weight_decay=self.weight_decay)
         lr_schedulers = CosineAnnealingWithWarmupLR(
             optimizer,T_max=self.n_epochs,start_decay=self.start_decay,
-            n_warmup_steps=self.warmup_steps,eta_min=1e-7)
+            n_warmup_steps=self.warmup_steps)
 
         return {"optimizer":optimizer,
                 "lr_scheduler":lr_schedulers,

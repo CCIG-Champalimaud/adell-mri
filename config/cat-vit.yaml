@@ -7,7 +7,7 @@ attention_dim: 768
 hidden_dim: 768
 dropout_rate: 0.1
 embed_method: "linear"
-mlp_structure: [3072]
+mlp_structure: [1024]
 use_class_token: true
 learning_rate: 0.00002
 weight_decay: 0.05

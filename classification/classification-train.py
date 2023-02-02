@@ -39,6 +39,22 @@ def filter_dictionary_with_presence(D,filters):
     print("\tOutput size: {}".format(len(out_dict)))
     return out_dict
 
+def filter_dictionary_with_possible_labels(D,possible_labels,label_key):
+    print("Filtering on possible labels: {}".format(possible_labels))
+    print("\tInput size: {}".format(len(D)))
+    out_dict = {}
+    for pid in D:
+        check = True
+        if label_key not in D[pid]:
+            check = False
+        else:
+            if str(D[pid][label_key]) not in possible_labels:
+                check = False
+        if check == True:
+            out_dict[pid] = D[pid]
+    print("\tOutput size: {}".format(len(out_dict)))
+    return out_dict
+
 def filter_dictionary_with_filters(D,filters):
     print("Filtering on: {}".format(filters))
     print("\tInput size: {}".format(len(D)))
@@ -84,6 +100,9 @@ if __name__ == "__main__":
         '--image_keys',dest='image_keys',type=str,nargs='+',
         help="Image keys in the dataset JSON.",
         required=True)
+    parser.add_argument(
+        '--t2_keys',dest='t2_keys',type=str,nargs='+',
+        help="Image keys corresponding to T2.",default=None)
     parser.add_argument(
         '--adc_keys',dest='adc_keys',type=str,nargs='+',
         help="Image keys corresponding to ADC.",default=None)
@@ -206,11 +225,11 @@ if __name__ == "__main__":
         '--early_stopping',dest='early_stopping',type=int,default=None,
         help="No. of checks before early stop (defaults to no early stop).")
     parser.add_argument(
-        '--warmup_steps',dest='warmup_steps',type=int,default=0,
+        '--warmup_steps',dest='warmup_steps',type=float,default=0.0,
         help="Number of warmup steps (if SWA is triggered it starts after\
             this number of steps).")
     parser.add_argument(
-        '--start_decay',dest='start_decay',type=int,default=None,
+        '--start_decay',dest='start_decay',type=float,default=None,
         help="Step at which decay starts. Defaults to starting right after \
             warmup ends.")
     parser.add_argument(
@@ -253,6 +272,8 @@ if __name__ == "__main__":
     output_file = open(args.metric_path,'w')
 
     data_dict = json.load(open(args.dataset_json,'r'))
+    data_dict = filter_dictionary_with_possible_labels(
+        data_dict,args.possible_labels,args.label_keys)
     if len(args.filter_on_keys) > 0:
         data_dict = filter_dictionary_with_filters(
             data_dict,args.filter_on_keys)
@@ -292,7 +313,9 @@ if __name__ == "__main__":
     
     keys = args.image_keys
     adc_keys = args.adc_keys if args.adc_keys is not None else []
+    t2_keys = args.t2_keys if args.t2_keys is not None else []
     adc_keys = [k for k in adc_keys if k in keys]
+    t2_keys = [k for k in t2_keys if k in keys]
 
     if args.net_type == "unet":
         network_config,_ = parse_config_unet(args.config_file,
@@ -324,6 +347,7 @@ if __name__ == "__main__":
         "label_mode":label_mode}
     augment_arguments = {
         "augment":args.augment,
+        "t2_keys":t2_keys,
         "all_keys":keys,
         "image_keys":keys,
         "intp_resampling_augmentations":["bilinear" for _ in keys]}
@@ -442,21 +466,27 @@ if __name__ == "__main__":
         else:
             network_config["loss_fn"] = torch.nn.CrossEntropy(class_weights)
 
+        if isinstance(devices,list):
+            n_workers = args.n_workers//len(devices)
+        else:
+            n_workers = args.n_workers
         def train_loader_call(): 
             return monai.data.ThreadDataLoader(
                 train_dataset,batch_size=network_config["batch_size"],
-                shuffle=sampler is None,num_workers=args.n_workers,generator=g,
-                collate_fn=safe_collate,pin_memory=True,sampler=sampler,
-                persistent_workers=args.n_workers>0,drop_last=True)
+                shuffle=sampler is None,
+                num_workers=n_workers,generator=g,
+                collate_fn=safe_collate,pin_memory=True,
+                sampler=sampler,persistent_workers=args.n_workers>0,
+                drop_last=True)
 
         train_loader = train_loader_call()
         train_val_loader = monai.data.ThreadDataLoader(
             train_dataset_val,batch_size=network_config["batch_size"],
-            shuffle=False,num_workers=args.n_workers,
+            shuffle=False,num_workers=n_workers,
             collate_fn=safe_collate)
         validation_loader = monai.data.ThreadDataLoader(
             validation_dataset,batch_size=network_config["batch_size"],
-            shuffle=False,num_workers=args.n_workers,
+            shuffle=False,num_workers=n_workers,
             collate_fn=safe_collate)
 
         print("Setting up training...")

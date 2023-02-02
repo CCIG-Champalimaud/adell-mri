@@ -2,6 +2,14 @@ import torch
 import math
 from torch.optim.lr_scheduler import _LRScheduler
 
+def float_to_epochs(v,max_epochs):
+    if isinstance(v,float) == True:
+        if v >= 1.0:
+            v = int(v)
+        else:
+            v = int(v * max_epochs)
+    return v
+
 class _enable_get_lr_call:
     def __init__(self, o):
         self.o = o
@@ -75,6 +83,8 @@ class CosineAnnealingWithWarmupLR(_LRScheduler):
         
         if self.start_decay is None:
             self.start_decay = self.n_warmup_steps
+        self.n_warmup_steps = float_to_epochs(self.n_warmup_steps,self.T_max)
+        self.start_decay = float_to_epochs(self.start_decay,self.T_max)
         
         self.last_lr = None
         super(CosineAnnealingWithWarmupLR, self).__init__(optimizer, last_epoch, verbose)
