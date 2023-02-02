@@ -11,3 +11,4 @@ torchmetrics==0.9.1
 tqdm==4.64.0
 einops==0.4.1
 scikit-image==0.19.2
+wandb==0.13.6
