@@ -4,7 +4,7 @@ sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)),'..'))
 
 import torch
 
-from lib.batch_preprocessing import BatchPreprocessing,mixup,partial_mixup,label_smoothing
+from lib.utils.batch_preprocessing import BatchPreprocessing,mixup,partial_mixup,label_smoothing
 
 def test_label_smoothing():
     f = 0.2
