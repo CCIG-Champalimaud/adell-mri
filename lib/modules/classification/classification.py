@@ -529,11 +529,13 @@ class FactorizedViTClassifier(FactorizedViT):
         # extract the maximum value of each token for all slices
         if self.use_class_token is True:
             embeded_X = embeded_X[:,:,0]
+            embeded_X = embeded_X + self.slice_positional_embedding
             class_token = einops.repeat(
                 self.slice_class_token,'() n e -> b n e',b=X.shape[0])
             embeded_X = torch.concat([class_token,embeded_X],1)
         else:
             embeded_X = embeded_X.mean(-2)
+            embeded_X = embeded_X + self.slice_positional_embedding
         embeded_X,_ = self.transformer_block_between(embeded_X)
         if self.use_class_token is True:
             embeded_X = embeded_X[:,0]
