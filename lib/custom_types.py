@@ -1,9 +1,13 @@
+"""
+Contains a set of useful custom types for development.
+"""
+
 import numpy as np
 import torch
 
 from typing import Dict,Union,List,Tuple,Iterable,Optional,Callable,Sequence
 
-PathDict = Dict[str,Dict[str,str]]
+DatasetDict = Dict[str,Dict[str,str]]
 TensorList = List[torch.Tensor]
 TensorDict = Dict[str,torch.Tensor]
 TensorIterable = Iterable[torch.Tensor]

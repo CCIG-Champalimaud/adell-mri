@@ -1,3 +1,8 @@
+"""
+Functions that return correctly configured callbacks and objects for PyTorch
+Lightning. 
+"""
+
 import os
 import torch
 import wandb
@@ -9,6 +14,25 @@ from typing import List,Union,Tuple
 def get_ckpt_callback(checkpoint_dir:str,checkpoint_name:str,
                       max_epochs:int,resume_from_last:bool,
                       val_fold:int=None,monitor="val_loss")->ModelCheckpoint:
+    """Gets a checkpoint callback for PyTorch Lightning. The format for 
+    for the last and 2 best checkpoints, respectively is:
+    1. "{name}_fold{fold}_last.ckpt"
+    2. "{name}_fold{fold}_best_{epoch}_{monitor:.3f}.ckpt"
+
+    Args:
+        checkpoint_dir (str): directory where checkpoints will be stored.
+        checkpoint_name (str): root name for checkpoint.
+        max_epochs (int): maximum number of training epochs (used to check if
+            training has finished when resume_from_last==True).
+        resume_from_last (bool): whether training should be resumed in case a
+            checkpoint is detected.
+        val_fold (int, optional): ID for the validation fold. Defaults to None.
+        monitor (str, optional): metric which should be monitored when defining
+            the best checkpoints. Defaults to "val_loss".
+
+    Returns:
+        ModelCheckpoint: PyTorch Lightning checkpoint callback.
+    """
     ckpt_path = None
     ckpt_callback = None
     status = None
@@ -46,6 +70,20 @@ def get_ckpt_callback(checkpoint_dir:str,checkpoint_name:str,
 
 def get_logger(summary_name:str,summary_dir:str,
                project_name:str,resume:str,fold:int=None)->WandbLogger:
+    """Defines a Wandb logger for PyTorch Lightning. Each run is configured
+    as "{project_name}/{summary_name}_fold{fold}".
+
+    Args:
+        summary_name (str): name of the Wandb run.
+        summary_dir (str): directory where summaries are stored.
+        project_name (str): name of the Wandb project.
+        resume (str): how the metric registry in Wandb should be resumed.
+            Details in https://docs.wandb.ai/guides/track/advanced/resuming.
+        fold (int, optional): ID for the validation fold. Defaults to None.
+
+    Returns:
+        WandbLogger: _description_
+    """
     if (summary_name is not None) and (project_name is not None):
         wandb.finish()
         wandb_resume = resume

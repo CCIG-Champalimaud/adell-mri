@@ -15,8 +15,12 @@ import sys
 sys.path.append(r"..")
 from lib.utils import (
     safe_collate,set_classification_layer_bias)
-from lib.pl_utils import get_ckpt_callback,get_logger,get_devices
-from lib.batch_preprocessing import BatchPreprocessing
+from lib.utils.pl_utils import get_ckpt_callback,get_logger,get_devices
+from lib.utils.batch_preprocessing import BatchPreprocessing
+from lib.utils.dataset_filters import (
+    filter_dictionary_with_filters,
+    filter_dictionary_with_possible_labels,
+    filter_dictionary_with_presence)
 from lib.monai_transforms import get_transforms_classification as get_transforms
 from lib.monai_transforms import get_augmentations_class as get_augmentations
 from lib.modules.classification.pl import (
@@ -24,76 +28,6 @@ from lib.modules.classification.pl import (
 from lib.modules.layers.adn_fn import get_adn_fn
 from lib.modules.losses import OrdinalSigmoidalLoss
 from lib.modules.config_parsing import parse_config_unet,parse_config_cat
-
-def filter_dictionary_with_presence(D,filters):
-    print("Filtering on: {} presence".format(filters))
-    print("\tInput size: {}".format(len(D)))
-    out_dict = {}
-    for pid in D:
-        check = True
-        for k in filters:
-            if k not in D[pid]:
-                check = False
-        if check == True:
-            out_dict[pid] = D[pid]
-    print("\tOutput size: {}".format(len(out_dict)))
-    return out_dict
-
-def filter_dictionary_with_possible_labels(D,possible_labels,label_key):
-    print("Filtering on possible labels: {}".format(possible_labels))
-    print("\tInput size: {}".format(len(D)))
-    out_dict = {}
-    for pid in D:
-        check = True
-        if label_key not in D[pid]:
-            check = False
-        else:
-            if str(D[pid][label_key]) not in possible_labels:
-                check = False
-        if check == True:
-            out_dict[pid] = D[pid]
-    print("\tOutput size: {}".format(len(out_dict)))
-    return out_dict
-
-def filter_dictionary_with_filters(D,filters):
-    print("Filtering on: {}".format(filters))
-    print("\tInput size: {}".format(len(D)))
-    processed_filters = {
-        "eq":[],"gt":[],"lt":[]}
-    for f in filters:
-        if "=" in f:
-            processed_filters["eq"].append(f.split("="))
-        elif ">" in f:
-            processed_filters["gt"].append(f.split(">"))
-        elif "=" in f:
-            processed_filters["lt"].append(f.split("<"))
-    out_dict = {}
-    for pid in D:
-        check = True
-        for k in processed_filters:
-            for kk,v in processed_filters[k]:
-                if kk in D[pid]:
-                    if k == "eq":
-                        # if there is a 
-                        if "[" in D[pid][kk] or isinstance(D[pid][kk],list):
-                            tmp = [str(x) for x in D[pid][kk]]
-                            if v not in tmp:
-                                check = False
-                        else:
-                            if str(D[pid][kk]) != v:
-                                check = False
-                    elif k == "gt":
-                        if float(D[pid][kk]) <= float(v):
-                            check = False
-                    elif k == "lt":
-                        if float(D[pid][kk]) >= float(v):
-                            check = False
-                else:
-                    check = False
-        if check == True:
-            out_dict[pid] = D[pid]
-    print("\tOutput size: {}".format(len(out_dict)))
-    return out_dict
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

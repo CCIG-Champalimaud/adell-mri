@@ -12,8 +12,8 @@ from collections import OrderedDict
 from skimage.morphology import convex_hull_image
 
 from typing import Dict,List,Tuple,Any
-from .modules.losses import *
-from .custom_types import *
+from ..modules.losses import *
+from ..custom_types import *
 
 loss_factory = {
     "binary":{
@@ -41,7 +41,7 @@ def split(x,n_splits,dim):
     size = int(x.shape[dim]//n_splits)
     return torch.split(x,size,dim)
 
-def get_prostatex_path_dictionary(base_path:str)->PathDict:
+def get_prostatex_path_dictionary(base_path:str)->DatasetDict:
     """Builds a path dictionary (a dictionary where each key is a patient
     ID and each value is a dictionary containing a modality-to-MRI scan path
     mapping). Assumes that the folders "T2WAx", "DWI", "aggregated-labels-gland"
@@ -52,7 +52,7 @@ def get_prostatex_path_dictionary(base_path:str)->PathDict:
         "aggregated-labels-gland" and "aggregated-labels-lesion" folders.
 
     Returns:
-        PathDict: a path dictionary.
+        DatasetDict: a path dictionary.
     """
     paths = {
         "t2w":os.path.join(base_path,"T2WAx"),
@@ -93,12 +93,12 @@ def get_prostatex_path_dictionary(base_path:str)->PathDict:
     return path_dictionary
 
 def get_size_spacing_dict(
-    path_dictionary:PathDict,
+    path_dictionary:DatasetDict,
     keys:List[str])->Tuple[SizeDict,SpacingDict]:
     """Retrieves the scan sizes and pixel spacings from a path dictionary.
 
     Args:
-        path_dictionary (PathDict): a path dictionary (see 
+        path_dictionary (DatasetDict): a path dictionary (see 
         `get_prostatex_path_dictionary` for details).
         keys (List[str]): modality keys that should be considered in the
         path dictionary.
