@@ -74,8 +74,14 @@ def filter_dictionary_with_filters(D,filters):
             for kk,v in processed_filters[k]:
                 if kk in D[pid]:
                     if k == "eq":
-                        if D[pid][kk] != v:
-                            check = False
+                        # if there is a 
+                        if "[" in D[pid][kk] or isinstance(D[pid][kk],list):
+                            tmp = [str(x) for x in D[pid][kk]]
+                            if v not in tmp:
+                                check = False
+                        else:
+                            if str(D[pid][kk]) != v:
+                                check = False
                     elif k == "gt":
                         if float(D[pid][kk]) <= float(v):
                             check = False
