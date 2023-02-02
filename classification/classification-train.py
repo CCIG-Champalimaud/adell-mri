@@ -302,8 +302,6 @@ if __name__ == "__main__":
         *get_transforms("pre",**transform_arguments),
         *get_transforms("post",**transform_arguments)])
     
-    transforms_val.set_random_state(args.seed)
-
     if args.folds is None:
         if args.n_folds > 1:
             fold_generator = StratifiedKFold(
