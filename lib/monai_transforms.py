@@ -236,6 +236,7 @@ def get_augmentations_unet(augment,
 def get_augmentations_class(augment,
                             all_keys,
                             image_keys,
+                            t2_keys,
                             intp_resampling_augmentations):
     valid_arg_list = ["intensity","noise","rbf","affine","shear","flip",
                       "trivial"]
@@ -266,19 +267,19 @@ def get_augmentations_class(augment,
         
     if "flip" in augment:
         augments.append(
-            monai.transforms.RandFlipd(image_keys,prob=prob,spatial_axis=1))
+            monai.transforms.RandFlipd(image_keys,prob=prob,spatial_axis=0))
 
-    if "rbf" in augment:
+    if "rbf" in augment and len(t2_keys) > 0:
         augments.append(
-            monai.transforms.RandBiasFieldd(image_keys,degree=3,prob=prob))
+            monai.transforms.RandBiasFieldd(t2_keys,degree=3,prob=prob))
         
     if "affine" in augment:
         augments.append(
             monai.transforms.RandAffined(
                 all_keys,
-                scale_range=[0.05,0.05,0.05],
+                scale_range=[0.05 for _ in range(3)],
                 translate_range=[4,4,1],
-                rotate_range=[np.pi/8,np.pi/8,np.pi/16],
+                rotate_range=[np.pi/16],
                 prob=prob,mode=intp_resampling_augmentations,
                 padding_mode="zeros"))
         
