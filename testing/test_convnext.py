@@ -3,33 +3,21 @@ import os
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)),'..'))
 
 import torch
-from lib.modules.layers.res_blocks import (
-    ConvNeXtBlock2d,ConvNeXtBlock3d)
+from lib.modules.layers.conv_next import (ConvNeXtBackbone)
 
-c,h,w,d = [1,32,32,16]
+c,h,w = [1,64,64]
 inter = 64
 out = 32
 
-def test_convnext_2d():
-    convnext = ConvNeXtBlock2d(1,5,out,out)
-    i = torch.rand([1,c,h,w])
-    o = convnext(i)
-    assert list(o.shape) == [1,out,h,w]
-    
-def test_convnext_2d_different_inter():
-    convnext = ConvNeXtBlock2d(1,5,inter,out)
-    i = torch.rand([1,c,h,w])
-    o = convnext(i)
-    assert list(o.shape) == [1,out,h,w]
+structure = [(32,32,3,1),(64,64,3,1),(128,128,3,1)]
+maxpool_structure = [(2,2),(2,2),(2,2)]
 
-def test_convnext_3d():
-    convnext = ConvNeXtBlock3d(1,5,out,out)
-    i = torch.rand([1,c,h,w,d])
+def test_convnext_backbone_2d():
+    convnext = ConvNeXtBackbone(
+        2,1,structure=structure,maxpool_structure=maxpool_structure)
+    i = torch.rand([1,c,h,w])
     o = convnext(i)
-    assert list(o.shape) == [1,out,h,w,d]
-    
-def test_convnext_3d_different_inter():
-    convnext = ConvNeXtBlock3d(1,5,inter,out)
-    i = torch.rand([1,c,h,w,d])
-    o = convnext(i)
-    assert list(o.shape) == [1,out,h,w,d]
+    d = 4*2**len(maxpool_structure)
+    assert list(o.shape) == [1,structure[-1][0],h//d,w//d]
+
+test_convnext_backbone_2d()

@@ -345,20 +345,30 @@ class ConvNeXtBlock2d(torch.nn.Module):
                 scales non-residual term). Defaults to 1e-6.
         """
         super().__init__()
+        self.in_channels = in_channels
+        self.kernel_size = kernel_size
+        self.inter_channels = inter_channels
+        self.out_channels = out_channels
+        self.adn_fn = adn_fn
+        self.layer_scale_init_value = layer_scale_init_value
+        
         self.dwconv = torch.nn.Conv2d(
             in_channels,in_channels,kernel_size=kernel_size,
             padding="same",groups=in_channels)
         self.norm = torch.nn.LayerNorm(in_channels,eps=1e-6)
         self.pwconv1 = torch.nn.Linear(in_channels,inter_channels)
         self.act = torch.nn.GELU()
-        self.pwconv2 = torch.nn.Linear(inter_channels,out_channels)
+        self.pwconv2 = torch.nn.Linear(inter_channels,in_channels)
         self.gamma = torch.nn.Parameter(
-            layer_scale_init_value * torch.ones((out_channels)), 
+            layer_scale_init_value * torch.ones((in_channels)), 
             requires_grad=True) if layer_scale_init_value > 0 else None
         if out_channels != in_channels:
-            self.out_layer = torch.nn.Conv2d(
-                in_channels,out_channels,kernel_size=kernel_size,
-                padding="same")
+            self.out_layer = torch.nn.Sequential(
+                torch.nn.Conv2d(
+                    in_channels,out_channels,kernel_size=kernel_size,
+                    padding="same"),
+                self.adn_fn(out_channels),
+                torch.nn.GELU())
         else:
             self.out_layer = None
 
@@ -375,6 +385,9 @@ class ConvNeXtBlock2d(torch.nn.Module):
         x = x.permute(0, 3, 1, 2) # (N, H, W, C) -> (N, C, H, W)
 
         x = input + x
+        if self.out_layer is not None:
+            x = self.out_layer(x)
+
         return x
 
 class ConvNeXtBlock3d(torch.nn.Module):
@@ -406,6 +419,7 @@ class ConvNeXtBlock3d(torch.nn.Module):
         self.out_channels = out_channels
         self.adn_fn = adn_fn
         self.layer_scale_init_value = layer_scale_init_value
+        
         self.dwconv = torch.nn.Conv3d(
             in_channels,in_channels,kernel_size=kernel_size,
             padding="same",groups=in_channels)
