@@ -15,6 +15,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     
     parser.add_argument("--transforms",default=None,nargs="+")
+    parser.add_argument("--n_iter",default=100,type=int)
     
     args = parser.parse_args()
     
@@ -28,7 +29,7 @@ if __name__ == "__main__":
 
     I = {"image":np.random.rand(1,256,256,32)}
 
-    N = 100
+    N = args.n_iter
 
     for k in ah.transforms:
         a = time.time()

@@ -2,6 +2,7 @@ import numpy as np
 import monai
 
 from ..custom_types import *
+from typing import Sequence
 
 n_dim = 3
 
@@ -159,7 +160,8 @@ class AugmentationWorkhorsed(monai.transforms.RandomizableTransform):
                  augmentations:List[str],
                  keys:List[str]=None,mask_keys:List[str]=[],
                  max_mult:float=1.0,N:int=5,
-                 aug_param_dict:Dict[str,Dict[str,Union[int,float]]]=AUG_PARAM_DICT):
+                 aug_param_dict:Dict[str,Dict[str,Union[int,float]]]=AUG_PARAM_DICT,
+                 dropout_size:Sequence[int]=(32,32,2)):
         super().__init__()
         self.augmentations = augmentations
         self.keys = keys
@@ -167,13 +169,15 @@ class AugmentationWorkhorsed(monai.transforms.RandomizableTransform):
         self.max_mult = max_mult
         self.N = N
         self.aug_param_dict = aug_param_dict
+        self.dropout_size = dropout_size
 
         self.param_dict = {k:{kk:self.aug_param_dict[k][kk]*self.max_mult 
                               for kk in self.aug_param_dict[k]}
                            for k in self.augmentations}
 
         self.transforms = {
-            k:get_transform_d(keys,k,self.param_dict,mask_keys)
+            k:get_transform_d(keys,k,self.param_dict,mask_keys,
+                              dropout_size=self.dropout_size)
             for k in self.param_dict}
         
     def __call__(self,X):
