@@ -159,7 +159,7 @@ class AugmentationWorkhorsed(monai.transforms.RandomizableTransform):
                  augmentations:List[str],
                  keys:List[str]=None,mask_keys:List[str]=[],
                  max_mult:float=1.0,N:int=5,
-                 aug_param_dict:Dict[str,Dict[Union[int,float]]]=AUG_PARAM_DICT):
+                 aug_param_dict:Dict[str,Dict[str,Union[int,float]]]=AUG_PARAM_DICT):
         super().__init__()
         self.augmentations = augmentations
         self.keys = keys
