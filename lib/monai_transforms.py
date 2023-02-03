@@ -7,7 +7,12 @@ from .utils import (
     CombineBinaryLabelsd,
     LabelOperatorSegmentationd,
     CreateImageAndWeightsd,
-    LabelOperatord)
+    LabelOperatord,
+    CopyEntryd,
+    ExposeTransformKeyMetad)
+from lib.modules.augmentations import (
+    generic_augments,mri_specific_augments,spatial_augments,
+    AugmentationWorkhorsed)
 
 def unbox(x):
     if isinstance(x,list):
@@ -172,6 +177,62 @@ def get_transforms_classification(x,
                 output_keys={label_key:"label"}))
     return transforms
 
+def get_pre_transforms_ssl(all_keys,
+                           copied_keys,
+                           adc_keys,
+                           non_adc_keys,
+                           target_spacing,
+                           crop_size,
+                           pad_size,
+                           n_dim=3):
+    intp = []
+    intp_resampling_augmentations = []
+    key_correspondence = {k:kk for k,kk in zip(all_keys,copied_keys)}
+    for k in all_keys:
+        intp.append("area")
+        intp_resampling_augmentations.append("bilinear")
+
+    transforms = [
+        monai.transforms.LoadImaged(
+            all_keys,ensure_channel_first=True,image_only=True)]
+    if n_dim == 3:
+        transforms.append(monai.transforms.Orientationd(all_keys,"RAS"))
+    if target_spacing is not None:
+        intp_resampling_augmentations = ["bilinear" for _ in all_keys]
+        transforms.append(
+            monai.transforms.Spacingd(
+                keys=all_keys,pixdim=target_spacing,
+                mode=intp_resampling_augmentations))
+    scaling_ops = []
+    if len(non_adc_keys) > 0:
+        transforms.append(
+            monai.transforms.ScaleIntensityd(non_adc_keys,0,1))
+    if len(adc_keys) > 0:
+        transforms.extend([
+            ConditionalRescalingd(adc_keys,1000,0.001),
+            monai.transforms.ScaleIntensityd(
+                adc_keys,None,None,-2/3)])
+    if crop_size is not None:
+        transforms.append(
+            monai.transforms.CenterSpatialCropd(
+                all_keys,[int(j) for j in crop_size]))
+    if pad_size is not None:
+        transforms.append(
+            monai.transforms.SpatialPadd(
+                all_keys,[int(j) for j in pad_size]))
+    transforms.append(monai.transforms.EnsureTyped(all_keys))
+    transforms.append(CopyEntryd(all_keys,key_correspondence))
+    
+    return transforms
+
+def get_post_transforms_ssl(all_keys,
+                            copied_keys):
+    return [
+        monai.transforms.ConcatItemsd(all_keys,"augmented_image_1"),
+        monai.transforms.ConcatItemsd(copied_keys,"augmented_image_2"),
+        monai.transforms.ToTensord(
+            ["augmented_image_1","augmented_image_2"])]
+
 def get_augmentations_unet(augment,
                            all_keys,
                            image_keys,
@@ -296,3 +357,58 @@ def get_augmentations_class(augment,
     else:
         augments = monai.transforms.Compose(augments)
     return augments
+
+def get_augmentations_ssl(all_keys:List[str],
+                          copied_keys:List[str],
+                          crop_size:List[int],
+                          roi_size:List[int],
+                          vicregl:bool):
+    def flatten_box(box):
+        box1 = np.array(box[::2])
+        box2 = np.array(crop_size) - np.array(box[1::2])
+        out = np.concatenate([box1,box2]).astype(np.float32)
+        return out
+    
+    transforms_to_remove = [
+        # not super slow but not really a common artefact
+        "gaussian_smooth_x","gaussian_smooth_y","gaussian_smooth_z",
+        # the sharpens are remarkably slow, not worth it imo
+        "gaussian_sharpen_x","gaussian_sharpen_y","gaussian_sharpen_z",
+        # do not make sense in 2d
+        "rotate_z","translate_z","shear_z","scale_z"]
+    aug_list = generic_augments+mri_specific_augments+spatial_augments
+    aug_list = [x for x in aug_list if x not in transforms_to_remove]
+    
+    cropping_strategy = []
+
+    if vicregl == True:
+        cropping_strategy.extend([
+            monai.transforms.RandSpatialCropd(
+                all_keys,roi_size=roi_size,random_size=False),
+            monai.transforms.RandSpatialCropd(
+                copied_keys,roi_size=roi_size,random_size=False),
+            # exposes the value associated with the random crop as a key
+            # in the data element dict
+            ExposeTransformKeyMetad(
+                all_keys[0],"RandSpatialCrop",
+                ["extra_info","cropped"],"box_1"),
+            ExposeTransformKeyMetad(
+                copied_keys[0],"RandSpatialCrop",
+                ["extra_info","cropped"],"box_2"),
+            # transforms the bounding box into (x1,y1,z1,x2,y2,z2) format
+            monai.transforms.Lambdad(["box_1","box_2"],flatten_box)])
+    else:
+        cropping_strategy.append(
+            monai.transforms.RandSpatialCropd(
+                all_keys+copied_keys,roi_size=roi_size,random_size=False))
+    return [
+        *cropping_strategy,
+        AugmentationWorkhorsed(
+            augmentations=aug_list,
+            keys=all_keys,mask_keys=[],max_mult=0.5,N=2,
+            dropout_size=(8,8)),
+        AugmentationWorkhorsed(
+            augmentations=aug_list,
+            keys=copied_keys,mask_keys=[],max_mult=0.5,N=2,
+            dropout_size=(8,8)),
+        ]
