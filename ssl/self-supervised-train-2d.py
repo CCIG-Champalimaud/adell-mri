@@ -1,34 +1,24 @@
 from copy import deepcopy
-import os
 import argparse
 import random
 import json
 import numpy as np
 import torch
 import monai
-import wandb
 
 from pytorch_lightning import Trainer
-from pytorch_lightning.loggers import WandbLogger
-from pytorch_lightning.strategies import DDPStrategy
-from pytorch_lightning.callbacks.model_checkpoint import ModelCheckpoint
 from pytorch_lightning.callbacks import RichProgressBar
 
 import sys
 sys.path.append(r"..")
-from lib.utils import (
-    CopyEntryd,
-    PrintShaped,
-    collate_last_slice,
-    RandomSlices,
-    ConditionalRescalingd,
-    ExposeTransformKeyMetad,
-    safe_collate)
+from lib.utils import safe_collate,ExponentialMovingAverage
+from lib.utils.pl_utils import get_devices,get_ckpt_callback,get_logger
 from lib.modules.augmentations import *
 from lib.modules.self_supervised.pl import (
     NonContrastiveSelfSLPL,NonContrastiveSelfSLUNetPL)
-from lib.utils import ExponentialMovingAverage
 from lib.modules.config_parsing import parse_config_ssl,parse_config_unet
+from lib.monai_transforms import (
+    get_pre_transforms_ssl,get_post_transforms_ssl,get_augmentations_ssl)
 
 torch.backends.cudnn.benchmark = True
 
@@ -178,21 +168,19 @@ if __name__ == "__main__":
     np.random.seed(args.seed)
     g = torch.Generator()
     g.manual_seed(args.seed)
+    
+    accelerator,devices,strategy = get_devices(args.dev,
+                                               find_unused_parameters=False,
+                                               static_graph=True)
 
     output_file = open(args.metric_path,'w')
 
     keys = args.image_keys
     copied_keys = [k+"_copy" for k in keys]
-    key_correspondence = {k:kk for k,kk in zip(keys,copied_keys)}
     if args.adc_image_keys is None:
-        args.adc_image_keys = []
-    args.adc_image_keys = [k for k in args.adc_image_keys if k in keys]
-    intp = []
-    intp_resampling_augmentations = []
-    for k in keys:
-        intp.append("area")
-        intp_resampling_augmentations.append("bilinear")
-    non_adc_keys = [k for k in keys if k not in args.adc_image_keys]
+        adc_image_keys = []
+    adc_image_keys = [k for k in adc_image_keys if k in keys]
+    non_adc_keys = [k for k in keys if k not in adc_image_keys]
     all_keys = [*keys]
 
     data_dict = json.load(open(args.dataset_json,'r'))
@@ -214,11 +202,9 @@ if __name__ == "__main__":
         for k in network_config:
             if k in ["loss_fn"]:
                 del network_config_correct[k]
-        n_dims = network_config["spatial_dimensions"]
     else:
         network_config,network_config_correct = parse_config_ssl(
             args.config_file,args.dropout_param,len(keys))
-        n_dims = network_config["backbone_args"]["spatial_dim"]
 
     if (args.batch_size is not None) and (args.batch_size != "tune"):
         network_config["batch_size"] = args.batch_size
@@ -239,114 +225,35 @@ if __name__ == "__main__":
     else:
         roi_size = [int(x) for x in args.random_crop_size]
 
-    def get_transforms(x):
-        if args.target_spacing is not None:
-            rs = [
-                monai.transforms.Spacingd(
-                    keys=all_keys,pixdim=args.target_spacing,
-                    mode=intp_resampling_augmentations)]
-        else:
-            rs = []
-        scaling_ops = []
-        if len(non_adc_keys) > 0:
-            scaling_ops.append(
-                monai.transforms.ScaleIntensityd(non_adc_keys,0,1))
-        if len(args.adc_image_keys) > 0:
-            scaling_ops.append(
-                ConditionalRescalingd(args.adc_image_keys,1000,0.001))
-            scaling_ops.append(
-                monai.transforms.ScaleIntensityd(
-                    args.adc_image_keys,None,None,-(1-args.adc_factor)))
-        crop_op = []
-        if args.crop_size is not None:
-            crop_op.append(
-                monai.transforms.CenterSpatialCropd(
-                    all_keys,[int(j) for j in args.crop_size]))
-        if args.pad_size is not None:
-            crop_op.append(
-                monai.transforms.SpatialPadd(
-                    all_keys,[int(j) for j in args.pad_size]))
-        if x == "pre":
-            return [
-                monai.transforms.LoadImaged(
-                    all_keys,ensure_channel_first=True,image_only=True),
-                monai.transforms.Orientationd(all_keys,"RAS"),
-                *rs,
-                *crop_op,
-                *scaling_ops,
-                monai.transforms.EnsureTyped(all_keys),
-                CopyEntryd(all_keys,key_correspondence)]
-        elif x == "post":
-            return [
-                monai.transforms.ConcatItemsd(keys,"augmented_image_1"),
-                monai.transforms.ConcatItemsd(copied_keys,"augmented_image_2"),
-                monai.transforms.ToTensord(
-                    ["augmented_image_1","augmented_image_2"])]
-
-    def get_augmentations():
-        def flatten_box(box):
-            box1 = np.array(box[::2])
-            box2 = np.array(args.crop_size) - np.array(box[1::2])
-            out = np.concatenate([box1,box2]).astype(np.float32)
-            return out
-        
-        transforms_to_remove = [
-            # not super slow but not really a common artefact
-            "gaussian_smooth_x","gaussian_smooth_y","gaussian_smooth_z",
-            # the sharpens are remarkably slow, not worth it imo
-            "gaussian_sharpen_x","gaussian_sharpen_y","gaussian_sharpen_z",
-            # do not make sense in 2d
-            "rotate_z","translate_z","shear_z","scale_z"]
-        aug_list = generic_augments+mri_specific_augments+spatial_augments
-        aug_list = [x for x in aug_list if x not in transforms_to_remove]
-        
-        if len(roi_size) == 0:
-            cropping_strategy = []
-        if args.vicregl == True:
-            cropping_strategy = [
-                monai.transforms.RandSpatialCropd(
-                    all_keys,roi_size=roi_size,random_size=False),
-                monai.transforms.RandSpatialCropd(
-                    copied_keys,roi_size=roi_size,random_size=False),
-                # exposes the value associated with the random crop as a key
-                # in the data element dict
-                ExposeTransformKeyMetad(
-                    all_keys[0],"RandSpatialCrop",
-                    ["extra_info","cropped"],"box_1"),
-                ExposeTransformKeyMetad(
-                    copied_keys[0],"RandSpatialCrop",
-                    ["extra_info","cropped"],"box_2"),
-                # transforms the bounding box into (x1,y1,z1,x2,y2,z2) format
-                monai.transforms.Lambdad(["box_1","box_2"],flatten_box),
-            ]
-        else:
-            cropping_strategy = [
-                monai.transforms.RandSpatialCropd(
-                    all_keys+copied_keys,roi_size=roi_size,random_size=False)
-                ]
-        return [
-            *cropping_strategy,
-            AugmentationWorkhorsed(
-                augmentations=aug_list,
-                keys=all_keys,mask_keys=[],max_mult=0.5,N=2),
-            AugmentationWorkhorsed(
-                augmentations=aug_list,
-                keys=copied_keys,mask_keys=[],max_mult=0.5,N=2),
-            ]
-
     all_pids = [k for k in data_dict]
     
+    pre_transforms_args = {
+        "all_keys":all_keys,
+        "copied_keys":copied_keys,
+        "adc_keys":adc_image_keys,
+        "non_adc_keys":non_adc_keys,
+        "target_spacing":args.target_spacing,
+        "crop_size":args.crop_size,
+        "pad_size":args.pad_size}
+    
+    post_transform_args = {
+        "all_keys":all_keys,
+        "copied_keys":copied_keys}
+    
+    augmentation_args = {
+        "all_keys":all_keys,
+        "copied_keys":copied_keys,
+        "crop_size":args.crop_size,
+        "roi_size":roi_size,
+        "vicregl":args.vicregl
+    }
+    
     transforms = [
-        *get_transforms("pre"),
-        *get_augmentations(),
-        *get_transforms("post")]
+        *get_pre_transforms_ssl(**pre_transforms_args),
+        *get_augmentations_ssl(),
+        *get_post_transforms_ssl(**post_transform_args)]
 
-    if n_dims == 2:
-        transforms.append(
-            RandomSlices(["image"],None,8,base=0.001))
-        collate_fn = collate_last_slice
-    else:
-        collate_fn = safe_collate
+    collate_fn = safe_collate
 
     if args.train_pids is not None:
         train_pids = args.train_pids
@@ -354,24 +261,6 @@ if __name__ == "__main__":
         train_pids = [pid for pid in data_dict]
     train_list = [data_dict[pid] for pid in data_dict
                   if pid in train_pids]
-
-    if ":" in args.dev:
-        devices = args.dev.split(":")[-1].split(",")
-        devices = [int(i) for i in devices]
-        if len(devices) > 1:
-            #strategy = "deepspeed_stage_2"
-            strategy = DDPStrategy(find_unused_parameters=False,
-                                   static_graph=True)
-        else:
-            strategy = None
-    else:
-        devices = args.n_devices
-        if devices > 1:
-            #strategy = "deepspeed_stage_2"
-            strategy = DDPStrategy(find_unused_parameters=False,
-                                   static_graph=True)
-        else:
-            strategy = None
 
     # split workers across cache construction and data loading
     a = args.n_workers // 2
@@ -415,8 +304,6 @@ if __name__ == "__main__":
             vic_reg_local=args.vicregl,
             ema=ema,
             **network_config_correct)
-    if "cuda" in args.dev:
-        ssl = ssl.to("cuda")
 
     if args.from_checkpoint is not None:
         state_dict = torch.load(
@@ -425,48 +312,29 @@ if __name__ == "__main__":
     
     callbacks = [RichProgressBar()]
 
-    ckpt_path = None
-    if args.checkpoint_name is not None:
-        ckpt_name = args.checkpoint_name
-        ckpt_name = ckpt_name + "_{epoch:03d}"
-        ckpt_name = ckpt_name + "_{val_loss:.3f}"
-        ckpt_callback = ModelCheckpoint(
-            dirpath=args.checkpoint_dir,
-            filename=ckpt_name,monitor="val_loss",
-            save_last=True,save_top_k=1,mode="min")
-        ckpt_last = args.checkpoint_name + "_last"
-        ckpt_callback.CHECKPOINT_NAME_LAST = ckpt_last
+    ckpt_callback,ckpt_path,status = get_ckpt_callback(
+        checkpoint_dir=args.checkpoint_dir,
+        checkpoint_name=args.checkpoint_name,
+        max_epochs=args.max_epochs,
+        resume_from_last=args.resume_from_last,
+        val_fold=None,
+        monitor=args.monitor)
+    if ckpt_callback is not None:   
         callbacks.append(ckpt_callback)
-        ckpt_last_full = os.path.join(
-            args.checkpoint_dir,ckpt_last+'.ckpt')
-        if os.path.exists(ckpt_last_full) and args.resume_from_last == True:
-            ckpt_path = ckpt_last_full
-            epoch = torch.load(ckpt_path)["epoch"]
-            if epoch >= (args.max_epochs-1):
-                print("Training has finished, exiting")
-                exit()
-            else:
-                print("Resuming training from checkpoint in {} (epoch={})".format(
-                    ckpt_path,epoch))
-        ckpt = True
-    else:
-        ckpt = False
-    
-    if args.summary_name is not None and args.project_name is not None:
-        wandb.finish()
-        wandb_resume = args.resume
-        if wandb_resume == "none":
-            wandb_resume = None
-        run_name = args.summary_name.replace(':','_')
-        logger = WandbLogger(
-            save_dir=args.summary_dir,project=args.project_name,
-            name=run_name,version=run_name,reinit=True,resume=wandb_resume)
-    else:
-        logger = None
+    ckpt = ckpt_callback is not None
+    if status == "finished":
+        print("Training has finished")
+        exit()
+
+    logger = get_logger(summary_name=args.summary_name,
+                        summary_dir=args.summary_dir,
+                        project_name=args.project_name,
+                        resume=args.resume,
+                        fold=None)
 
     precision = {"16":16,"32":32,"bf16":"bf16"}[args.precision]
     trainer = Trainer(
-        accelerator="gpu" if "cuda" in args.dev else "cpu",
+        accelerator=accelerator,
         devices=devices,logger=logger,callbacks=callbacks,
         strategy=strategy,max_epochs=args.max_epochs,
         sync_batchnorm=True if strategy is not None else False,

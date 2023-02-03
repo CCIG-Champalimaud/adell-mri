@@ -8,6 +8,7 @@ import torch
 import wandb
 from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.callbacks.model_checkpoint import ModelCheckpoint
+from pytorch_lightning.strategies import DDPStrategy
 
 from typing import List,Union,Tuple
 
@@ -99,7 +100,7 @@ def get_logger(summary_name:str,summary_dir:str,
         logger = None
     return logger
 
-def get_devices(device_str:str)->Tuple[str,Union[List[int],int],str]:
+def get_devices(device_str:str,**kwargs)->Tuple[str,Union[List[int],int],str]:
     """Takes a string with form "{device}:{device_ids}" where device_ids is a
     comma separated list of device IDs (i.e. cuda:0,1).
 
@@ -107,6 +108,7 @@ def get_devices(device_str:str)->Tuple[str,Union[List[int],int],str]:
         device_str (str): device string. Can be "cpu" or "cuda" if no 
             parallelization is necessary or "cuda:0,1" if training is to be
             distributed across GPUs 0 and 1, for instance.
+        kwargs: keyword arguments for DDPStrategy
 
     Returns:
         Tuple[str,Union[List[int],int],str]: a tuple containing the accelerator
@@ -119,7 +121,7 @@ def get_devices(device_str:str)->Tuple[str,Union[List[int],int],str]:
         accelerator = "gpu" if "cuda" in device_str else "cpu"
         devices = [int(i) for i in device_str.split(":")[-1].split(",")]
         if len(devices) > 1:
-            strategy = "ddp"
+            strategy = DDPStrategy(**kwargs)
     else:
         accelerator = "gpu" if "cuda" in device_str else "cpu"
         devices = 1
