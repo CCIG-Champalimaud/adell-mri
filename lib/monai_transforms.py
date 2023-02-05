@@ -360,12 +360,13 @@ def get_augmentations_class(augment,
 
 def get_augmentations_ssl(all_keys:List[str],
                           copied_keys:List[str],
-                          crop_size:List[int],
+                          scaled_crop_size:List[int],
                           roi_size:List[int],
-                          vicregl:bool):
+                          vicregl:bool,
+                          n_dim:int=3):
     def flatten_box(box):
         box1 = np.array(box[::2])
-        box2 = np.array(crop_size) - np.array(box[1::2])
+        box2 = np.array(roi_size) - np.array(box[1::2])
         out = np.concatenate([box1,box2]).astype(np.float32)
         return out
     
@@ -373,13 +374,23 @@ def get_augmentations_ssl(all_keys:List[str],
         # not super slow but not really a common artefact
         "gaussian_smooth_x","gaussian_smooth_y","gaussian_smooth_z",
         # the sharpens are remarkably slow, not worth it imo
-        "gaussian_sharpen_x","gaussian_sharpen_y","gaussian_sharpen_z",
-        # do not make sense in 2d
-        "rotate_z","translate_z","shear_z","scale_z"]
+        "gaussian_sharpen_x","gaussian_sharpen_y","gaussian_sharpen_z"]
+    if n_dim == 2:
+        transforms_to_remove.extend(
+            ["rotate_z","translate_z","shear_z","scale_z"])
     aug_list = generic_augments+mri_specific_augments+spatial_augments
     aug_list = [x for x in aug_list if x not in transforms_to_remove]
     
     cropping_strategy = []
+
+    if scaled_crop_size is not None:
+        cropping_strategy.extend([
+            monai.transforms.RandSpatialCropd(
+                all_keys+copied_keys,
+                roi_size=[x//2 for x in scaled_crop_size],
+                random_size=True),
+            monai.transforms.Resized(all_keys+copied_keys,
+                                     scaled_crop_size)])
 
     if vicregl == True:
         cropping_strategy.extend([

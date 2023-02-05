@@ -8,13 +8,16 @@ from typing import Sequence,Callable,Union,Tuple,Dict
 
 DICOMDatasetType = Sequence[Dict[str,Sequence[Dict[str,str]]]]
 
-def filter_bad_orientations(
-    dicom_dictionary:DICOMDatasetType)->DICOMDatasetType:
+def filter_orientations(
+    dicom_dictionary:DICOMDatasetType,
+    keep_bad:bool=True)->DICOMDatasetType:
     """Filters out DCM files with bad orientations (i.e. those which have
     a "orientation" key whose last three elements are close to [0,0,-1]).
 
     Args:
         dicom_dictionary (DICOMDatasetType): a DICOM dataset.
+        keep_bad (bool): keeps the bad annotations and eliminates only DICOM
+            files with no orientation tags.
 
     Returns:
         DICOMDatasetType: a filtered DICOM dataset.
@@ -27,7 +30,10 @@ def filter_bad_orientations(
             new_dicom_dictionary[k][kk] = []
             for dcm_dict in dicom_dictionary[k][kk]:
                 if dcm_dict["orientation"] is not None:
-                    if np.all(np.isclose(dcm_dict["orientation"][-3:],[0,0,-1])):
+                    is_bad = np.all(
+                        np.isclose(
+                            dcm_dict["orientation"][-3:],[0,0,-1]))
+                    if is_bad == True and keep_bad == False:
                         pass
                     else:
                         new_dicom_dictionary[k][kk].append(dcm_dict)
@@ -160,8 +166,8 @@ class SliceSampler(torch.utils.data.Sampler):
                 for _ in element[k]:
                     new_element[k].append(self.i)
                     self.i += 1
-                self.N += 1
                 self.correspondence.append(new_element)
+                self.N += 1
         
     def __iter__(self)->int:
         """Returns indices for DICOMDataset such that only one sample for each
@@ -180,11 +186,11 @@ class SliceSampler(torch.utils.data.Sampler):
             
         if self.shuffle == True:
             self.rng.shuffle(corr_idx)
-                
+        
         for idx in corr_idx:
             element = self.correspondence[idx]
-            for k in element:
-                yield int(self.rng.choice(element[k]))
+            yield int(self.rng.choice(
+                element[self.rng.choice(list(element.keys()))]))
 
     def __len__(self)->int:
         """Length of the dataset (number of studies). The number of individual

@@ -8,9 +8,10 @@ import numpy as np
 import monai
 from tqdm import trange
 
-from lib.utils.dicom_loader import DICOMDataset,filter_bad_orientations
+from lib.utils.dicom_loader import DICOMDataset,filter_orientations
 from lib.monai_transforms import get_pre_transforms_ssl
 from lib.monai_transforms import get_post_transforms_ssl
+from lib.monai_transforms import get_augmentations_ssl
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -23,31 +24,28 @@ if __name__ == "__main__":
 
     pre_transforms = get_pre_transforms_ssl(["image"],["image_copy"],
                                             adc_keys=[],non_adc_keys=["image"],
-                                            target_spacing=[0.5,0.5],
+                                            target_spacing=None,
                                             crop_size=args.crop_size,
                                             pad_size=args.crop_size,
                                             n_dim=2)
     post_transforms = get_post_transforms_ssl(["image"],["image_copy"])
+    augmentations = get_augmentations_ssl(["image"],["image_copy"],
+                                          [256,256],[224,224],False,2)
 
     with open(args.json_path) as o:
         dicom_dict = json.load(o)
-    
-    dicom_dict = filter_bad_orientations(dicom_dict)
-    
+        
     dicom_dataset = [dicom_dict[k] for k in dicom_dict]
     dicom_dataset = DICOMDataset(dicom_dataset,
                                  transform=monai.transforms.Compose(
                                      [*pre_transforms,
+                                      *augmentations,
                                       *post_transforms]))
     
     times = []
     for i in trange(len(dicom_dataset)):
         a = time.time()
-        try:
-            dicom_dataset[i]
-        except:
-            idx_1,idx_2,idx_3 = dicom_dataset.correspondence[i]
-            print(dicom_dataset.dicom_dataset[idx_1][idx_2][idx_3])
+        dicom_dataset[i]
         b = time.time()
         times.append(b-a)
     
