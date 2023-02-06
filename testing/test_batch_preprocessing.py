@@ -4,13 +4,14 @@ sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)),'..'))
 
 import torch
 
-from lib.utils.batch_preprocessing import BatchPreprocessing,mixup,partial_mixup,label_smoothing
+from lib.utils.batch_preprocessing import (
+    BatchPreprocessing,mixup,partial_mixup,label_smoothing)
 
 def test_label_smoothing():
     f = 0.2
     labels = torch.Tensor([0,1,1,0])
     expected_labels = torch.Tensor([0.2,0.8,0.8,0.2])
-    labels = label_smoothing(labels,0.2)
+    labels = label_smoothing(labels,f)
     assert torch.all(expected_labels == labels)
     
 def test_mixup():

@@ -59,7 +59,6 @@ for dim in [2,3]:
 @pytest.mark.parametrize("D,sd,conv_type",param_list)
 def test_unetr_skip(D,sd,conv_type):
     K = [3 for _ in D]
-    S = [2 for _ in D]
     if sd == 2:
         i = torch.rand(size=[1,c,h,w])
         i_skip = torch.rand(size=[1,c,h,w])
@@ -90,7 +89,6 @@ for dim in [2,3]:
 def test_unetr_skip_feature(D,sd):
     n_features = 4
     K = [3 for _ in D]
-    S = [2 for _ in D]
     if sd == 2:
         i = torch.rand(size=[2,c,h,w])
         i_skip = torch.rand(size=[2,1,h,w])

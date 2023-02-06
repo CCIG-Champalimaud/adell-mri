@@ -18,13 +18,14 @@ import sys
 sys.path.append(r"..")
 from lib.utils import (
     CopyEntryd,
-    PrintShaped,
     collate_last_slice,
     RandomSlices,
     ConditionalRescalingd,
     ExposeTransformKeyMetad,
     safe_collate)
-from lib.modules.augmentations import *
+from lib.modules.augmentations import (
+    AugmentationWorkhorsed,generic_augments,mri_specific_augments,
+    spatial_augments)
 from lib.modules.self_supervised.pl import (
     NonContrastiveResNetPL,NonContrastiveUNetPL,
     NonContrastiveConvNeXtPL)
@@ -208,7 +209,7 @@ if __name__ == "__main__":
     for k in data_dict:
         data_dict[k]["pid"] = k
 
-    if args.unet_encoder == True:
+    if args.unet_encoder is True:
         network_config,_ = parse_config_unet(
             args.config_file,len(keys),2)
         network_config_correct = deepcopy(network_config)
@@ -225,7 +226,7 @@ if __name__ == "__main__":
         network_config["batch_size"] = args.batch_size
         network_config_correct["batch_size"] = args.batch_size
 
-    if args.ema == True:
+    if args.ema is True:
         bs = network_config_correct["batch_size"]
         ema_params = {
             "decay":0.99,
@@ -301,7 +302,7 @@ if __name__ == "__main__":
         
         if len(roi_size) == 0:
             cropping_strategy = []
-        if args.vicregl == True:
+        if args.vicregl is True:
             cropping_strategy = [
                 monai.transforms.RandSpatialCropd(
                     all_keys,roi_size=roi_size,random_size=False),
@@ -390,7 +391,7 @@ if __name__ == "__main__":
     train_loader = train_loader_call(
         network_config_correct["batch_size"],False)
 
-    if args.unet_encoder == True:
+    if args.unet_encoder is True:
         ssl = NonContrastiveUNetPL(
             training_dataloader_call=train_loader_call,
             aug_image_key_1="augmented_image_1",
@@ -438,7 +439,7 @@ if __name__ == "__main__":
         callbacks.append(ckpt_callback)
         ckpt_last_full = os.path.join(
             args.checkpoint_dir,ckpt_last+'.ckpt')
-        if os.path.exists(ckpt_last_full) and args.resume_from_last == True:
+        if os.path.exists(ckpt_last_full) and args.resume_from_last is True:
             ckpt_path = ckpt_last_full
             epoch = torch.load(ckpt_path)["epoch"]
             if epoch >= (args.max_epochs-1):
@@ -488,7 +489,7 @@ if __name__ == "__main__":
         out = test_metrics[k]
         try:
             value = float(out.detach().numpy())
-        except:
+        except Exception:
             value = float(out)
         x = "{},{},{},{}".format(k,0,0,value)
         output_file.write(x+'\n')

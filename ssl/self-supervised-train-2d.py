@@ -1,19 +1,7 @@
-from copy import deepcopy
-import argparse
-import random
-import json
-import numpy as np
-import torch
-import monai
-
-from pytorch_lightning import Trainer
-from pytorch_lightning.callbacks import RichProgressBar
-
 import sys
 sys.path.append(r"..")
 from lib.utils import safe_collate,ExponentialMovingAverage
 from lib.utils.pl_utils import get_devices,get_ckpt_callback,get_logger
-from lib.modules.augmentations import *
 from lib.modules.self_supervised.pl import (
     NonContrastiveResNetPL,NonContrastiveUNetPL,
     NonContrastiveConvNeXtPL)
@@ -22,6 +10,16 @@ from lib.utils.dicom_loader import (
     DICOMDataset,SliceSampler,filter_orientations)
 from lib.monai_transforms import (
     get_pre_transforms_ssl,get_post_transforms_ssl,get_augmentations_ssl)
+
+from copy import deepcopy
+import argparse
+import random
+import json
+import numpy as np
+import torch
+import monai
+from pytorch_lightning import Trainer
+from pytorch_lightning.callbacks import RichProgressBar
 
 torch.backends.cudnn.benchmark = True
 
@@ -230,7 +228,7 @@ if __name__ == "__main__":
         network_config["batch_size"] = args.batch_size
         network_config_correct["batch_size"] = args.batch_size
 
-    if args.ema == True:
+    if args.ema is True:
         bs = network_config_correct["batch_size"]
         ema_params = {
             "decay":0.99,
@@ -395,7 +393,7 @@ if __name__ == "__main__":
         out = test_metrics[k]
         try:
             value = float(out.detach().numpy())
-        except:
+        except Exception:
             value = float(out)
         x = "{},{},{},{}".format(k,0,0,value)
         output_file.write(x+'\n')

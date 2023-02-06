@@ -8,7 +8,8 @@ from lib.modules.layers.adn_fn import ActDropNorm
 
 c,h,w,d = [1,32,32,16]
 adn_fn_2d = ActDropNorm
-adn_fn_3d = lambda s: ActDropNorm(s,norm_fn=torch.nn.BatchNorm3d)
+def adn_fn_3d(s):
+    return ActDropNorm(s,norm_fn=torch.nn.BatchNorm3d)
 
 def test_dense_block_2d_1():
     print("Testing case of a single convolution (no dense connections)")

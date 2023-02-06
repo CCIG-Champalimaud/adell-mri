@@ -3,7 +3,6 @@ import os
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)),'..'))
 import pytest
 
-import numpy as np
 import torch
 from lib.modules.layers.vit import SWINTransformerBlock,SWINTransformerBlockStack
 from lib.modules.layers.adn_fn import get_adn_fn
@@ -24,7 +23,8 @@ for s in range(4):
         for patch_size in [[4,4],[4,4,2]]:
             for window_size in [[8,8],[8,8,4]]:
                 for embed_method in ["linear","convolutional"]:
-                    if len(image_size) == len(patch_size) and len(image_size) == len(window_size):
+                    if len(image_size) == len(patch_size) and \
+                        len(image_size) == len(window_size):
                         args.append([s,image_size,patch_size,window_size,embed_method])
 @pytest.mark.parametrize("s,image_size,patch_size,window_size,embed_method",
                          args)
@@ -53,7 +53,8 @@ for scale in range(1,3):
         for patch_size in [[4,4],[4,4,2]]:
             for window_size in [[8,8],[8,8,4]]:
                 for embed_method in ["linear","convolutional"]:
-                    if len(image_size) == len(patch_size) and len(image_size) == len(window_size):
+                    if len(image_size) == len(patch_size) and \
+                        len(image_size) == len(window_size):
                         args.append([scale,image_size,patch_size,window_size,embed_method])
 @pytest.mark.parametrize("scale,image_size,patch_size,window_size,embed_method",
                          args)

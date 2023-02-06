@@ -52,7 +52,7 @@ def test_linear_embedding_scale(d):
     t = torch.rand(size=[1] + [n_channels] + i_s)
     le = LinearEmbedding(i_s,p_s,n_channels)
     out = le(t)
-    rev = le.rearrange_rescale(out,2)
+    le.rearrange_rescale(out,2)
     
 @pytest.mark.parametrize("d",[2,3])
 def test_conv_embedding(d):

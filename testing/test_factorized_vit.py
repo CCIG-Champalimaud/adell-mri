@@ -1,11 +1,8 @@
 import sys
 import os
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)),'..'))
-import pytest
 
-import time
 import torch
-import numpy as np
 from lib.modules.layers.vit import FactorizedViT
 from lib.modules.layers.adn_fn import get_adn_fn
 

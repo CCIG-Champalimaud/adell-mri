@@ -4,7 +4,6 @@ import json
 import numpy as np
 import torch
 import monai
-import torchio
 import wandb
 from sklearn.model_selection import KFold,train_test_split
 
@@ -17,12 +16,10 @@ import sys
 sys.path.append(r"..")
 from ..lib.utils import (
     LabelOperatord,
-    PrintShaped,    
     collate_last_slice,
     RandomSlices,
     SlicesToFirst,
     ConditionalRescalingd,
-    FastResample,
     safe_collate)
 from lib.modules.layers import ResNet
 from lib.modules.segmentation import UNet
@@ -326,7 +323,7 @@ if __name__ == "__main__":
                 monai.transforms.ToTensord(["image"])]
 
     def get_augmentations(augment):
-        if augment == True:
+        if augment is True:
             return [
                 monai.transforms.RandAffined(
                     all_keys,
@@ -341,7 +338,7 @@ if __name__ == "__main__":
 
     label_mode = "binary" if n_classes == 2 else "cat"
     all_pids = [k for k in data_dict]
-    if args.pre_load == False:
+    if args.pre_load is False:
         transforms_train = [
             *get_transforms("pre",label_mode),
             *get_augmentations(args.augment),
@@ -408,7 +405,7 @@ if __name__ == "__main__":
     for val_fold in range(args.n_folds):
         train_idxs,val_idxs = next(fold_generator)
         train_idxs,train_val_idxs = train_test_split(train_idxs,test_size=0.1)
-        if args.pre_load == False:
+        if args.pre_load is False:
             train_pids = [all_pids[i] for i in train_idxs]
             train_val_pids = [all_pids[i] for i in train_val_idxs]
             val_pids = [all_pids[i] for i in val_idxs]
@@ -504,7 +501,7 @@ if __name__ == "__main__":
         network_config_unet = {
             k:network_config[k] for k in network_config
             if k in unet_args}
-        if args.unet_pp == True:
+        if args.unet_pp is True:
             unet = UNetPlusPlus(
                 encoding_operations=encoding_operations,
                 n_classes=n_classes,
@@ -550,7 +547,7 @@ if __name__ == "__main__":
                 'val_loss',patience=args.early_stopping,
                 strict=True,mode="min")
             callbacks.append(early_stopping)
-        if args.swa == True:
+        if args.swa is True:
             swa_callback = StochasticWeightAveraging()
             callbacks.append(swa_callback)
 
@@ -594,7 +591,7 @@ if __name__ == "__main__":
             if n_classes == 2:
                 try:
                     value = float(out.detach().numpy())
-                except:
+                except Exception:
                     value = float(out)
                 x = "{},{},{},{}".format(k,val_fold,0,value)
                 output_file.write(x+'\n')

@@ -12,10 +12,13 @@ maxpool_structure =[(2,2,2),(2,2,2),(2,2,1)]
 h,w,d,c = 64,64,19,1
 
 def test_fpn_2d():
+    def adn_fn(s):
+        return ActDropNorm(s,norm_fn=torch.nn.BatchNorm2d)
     sd = 2
     i = torch.rand(size=[1,c,h,w])
-    adn_fn = lambda s: ActDropNorm(s,norm_fn=torch.nn.BatchNorm2d)
-    backbone = ResNetBackbone(sd,in_channels=1,structure=resnet_structure[:-1],adn_fn=adn_fn)
+    backbone = ResNetBackbone(sd,in_channels=1,
+                              structure=resnet_structure[:-1],
+                              adn_fn=adn_fn)
     a = FeaturePyramidNetworkBackbone(
         backbone,sd,structure=resnet_structure[:-1],adn_fn=adn_fn)
     o = a(i)
@@ -23,10 +26,13 @@ def test_fpn_2d():
         "2d output shape is not correct"
 
 def test_fpn_3d():
+    def adn_fn(s):
+        return ActDropNorm(s,norm_fn=torch.nn.BatchNorm3d)
     sd = 3
     i = torch.rand(size=[1,c,h,w,d])
-    adn_fn = lambda s: ActDropNorm(s,norm_fn=torch.nn.BatchNorm3d)
-    backbone = ResNetBackbone(sd,in_channels=1,structure=resnet_structure[:-1],adn_fn=adn_fn)
+    backbone = ResNetBackbone(sd,in_channels=1,
+                              structure=resnet_structure[:-1],
+                              adn_fn=adn_fn)
     a = FeaturePyramidNetworkBackbone(
         backbone,sd,structure=resnet_structure[:-1],adn_fn=adn_fn)
     o = a(i)
@@ -34,9 +40,10 @@ def test_fpn_3d():
         "3d output shape is not correct"
 
 def test_fpn_3d_maxpool_structure():
+    def adn_fn(s):
+        return ActDropNorm(s,norm_fn=torch.nn.BatchNorm3d)
     sd = 3
     i = torch.rand(size=[1,c,h,w,d])
-    adn_fn = lambda s: ActDropNorm(s,norm_fn=torch.nn.BatchNorm3d)
     backbone = ResNetBackbone(
         sd,in_channels=1,structure=resnet_structure,
         maxpool_structure=maxpool_structure,adn_fn=adn_fn)

@@ -10,7 +10,7 @@ from pytorch_lightning import Trainer
 import sys
 sys.path.append(r"..")
 from lib.utils import safe_collate
-from lib.pl_utils import get_devices
+from lib.utils.pl_utils import get_devices
 from lib.monai_transforms import get_transforms_classification as get_transforms
 from lib.modules.classification.pl import (
     ClassNetPL,UNetEncoderPL,ViTClassifierPL,
@@ -28,7 +28,7 @@ def filter_dictionary_with_presence(D,filters):
         for k in filters:
             if k not in D[pid]:
                 check = False
-        if check == True:
+        if check is True:
             out_dict[pid] = D[pid]
     print("\tOutput size: {}".format(len(out_dict)))
     return out_dict
@@ -46,7 +46,7 @@ def filter_dictionary_with_filters(D,filters):
                     check = False
             else:
                 check = False
-        if check == True:
+        if check is True:
             out_dict[pid] = D[pid]
     print("\tOutput size: {}".format(len(out_dict)))
     return out_dict
@@ -151,10 +151,10 @@ if __name__ == "__main__":
     if args.subsample_size is not None:
         strata = {}
         for k in data_dict:
-            l = data_dict[k][args.label_keys]
-            if l not in strata:
-                strata[l] = []
-            strata[l].append(k)
+            label = data_dict[k][args.label_keys]
+            if label not in strata:
+                strata[label] = []
+            strata[label].append(k)
         p = [len(strata[k]) / len(data_dict) for k in strata]
         split = rng.multinomial(args.subsample_size,p)
         ss = []
@@ -301,7 +301,7 @@ if __name__ == "__main__":
                 if n_classes == 2:
                     try:
                         value = float(out.detach().numpy())
-                    except:
+                    except Exception:
                         value = float(out)
                     x = "{},{},{},{},{}".format(k,checkpoint,iteration,0,value)
                     output_file.write(x+'\n')

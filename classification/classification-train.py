@@ -4,7 +4,6 @@ import json
 import numpy as np
 import torch
 import monai
-from copy import deepcopy
 from sklearn.model_selection import train_test_split,StratifiedKFold
 
 from pytorch_lightning import Trainer
@@ -222,10 +221,10 @@ if __name__ == "__main__":
     if args.subsample_size is not None:
         strata = {}
         for k in data_dict:
-            l = data_dict[k][args.label_keys]
-            if l not in strata:
-                strata[l] = []
-            strata[l].append(k)
+            label = data_dict[k][args.label_keys]
+            if label not in strata:
+                strata[label] = []
+            strata[label].append(k)
         p = [len(strata[k]) / len(data_dict) for k in strata]
         split = rng.multinomial(args.subsample_size,p)
         ss = []
@@ -347,7 +346,7 @@ if __name__ == "__main__":
         U,C = np.unique(classes,return_counts=True)
         for u,c in zip(U,C):
             print("Number of {} cases: {}".format(u,c))
-        if args.weighted_sampling == True:
+        if args.weighted_sampling is True:
             weights = {k:0 for k in args.possible_labels}
             for c in classes:
                 if c in weights:
@@ -493,7 +492,7 @@ if __name__ == "__main__":
                 'val_loss',patience=args.early_stopping,
                 strict=True,mode="min")
             callbacks.append(early_stopping)
-        if args.swa == True:
+        if args.swa is True:
             swa_callback = StochasticWeightAveraging(
                 network_config["learning_rate"],swa_epoch_start=args.warmup_steps)
             callbacks.append(swa_callback)
@@ -513,7 +512,7 @@ if __name__ == "__main__":
                             args.project_name,args.resume,
                             fold=val_fold)
         
-        if args.correct_classification_bias == True and n_classes == 2:
+        if args.correct_classification_bias is True and n_classes == 2:
             pos = len([x for x in classes if x in args.positive_labels])
             neg = len(classes) - pos
             set_classification_layer_bias(pos,neg,network)
@@ -534,7 +533,7 @@ if __name__ == "__main__":
         # assessing performance on validation set
         print("Validating...")
         
-        if ckpt == True:
+        if ckpt is True:
             ckpt_list = ["last","best"]
         else:
             ckpt_list = ["last"]
@@ -546,7 +545,7 @@ if __name__ == "__main__":
                 if n_classes == 2:
                     try:
                         value = float(out.detach().numpy())
-                    except:
+                    except Exception:
                         value = float(out)
                     x = "{},{},{},{},{}".format(k,ckpt_key,val_fold,0,value)
                     output_file.write(x+'\n')
