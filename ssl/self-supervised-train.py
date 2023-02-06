@@ -25,7 +25,9 @@ from lib.utils import (
     ExposeTransformKeyMetad,
     safe_collate)
 from lib.modules.augmentations import *
-from lib.modules.self_supervised.pl import NonContrastiveSelfSLPL,NonContrastiveSelfSLUNetPL
+from lib.modules.self_supervised.pl import (
+    NonContrastiveResNetPL,NonContrastiveUNetPL,
+    NonContrastiveConvNeXtPL)
 from lib.utils import ExponentialMovingAverage
 from lib.modules.config_parsing import parse_config_ssl,parse_config_unet
 
@@ -389,7 +391,7 @@ if __name__ == "__main__":
         network_config_correct["batch_size"],False)
 
     if args.unet_encoder == True:
-        ssl = NonContrastiveSelfSLUNetPL(
+        ssl = NonContrastiveUNetPL(
             training_dataloader_call=train_loader_call,
             aug_image_key_1="augmented_image_1",
             aug_image_key_2="augmented_image_2",
@@ -401,7 +403,7 @@ if __name__ == "__main__":
             ema=ema,
             **network_config_correct)
     else:
-        ssl = NonContrastiveSelfSLPL(
+        ssl = NonContrastiveResNetPL(
             training_dataloader_call=train_loader_call,
             aug_image_key_1="augmented_image_1",
             aug_image_key_2="augmented_image_2",
