@@ -24,8 +24,6 @@ if __name__ == "__main__":
     path = Path(args.input_path)
         
     dicom_dict = {}
-    bad = 0
-    total = 0
     for pattern in args.patterns:
         for dcm in tqdm(path.rglob(pattern)):
             study_uid,series_uid,dcm_root = str(dcm).split(os.sep)[-3:]
@@ -35,7 +33,10 @@ if __name__ == "__main__":
                 dicom_dict[study_uid][series_uid] = []
             dcm = str(dcm)
             dcm_file = dcmread(dcm)
-            # removes poorly specified orientation
+            # removes cases of segmentation 
+            if dcm_file[0x0008,0x0060].value == "SEG":
+                continue
+            # signals poorly specified orientation
             if (0x0020, 0x0037) in dcm_file:
                 orientation = dcm_file[0x0020, 0x0037].value
                 orientation = [x for x in orientation]
