@@ -1,0 +1,17 @@
+---
+backbone_args: 
+  spatial_dim: 2
+  in_channels: 1
+  structure: [[96,384,7,3],[192,768,7,3],[384,1536,7,9],[768,3072,3,3]]
+  maxpool_structure: [[2,2],[2,2],[2,2],[2,2]]
+  res_type: "resnet"
+projection_head_args:
+  in_channels: 768
+  structure: [1024,2048,1024]
+prediction_head_args:
+  in_channels: 1024
+  structure: [2048,1024]
+norm_fn: "layer"
+act_fn: "gelu"
+weight_decay: 0.001
+learning_rate: 0.005
