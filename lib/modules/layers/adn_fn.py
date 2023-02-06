@@ -1,6 +1,7 @@
 import torch
 from typing import OrderedDict
 from ..activations import *
+from ..layers.regularization import LayerNormChannelsFirst
 
 def get_adn_fn(spatial_dim,norm_fn="batch",
                act_fn="swish",dropout_param=0.1):
@@ -17,8 +18,8 @@ def get_adn_fn(spatial_dim,norm_fn="batch",
         },
         "layer":{
             1:torch.nn.LayerNorm,
-            2:torch.nn.LayerNorm,
-            3:torch.nn.LayerNorm,
+            2:LayerNormChannelsFirst,
+            3:LayerNormChannelsFirst,
         },
         "identity":{
             1:torch.nn.Identity,
