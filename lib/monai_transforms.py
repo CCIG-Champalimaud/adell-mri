@@ -203,7 +203,6 @@ def get_pre_transforms_ssl(all_keys,
             monai.transforms.Spacingd(
                 keys=all_keys,pixdim=target_spacing,
                 mode=intp_resampling_augmentations))
-    scaling_ops = []
     if len(non_adc_keys) > 0:
         transforms.append(
             monai.transforms.ScaleIntensityd(non_adc_keys,0,1))
@@ -370,6 +369,9 @@ def get_augmentations_ssl(all_keys:List[str],
         out = np.concatenate([box1,box2]).astype(np.float32)
         return out
     
+    scaled_crop_size = tuple([int(x) for x in scaled_crop_size])
+    roi_size = tuple([int(x) for x in roi_size])
+    
     transforms_to_remove = [
         # not super slow but not really a common artefact
         "gaussian_smooth_x","gaussian_smooth_y","gaussian_smooth_z",
@@ -387,7 +389,7 @@ def get_augmentations_ssl(all_keys:List[str],
         cropping_strategy.extend([
             monai.transforms.RandSpatialCropd(
                 all_keys+copied_keys,
-                roi_size=[x//2 for x in scaled_crop_size],
+                roi_size=[x//4 for x in scaled_crop_size],
                 random_size=True),
             monai.transforms.Resized(all_keys+copied_keys,
                                      scaled_crop_size)])
