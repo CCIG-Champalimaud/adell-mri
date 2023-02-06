@@ -198,7 +198,7 @@ class NonContrastiveBasePL(pl.LightningModule,ABC):
             self.val_metrics["V"+k] = metric_dict[k]()
             self.test_metrics["T"+k] = metric_dict[k]()
 
-class NonContrastiveSelfSLPL(ResNet,NonContrastiveBasePL):
+class NonContrastiveResNetPL(ResNet,NonContrastiveBasePL):
     """Operates a number of non-contrastive self-supervised learning 
     methods, all of which use non-contrastive approaches to self-supervised
     learning. Included here are:
@@ -380,7 +380,7 @@ class NonContrastiveSelfSLPL(ResNet,NonContrastiveBasePL):
         loss = self.step(batch,"test_loss",self.test_metrics)
         return loss
 
-class NonContrastiveSelfSLUNetPL(UNet,NonContrastiveBasePL):
+class NonContrastiveUNetPL(UNet,NonContrastiveBasePL):
     """Operates a number of non-contrastive self-supervised learning 
     methods, all of which use non-contrastive approaches to self-supervised
     learning. Included here are:
@@ -559,7 +559,7 @@ class NonContrastiveSelfSLUNetPL(UNet,NonContrastiveBasePL):
         loss = self.step(batch,"test_loss",self.test_metrics)
         return loss
 
-class NonContrastiveSelfSLPL(ConvNeXt,NonContrastiveBasePL):
+class NonContrastiveConvNeXtPL(ConvNeXt,NonContrastiveBasePL):
     """Operates a number of non-contrastive self-supervised learning 
     methods, all of which use non-contrastive approaches to self-supervised
     learning. Included here are:
