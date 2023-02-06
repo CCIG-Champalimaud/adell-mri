@@ -25,7 +25,8 @@ if __name__ == "__main__":
         
     dicom_dict = {}
     for pattern in args.patterns:
-        for dcm in tqdm(path.rglob(pattern)):
+        all_dicoms = list(path.rglob(pattern))
+        for dcm in tqdm(all_dicoms):
             study_uid,series_uid,dcm_root = str(dcm).split(os.sep)[-3:]
             if study_uid not in dicom_dict:
                 dicom_dict[study_uid] = {}
