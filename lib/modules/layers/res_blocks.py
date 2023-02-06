@@ -365,9 +365,8 @@ class ConvNeXtBlock2d(torch.nn.Module):
         if out_channels != in_channels:
             self.out_layer = torch.nn.Sequential(
                 torch.nn.Conv2d(
-                    in_channels,out_channels,kernel_size=kernel_size,
+                    in_channels,out_channels,kernel_size=1,
                     padding="same"),
-                self.adn_fn(out_channels),
                 torch.nn.GELU())
         else:
             self.out_layer = None
@@ -435,7 +434,6 @@ class ConvNeXtBlock3d(torch.nn.Module):
                 torch.nn.Conv3d(
                     in_channels,out_channels,kernel_size=kernel_size,
                     padding="same"),
-                self.adn_fn(out_channels),
                 torch.nn.GELU())
         else:
             self.out_layer = None
