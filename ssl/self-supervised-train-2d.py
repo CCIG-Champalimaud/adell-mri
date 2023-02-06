@@ -15,8 +15,11 @@ from lib.utils import safe_collate,ExponentialMovingAverage
 from lib.utils.pl_utils import get_devices,get_ckpt_callback,get_logger
 from lib.modules.augmentations import *
 from lib.modules.self_supervised.pl import (
-    NonContrastiveSelfSLPL,NonContrastiveSelfSLUNetPL)
+    NonContrastiveResNetPL,NonContrastiveUNetPL,
+    NonContrastiveConvNeXtPL)
 from lib.modules.config_parsing import parse_config_ssl,parse_config_unet
+from lib.utils.dicom_loader import (
+    DICOMDataset,SliceSampler,filter_orientations)
 from lib.monai_transforms import (
     get_pre_transforms_ssl,get_post_transforms_ssl,get_augmentations_ssl)
 
@@ -30,6 +33,16 @@ def force_cudnn_initialization():
     dev = torch.device('cuda')
     torch.nn.functional.conv2d(torch.zeros(s,s,s,s,device=dev), 
                                torch.zeros(s,s,s,s,device=dev))
+
+def filter_dicom_dict_on_presence(data_dict,all_keys):
+    def check_intersection(a,b):
+        return len(set.intersection(set(a),set(b))) == len(set(b))
+    for k in data_dict:
+        for kk in data_dict[k]:
+            data_dict[k][kk] = [
+                element for element in data_dict[k][kk]
+                if check_intersection(element.keys(),all_keys)]
+    return data_dict
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -56,6 +69,11 @@ if __name__ == "__main__":
         '--random_crop_size',dest='random_crop_size',action="store",
         default=None,type=float,nargs='+',
         help="Size of crop with random centre.")
+    parser.add_argument(
+        '--scaled_crop_size',dest='scaled_crop_size',action="store",
+        default=None,type=float,nargs='+',
+        help="Crops a region with at least a quarter of the specified size \
+            and then resizes them image to this size.")
     parser.add_argument(
         '--target_spacing',dest='target_spacing',action="store",default=None,
         help="Resamples all images to target spacing",nargs='+',type=float)
@@ -84,8 +102,9 @@ if __name__ == "__main__":
         help="Floating point precision",choices=["16","32","bf16"],
         default="32")
     parser.add_argument(
-        '--unet_encoder',dest='unet_encoder',action="store_true",
-        help="Trains a UNet encoder")
+        '--net_type',dest='net_type',
+        choices=["resnet","unet_encoder","convnext"],
+        help="Which network should be trained.")
     parser.add_argument(
         '--batch_size',dest='batch_size',type=int,default=None,
         help="Overrides batch size in config file")
@@ -104,7 +123,7 @@ if __name__ == "__main__":
     
     # training
     parser.add_argument(
-        '--dev',dest='dev',type=str,
+        '--dev',dest='dev',type=str,default="cuda",
         help="Device for PyTorch training")
     parser.add_argument(
         '--seed',dest='seed',help="Random seed",default=42,type=int)
@@ -184,18 +203,19 @@ if __name__ == "__main__":
     all_keys = [*keys]
 
     data_dict = json.load(open(args.dataset_json,'r'))
-    data_dict = {
-        k:data_dict[k] for k in data_dict
-        if len(set.intersection(set(data_dict[k]),
-                                set(all_keys))) == len(all_keys)}
+    data_dict = filter_orientations(data_dict)
+    data_dict = filter_dicom_dict_on_presence(data_dict,all_keys)
+
     if args.subsample_size is not None:
         ss = np.random.choice(
             list(data_dict.keys()),args.subsample_size,replace=False)
         data_dict = {k:data_dict[k] for k in ss}
     for k in data_dict:
-        data_dict[k]["pid"] = k
+        for kk in data_dict[k]:
+            for i in range(len(data_dict[k][kk])):  
+                data_dict[k][kk][i]["pid"] = k
 
-    if args.unet_encoder == True:
+    if args.net_type == "unet_encoder":
         network_config,_ = parse_config_unet(
             args.config_file,len(keys),2)
         network_config_correct = deepcopy(network_config)
@@ -221,7 +241,7 @@ if __name__ == "__main__":
         ema = None
 
     if args.random_crop_size is None:
-        roi_size = [256,256]
+        roi_size = [128,128]
     else:
         roi_size = [int(x) for x in args.random_crop_size]
 
@@ -234,7 +254,8 @@ if __name__ == "__main__":
         "non_adc_keys":non_adc_keys,
         "target_spacing":args.target_spacing,
         "crop_size":args.crop_size,
-        "pad_size":args.pad_size}
+        "pad_size":args.pad_size,
+        "n_dim":2}
     
     post_transform_args = {
         "all_keys":all_keys,
@@ -243,17 +264,16 @@ if __name__ == "__main__":
     augmentation_args = {
         "all_keys":all_keys,
         "copied_keys":copied_keys,
-        "crop_size":args.crop_size,
+        "scaled_crop_size":args.scaled_crop_size,
         "roi_size":roi_size,
-        "vicregl":args.vicregl
+        "vicregl":args.vicregl,
+        "n_dim":2
     }
-    
+
     transforms = [
         *get_pre_transforms_ssl(**pre_transforms_args),
-        *get_augmentations_ssl(),
+        *get_augmentations_ssl(**augmentation_args),
         *get_post_transforms_ssl(**post_transform_args)]
-
-    collate_fn = safe_collate
 
     if args.train_pids is not None:
         train_pids = args.train_pids
@@ -261,27 +281,45 @@ if __name__ == "__main__":
         train_pids = [pid for pid in data_dict]
     train_list = [data_dict[pid] for pid in data_dict
                   if pid in train_pids]
-
+    
     # split workers across cache construction and data loading
-    a = args.n_workers // 2
-    b = args.n_workers - a
-    train_dataset = monai.data.CacheDataset(
+    train_dataset = DICOMDataset(
         train_list,
-        monai.transforms.Compose(transforms),
-        cache_rate=args.cache_rate,num_workers=a)
+        monai.transforms.Compose(transforms))
+    sampler = SliceSampler(train_list,n_iterations=10)
 
-    def train_loader_call(batch_size,shuffle=True): 
+    if isinstance(devices,list):
+        n_workers = args.n_workers // len(devices)
+    else:
+        n_workers = args.n_workers // devices
+    def train_loader_call(batch_size,shuffle=True):
         return monai.data.ThreadDataLoader(
             train_dataset,batch_size=batch_size,
-            shuffle=shuffle,num_workers=b,generator=g,
-            collate_fn=collate_fn,pin_memory=True,
+            num_workers=n_workers,sampler=sampler,
+            collate_fn=safe_collate,pin_memory=True,
             persistent_workers=True,drop_last=True)
 
     train_loader = train_loader_call(
         network_config_correct["batch_size"],False)
 
-    if args.unet_encoder == True:
-        ssl = NonContrastiveSelfSLUNetPL(
+    if args.net_type == "unet_encoder":
+        ssl = NonContrastiveUNetPL(
+            training_dataloader_call=train_loader_call,
+            aug_image_key_1="augmented_image_1",
+            aug_image_key_2="augmented_image_2",
+            box_key_1="box_1",
+            box_key_2="box_2",
+            n_epochs=args.max_epochs,
+            vic_reg=args.vicreg,
+            vic_reg_local=args.vicregl,
+            ema=ema,
+            **network_config_correct)
+    elif args.net_type == "convnext":
+        network_config_correct["backbone_args"] = {
+            k:network_config_correct["backbone_args"][k] 
+            for k in network_config_correct["backbone_args"]
+            if k not in ["res_type"]}
+        ssl = NonContrastiveConvNeXtPL(
             training_dataloader_call=train_loader_call,
             aug_image_key_1="augmented_image_1",
             aug_image_key_2="augmented_image_2",
@@ -293,7 +331,7 @@ if __name__ == "__main__":
             ema=ema,
             **network_config_correct)
     else:
-        ssl = NonContrastiveSelfSLPL(
+        ssl = NonContrastiveResNetPL(
             training_dataloader_call=train_loader_call,
             aug_image_key_1="augmented_image_1",
             aug_image_key_2="augmented_image_2",
@@ -318,7 +356,7 @@ if __name__ == "__main__":
         max_epochs=args.max_epochs,
         resume_from_last=args.resume_from_last,
         val_fold=None,
-        monitor=args.monitor)
+        monitor="val_loss")
     if ckpt_callback is not None:   
         callbacks.append(ckpt_callback)
     ckpt = ckpt_callback is not None
