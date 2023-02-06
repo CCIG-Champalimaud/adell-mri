@@ -102,6 +102,8 @@ class DICOMDataset(torch.utils.data.Dataset):
         else:
             real_index = index
         data_i = self.dicom_dataset[real_index[0]][real_index[1]][real_index[2]]
+        if isinstance(data_i,str):
+            print(real_index,data_i)
         if self.transform is not None:
             return monai.transforms.apply_transform(self.transform, data_i)
         else:
@@ -182,15 +184,16 @@ class SliceSampler(torch.utils.data.Sampler):
         """
         corr_idx = []
         for _ in range(self.n_iterations):
-            corr_idx.extend(range(self.N))
+            corr_idx.extend([i for i in range(self.N)])
             
         if self.shuffle == True:
             self.rng.shuffle(corr_idx)
         
         for idx in corr_idx:
             element = self.correspondence[idx]
-            yield int(self.rng.choice(
+            idx = int(self.rng.choice(
                 element[self.rng.choice(list(element.keys()))]))
+            yield idx
 
     def __len__(self)->int:
         """Length of the dataset (number of studies). The number of individual
@@ -199,4 +202,4 @@ class SliceSampler(torch.utils.data.Sampler):
         Returns:
             int: number of studies.
         """
-        return self.N
+        return self.N * self.n_iterations

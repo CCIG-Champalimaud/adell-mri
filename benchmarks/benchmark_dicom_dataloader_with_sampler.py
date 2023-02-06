@@ -49,7 +49,8 @@ if __name__ == "__main__":
                                       *augmentations,
                                       *post_transforms]))
         
-    dicom_sampler = SliceSampler(dicom_dataset=dicom_list)
+    dicom_sampler = SliceSampler(dicom_dataset=dicom_list,
+                                 n_iterations=10)
 
     data_loader = monai.data.ThreadDataLoader(
         dicom_dataset,sampler=dicom_sampler,
