@@ -68,7 +68,7 @@ class ConvNeXtBackbone(torch.nn.Module):
         if self.batch_ensemble > 0:
             self.input_layer = BatchEnsembleWrapper(
                 self.input_layer,self.batch_ensemble,
-                self.in_channels,f,self.adn_fn)
+                self.in_channels,f)
         self.operations = torch.nn.ModuleList([])
         self.pooling_operations = torch.nn.ModuleList([])
         prev_inp = f
@@ -76,16 +76,16 @@ class ConvNeXtBackbone(torch.nn.Module):
             op = torch.nn.ModuleList([])
             inp,inter,k,N = s
             op.append(self.res_op(
-                prev_inp,k,inter,inp,self.adn_fn))
+                prev_inp,k,inter,inp))
             for _ in range(1,N-1):
-                op.append(self.res_op(inp,k,inter,inp,self.adn_fn))
+                op.append(self.res_op(inp,k,inter,inp))
             if self.batch_ensemble > 0:
                 op.append(self.res_op(inp,k,inter,inp,torch.nn.Identity))
                 op = torch.nn.Sequential(*op)
                 op = BatchEnsembleWrapper(
-                    op,self.batch_ensemble,prev_inp,inp,self.adn_fn)
+                    op,self.batch_ensemble,prev_inp,inp)
             else:
-                op.append(self.res_op(inp,k,inter,inp,self.adn_fn))
+                op.append(self.res_op(inp,k,inter,inp))
                 op = torch.nn.Sequential(*op)
 
             prev_inp = inp
@@ -96,6 +96,9 @@ class ConvNeXtBackbone(torch.nn.Module):
 
     def _init_weights(self, m):
         if isinstance(m, (torch.nn.Conv2d, torch.nn.Linear)):
+            torch.nn.init.trunc_normal_(m.weight, std=0.02)
+            torch.nn.init.constant_(m.bias, 0)
+        if isinstance(m, (torch.nn.Conv3d, torch.nn.Linear)):
             torch.nn.init.trunc_normal_(m.weight, std=0.02)
             torch.nn.init.constant_(m.bias, 0)
 
