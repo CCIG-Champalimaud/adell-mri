@@ -43,6 +43,7 @@ def get_ckpt_callback(checkpoint_dir:str,checkpoint_name:str,
             ckpt_name = checkpoint_name + "_fold" + str(val_fold)
             ckpt_last = checkpoint_name + "_fold" + str(val_fold)
         else:
+            ckpt_name = checkpoint_name
             ckpt_last = checkpoint_name
         ckpt_name = ckpt_name + "_best_{epoch}_{" + monitor + ":.3f}"
         if "loss" in monitor:
