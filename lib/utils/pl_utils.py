@@ -101,7 +101,7 @@ def get_logger(summary_name:str,summary_dir:str,
         logger = None
     return logger
 
-def get_devices(device_str:str,**kwargs)->Tuple[str,Union[List[int],int],str]:
+def get_devices(device_str:str)->Tuple[str,Union[List[int],int],str]:
     """Takes a string with form "{device}:{device_ids}" where device_ids is a
     comma separated list of device IDs (i.e. cuda:0,1).
 
@@ -122,7 +122,7 @@ def get_devices(device_str:str,**kwargs)->Tuple[str,Union[List[int],int],str]:
         accelerator = "gpu" if "cuda" in device_str else "cpu"
         devices = [int(i) for i in device_str.split(":")[-1].split(",")]
         if len(devices) > 1:
-            strategy = DDPStrategy(**kwargs)
+            strategy = "ddp"
     else:
         accelerator = "gpu" if "cuda" in device_str else "cpu"
         devices = 1

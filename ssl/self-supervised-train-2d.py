@@ -186,9 +186,7 @@ if __name__ == "__main__":
     g = torch.Generator()
     g.manual_seed(args.seed)
     
-    accelerator,devices,strategy = get_devices(args.dev,
-                                               find_unused_parameters=False,
-                                               static_graph=True)
+    accelerator,devices,strategy = get_devices(args.dev)
 
     output_file = open(args.metric_path,'w')
 
