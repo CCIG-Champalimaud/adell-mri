@@ -377,6 +377,11 @@ def get_augmentations_ssl(all_keys:List[str],
         "gaussian_smooth_x","gaussian_smooth_y","gaussian_smooth_z",
         # the sharpens are remarkably slow, not worth it imo
         "gaussian_sharpen_x","gaussian_sharpen_y","gaussian_sharpen_z"]
+    if vicregl == True:
+        # cannot get the transform information out of MONAI at the moment
+        # so the best step forward is to avoid comparing regions which *may*
+        # not correspond to one another
+        transforms_to_remove.extend(spatial_augments)
     if n_dim == 2:
         transforms_to_remove.extend(
             ["rotate_z","translate_z","shear_z","scale_z"])
