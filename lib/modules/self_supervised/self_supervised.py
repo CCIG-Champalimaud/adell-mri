@@ -337,7 +337,9 @@ class VICRegLocalLoss(VICRegLoss):
         return coords.unsqueeze(0) * size + a
 
     def local_loss(self,
-                   X1,X2,all_dists):
+                   X1:torch.Tensor,
+                   X2:torch.Tensor,
+                   all_dists:torch.Tensor):
         g = self.gamma
         b = X1.shape[0]
         _,idxs = torch.topk(all_dists.flatten(start_dim=1),g,1)
