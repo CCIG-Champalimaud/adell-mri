@@ -139,6 +139,7 @@ class SliceLinearEmbedding(torch.nn.Module):
                  image_size:Tuple[int,int,int],
                  patch_size:Union[Tuple[int,int],Tuple[int,int,int]],
                  embedding_size:int=None,
+                 out_dim:int=None,
                  dropout_rate:float=0.0,
                  use_class_token:bool=False,
                  learnable_embedding:bool=True):
@@ -146,6 +147,7 @@ class SliceLinearEmbedding(torch.nn.Module):
         self.n_channels = n_channels
         self.image_size = image_size
         self.patch_size = patch_size
+        self.out_dim = out_dim
         self.dropout_rate = dropout_rate
         self.use_class_token = use_class_token
         self.learnable_embedding = learnable_embedding
@@ -155,6 +157,27 @@ class SliceLinearEmbedding(torch.nn.Module):
         self.n_patches = np.prod([
             s // p for s,p in zip(self.image_size[:2],self.patch_size[:2])])
         self.embedding_size = np.prod([*patch_size[:2],n_channels])
+        
+        self.init_linear_layers_if_necessary()
+        self.init_positional_embedding()
+        self.init_class_token_if_necessary()
+        
+    def init_class_token_if_necessary(self):
+        if self.use_class_token is True:
+            self.class_token = torch.nn.Parameter(
+            torch.zeros([1,1,1,self.true_n_features]))
+        
+    def linearize_image_slices(self,image:torch.Tensor)->torch.Tensor:
+        b = image.shape[0]
+        h,w,s = self.image_size
+        c = self.n_channels
+        x,y,z = self.patch_size
+
+        return einops.rearrange(
+            image,"b c (h x) (w y) s -> b s (h w) (x y c)",
+            x=x,h=h//x,y=y,w=w//y,b=b,c=c,s=s)
+        
+    def init_positional_embedding(self):
         if self.learnable_embedding is True:
             self.positional_embedding = torch.nn.Parameter(
                 torch.zeros([1,1,self.n_patches,self.embedding_size]))
@@ -168,20 +191,28 @@ class SliceLinearEmbedding(torch.nn.Module):
                 torch.as_tensor(sin_embed,dtype=torch.float32),
                 requires_grad=False)
 
-        if self.use_class_token is True:
-            self.class_token = torch.nn.Parameter(
-               torch.zeros([1,1,1,self.embedding_size]))
-        
-    def linearize_image_slices(self,image:torch.Tensor)->torch.Tensor:
-        b = image.shape[0]
-        h,w,s = self.image_size
-        c = self.n_channels
-        x,y,z = self.patch_size
+    def init_linear_layers_if_necessary(self):
+        """Initialises a linear layers to convert to and from out_dim. This
+        allows for the linear embedding to have a different output without
+        affecting the size of everything else in the image before and after
+        the linear embedding.
+        """
+        self.map_to_out = torch.nn.Identity()
+        self.map_to_in = torch.nn.Identity()
+        if self.out_dim is not None:
+            self.map_to_out = torch.nn.Sequential(
+                torch.nn.LayerNorm(self.embedding_size),
+                torch.nn.Linear(
+                    self.embedding_size,self.out_dim),
+                torch.nn.LayerNorm(self.out_dim))
+            self.map_to_in = torch.nn.Sequential(
+                torch.nn.Linear(
+                    self.out_dim,self.embedding_size),
+                torch.nn.LayerNorm(self.embedding_size))
+            self.true_n_features = self.out_dim
+        else:
+            self.true_n_features = self.embedding_size
 
-        return einops.rearrange(
-            image,"b c (h x) (w y) s -> b s (h w) (x y c)",
-            x=x,h=h//x,y=y,w=w//y,b=b,c=c,s=s)
-     
     def forward(self,X):
         """Forward pass.
 
@@ -196,6 +227,7 @@ class SliceLinearEmbedding(torch.nn.Module):
         # output should always be [X.shape[0],self.n_patches,self.true_n_features]
         b,s = X.shape[0],X.shape[-1]
         X = self.linearize_image_slices(X)
+        X = self.map_to_out(X)
         X = X + self.positional_embedding
         if self.use_class_token is True:
             class_token = einops.repeat(
@@ -263,8 +295,9 @@ class LinearEmbedding(torch.nn.Module):
         self.use_class_token = use_class_token
         self.learnable_embedding = learnable_embedding
         
-        assert self.embed_method in ["linear","convolutional"],\
-            "embed_method must be one of 'linear' or 'convolutional'"
+        embed_methods = ["linear","convolutional"]
+        assert self.embed_method in embed_methods,\
+            "embed_method must be one of {}".format(embed_methods)
         assert len(self.image_size) == len(self.patch_size),\
             "image_size and patch_size should have the same length"
         assert len(self.image_size) in [2,3],\
@@ -310,12 +343,13 @@ class LinearEmbedding(torch.nn.Module):
         if self.out_dim is not None:
             if self.embed_method == "linear":
                 self.map_to_out = torch.nn.Sequential(
+                    torch.nn.LayerNorm(self.n_features),
                     torch.nn.Linear(
-                        self.n_features,self.out_dim,bias=False),
+                        self.n_features,self.out_dim),
                     torch.nn.LayerNorm(self.out_dim))
             self.map_to_in = torch.nn.Sequential(
                 torch.nn.Linear(
-                    self.out_dim,self.n_features,bias=False),
+                    self.out_dim,self.n_features),
                 torch.nn.LayerNorm(self.n_features))
 
     def init_dropout(self):
@@ -1354,7 +1388,8 @@ class FactorizedViT(torch.nn.Module):
             embedding_size=self.embedding_size,
             dropout_rate=self.dropout_rate,
             use_class_token=self.use_class_token,
-            learnable_embedding=self.learnable_embedding)
+            learnable_embedding=self.learnable_embedding,
+            out_dim=self.embedding_size)
 
         self.input_dim_primary = self.embedding.embedding_size
 
