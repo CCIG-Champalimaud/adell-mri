@@ -4,6 +4,8 @@ sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)),'..'))
 import time
 import numpy as np
 import argparse
+import torch
+import monai
 from tqdm import tqdm
 
 from lib.modules.augmentations import AugmentationWorkhorsed
@@ -27,19 +29,19 @@ if __name__ == "__main__":
     ah = AugmentationWorkhorsed(all_augments,["image"],N=2,
                                 dropout_size=(32,32))
 
-    I = {"image":np.random.rand(1,256,256)}
-
     N = args.n_iter
     
     time_init = time.time()
     for k in ah.transforms:
+        I = {"image":np.random.rand(1,256,256)}
         a = time.time()
         with tqdm(range(N)) as pbar:
             for i in pbar:
                 pbar.set_description("transform={}; iteration={}".format(
                     k,i
                 ))
-                ah.transforms[k](I)
+                out = ah.transforms[k](I)
+                print(out)
         b = time.time()
         print(
             "Transform: {}; average time per transform: {:.5f}s".format(
