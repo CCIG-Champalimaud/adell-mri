@@ -355,7 +355,7 @@ class VICRegLocalLoss(VICRegLoss):
             [indexes,*[indexes_2[:,i] for i in range(indexes_2.shape[1])]])
         features_1 = X1.unsqueeze(-1).swapaxes(1,-1).squeeze(1)[indexes_1]
         features_2 = X2.unsqueeze(-1).swapaxes(1,-1).squeeze(1)[indexes_2]
-        vrl = sum(self.vicreg_loss(features_1,features_2,g)/g)
+        vrl = sum([x/g for x in self.vicreg_loss(features_1,features_2,g)])
         return vrl
 
     def location_local_loss(self,
