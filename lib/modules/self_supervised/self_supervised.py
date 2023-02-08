@@ -347,16 +347,16 @@ class VICRegLocalLoss(VICRegLoss):
         indexes = torch.cat([torch.ones(g)*i for i in range(b)]).long()
         indexes_1 = torch.cat(
             [self.sparse_coords_1[idxs[i][:,0]].long() for i in range(b)])
-        indexes_2 = torch.cat(
-            [self.sparse_coords_2[idxs[i][:,0]].long() for i in range(b)])
         indexes_1 = tuple(
             [indexes,*[indexes_1[:,i] for i in range(indexes_1.shape[1])]])
+        indexes_2 = torch.cat(
+            [self.sparse_coords_2[idxs[i][:,0]].long() for i in range(b)])
         indexes_2 = tuple(
             [indexes,*[indexes_2[:,i] for i in range(indexes_2.shape[1])]])
         features_1 = X1.unsqueeze(-1).swapaxes(1,-1).squeeze(1)[indexes_1]
         features_2 = X2.unsqueeze(-1).swapaxes(1,-1).squeeze(1)[indexes_2]
-        vrl = sum(self.vicreg_loss(features_1,features_2,g))
-        return vrl/g
+        vrl = sum(self.vicreg_loss(features_1,features_2,g)/g)
+        return vrl
 
     def location_local_loss(self,
                             X1:torch.Tensor,
