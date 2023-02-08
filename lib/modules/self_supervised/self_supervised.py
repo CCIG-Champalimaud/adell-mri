@@ -462,16 +462,14 @@ class VICRegLocalLoss(VICRegLoss):
         # symmetrises them
         short_range_local_loss = torch.add(
             self.location_local_loss(
-                X1,X2,box_X1,box_X2),
+                X1,X2,box_X1,box_X2) * (1-self.alpha),
             self.location_local_loss(
-                X2,X1,box_X2,box_X1)) / 2
+                X2,X1,box_X2,box_X1) * (1-self.alpha)) / 2
         long_range_local_loss = torch.add(
-            self.feature_local_loss(X1,X2),
-            self.feature_local_loss(X2,X1)) / 2
+            self.feature_local_loss(X1,X2) * (1-self.alpha),
+            self.feature_local_loss(X2,X1) * (1-self.alpha)) / 2
         
-        local_loss = torch.add(
-            short_range_local_loss,
-            long_range_local_loss) * (1-self.alpha)
+        local_loss = short_range_local_loss + long_range_local_loss
         return (self.lam*inv_loss * self.alpha,
                 self.mu*var_loss * self.alpha,
                 self.nu*cov_loss * self.alpha,
