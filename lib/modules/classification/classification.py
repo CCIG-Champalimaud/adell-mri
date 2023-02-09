@@ -768,6 +768,7 @@ class TransformableTransformer(torch.nn.Module):
                 class_token = einops.repeat(self.class_token,'() n e -> b n e',
                                             b=batch_size)
                 ssl_representation = torch.concat([class_token,X],1)
+        # TODO: convert to torch.vmap (will have to install functorch)
         for i,X_slice in enumerate(self.iter_over_dim(X)):
             ssl_representation[:,i+self.use_class_token,:] = self.module(X_slice)
         transformer_output = self.tbs(ssl_representation)

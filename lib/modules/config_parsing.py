@@ -69,7 +69,7 @@ def parse_config_ssl(config_file:str,dropout_param:float,n_keys:int):
 
     return network_config,network_config_correct
 
-def parse_config_ssl_2d_classifier_3d(config_file:str,dropout_param:float,n_keys:int):
+def parse_config_2d_classifier_3d(config_file:str,dropout_param:float):
     with open(config_file,'r') as o:
         network_config = yaml.safe_load(o)
 

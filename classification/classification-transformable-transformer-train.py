@@ -25,7 +25,7 @@ from lib.monai_transforms import get_augmentations_class as get_augmentations
 from lib.modules.classification.pl import TransformableTransformerPL
 from lib.modules.layers.adn_fn import get_adn_fn
 from lib.modules.losses import OrdinalSigmoidalLoss
-from lib.modules.config_parsing import parse_config_unet,parse_config_cat
+from lib.modules.config_parsing import parse_config_2d_classifier_3d
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -89,8 +89,8 @@ if __name__ == "__main__":
         help="Path to network configuration file (yaml)",
         required=True)
     parser.add_argument(
-        '--config_file',dest="config_file",
-        help="Path to network configuration file (yaml)",
+        '--module_path',dest="module_path",
+        help="Path to torchscript module",
         required=True)
     parser.add_argument(
         '--net_type',dest='net_type',
@@ -256,11 +256,8 @@ if __name__ == "__main__":
     adc_keys = []
     t2_keys = [k for k in t2_keys if k in keys]
 
-    if args.net_type == "unet":
-        network_config,_ = parse_config_unet(args.config_file,
-                                             len(keys),n_classes)
-    else:
-        network_config = parse_config_cat(args.config_file)
+    network_config,_ = parse_config_2d_classifier_3d(
+        args.config_file,args.dropout_param)
     
     if args.batch_size is not None:
         network_config["batch_size"] = args.batch_size
@@ -397,11 +394,14 @@ if __name__ == "__main__":
                 
         print("Initializing loss with class_weights: {}".format(class_weights))
         if n_classes == 2:
-            network_config["loss_fn"] = torch.nn.BCEWithLogitsLoss(class_weights)
+            network_config["loss_fn"] = torch.nn.BCEWithLogitsLoss(
+                class_weights)
         elif args.net_type == "ord":
-            network_config["loss_fn"] = OrdinalSigmoidalLoss(class_weights,n_classes)
+            network_config["loss_fn"] = OrdinalSigmoidalLoss(
+                class_weights,n_classes)
         else:
-            network_config["loss_fn"] = torch.nn.CrossEntropy(class_weights)
+            network_config["loss_fn"] = torch.nn.CrossEntropy(
+                class_weights)
 
         if isinstance(devices,list):
             n_workers = args.n_workers//len(devices)
@@ -446,8 +446,22 @@ if __name__ == "__main__":
             "training_batch_preproc":batch_preprocessing,
             "start_decay":args.start_decay}
 
-        #TODO: define network        
-        network = None
+        network_config["module"] = torch.jit.load(args.module_path)
+        if "module_out_dim" not in network_config:
+            print("2D module output size not specified, inferring...")
+            input_example = torch.rand(1,1,256,256)
+            output = network_config["module"](input_example)
+            network_config["module_out_dim"] = [x for x in output.shape]
+            print("2D module output size={}".format(
+                network_config["module_out_dim"]))
+        image_size = [int(x) for x in args.crop_size]
+        network_config["image_size"] = image_size
+        network = TransformableTransformerPL(
+            adn_fn=get_adn_fn(
+                        1,"identity",act_fn="gelu",
+                        dropout_param=args.dropout_param),
+            **boilerplate_args,
+            **network_config)
                 
         # instantiate callbacks and loggers
         callbacks = [RichProgressBar()]
