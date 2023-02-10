@@ -776,3 +776,68 @@ class TransformableTransformer(torch.nn.Module):
             transformer_output = transformer_output.mean(1)
         output = self.classification_module(transformer_output)
         return output
+
+class TabularClassifier(torch.nn.Module):
+    def __init__(self,
+                 n_features:int,
+                 mlp_structure:List[int],
+                 mlp_adn_fn:Callable,
+                 n_classes:int,
+                 feature_means:torch.Tensor=None,
+                 feature_stds:torch.Tensor=None):
+        super().__init__()
+        self.n_features = n_features
+        self.mlp_structure = mlp_structure
+        self.mlp_adn_fn = mlp_adn_fn
+        self.n_classes = n_classes
+        self.feature_means = feature_means
+        self.feature_stds = feature_stds
+        
+        self.init_mlp()
+        self.init_normalization_parameters()
+
+    def init_mlp(self):
+        self.mlp = MLP(input_dim=self.n_features,
+                       output_dim=self.n_classes,
+                       structure=self.mlp_structure,
+                       adn_fn=self.mlp_adn_fn)
+    
+    def init_normalization_parameters(self):
+        if self.feature_means is None:
+            feature_means = torch.zeros([1,self.n_features])
+        else:
+            feature_means = torch.as_tensor(self.feature_means).reshape(1,-1)
+        if self.feature_stds is None:
+            feature_stds = torch.ones([1,self.n_features])
+        else:
+            feature_stds = torch.as_tensor(self.feature_stds).reshape(1,-1)
+            
+        self.mu = torch.nn.Parameter(feature_means,
+                                     requires_grad=False)
+        self.sigma = torch.nn.Parameter(feature_stds,
+                                        requires_grad=False)
+    
+    def normalize(self,X:torch.Tensor)->torch.Tensor:
+        return (X - self.mu) / self.sigma
+    
+    def forward(self,X)->torch.Tensor:
+        return self.mlp(self.normalize(X))
+
+class HybridClassifier(torch.nn.Module):
+    def __init__(self,
+                 convolutional_module:torch.nn.Module,
+                 tabular_module:torch.nn.Module):
+        self.convolutional_module = convolutional_module
+        self.tabular_module = tabular_module
+    
+    def init_weight(self):
+        self.raw_weight = torch.nn.Parameter(torch.ones([1]))
+        
+    def forward(self,X_conv:torch.Tensor,X_tab:torch.Tensor)->torch.Tensor:
+        class_conv = self.convolutional_module(X_conv)
+        class_tab = self.convolutional_module(X_conv)
+        
+        weight = F.sigmoid(self.raw_weight)
+        class_out = weight * class_conv + (1-weight)*class_tab
+
+        return class_out
