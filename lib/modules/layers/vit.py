@@ -1387,7 +1387,7 @@ class FactorizedViT(torch.nn.Module):
             dropout_rate=self.dropout_rate,
             use_class_token=self.use_class_token,
             learnable_embedding=self.learnable_embedding,
-            out_dim=self.embedding_size)
+            out_dim=None)
 
         self.input_dim_primary = self.embedding.embedding_size
 
