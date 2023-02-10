@@ -8,10 +8,21 @@ from abc import ABC
 
 from .classification import (
     CatNet,OrdNet,ordinal_prediction_to_class,SegCatNet,
-    UNetEncoder,GenericEnsemble,ViTClassifier,FactorizedViTClassifier)
+    UNetEncoder,GenericEnsemble,ViTClassifier,FactorizedViTClassifier,
+    TransformableTransformer)
 from ..learning_rate import CosineAnnealingWithWarmupLR
 
-def f1(prediction,y):
+def f1(prediction:torch.Tensor,y:torch.Tensor)->torch.Tensor:
+    """
+    Implementation of the sbinary F1 score for torch tensors.
+
+    Args:
+        prediction (torch.Tensor): prediction tensor.
+        y (torch.Tensor): ground truth tensor.
+
+    Returns:
+        torch.Tensor: F1-score.
+    """
     prediction = prediction.detach() > 0.5
     tp = torch.logical_and(prediction == y,y == 1).sum().float()
     tn = torch.logical_and(prediction == y,y == 0).sum().float()
@@ -28,6 +39,21 @@ def f1(prediction,y):
 def get_metric_dict(nc:int,
                     metric_keys:List[str]=None,
                     prefix:str="")->Dict[str,torchmetrics.Metric]:
+    """
+    Constructs a metric dictionary.
+
+    Args:
+        nc (int): number of classes.
+        metric_keys (List[str], optional): keys corresponding to metrics. 
+            Should be one of ["Rec","Spe","Pr","F1","AUC"]. Defaults to 
+            None (all keys).
+        prefix (str, optional): which prefix should be added to the metric
+            key on the output dict. Defaults to "".
+
+    Returns:
+        Dict[str,torchmetrics.Metric]: dictionary containing the metrics 
+            specified in metric_keys.
+    """
     metric_dict = torch.nn.ModuleDict({})
     if nc == 2:
         md = {
@@ -50,7 +76,8 @@ def get_metric_dict(nc:int,
     return metric_dict
 
 class ClassPLABC(pl.LightningModule,ABC):
-    """Abstract classification class for LightningModules.
+    """
+    Abstract classification class for LightningModules.
     """
     def __init__(self):
         super().__init__()
@@ -153,6 +180,11 @@ class ClassPLABC(pl.LightningModule,ABC):
                 on_step=False,prog_bar=True,sync_dist=True)
 
 class ClassNetPL(ClassPLABC):
+    """
+    Classification network implementation for Pytorch Lightning. Can be 
+    parametrised as a categorical or ordinal network, depending on the 
+    specification in net_type.
+    """
     def __init__(
         self,
         net_type: str="cat",
@@ -169,8 +201,7 @@ class ClassNetPL(ClassPLABC):
         start_decay: int=None,
         training_batch_preproc: Callable=None,
         *args,**kwargs) -> torch.nn.Module:
-        """Classification network implementation for Pytorch Lightning.
-
+        """
         Args:
             image_key (str): key corresponding to the key from the train
                 dataloader.
@@ -250,6 +281,9 @@ class ClassNetPL(ClassPLABC):
                 on_step=False,prog_bar=True)
 
 class SegCatNetPL(SegCatNet,pl.LightningModule):
+    """
+    PL module for SegCatNet.
+    """
     def __init__(self,
                  image_key: str="image",
                  label_key: str="label",
@@ -263,6 +297,33 @@ class SegCatNetPL(SegCatNet,pl.LightningModule):
                  loss_params: dict={},
                  n_epochs: int=100,
                  *args,**kwargs):
+        """
+        Args:
+            image_key (str): key corresponding to the key from the train
+                dataloader.
+            label_key (str): key corresponding to the label key from the train
+                dataloader.
+            skip_conditioning_key (str, optional): key for the skip 
+                conditioning element of the batch.
+            feature_conditioning_key (str, optional): key for the feature 
+                conditioning elements in the batch.
+            learning_rate (float, optional): learning rate. Defaults to 0.001.
+                batch_size (int, optional): batch size. Defaults to 4.
+            weight_decay (float, optional): weight decay for optimizer. Defaults 
+                to 0.005.
+            training_dataloader_call (Callable, optional): call for the 
+                training dataloader. Defaults to None.
+            loss_fn (Callable, optional): loss function. Defaults to 
+                F.binary_cross_entropy
+            loss_params (dict, optional): classification loss parameters. 
+                Defaults to {}.
+            n_epochs (int, optional): number of epochs. Defaults to 100.
+            args: arguments for classification network class.
+            kwargs: keyword arguments for classification network class.
+
+        Returns:
+            pl.LightningModule: a classification network module.
+        """
 
         super().__init__(*args,**kwargs)
         
@@ -411,7 +472,8 @@ class SegCatNetPL(SegCatNet,pl.LightningModule):
                     self.device)
 
 class UNetEncoderPL(UNetEncoder,ClassPLABC):
-    """U-Net encoder-based classification network implementation for Pytorch
+    """
+    U-Net encoder-based classification network implementation for Pytorch
     Lightning.
     """
     def __init__(
@@ -481,7 +543,8 @@ class UNetEncoderPL(UNetEncoder,ClassPLABC):
         self.setup_metrics()
 
 class GenericEnsemblePL(GenericEnsemble,pl.LightningModule):
-    """Ensemble classification network for PL.
+    """
+    Ensemble classification network for PL.
     """
     def __init__(
         self,
@@ -596,7 +659,8 @@ class GenericEnsemblePL(GenericEnsemble,pl.LightningModule):
             self.n_classes,None,prefix="T_")
 
 class ViTClassifierPL(ViTClassifier,ClassPLABC):
-    """ViT classification network implementation for Pytorch
+    """
+    ViT classification network implementation for Pytorch
     Lightning.
     """
     def __init__(
@@ -666,8 +730,79 @@ class ViTClassifierPL(ViTClassifier,ClassPLABC):
         self.setup_metrics()
 
 class FactorizedViTClassifierPL(FactorizedViTClassifier,ClassPLABC):
-    """ViT classification network implementation for Pytorch
+    """
+    ViT classification network implementation for Pytorch
     Lightning.
+    """
+    def __init__(
+        self,
+        image_key: str="image",
+        label_key: str="label",
+        learning_rate: float=0.001,
+        batch_size: int=4,
+        weight_decay: float=0.0,
+        training_dataloader_call: Callable=None,
+        loss_fn: Callable=F.binary_cross_entropy,
+        loss_params: dict={},
+        n_epochs: int=100,
+        warmup_steps: int=0,
+        start_decay: int=None,
+        training_batch_preproc: Callable=None,
+        *args,**kwargs) -> torch.nn.Module:
+        """
+        Args:
+            image_key (str): key corresponding to the key from the train
+                dataloader.
+            label_key (str): key corresponding to the label key from the train
+                dataloader.
+            learning_rate (float, optional): learning rate. Defaults to 0.001.
+                batch_size (int, optional): batch size. Defaults to 4.
+            weight_decay (float, optional): weight decay for optimizer. Defaults 
+                to 0.005.
+            training_dataloader_call (Callable, optional): call for the 
+                training dataloader. Defaults to None.
+            loss_fn (Callable, optional): loss function. Defaults to 
+                F.binary_cross_entropy
+            loss_params (dict, optional): classification loss parameters. 
+                Defaults to {}.
+            n_epochs (int, optional): number of epochs. Defaults to 100.
+            warmup_steps (int, optional): number of warmup steps. Defaults 
+                to 0.
+            start_decay (int, optional): number of steps after which decay
+                begins. Defaults to None (decay starts after warmup).
+            training_batch_preproc (Callable): function to be applied to the
+                entire batch before feeding it to the model during training.
+                Can contain transformations such as mixup, which require access
+                to the entire training batch.
+            args: arguments for classification network class.
+            kwargs: keyword arguments for classification network class.
+
+        Returns:
+            pl.LightningModule: a classification network module.
+        """
+            
+        super().__init__(*args,**kwargs)
+
+        self.image_key = image_key
+        self.label_key = label_key
+        self.learning_rate = learning_rate
+        self.batch_size = batch_size
+        self.weight_decay = weight_decay
+        self.training_dataloader_call = training_dataloader_call
+        self.loss_fn = loss_fn
+        self.loss_params = loss_params
+        self.n_epochs = n_epochs
+        self.warmup_steps = warmup_steps
+        self.start_decay = start_decay
+        self.training_batch_preproc = training_batch_preproc
+        self.args = args
+        self.kwargs = kwargs
+        
+        self.setup_metrics()
+
+class TransformableTransformerPL(TransformableTransformer,ClassPLABC):
+    """
+    PL module for the TransformableTransformer.
     """
     def __init__(
         self,

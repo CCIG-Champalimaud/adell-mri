@@ -68,3 +68,27 @@ def parse_config_ssl(config_file:str,dropout_param:float,n_keys:int):
     network_config["batch_size"] = network_config["batch_size"]
 
     return network_config,network_config_correct
+
+def parse_config_2d_classifier_3d(config_file:str,dropout_param:float):
+    with open(config_file,'r') as o:
+        network_config = yaml.safe_load(o)
+
+    if "batch_size" not in network_config:
+        network_config["batch_size"] = 1
+
+    if "norm_fn" in network_config:
+        norm_fn = network_config["norm_fn"]
+    else:
+        norm_fn = "layer"
+    if "norm_fn" in network_config:
+        act_fn = network_config["norm_fn"]
+    else:
+        act_fn = "layer"
+    network_config["adn_fn"] = get_adn_fn(1,norm_fn,act_fn,
+                                          dropout_param=dropout_param)
+
+    network_config_correct = {
+        k:network_config[k] for k in network_config
+        if k not in ["norm_fn","act_fn"]}
+
+    return network_config,network_config_correct

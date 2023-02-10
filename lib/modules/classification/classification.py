@@ -12,12 +12,28 @@ from ..layers.self_attention import (
     ConcurrentSqueezeAndExcite2d,ConcurrentSqueezeAndExcite3d)
 from ..segmentation.unet import UNet
 from ..layers.linear_blocks import MLP
-from ..layers.vit import ViT,FactorizedViT
+from ..layers.vit import ViT,FactorizedViT,TransformerBlockStack
 
 resnet_default = [(64,128,5,2),(128,256,3,5)]
 maxpool_default = [(2,2,2),(2,2,2)]
 
-def label_to_ordinal(label:torch.Tensor,n_classes:int,ignore_0:bool=True):
+def label_to_ordinal(label:torch.Tensor,
+                     n_classes:int,
+                     ignore_0:bool=True)->torch.Tensor:
+    """
+    Converts a label to an ordinal classification tensor. In essence, for a 
+    given label L, this function returns an n-hot encoded version of L that
+    is 0 for indices < L and 1 otherwise.
+
+    Args:
+        label (torch.Tensor): one dimensional tensor with labels.
+        n_classes (int): number of classes.
+        ignore_0 (bool, optional): whether 0 should not be considered a class.
+            Defaults to True.
+
+    Returns:
+        torch.Tensor: ordinal classes.
+    """
     label = torch.squeeze(label,1)
     if ignore_0 is True:
         label = torch.clamp(label - 1,min=0)
@@ -29,6 +45,15 @@ def label_to_ordinal(label:torch.Tensor,n_classes:int,ignore_0:bool=True):
     return output - one_hot_cumsum
 
 def ordinal_prediction_to_class(x:torch.Tensor)->torch.Tensor:
+    """
+    Converts an ordinal prediction to a specific class.
+
+    Args:
+        x (torch.Tensor): ordinal prediction tensor.
+
+    Returns:
+        torch.Tensor: categorical prediction.
+    """
     x_thresholded = F.threshold(x,0.5,1)
     output = x_thresholded.argmax(dim=1)
     # consider 0 only when no class class reaches the threshold
@@ -36,6 +61,10 @@ def ordinal_prediction_to_class(x:torch.Tensor)->torch.Tensor:
     return output
 
 class CatNet(torch.nn.Module):
+    """
+    Case class for standard categorical classification. Defaults to 
+    feature extraction using ResNet.
+    """
     def __init__(self,
                  spatial_dimensions: int=3,
                  n_channels: int=1,
@@ -46,9 +75,7 @@ class CatNet(torch.nn.Module):
                  adn_fn: torch.nn.Module=None,
                  res_type: str="resnet",
                  batch_ensemble: bool=False):
-        """Case class for standard categorical classification. Defaults to 
-        feature extraction using ResNet.
-
+        """
         Args:
             spatial_dimensions (int, optional): number of spatial dimenssions. 
                 Defaults to 3.
@@ -136,8 +163,13 @@ class CatNet(torch.nn.Module):
         return classification
 
 class OrdNet(CatNet):
+    """
+    Same as CatNet but the output is ordinal.
+    """
     def __init__(self,*args,**kwargs):
-        """Same as CatNet but the output is ordinal.
+        """
+        Args:
+            args, kwargs: same arguments as CatNet.
         """
         super().__init__(*args,**kwargs)
 
@@ -158,6 +190,13 @@ class OrdNet(CatNet):
         return p_ordinal
 
 class SegCatNet(torch.nn.Module):
+    """
+    Uses the bottleneck and final layer features from a U-Net module
+    to train a classifier. The `u_net` module should have a `forward` 
+    method that can take a `return_features` argument that, when set to
+    True, returns a tuple of tensors: prediction, final layer features 
+    (before prediction) and bottleneck features.
+    """
     def __init__(self,
                  spatial_dim:int,
                  u_net:torch.nn.Module,
@@ -165,12 +204,7 @@ class SegCatNet(torch.nn.Module):
                  n_features_backbone:int,
                  n_features_final_layer:int,
                  n_classes:int):
-        """Uses the bottleneck and final layer features from a U-Net module
-        to train a classifier. The `u_net` module should have a `forward` 
-        method that can take a `return_features` argument that, when set to
-        True, returns a tuple of tensors: prediction, final layer features 
-        (before prediction) and bottleneck features.
-
+        """
         Args:
             spatial_dim (int): number of spatial dimensions.
             u_net (torch.nn.Module): U-Net module.
@@ -253,7 +287,8 @@ class SegCatNet(torch.nn.Module):
         return classification
 
 class GenericEnsemble(torch.nn.Module):
-    """Generically combines multiple encoders to produce an ensemble model.
+    """
+    Generically combines multiple encoders to produce an ensemble model.
     """
     def __init__(self,
                  spatial_dimensions:int,
@@ -328,14 +363,18 @@ class GenericEnsemble(torch.nn.Module):
         return output
     
 class EnsembleNet(torch.nn.Module):
+    """
+    Creates an ensemble of networks which can be trained online. The 
+    input of each network can be different and the forward method supports
+    predictions with missing data (as the average of all networks).
+    """
     def __init__(self,
                  cat_net_args:Union[Dict[str,int],List[Dict[str,int]]]):
-        """Creates an ensemble of networks which can be trained online. The 
-        input of each network can be different and the forward method supports
-        predictions with missing data (as the average of all networks)
-
+        """
         Args:
-            cat_net_args (Union[Dict[str,int],List[Dict[str,int]]], optional): _description_. Defaults to .
+            cat_net_args (Union[Dict[str,int],List[Dict[str,int]]], optional):
+                dictionary or list of dictionaries containing arguments for a 
+                CatNet models.
         """
         super().__init__()
         self.cat_net_args = cat_net_args
@@ -388,7 +427,8 @@ class EnsembleNet(torch.nn.Module):
         return sum(predictions) / len(predictions)
 
 class UNetEncoder(UNet):
-    """U-Net encoder for classification.
+    """
+    U-Net encoder for classification.
     """
     def __init__(self,
                  head_structure:List[int],
@@ -457,10 +497,20 @@ class UNetEncoder(UNet):
         return out
 
 class ViTClassifier(ViT):
+    """
+    Implementation of the vision transformer (ViT) as a classifier.
+    """
     def __init__(self,
                  n_classes:int,
                  use_class_token:bool=False,
                  *args,**kwargs):
+        """
+        Args:
+            n_classes (int): number of classses.
+            use_class_token (bool, optional): whether a class token is being 
+                used. Defaults to False.
+            args, kwargs: args that are to be used to parametrize the ViT.
+        """
         kwargs["use_class_token"] = use_class_token
         super().__init__(*args,**kwargs)
         self.n_classes = n_classes
@@ -496,10 +546,35 @@ class ViTClassifier(ViT):
         return classification
 
 class FactorizedViTClassifier(FactorizedViT):
+    """
+    Implementation of a factorized ViT. The fundamental aspect of the 
+    factorized ViT is its separate processing within and between slice 
+    information. More concretely, for a given input tensor with shape
+    [b,c,h,w,d]:
+    
+        1. The slices are linearly embeded as [b,d,(h/x*w/y),(x*y*c)]
+        2. A transformer is applied to this (to the last two dimensions of the
+            input)
+        3. The information in the tensor is aggregated (using either a class 
+            token or MAP) and [b,d,(h/x*w/y),(x*y*c)] -> [b,(h/x*w/y),(x*y*c)]
+        4. A transformer is applied to this in a more standard fashion.
+        
+    Since the arguments are similar between VitClassifier and 
+    FactorizedViTClassifier, the number of blocks (number_of_blocks) is split
+    between the first transformer block (within slice) and second transformer
+    block (between slices).
+    """
     def __init__(self,
                  n_classes:int,
                  use_class_token:bool=False,
                  *args,**kwargs):
+        """
+        Args:
+            n_classes (int): number of classses.
+            use_class_token (bool, optional): whether a class token is being 
+                used. Defaults to False.
+            args, kwargs: args that are to be used to parametrize the ViT.
+        """
         kwargs["use_class_token"] = use_class_token
         super().__init__(*args,**kwargs)
         self.n_classes = n_classes
@@ -543,6 +618,10 @@ class FactorizedViTClassifier(FactorizedViT):
         return classification
 
 class MONAIViTClassifier(torch.nn.Module):
+    """
+    Small wraper around the MONAI ViT as a classifier with the same arguments
+    as those used in ViT and FactorizedViT.
+    """
     def __init__(self,
                  n_classes:int,
                  use_class_token:bool=False,
@@ -583,3 +662,117 @@ class MONAIViTClassifier(torch.nn.Module):
             torch.Tensor: tensor of shape [...,self.input_dim_primary]
         """
         return self.network(X)[0]
+
+class TransformableTransformer(torch.nn.Module):
+    """
+    Transformer that uses a 2D module to transform a 3D image along a given
+    dimension dim into a transformer ready format. In essence, given an 
+    input with size [b,c,h,w,d] and a module that processes 2D images with
+    output size [b,o]:
+    
+        1. Iterate over a given dim of the input (0/1/2, corresponding to 
+            h, w or d) producing (for dim=2) slices with shape [b,c,h,w]
+        2. Apply module to each slice [b,c,h,w] -> [b,o]
+        3. Concatenate modules along the channel dimension 
+            [[b,o],...,[b,o]] -> [b,d,o]
+        4. Apply transformer to this output and aggregate (shape [b,o])
+        5. Apply MLP classifier to the transformer output
+        
+    In theory, this can also be applied to other Tensor shapes, but the tested
+    use is as stated above.
+    """
+    def __init__(self,
+                 module:torch.nn.Module,
+                 module_out_dim:int,
+                 n_classes:int,
+                 classification_structure:torch.nn.Module,
+                 classification_adn_fn:Callable=get_adn_fn(
+                     1,"layer","gelu",0.1),
+                 dim:int=2,
+                 use_class_token:bool=True,
+                 *args,**kwargs):
+        """
+        Args:
+            module (torch.nn.Module): end-to-end module that takes a batched 
+                set of 2D images and output a vector for each image.
+            module_out_dim (int): output size for module.
+            n_classes (int): number of output classes.
+            classification_structure (torch.nn.Module): structure for the 
+                classification MLP.
+            classification_adn_fn (Callable, optional): ADN function for the
+                MLP module. Defaults to get_adn_fn( 1,"layer","gelu",0.1).
+            dim (int, optional): dimension along which the module is applied.
+                Defaults to 2.
+            use_class_token (bool, optional): whether a classification token
+                should be used. Defaults to True.
+        """
+        
+        assert dim in [0,1,2], "dim must be one of [0,1,2]"
+        super().__init__()
+        self.module = module
+        self.module_out_dim = module_out_dim
+        self.classification_structure = classification_structure
+        self.classification_adn_fn = classification_adn_fn
+        self.n_classes = n_classes
+        self.dim = dim
+        self.use_class_token = use_class_token
+        
+        self.tbs = TransformerBlockStack(*args,**kwargs)
+        self.classification_module = MLP(
+            self.module_out_dim,self.n_classes,
+            structure=self.classification_structure,
+            adn_fn=self.classification_adn_fn)
+        self.initialize_classification_token()
+        
+    def initialize_classification_token(self):
+        """
+        Initializes the classification token.
+        """
+        if self.use_class_token is True:
+            self.class_token = torch.nn.Parameter(
+               torch.zeros([1,1,self.true_n_features]))
+
+    def iter_over_dim(self,X:torch.Tensor)->torch.Tensor:
+        """Iterates a tensor along the dim specified in the constructor.
+
+        Args:
+            X (torch.Tensor): a tensor with shape [b,c,h,w,d].
+
+        Yields:
+            Iterator[torch.Tensor]: tensor slices along dim.
+        """
+        dim = 2 + self.dim
+        for i in range(X.shape[dim]):
+            curr_idx = [i if j == dim else slice(0,None) 
+                        for j in range(range(X.shape))]
+            yield X[tuple(curr_idx)]
+
+    def forward(self,X:torch.Tensor)->torch.Tensor:
+        """Forward pass.
+
+        Args:
+            X (torch.Tensor): input tensor.
+
+        Returns:
+            torch.Tensor: output logits.
+        """
+        sh = X.shape
+        batch_size = sh[0]
+        n_slices = sh[2+self.dim]
+        ssl_representation = torch.zeros(
+            [batch_size,n_slices+self.use_class_token,self.module_out_dim])
+        if self.use_class_token == True:
+            if self.use_class_token is True:
+                class_token = einops.repeat(self.class_token,'() n e -> b n e',
+                                            b=batch_size)
+                ssl_representation = torch.concat([class_token,X],1)
+        # TODO: convert to torch.vmap (will have to upgrade pytorch)
+        for i,X_slice in enumerate(self.iter_over_dim(X)):
+            ssl_representation[:,i+self.use_class_token,:] = self.module(X_slice)
+        transformer_output = self.tbs(ssl_representation)
+        if self.use_class_token == True:
+            transformer_output = transformer_output[:,0,:]
+        else:
+            transformer_output = transformer_output.mean(1)
+        output = self.classification_module(transformer_output)
+        return output
