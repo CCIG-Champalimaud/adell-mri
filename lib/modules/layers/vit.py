@@ -203,8 +203,7 @@ class SliceLinearEmbedding(torch.nn.Module):
             self.map_to_out = torch.nn.Sequential(
                 torch.nn.LayerNorm(self.embedding_size),
                 torch.nn.Linear(
-                    self.embedding_size,self.out_dim),
-                torch.nn.LayerNorm(self.out_dim))
+                    self.embedding_size,self.out_dim))
             self.map_to_in = torch.nn.Sequential(
                 torch.nn.Linear(
                     self.out_dim,self.embedding_size),
@@ -345,8 +344,7 @@ class LinearEmbedding(torch.nn.Module):
                 self.map_to_out = torch.nn.Sequential(
                     torch.nn.LayerNorm(self.n_features),
                     torch.nn.Linear(
-                        self.n_features,self.out_dim),
-                    torch.nn.LayerNorm(self.out_dim))
+                        self.n_features,self.out_dim))
             self.map_to_in = torch.nn.Sequential(
                 torch.nn.Linear(
                     self.out_dim,self.n_features),
@@ -1427,18 +1425,6 @@ class FactorizedViT(torch.nn.Module):
             dropout_rate=self.dropout_rate,
             adn_fn=self.adn_fn)
         
-        if self.learnable_embedding is True:
-            self.slice_positional_embedding = torch.nn.Parameter(
-                torch.rand(1,self.image_size[-1],self.input_dim_primary))
-            torch.nn.init.trunc_normal_(
-                self.slice_positional_embedding,mean=0.0,std=0.02,a=-2.0,b=2.0)
-        else:
-            sin_embed = sinusoidal_positional_encoding(
-                self.image_size[-1],self.input_dim_primary)[np.newaxis,:,:]
-            self.slice_positional_embedding = torch.nn.Parameter(
-                torch.as_tensor(sin_embed,dtype=torch.float32),
-                requires_grad=False)
-
         if self.use_class_token is True:
             self.slice_class_token = torch.nn.Parameter(
                 torch.zeros([1,1,input_dim_primary]))
@@ -1463,12 +1449,11 @@ class FactorizedViT(torch.nn.Module):
         # extract the maximum value of each token for all slices
         if self.use_class_token is True:
             embeded_X = embeded_X[:,:,0]
-            embeded_X = embeded_X + self.slice_positional_embedding
             class_token = einops.repeat(
                 self.slice_class_token,'() n e -> b n e',b=X.shape[0])
             embeded_X = torch.concat([class_token,embeded_X],1)
         else:
             embeded_X = embeded_X.mean(-2)
-            embeded_X = embeded_X + self.slice_positional_embedding
+            embeded_X = embeded_X
         embeded_X,_ = self.transformer_block_between(embeded_X)
         return embeded_X

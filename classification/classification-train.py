@@ -404,14 +404,13 @@ if __name__ == "__main__":
             network_config["loss_fn"] = torch.nn.CrossEntropy(class_weights)
 
         if isinstance(devices,list):
-            n_workers = args.n_workers//len(devices)
+            n_workers = args.n_workers // len(devices)
         else:
-            n_workers = args.n_workers
+            n_workers = args.n_workers // devices
         def train_loader_call(): 
             return monai.data.ThreadDataLoader(
                 train_dataset,batch_size=network_config["batch_size"],
-                shuffle=sampler is None,
-                num_workers=n_workers,generator=g,
+                shuffle=sampler is None,num_workers=n_workers,generator=g,
                 collate_fn=safe_collate,pin_memory=True,
                 sampler=sampler,persistent_workers=args.n_workers>0,
                 drop_last=True)
@@ -426,7 +425,6 @@ if __name__ == "__main__":
             shuffle=False,num_workers=n_workers,
             collate_fn=safe_collate)
 
-        print("Setting up training...")
         if args.net_type == "unet":
             act_fn = network_config["activation_fn"]
         else:
