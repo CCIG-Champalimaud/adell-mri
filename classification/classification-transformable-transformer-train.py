@@ -13,7 +13,8 @@ from pytorch_lightning.callbacks import (
 import sys
 sys.path.append(r"..")
 from lib.utils import (
-    safe_collate,set_classification_layer_bias)
+    safe_collate,set_classification_layer_bias,
+    ScaleIntensityAlongDimd,EinopsRearranged)
 from lib.utils.pl_utils import get_ckpt_callback,get_logger,get_devices
 from lib.utils.batch_preprocessing import BatchPreprocessing
 from lib.utils.dataset_filters import (
@@ -23,8 +24,6 @@ from lib.utils.dataset_filters import (
 from lib.monai_transforms import get_transforms_classification as get_transforms
 from lib.monai_transforms import get_augmentations_class as get_augmentations
 from lib.modules.classification.pl import TransformableTransformerPL
-from lib.modules.layers.adn_fn import get_adn_fn
-from lib.modules.losses import OrdinalSigmoidalLoss
 from lib.modules.config_parsing import parse_config_2d_classifier_3d
 
 if __name__ == "__main__":
@@ -92,10 +91,6 @@ if __name__ == "__main__":
         '--module_path',dest="module_path",
         help="Path to torchscript module",
         required=True)
-    parser.add_argument(
-        '--net_type',dest='net_type',
-        help="Classification type. Can be categorical (cat) or ordinal (ord)",
-        choices=["cat","ord","unet","vit","factorized_vit"],default="cat")
     
     # training
     parser.add_argument(
@@ -251,7 +246,6 @@ if __name__ == "__main__":
                     args.label_keys()))
     
     keys = args.image_keys
-    adc_keys = args.adc_keys if args.adc_keys is not None else []
     t2_keys = args.t2_keys if args.t2_keys is not None else []
     adc_keys = []
     t2_keys = [k for k in t2_keys if k in keys]
@@ -291,12 +285,16 @@ if __name__ == "__main__":
     transforms_train = monai.transforms.Compose([
         *get_transforms("pre",**transform_arguments),
         get_augmentations(**augment_arguments),
-        *get_transforms("post",**transform_arguments)])
+        *get_transforms("post",**transform_arguments),
+        EinopsRearranged("image","c h w d -> 1 h w (d c)"),
+        ScaleIntensityAlongDimd("image",dim=-1)])
     transforms_train.set_random_state(args.seed)
 
     transforms_val = monai.transforms.Compose([
         *get_transforms("pre",**transform_arguments),
-        *get_transforms("post",**transform_arguments)])
+        *get_transforms("post",**transform_arguments),
+        EinopsRearranged("image","c h w d -> 1 h w (d c)"),
+        ScaleIntensityAlongDimd("image",dim=-1)])
     
     if args.folds is None:
         if args.n_folds > 1:
@@ -396,9 +394,6 @@ if __name__ == "__main__":
         if n_classes == 2:
             network_config["loss_fn"] = torch.nn.BCEWithLogitsLoss(
                 class_weights)
-        elif args.net_type == "ord":
-            network_config["loss_fn"] = OrdinalSigmoidalLoss(
-                class_weights,n_classes)
         else:
             network_config["loss_fn"] = torch.nn.CrossEntropy(
                 class_weights)
@@ -427,16 +422,9 @@ if __name__ == "__main__":
             collate_fn=safe_collate)
 
         print("Setting up training...")
-        if args.net_type == "unet":
-            act_fn = network_config["activation_fn"]
-        else:
-            act_fn = "swish"
-        adn_fn = get_adn_fn(3,"identity",act_fn=act_fn,
-                            dropout_param=args.dropout_param)
         batch_preprocessing = BatchPreprocessing(
             args.label_smoothing,args.mixup_alpha,args.partial_mixup,args.seed)
         boilerplate_args = {
-            "n_channels":len(keys),
             "n_classes":n_classes,
             "training_dataloader_call":train_loader_call,
             "image_key":"image",
@@ -447,19 +435,17 @@ if __name__ == "__main__":
             "start_decay":args.start_decay}
 
         network_config["module"] = torch.jit.load(args.module_path)
+        network_config["module"].requires_grad = False
+        network_config["module"].eval()
+        network_config["module"] = torch.jit.freeze(network_config["module"])
         if "module_out_dim" not in network_config:
             print("2D module output size not specified, inferring...")
-            input_example = torch.rand(1,1,256,256)
+            input_example = torch.rand(1,1,256,256).to(args.dev.split(":")[0])
             output = network_config["module"](input_example)
-            network_config["module_out_dim"] = [x for x in output.shape]
+            network_config["module_out_dim"] = int(output.shape[-1])
             print("2D module output size={}".format(
                 network_config["module_out_dim"]))
-        image_size = [int(x) for x in args.crop_size]
-        network_config["image_size"] = image_size
         network = TransformableTransformerPL(
-            adn_fn=get_adn_fn(
-                        1,"identity",act_fn="gelu",
-                        dropout_param=args.dropout_param),
             **boilerplate_args,
             **network_config)
                 

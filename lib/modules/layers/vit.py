@@ -931,9 +931,11 @@ class TransformerBlockStack(torch.nn.Module):
             List[int]: list of integers.
         """
         if isinstance(x, list) is False:
-            return [x for _ in range(self.number_of_blocks)]
+            x = [x for _ in range(self.number_of_blocks)]
         else:
-            return self.check_if_consistent(x)
+            x = x
+        self.check_if_consistent(x)
+        return x
     
     def check_if_consistent(self,x:Sequence):
         """Checks that the size of x is self.number_of_blocks

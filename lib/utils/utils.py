@@ -5,6 +5,7 @@ import numpy as np
 import SimpleITK as sitk
 import torch
 import torch.nn.functional as F
+import einops
 import monai
 from glob import glob
 from itertools import product
@@ -329,6 +330,48 @@ def set_classification_layer_bias(pos,neg,network):
             if list(v.shape) == [1]:
                 with torch.no_grad():
                     v[0] = value
+                    
+def normalize_along_slice(X:torch.Tensor,
+                          min_value:float=0.0,
+                          max_value:float=1.0,
+                          dim:int=-1)->torch.Tensor:
+    """
+    Performs minmax normalization along a given axis for a tensor.
+
+    Args:
+        X (torch.Tensor): tensor.
+        min_value (float, optional): min value for output tensor. Defaults to
+            0.0.
+        max_value (float, optional): max value for output tensor. Defaults to
+            1.0.
+        dim (int, optional): dimension along which the minmax normalization is
+            performed. Defaults to -1.
+
+    Returns:
+        torch.Tensor: minmax normalized tensor.
+    """
+    sh = X.shape
+    assert dim < len(sh)
+    assert max_value > min_value, \
+        "max_value {} must be larger than min_value {}".format(
+            max_value,min_value)
+    if dim < 0:
+        dim = len(sh) + dim
+    dims = ["c","h","w","d"]
+    lhs = " ".join(dims)
+    rhs = "{} ({})".format(
+        dims[dim],
+        " ".join([d for d in dims if d != dims[dim]]))
+    average_shape = [1 if i != dim else sh[dim] for i in range(len(sh))]
+    flat_X = einops.rearrange(X,"{} -> {}".format(lhs,rhs))
+    dim_max = flat_X.max(-1).values.reshape(average_shape)
+    dim_min = flat_X.min(-1).values.reshape(average_shape)
+    identical = dim_max == dim_min
+    mult = torch.where(identical,0.,1.)
+    denominator = torch.where(identical,1.,dim_max-dim_min)
+    X = (X - dim_min) / denominator * mult
+    X = X * (max_value - min_value) + min_value
+    return X
 
 class ConvertToOneHot(monai.transforms.Transform):
     def __init__(self,keys:str,out_key:str,
@@ -1424,7 +1467,7 @@ class ConvexHull(monai.transforms.Transform):
             out_np, img)
         return out
 
-class ConvexHulld(monai.transforms.Transform):
+class ConvexHulld(monai.transforms.MapTransform):
     backend = [monai.utils.TransformBackends.NUMPY]
 
     def __init__(self,keys:List[str]) -> None:
@@ -1436,4 +1479,109 @@ class ConvexHulld(monai.transforms.Transform):
     def __call__(self,X:NDArrayOrTensorDict) -> NDArrayOrTensorDict:
         for k in self.keys:
             X[k] = self.transform(X[k])
+        return X
+
+class ScaleIntensityAlongDim(monai.transforms.Transform):
+    """
+    MONAI transform that applies normalize_along_slice to inputs. This
+    normalizes individual slices along a given dimension dim.
+    """
+    def __init__(self,
+                 min_value:float=0.0,
+                 max_value:float=1.0,
+                 dim:int=-1):
+        """
+        Args:
+            min_value (float, optional): min value for output tensor. Defaults
+                to 0.0.
+            max_value (float, optional): max value for output tensor. Defaults
+                to 1.0.
+            dim (int, optional): dimension along which the minmax normalization
+                is performed. Defaults to -1.
+        """
+        self.min_value = min_value
+        self.max_value = max_value
+        self.dim = dim
+    
+    def __call__(self,X:torch.Tensor)->torch.Tensor:
+        return normalize_along_slice(
+            X,
+            min_value=self.min_value,
+            max_value=self.max_value,
+            dim=self.dim)
+        
+class ScaleIntensityAlongDimd(monai.transforms.MapTransform):
+    """
+    MONAI dict transform that applies normalize_along_slice to inputs. This
+    normalizes individual slices along a given dimension dim.
+    """
+    def __init__(self,
+                 keys:List[str],
+                 min_value:float=0.0,
+                 max_value:float=1.0,
+                 dim:int=-1):
+        """
+        Args:
+            min_value (float, optional): min value for output tensor. Defaults to
+                0.0.
+            max_value (float, optional): max value for output tensor. Defaults to
+                0.0.
+            dim (int, optional): dimension along which the minmax normalization is
+                performed. Defaults to -1.
+        """
+
+        self.keys = keys
+        self.min_value = min_value
+        self.max_value = max_value
+        self.dim = dim
+        
+        if isinstance(self.keys,str):
+            self.keys = [self.keys]
+        
+        self.tr = ScaleIntensityAlongDim(min_value=min_value,
+                                         max_value=max_value,
+                                         dim=dim)
+    
+    def __call__(self,X:TensorDict)->TensorDict:
+        for k in self.keys:
+            X[k] = self.tr(X[k])
+        return X
+    
+class EinopsRearrange(monai.transforms.Transform):
+    """
+    Convenience MONAI transform to apply einops patterns to inputs.
+    """
+    def __init__(self,pattern:str):
+        """
+        Args:
+            pattern (str): einops pattern.
+        """
+        self.pattern = pattern
+        
+    def __call__(self,X:torch.Tensor)->torch.Tensor:
+        return einops.rearrange(X,self.pattern)
+
+class EinopsRearranged(monai.transforms.Transform):
+    """
+    Convenience MONAI dict transform to apply einops patterns to inputs.
+    """
+    def __init__(self,keys:List[str],pattern:str):
+        """
+        Args:
+            pattern (str): einops pattern.
+        """
+        self.keys = keys
+        self.pattern = pattern
+        
+        if isinstance(self.keys,str):
+            self.keys = [self.keys]
+        
+        if isinstance(self.pattern,str):
+            self.trs = [EinopsRearrange(self.pattern) for _ in keys]
+        else:
+            self.trs = [EinopsRearrange(p) for p in self.pattern]
+        
+    def __call__(self,X:TensorDict)->TensorDict:
+        for k,tr in zip(self.keys,self.trs):
+            X[k] = tr(X[k])
         return X

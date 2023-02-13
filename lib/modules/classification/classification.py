@@ -717,9 +717,13 @@ class TransformableTransformer(torch.nn.Module):
         self.dim = dim
         self.use_class_token = use_class_token
         
+        kwargs["input_dim_primary"] = module_out_dim
+        kwargs["attention_dim"] = module_out_dim
+        kwargs["hidden_dim"] = module_out_dim
         self.tbs = TransformerBlockStack(*args,**kwargs)
         self.classification_module = MLP(
-            self.module_out_dim,self.n_classes,
+            self.module_out_dim,
+            1 if self.n_classes == 2 else self.n_classes,
             structure=self.classification_structure,
             adn_fn=self.classification_adn_fn)
         self.initialize_classification_token()
@@ -730,7 +734,7 @@ class TransformableTransformer(torch.nn.Module):
         """
         if self.use_class_token is True:
             self.class_token = torch.nn.Parameter(
-               torch.zeros([1,1,self.true_n_features]))
+               torch.zeros([1,1,self.module_out_dim]))
 
     def iter_over_dim(self,X:torch.Tensor)->torch.Tensor:
         """Iterates a tensor along the dim specified in the constructor.
@@ -744,7 +748,7 @@ class TransformableTransformer(torch.nn.Module):
         dim = 2 + self.dim
         for i in range(X.shape[dim]):
             curr_idx = [i if j == dim else slice(0,None) 
-                        for j in range(range(X.shape))]
+                        for j in range(len(X.shape))]
             yield X[tuple(curr_idx)]
 
     def forward(self,X:torch.Tensor)->torch.Tensor:
@@ -759,17 +763,20 @@ class TransformableTransformer(torch.nn.Module):
         sh = X.shape
         batch_size = sh[0]
         n_slices = sh[2+self.dim]
+        # tried to replace this with vmap but it leads to OOM errors
         ssl_representation = torch.zeros(
-            [batch_size,n_slices+self.use_class_token,self.module_out_dim])
-        if self.use_class_token == True:
-            if self.use_class_token is True:
-                class_token = einops.repeat(self.class_token,'() n e -> b n e',
-                                            b=batch_size)
-                ssl_representation = torch.concat([class_token,X],1)
-        # TODO: convert to torch.vmap (will have to upgrade pytorch)
+            [batch_size,n_slices+self.use_class_token,self.module_out_dim],
+            device=X.device)
         for i,X_slice in enumerate(self.iter_over_dim(X)):
             ssl_representation[:,i+self.use_class_token,:] = self.module(X_slice)
-        transformer_output = self.tbs(ssl_representation)
+        if self.use_class_token == True:
+            if self.use_class_token is True:
+                class_token = einops.repeat(self.class_token,
+                                            '() n e -> b n e',
+                                            b=batch_size)
+                ssl_representation = torch.concat(
+                    [class_token,ssl_representation],1)
+        transformer_output = self.tbs(ssl_representation)[0]
         if self.use_class_token == True:
             transformer_output = transformer_output[:,0,:]
         else:

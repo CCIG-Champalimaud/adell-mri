@@ -61,13 +61,13 @@ def get_metric_dict(nc:int,
             "Spe":lambda: tmc.BinarySpecificity(),
             "Pr":lambda: tmc.BinaryPrecision(),
             "F1":lambda: tmc.BinaryFBetaScore(1.0),
-            "AUC":lambda: torchmetrics.AUROC()}
+            "AUC":lambda: torchmetrics.AUROC("binary")}
     else:
         md = {"Rec":lambda: torchmetrics.Recall(nc,average="macro"),
               "Spe":lambda: torchmetrics.Specificity(),
               "Pr":lambda: torchmetrics.Precision(nc,average="macro"),
               "F1":lambda: torchmetrics.FBetaScore(nc,average="macro"),
-              "AUC":lambda: torchmetrics.AUROC()}
+              "AUC":lambda: torchmetrics.AUROC("multilabel")}
     if metric_keys is None:
         metric_keys = list(md.keys())
     for k in metric_keys:

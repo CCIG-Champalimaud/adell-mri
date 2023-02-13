@@ -80,11 +80,16 @@ def parse_config_2d_classifier_3d(config_file:str,dropout_param:float):
         norm_fn = network_config["norm_fn"]
     else:
         norm_fn = "layer"
-    if "norm_fn" in network_config:
-        act_fn = network_config["norm_fn"]
+    if "act_fn" in network_config:
+        act_fn = network_config["act_fn"]
     else:
-        act_fn = "layer"
-    network_config["adn_fn"] = get_adn_fn(1,norm_fn,act_fn,
+        act_fn = "gelu"
+    
+    if "classification_adn_fn" in network_config:
+        network_config["classification_adn_fn"] = get_adn_fn(
+            1,**network_config["classification_adn_fn"])
+    
+    network_config["adn_fn"] = get_adn_fn(1,norm_fn=norm_fn,act_fn=act_fn,
                                           dropout_param=dropout_param)
 
     network_config_correct = {

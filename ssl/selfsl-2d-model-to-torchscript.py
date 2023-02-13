@@ -105,6 +105,7 @@ if __name__ == "__main__":
         args.checkpoint,
         map_location=args.dev.split(":")[0])['state_dict']
     inc = ssl.load_state_dict(state_dict)
+    ssl.eval()
     
     example = torch.rand(1,*args.input_shape).to(args.dev)
     traced_ssl = torch.jit.trace(ssl,example)
