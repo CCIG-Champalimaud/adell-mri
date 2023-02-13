@@ -834,8 +834,11 @@ class HybridClassifier(torch.nn.Module):
     def __init__(self,
                  convolutional_module:torch.nn.Module,
                  tabular_module:torch.nn.Module):
+        super().__init__()
         self.convolutional_module = convolutional_module
         self.tabular_module = tabular_module
+        
+        self.init_weight()
     
     def init_weight(self):
         self.raw_weight = torch.nn.Parameter(torch.ones([1]))
