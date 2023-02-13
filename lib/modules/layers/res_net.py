@@ -380,7 +380,7 @@ class ResNet(torch.nn.Module):
             d = self.projection_head_args["structure"][-1]
             norm_fn = self.projection_head_args["adn_fn"](d).norm_fn
         except:
-            pass
+            norm_fn = torch.nn.LayerNorm
         self.projection_head = torch.nn.Sequential(
             ProjectionHead(
                 **self.projection_head_args),
