@@ -263,6 +263,8 @@ class MultiHeadSelfAttention(torch.nn.Module):
         makes computation more efficient and is equivalent to initialising 
         multiple attention heads.
         """
+        # TODO: implement Q and K layer normalization
+        # TODO: remove bias from qkv layer
         real_attention_dim = self.attention_dim // self.n_heads
         real_hidden_dim = self.hidden_dim // self.n_heads
         self.qkv_dim = self.attention_dim*2+self.hidden_dim
