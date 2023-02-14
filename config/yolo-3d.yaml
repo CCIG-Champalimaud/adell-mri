@@ -1,8 +1,0 @@
----
-activation_fn: "prelu"
-n_channels: 1
-learning_rate: 0.001
-batch_size: 32
-weight_decay: 0.005 
-classification_loss_fn: "focal"
-object_loss_fn: "focal"

@@ -5,7 +5,7 @@ classification_adn_fn:
 classification_structure: [1024,1024]
 dim: 2
 use_class_token: true
-number_of_blocks: 1
+number_of_blocks: 2
 n_heads: 16
 weight_decay: 0.001
-mlp_structure: [3072]
+mlp_structure: [1024]
