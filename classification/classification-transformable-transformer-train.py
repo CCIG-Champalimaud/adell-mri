@@ -424,6 +424,7 @@ if __name__ == "__main__":
         print("Setting up training...")
         batch_preprocessing = BatchPreprocessing(
             args.label_smoothing,args.mixup_alpha,args.partial_mixup,args.seed)
+        n_slices = int(len(keys) * args.crop_size[-1])
         boilerplate_args = {
             "n_classes":n_classes,
             "training_dataloader_call":train_loader_call,
@@ -432,7 +433,8 @@ if __name__ == "__main__":
             "n_epochs":args.max_epochs,
             "warmup_steps":args.warmup_steps,
             "training_batch_preproc":batch_preprocessing,
-            "start_decay":args.start_decay}
+            "start_decay":args.start_decay,
+            "n_slices":n_slices}
 
         network_config["module"] = torch.jit.load(args.module_path)
         network_config["module"].requires_grad = False

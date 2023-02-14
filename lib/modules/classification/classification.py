@@ -688,6 +688,7 @@ class TransformableTransformer(torch.nn.Module):
                  classification_structure:torch.nn.Module,
                  classification_adn_fn:Callable=get_adn_fn(
                      1,"layer","gelu",0.1),
+                 n_slices:int=None,
                  dim:int=2,
                  use_class_token:bool=True,
                  *args,**kwargs):
@@ -701,6 +702,9 @@ class TransformableTransformer(torch.nn.Module):
                 classification MLP.
             classification_adn_fn (Callable, optional): ADN function for the
                 MLP module. Defaults to get_adn_fn( 1,"layer","gelu",0.1).
+            n_slices (int, optional): number of slices. Used to initialize 
+                positional embedding. Defaults to None (no positional 
+                embedding).
             dim (int, optional): dimension along which the module is applied.
                 Defaults to 2.
             use_class_token (bool, optional): whether a classification token
@@ -711,15 +715,17 @@ class TransformableTransformer(torch.nn.Module):
         super().__init__()
         self.module = module
         self.module_out_dim = module_out_dim
+        self.n_classes = n_classes
         self.classification_structure = classification_structure
         self.classification_adn_fn = classification_adn_fn
-        self.n_classes = n_classes
+        self.n_slices = n_slices
         self.dim = dim
         self.use_class_token = use_class_token
         
         kwargs["input_dim_primary"] = module_out_dim
         kwargs["attention_dim"] = module_out_dim
         kwargs["hidden_dim"] = module_out_dim
+        self.input_norm = torch.nn.LayerNorm(module_out_dim)
         self.tbs = TransformerBlockStack(*args,**kwargs)
         self.classification_module = MLP(
             self.module_out_dim,
@@ -727,7 +733,8 @@ class TransformableTransformer(torch.nn.Module):
             structure=self.classification_structure,
             adn_fn=self.classification_adn_fn)
         self.initialize_classification_token()
-        
+        self.init_positional_embedding()
+    
     def initialize_classification_token(self):
         """
         Initializes the classification token.
@@ -735,6 +742,17 @@ class TransformableTransformer(torch.nn.Module):
         if self.use_class_token is True:
             self.class_token = torch.nn.Parameter(
                torch.zeros([1,1,self.module_out_dim]))
+    
+    def init_positional_embedding(self):
+        """
+        Initializes the positional embedding.
+        """
+        self.positional_embedding = None
+        if self.n_slices is not None:
+            self.positional_embedding = torch.nn.Parameter(
+                torch.zeros([1,self.n_slices,self.module_out_dim]))
+            torch.nn.init.trunc_normal_(
+                self.positional_embedding,mean=0.0,std=0.02,a=-2.0,b=2.0)
 
     def iter_over_dim(self,X:torch.Tensor)->torch.Tensor:
         """Iterates a tensor along the dim specified in the constructor.
@@ -765,10 +783,13 @@ class TransformableTransformer(torch.nn.Module):
         n_slices = sh[2+self.dim]
         # tried to replace this with vmap but it leads to OOM errors
         ssl_representation = torch.zeros(
-            [batch_size,n_slices+self.use_class_token,self.module_out_dim],
+            [batch_size,n_slices,self.module_out_dim],
             device=X.device)
         for i,X_slice in enumerate(self.iter_over_dim(X)):
-            ssl_representation[:,i+self.use_class_token,:] = self.module(X_slice)
+            ssl_representation[:,i,:] = self.module(X_slice)
+        ssl_representation = self.input_norm(ssl_representation)
+        if self.positional_embedding is not None:
+            ssl_representation = ssl_representation + self.positional_embedding
         if self.use_class_token == True:
             if self.use_class_token is True:
                 class_token = einops.repeat(self.class_token,
