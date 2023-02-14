@@ -326,6 +326,21 @@ if __name__ == "__main__":
         train_list = [data_dict[pid] for pid in train_pids]
         val_list = [data_dict[pid] for pid in val_pids]
         
+        print("Current fold={}".format(val_fold))
+        print("\tTrain set size={}; validation set size={}".format(
+            len(train_idxs),len(val_idxs)))
+        
+        ckpt_callback,ckpt_path,status = get_ckpt_callback(
+            checkpoint_dir=args.checkpoint_dir,
+            checkpoint_name=args.checkpoint_name,
+            max_epochs=args.max_epochs,
+            resume_from_last=args.resume_from_last,
+            val_fold=val_fold,
+            monitor=args.monitor)
+        ckpt = ckpt_callback is not None
+        if status == "finished":
+            continue
+        
         train_dataset = monai.data.CacheDataset(
             train_list,transforms_train,
             cache_rate=args.cache_rate,
@@ -490,22 +505,15 @@ if __name__ == "__main__":
                 'val_loss',patience=args.early_stopping,
                 strict=True,mode="min")
             callbacks.append(early_stopping)
+            
+        if ckpt_callback is not None:   
+            callbacks.append(ckpt_callback)
+
         if args.swa is True:
             swa_callback = StochasticWeightAveraging(
                 network_config["learning_rate"],swa_epoch_start=args.warmup_steps)
             callbacks.append(swa_callback)
-        ckpt_callback,ckpt_path,status = get_ckpt_callback(
-            checkpoint_dir=args.checkpoint_dir,
-            checkpoint_name=args.checkpoint_name,
-            max_epochs=args.max_epochs,
-            resume_from_last=args.resume_from_last,
-            val_fold=val_fold,
-            monitor=args.monitor)
-        if ckpt_callback is not None:   
-            callbacks.append(ckpt_callback)
-        ckpt = ckpt_callback is not None
-        if status == "finished":
-            continue
+
         logger = get_logger(args.summary_name,args.summary_dir,
                             args.project_name,args.resume,
                             fold=val_fold)
