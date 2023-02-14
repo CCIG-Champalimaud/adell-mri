@@ -82,6 +82,10 @@ def filter_dictionary_with_filters(D:DatasetDict,
             processed_filters["gt"].append(f.split(">"))
         elif "=" in f:
             processed_filters["lt"].append(f.split("<"))
+        else:
+            err = "filter {} must have one of ['=','<','>'].".format(f)
+            err += " For example: age>50 or clinical_variable=true"
+            raise NotImplementedError(err)
     out_dict = {}
     for pid in D:
         check = True
