@@ -129,6 +129,9 @@ if __name__ == "__main__":
         '--folds',dest="folds",type=str,default=None,nargs="+",
         help="Comma-separated IDs to be used in each space-separated fold")
     parser.add_argument(
+        '--exclude_ids',dest='exclude_ids',type=str,default=None,
+        help="Comma separated list of IDs to exclude.")
+    parser.add_argument(
         '--checkpoint_dir',dest='checkpoint_dir',type=str,default=None,
         help='Path to directory where checkpoints will be saved.')
     parser.add_argument(
@@ -211,6 +214,9 @@ if __name__ == "__main__":
     output_file = open(args.metric_path,'w')
 
     data_dict = json.load(open(args.dataset_json,'r'))
+    if args.exclude_ids is not None:
+        data_dict = {k:data_dict[k] for k in data_dict
+                     if k not in args.exclude_ids.split(",")}
     data_dict = filter_dictionary_with_possible_labels(
         data_dict,args.possible_labels,args.label_keys)
     if len(args.filter_on_keys) > 0:
