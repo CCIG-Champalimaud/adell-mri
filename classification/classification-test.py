@@ -18,38 +18,9 @@ from lib.modules.classification.pl import (
 from lib.modules.layers.adn_fn import get_adn_fn
 from lib.modules.losses import OrdinalSigmoidalLoss
 from lib.modules.config_parsing import parse_config_unet,parse_config_cat
-
-def filter_dictionary_with_presence(D,filters):
-    print("Filtering on: {} presence".format(filters))
-    print("\tInput size: {}".format(len(D)))
-    out_dict = {}
-    for pid in D:
-        check = True
-        for k in filters:
-            if k not in D[pid]:
-                check = False
-        if check is True:
-            out_dict[pid] = D[pid]
-    print("\tOutput size: {}".format(len(out_dict)))
-    return out_dict
-
-def filter_dictionary_with_filters(D,filters):
-    print("Filtering on: {}".format(filters))
-    print("\tInput size: {}".format(len(D)))
-    filters = [f.split(":") for f in filters]
-    out_dict = {}
-    for pid in D:
-        check = True
-        for k,v in filters:
-            if k in D[pid]:
-                if D[pid][k] != v:
-                    check = False
-            else:
-                check = False
-        if check is True:
-            out_dict[pid] = D[pid]
-    print("\tOutput size: {}".format(len(out_dict)))
-    return out_dict
+from lib.utils.dataset_filters import (
+    filter_dictionary_with_filters,filter_dictionary_with_possible_labels,
+    filter_dictionary_with_presence)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -143,6 +114,8 @@ if __name__ == "__main__":
     output_file = open(args.metric_path,'w')
 
     data_dict = json.load(open(args.dataset_json,'r'))
+    data_dict = filter_dictionary_with_possible_labels(
+        data_dict,args.possible_labels,args.label_keys)
     if len(args.filter_on_keys) > 0:
         data_dict = filter_dictionary_with_filters(
             data_dict,args.filter_on_keys)
