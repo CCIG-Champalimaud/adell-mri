@@ -56,12 +56,6 @@ if __name__ == "__main__":
     parser.add_argument(
         '--dev',dest='dev',type=str,default="cuda",
         help="Device for model allocation")
-    parser.add_argument(
-        '--vicreg',dest='vicreg',action="store_true",
-        help="Use VICReg loss")
-    parser.add_argument(
-        '--vicregl',dest='vicregl',action="store_true",
-        help="Use VICRegL loss")
 
     args = parser.parse_args()
     
@@ -76,6 +70,9 @@ if __name__ == "__main__":
         network_config,network_config_correct = parse_config_ssl(
             args.config_file,0.0,args.input_shape[0])
 
+    network_config_correct = {k:network_config_correct[k]
+                              for k in network_config_correct
+                              if k != "prediction_head_args"}
     if args.net_type == "unet_encoder":
         network_config_correct["encoder_only"] = True
         fn_args = [k for k in inspect.signature(UNet).parameters]
@@ -104,6 +101,8 @@ if __name__ == "__main__":
     state_dict = torch.load(
         args.checkpoint,
         map_location=args.dev.split(":")[0])['state_dict']
+    state_dict = {k:state_dict[k] for k in state_dict
+                  if "prediction_head" not in k}
     inc = ssl.load_state_dict(state_dict)
     ssl.eval()
     

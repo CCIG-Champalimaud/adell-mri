@@ -7,7 +7,7 @@ from lib.modules.self_supervised.pl import (
     NonContrastiveConvNeXtPL)
 from lib.modules.config_parsing import parse_config_ssl,parse_config_unet
 from lib.utils.dicom_loader import (
-    DICOMDataset,SliceSampler,filter_orientations)
+    DICOMDataset, SliceSampler, filter_orientations)
 from lib.monai_transforms import (
     get_pre_transforms_ssl,get_post_transforms_ssl,get_augmentations_ssl)
 
@@ -69,7 +69,7 @@ if __name__ == "__main__":
         help="Size of crop with random centre.")
     parser.add_argument(
         '--scaled_crop_size',dest='scaled_crop_size',action="store",
-        default=None,type=float,nargs='+',
+        default=None,type=int,nargs='+',
         help="Crops a region with at least a quarter of the specified size \
             and then resizes them image to this size.")
     parser.add_argument(
@@ -243,7 +243,7 @@ if __name__ == "__main__":
 
     all_pids = [k for k in data_dict]
     
-    pre_transforms_args = {
+    pre_transform_args = {
         "all_keys":all_keys,
         "copied_keys":copied_keys,
         "adc_keys":adc_image_keys,
@@ -267,7 +267,7 @@ if __name__ == "__main__":
     }
 
     transforms = [
-        *get_pre_transforms_ssl(**pre_transforms_args),
+        *get_pre_transforms_ssl(**pre_transform_args),
         *get_augmentations_ssl(**augmentation_args),
         *get_post_transforms_ssl(**post_transform_args)]
 
