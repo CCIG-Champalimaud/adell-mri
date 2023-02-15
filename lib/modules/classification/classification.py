@@ -768,6 +768,16 @@ class TransformableTransformer(torch.nn.Module):
             curr_idx = [i if j == dim else slice(0,None) 
                         for j in range(len(X.shape))]
             yield X[tuple(curr_idx)]
+            
+    def v_module(self,X:torch.Tensor)->torch.Tensor:
+        sh = X.shape
+        n_slices = sh[2+self.dim]
+        ssl_representation = torch.zeros(
+            [sh[0],n_slices,self.module_out_dim],
+            device=X.device)
+        for i,X_slice in enumerate(self.iter_over_dim(X)):
+            ssl_representation[:,i,:] = self.module(X_slice)
+        return ssl_representation
 
     def forward(self,X:torch.Tensor)->torch.Tensor:
         """Forward pass.
@@ -780,13 +790,8 @@ class TransformableTransformer(torch.nn.Module):
         """
         sh = X.shape
         batch_size = sh[0]
-        n_slices = sh[2+self.dim]
-        # tried to replace this with vmap but it leads to OOM errors
-        ssl_representation = torch.zeros(
-            [batch_size,n_slices,self.module_out_dim],
-            device=X.device)
-        for i,X_slice in enumerate(self.iter_over_dim(X)):
-            ssl_representation[:,i,:] = self.module(X_slice)
+        # tried to replace this with vmap but it leads to OOM errors?
+        ssl_representation = self.v_module(X)
         ssl_representation = self.input_norm(ssl_representation)
         if self.positional_embedding is not None:
             ssl_representation = ssl_representation + self.positional_embedding
