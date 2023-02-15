@@ -194,7 +194,8 @@ def get_pre_transforms_ssl(all_keys,
 
     transforms = [
         monai.transforms.LoadImaged(
-            all_keys,ensure_channel_first=True,image_only=True)]
+            all_keys,ensure_channel_first=True,image_only=True),
+        monai.transforms.SqueezeDimd(all_keys,-1,update_meta=False)]
     if n_dim == 3:
         transforms.append(monai.transforms.Orientationd(all_keys,"RAS"))
     if target_spacing is not None:
@@ -221,7 +222,6 @@ def get_pre_transforms_ssl(all_keys,
                 all_keys,[int(j) for j in pad_size]))
     transforms.append(monai.transforms.EnsureTyped(all_keys))
     transforms.append(CopyEntryd(all_keys,key_correspondence))
-    
     return transforms
 
 def get_post_transforms_ssl(all_keys,
