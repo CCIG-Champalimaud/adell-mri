@@ -1,6 +1,8 @@
 import torch
 import torch.nn.functional as F
 
+from typing import Tuple
+
 class UOut(torch.nn.Module):
     def __init__(self,beta: float=0.) -> torch.nn.Module:
         """Form of dropout suggested in [1]. Rather than dropping out 
@@ -93,3 +95,43 @@ class LayerNormChannelsFirst(torch.nn.Module):
         x = (x - u) / torch.sqrt(s + self.eps)
         x = self.weight[:, None, None] * x + self.bias[:, None, None]
         return x
+
+class GRN(torch.nn.Module):
+    """
+    Global response normalization suggested in the ConvNeXtV2 paper [1]. For a
+    given input X: 
+    
+        1. The p=2 norm is calculated along the provided dimensions (`gx`)
+        2. gx is normalised by `nx = gx/mean(gx)`
+        3. The input is normalised as `X_adj = (X*nx) + X`
+        4. The input is adjusted with two learnable parameters gamma and beta 
+            such that `output = X_adj * gamma + beta`
+
+    [1] https://arxiv.org/pdf/2301.00808.pdf
+    """
+    def __init__(self,
+                 n_channels:int,
+                 reduce_dims:Tuple[int]=(1,2)):
+        """
+        Args:
+            n_channels (int): number of input channels.
+            reduce_dims (Tuple[int]): performs the global reduction along these
+                dimensions.
+        """
+        super().__init__()
+        self.n_channels = n_channels
+        self.reduce_dims = reduce_dims
+    
+    def init_parameters(self):
+        """
+        Initialise gamma and beta.
+        """
+        sh = [1 for _ in range(self.spatial_dimensions+1)]
+        sh.append(self.n_channels)
+        self.gamma = torch.nn.Parameter(torch.zeros(sh))
+        self.beta = torch.nn.Parameter(torch.zeros(sh))
+    
+    def forward(self,X):
+        gx = torch.norm(X, p=2, dim=self.dims, keepdim=True)
+        nx = gx / (gx.mean(dim=-1, keepdim=True)+1e-6)
+        return self.gamma * (X * nx) + self.beta + X
