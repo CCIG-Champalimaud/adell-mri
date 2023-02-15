@@ -52,3 +52,21 @@ def unsqueeze_to_target(x:torch.Tensor,target:torch.Tensor,dim=-1):
         for _ in range(tar-cur):
             x = x.unsqueeze(dim)
     return x
+
+class SequentialWithArgs(torch.nn.Sequential):
+    """
+    Modified Sequential module. The difference is that the forward takes
+    arguments.
+    """
+    def __init__(self,
+                 *args:torch.nn.Module):
+        """
+        Args:
+            modules (torch.nn.Module): module
+        """
+        super(torch.nn.Sequential).__init__(*args)
+    
+    def forward(self,X:torch.Tensor,*args,**kwargs)->torch.Tensor:
+        for module in self:
+            X = module(X,*args,**kwargs)
+        return X
