@@ -9,7 +9,7 @@ from abc import ABC
 from .classification import (
     CatNet,OrdNet,ordinal_prediction_to_class,SegCatNet,
     UNetEncoder,GenericEnsemble,ViTClassifier,FactorizedViTClassifier,
-    TransformableTransformer)
+    TransformableTransformer,HybridClassifier)
 from ..learning_rate import CosineAnnealingWithWarmupLR
 
 def f1(prediction:torch.Tensor,y:torch.Tensor)->torch.Tensor:
@@ -869,3 +869,114 @@ class TransformableTransformerPL(TransformableTransformer,ClassPLABC):
         self.kwargs = kwargs
         
         self.setup_metrics()
+
+class HybridClassifierPL(HybridClassifier,ClassPLABC):
+    """
+    PL module for the HybridClassifier.
+    """
+    def __init__(
+        self,
+        image_key: str="image",
+        label_key: str="label",
+        tab_key: str="clinical",
+        learning_rate: float=0.001,
+        batch_size: int=4,
+        weight_decay: float=0.0,
+        training_dataloader_call: Callable=None,
+        loss_fn: Callable=F.binary_cross_entropy,
+        loss_params: dict={},
+        n_epochs: int=100,
+        warmup_steps: int=0,
+        start_decay: int=None,
+        training_batch_preproc: Callable=None,
+        *args,**kwargs) -> torch.nn.Module:
+        """
+        Args:
+            image_key (str): key corresponding to the key from the train
+                dataloader.
+            label_key (str): key corresponding to the label key from the train
+                dataloader.
+            tab_key (str): key corresponding to the tabular data key in the 
+                train dataloader.
+            learning_rate (float, optional): learning rate. Defaults to 0.001.
+                batch_size (int, optional): batch size. Defaults to 4.
+            weight_decay (float, optional): weight decay for optimizer. Defaults 
+                to 0.005.
+            training_dataloader_call (Callable, optional): call for the 
+                training dataloader. Defaults to None.
+            loss_fn (Callable, optional): loss function. Defaults to 
+                F.binary_cross_entropy
+            loss_params (dict, optional): classification loss parameters. 
+                Defaults to {}.
+            n_epochs (int, optional): number of epochs. Defaults to 100.
+            warmup_steps (int, optional): number of warmup steps. Defaults 
+                to 0.
+            start_decay (int, optional): number of steps after which decay
+                begins. Defaults to None (decay starts after warmup).
+            training_batch_preproc (Callable): function to be applied to the
+                entire batch before feeding it to the model during training.
+                Can contain transformations such as mixup, which require access
+                to the entire training batch.
+            args: arguments for classification network class.
+            kwargs: keyword arguments for classification network class.
+
+        Returns:
+            pl.LightningModule: a classification network module.
+        """
+            
+        super().__init__(*args,**kwargs)
+
+        self.image_key = image_key
+        self.label_key = label_key
+        self.tab_key = tab_key
+        self.learning_rate = learning_rate
+        self.batch_size = batch_size
+        self.weight_decay = weight_decay
+        self.training_dataloader_call = training_dataloader_call
+        self.loss_fn = loss_fn
+        self.loss_params = loss_params
+        self.n_epochs = n_epochs
+        self.warmup_steps = warmup_steps
+        self.start_decay = start_decay
+        self.training_batch_preproc = training_batch_preproc
+        self.args = args
+        self.kwargs = kwargs
+        
+        self.setup_metrics()
+
+    def training_step(self,batch,batch_idx):
+        x_conv, y = batch[self.image_key],batch[self.label_key]
+        x_tab = batch[self.tab_key]
+        prediction = self.forward(x_conv,x_tab)
+        prediction = torch.squeeze(prediction,1)
+
+        loss = self.calculate_loss(prediction,y,with_params=True)
+
+        self.log("train_loss",loss,sync_dist=True)
+        return loss
+
+    def validation_step(self,batch,batch_idx):
+        x_conv, y = batch[self.image_key],batch[self.label_key]
+        x_tab = batch[self.tab_key]
+        prediction = self.forward(x_conv,x_tab)
+        prediction = torch.squeeze(prediction,1)
+
+        loss = self.calculate_loss(prediction,y,with_params=True)
+        self.log("val_loss",loss,on_epoch=True,
+                 on_step=False,prog_bar=True,
+                 batch_size=x.shape[0],sync_dist=True)        
+        self.update_metrics(prediction,y,self.val_metrics)
+        return loss
+
+    def test_step(self,batch,batch_idx):
+        x_conv, y = batch[self.image_key],batch[self.label_key]
+        x_tab = batch[self.tab_key]
+        prediction = self.forward(x_conv,x_tab)
+        prediction = torch.squeeze(prediction,1)
+
+        loss = self.calculate_loss(prediction,y)
+        self.log("test_loss",loss,on_epoch=True,
+                 on_step=False,prog_bar=True,
+                 batch_size=x.shape[0],sync_dist=True)        
+        self.update_metrics(prediction,y,self.test_metrics)
+        return loss

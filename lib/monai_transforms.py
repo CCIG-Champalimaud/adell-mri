@@ -124,6 +124,7 @@ def get_transforms_unet(x,
 def get_transforms_classification(x,
                                   keys,
                                   adc_keys,
+                                  clinical_feature_keys,
                                   target_spacing,
                                   crop_size,
                                   pad_size,
@@ -168,6 +169,9 @@ def get_transforms_classification(x,
                     keys,[int(j) for j in crop_size]))
         transforms.append(
             monai.transforms.ConcatItemsd(keys,"image"))
+        if len(clinical_feature_keys) > 0:
+            transforms.append(
+                monai.transforms.ConcatItemsd(clinical_feature_keys,"tabular"))
         if isinstance(positive_labels,int):
             positive_labels = [positive_labels]
         transforms.append(
