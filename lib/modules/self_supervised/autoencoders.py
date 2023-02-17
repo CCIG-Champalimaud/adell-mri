@@ -192,14 +192,14 @@ class ViTMaskedAutoEncoder(ViTAutoEncoder):
         X = self.encode(X)
         
         mask_tokens = self.mask_token.repeat(
-            x.shape[0], ids_restore.shape[1] + 1 - x.shape[1], 1)
+            X.shape[0], ids_restore.shape[1] + 1 - X.shape[1], 1)
         
-        x_ = torch.cat([x[:, 1:, :], mask_tokens], dim=1)  # no cls token
-        x_ = torch.gather(
-            x_,
+        X_ = torch.cat([X[:, 1:, :], mask_tokens], dim=1)  # no cls token
+        X_ = torch.gather(
+            X_,
             dim=1,
-            index=ids_restore.unsqueeze(-1).repeat(1,1,x.shape[2]))  # unshuffle
-        x = torch.cat([x[:, :1, :], x_], dim=1)
+            index=ids_restore.unsqueeze(-1).repeat(1,1,X.shape[2]))  # unshuffle
+        X = torch.cat([X[:, :1, :], X_], dim=1)
         X[:,1:,:] = X[:,1:,:] + self.positional_embedding
         
         X = self.decoder(X)
