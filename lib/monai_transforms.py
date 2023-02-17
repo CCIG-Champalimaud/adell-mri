@@ -230,7 +230,8 @@ def get_post_transforms_ssl(all_keys,
         monai.transforms.ConcatItemsd(all_keys,"augmented_image_1"),
         monai.transforms.ConcatItemsd(copied_keys,"augmented_image_2"),
         monai.transforms.ToTensord(
-            ["augmented_image_1","augmented_image_2"])]
+            ["augmented_image_1","augmented_image_2"],
+            track_meta=False)]
 
 def get_augmentations_unet(augment,
                            all_keys,
