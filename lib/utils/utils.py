@@ -14,7 +14,10 @@ from skimage.morphology import convex_hull_image
 
 from typing import Dict,List,Tuple,Any
 from ..modules.losses import *
-from ..custom_types import *
+from ..custom_types import (
+    DatasetDict,TensorOrNDarray,NDArrayOrTensorDict,TensorDict,SizeDict,
+    SpacingDict,FloatOrTensor,TensorIterable,BBDict,Iterable,Optional,
+    Union)
 
 loss_factory = {
     "binary":{

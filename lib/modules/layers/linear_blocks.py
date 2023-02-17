@@ -214,10 +214,14 @@ class MultiHeadSelfAttention(torch.nn.Module):
     """Module composed of several self-attention modules which calculate
     a set of self-attention outputs, concatenates them, and applies a 
     linear operation (matrix mul and addition of bias) on the output [1].
-    This implementation is greatly inspired by the SWIN implementation [2].
+    This implementation is greatly inspired by the SWIN implementation [2]. 
+    Here we skip the bias term in the QKV projection and add a layer norm
+    operation to the Q and K terms as suggested in [3] for increased training 
+    stability.
     
     [1] https://arxiv.org/abs/2207.09238
     [2] https://github.com/microsoft/Swin-Transformer/blob/main/models/swin_transformer.py
+    [3] https://arxiv.org/pdf/2302.05442.pdf
     """
     def __init__(self,
                  input_dim:int,
@@ -263,8 +267,6 @@ class MultiHeadSelfAttention(torch.nn.Module):
         makes computation more efficient and is equivalent to initialising 
         multiple attention heads.
         """
-        # TODO: implement Q and K layer normalization
-        # TODO: remove bias from qkv layer
         real_attention_dim = self.attention_dim // self.n_heads
         real_hidden_dim = self.hidden_dim // self.n_heads
         self.qkv_dim = self.attention_dim*2+self.hidden_dim
@@ -280,6 +282,8 @@ class MultiHeadSelfAttention(torch.nn.Module):
         self.reg_const = torch.sqrt(torch.as_tensor(
             self.attention_dim / self.n_heads))
         self.drop_op = torch.nn.Dropout(self.dropout_rate)
+        self.q_norm = torch.nn.LayerNorm(real_attention_dim)
+        self.k_norm = torch.nn.LayerNorm(real_attention_dim)
         if self.window_size:
             self.relative_position_bias_table = torch.nn.Parameter(
                 torch.zeros(
@@ -322,6 +326,8 @@ class MultiHeadSelfAttention(torch.nn.Module):
         QKV = QKV.reshape(*b,t,self.n_heads,
                           self.qkv_dim // self.n_heads).permute(*permute_dims)
         Q,K,V = QKV[...,self.q_idx],QKV[...,self.k_idx],QKV[...,self.v_idx]
+        Q = self.q_norm(Q)
+        K = self.q_norm(K)
         S = Q @ torch.transpose(K,-1,-2)
         S = S / self.reg_const
         if self.window_size:

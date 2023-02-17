@@ -34,6 +34,10 @@ if __name__ == "__main__":
         help="Image keys in the dataset JSON.",
         required=True)
     parser.add_argument(
+        '--clinical_feature_keys',dest='clinical_feature_keys',type=str,
+        nargs='+',help="Tabular clinical feature keys in the dataset JSON.",
+        default=None)
+    parser.add_argument(
         '--adc_keys',dest='adc_keys',type=str,nargs='+',
         help="Image keys corresponding to ADC.",default=None)
     parser.add_argument(
@@ -94,6 +98,9 @@ if __name__ == "__main__":
         '--test_ids',dest="test_ids",type=str,default=None,nargs="+",
         help="Comma-separated IDs to be used in each test")
     parser.add_argument(
+        '--one_to_one',dest="one_to_one",action="store_true",
+        help="Tests the checkpoint only on the corresponding test_ids set")
+    parser.add_argument(
         '--checkpoints',dest='checkpoints',type=str,default=None,
         nargs="+",help='Test using these checkpoints.')
     parser.add_argument(
@@ -112,6 +119,11 @@ if __name__ == "__main__":
     accelerator,devices,strategy = get_devices(args.dev)
 
     output_file = open(args.metric_path,'w')
+    
+    if args.clinical_feature_keys is None:
+        clinical_feature_keys = []
+    else:
+        clinical_feature_keys = args.clinical_feature_keys
 
     data_dict = json.load(open(args.dataset_json,'r'))
     data_dict = filter_dictionary_with_possible_labels(
@@ -175,6 +187,7 @@ if __name__ == "__main__":
     label_mode = "binary" if n_classes == 2 else "cat"
     transform_arguments = {
         "keys":keys,
+        "clinical_feature_keys":clinical_feature_keys,
         "adc_keys":adc_keys,
         "target_spacing":args.target_spacing,
         "crop_size":args.crop_size,
@@ -226,7 +239,11 @@ if __name__ == "__main__":
             "image_key":"image",
             "label_key":"label"}
 
-        for checkpoint in args.checkpoints:
+        if args.one_to_one is True:
+            checkpoint_list = [args.checkpoints[iteration]]
+        else:
+            checkpoint_list = args.checkpoints
+        for checkpoint in checkpoint_list:
             if args.net_type == "unet":
                 network = UNetEncoderPL(
                     head_structure=[

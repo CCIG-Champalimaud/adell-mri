@@ -15,18 +15,15 @@ sys.path.append(r"..")
 from lib.utils import (
     safe_collate,set_classification_layer_bias)
 from lib.utils.pl_utils import get_ckpt_callback,get_logger,get_devices
-from lib.utils.batch_preprocessing import BatchPreprocessing
 from lib.utils.dataset_filters import (
     filter_dictionary_with_filters,
     filter_dictionary_with_possible_labels,
     filter_dictionary_with_presence)
 from lib.monai_transforms import get_transforms_classification as get_transforms
 from lib.monai_transforms import get_augmentations_class as get_augmentations
-from lib.modules.classification.pl import (
-    ClassNetPL,UNetEncoderPL,ViTClassifierPL,FactorizedViTClassifierPL)
-from lib.modules.layers.adn_fn import get_adn_fn
 from lib.modules.losses import OrdinalSigmoidalLoss
 from lib.modules.config_parsing import parse_config_unet,parse_config_cat
+from lib.utils.network_factories import get_classification_network
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -39,6 +36,10 @@ if __name__ == "__main__":
         '--image_keys',dest='image_keys',type=str,nargs='+',
         help="Image keys in the dataset JSON.",
         required=True)
+    parser.add_argument(
+        '--clinical_feature_keys',dest='clinical_feature_keys',type=str,
+        nargs='+',help="Tabular clinical feature keys in the dataset JSON.",
+        default=None)
     parser.add_argument(
         '--t2_keys',dest='t2_keys',type=str,nargs='+',
         help="Image keys corresponding to T2.",default=None)
@@ -81,11 +82,9 @@ if __name__ == "__main__":
         help="Subsamples data to a given size",
         default=None)
     parser.add_argument(
-        '--batch_size',dest='batch_size',type=int,default=None,
-        help="Overrides batch size in config file")
-    parser.add_argument(
-        '--learning_rate',dest='learning_rate',type=float,default=None,
-        help="Overrides learning rate in config file")
+        '--val_from_train',dest='val_from_train',default=None,type=float,
+        help="Uses this fraction of training data as a validation set \
+            during training")
 
     # network + training
     parser.add_argument(
@@ -128,6 +127,9 @@ if __name__ == "__main__":
     parser.add_argument(
         '--folds',dest="folds",type=str,default=None,nargs="+",
         help="Comma-separated IDs to be used in each space-separated fold")
+    parser.add_argument(
+        '--exclude_ids',dest='exclude_ids',type=str,default=None,
+        help="Comma separated list of IDs to exclude.")
     parser.add_argument(
         '--checkpoint_dir',dest='checkpoint_dir',type=str,default=None,
         help='Path to directory where checkpoints will be saved.')
@@ -196,6 +198,12 @@ if __name__ == "__main__":
     parser.add_argument(
         '--class_weights',dest='class_weights',type=str,nargs='+',
         help="Class weights (by alphanumeric order).",default=None)
+    parser.add_argument(
+        '--batch_size',dest='batch_size',type=int,default=None,
+        help="Overrides batch size in config file")
+    parser.add_argument(
+        '--learning_rate',dest='learning_rate',type=float,default=None,
+        help="Overrides learning rate in config file")
 
     args = parser.parse_args()
 
@@ -211,13 +219,24 @@ if __name__ == "__main__":
     output_file = open(args.metric_path,'w')
 
     data_dict = json.load(open(args.dataset_json,'r'))
+    
+    if args.clinical_feature_keys is None:
+        clinical_feature_keys = []
+    else:
+        clinical_feature_keys = args.clinical_feature_keys
+    
+    print(len(data_dict))
+    if args.exclude_ids is not None:
+        data_dict = {k:data_dict[k] for k in data_dict
+                     if k not in args.exclude_ids.split(",")}
+    print(len(data_dict))
     data_dict = filter_dictionary_with_possible_labels(
         data_dict,args.possible_labels,args.label_keys)
     if len(args.filter_on_keys) > 0:
         data_dict = filter_dictionary_with_filters(
             data_dict,args.filter_on_keys)
     data_dict = filter_dictionary_with_presence(
-        data_dict,args.image_keys + [args.label_keys])
+        data_dict,args.image_keys + [args.label_keys] + clinical_feature_keys)
     if args.subsample_size is not None:
         strata = {}
         for k in data_dict:
@@ -276,6 +295,7 @@ if __name__ == "__main__":
     label_mode = "binary" if n_classes == 2 else "cat"
     transform_arguments = {
         "keys":keys,
+        "clinical_feature_keys":clinical_feature_keys,
         "adc_keys":adc_keys,
         "target_spacing":args.target_spacing,
         "crop_size":args.crop_size,
@@ -323,12 +343,33 @@ if __name__ == "__main__":
         train_idxs,val_idxs = next(fold_generator)
         train_pids = [all_pids[i] for i in train_idxs]
         val_pids = [all_pids[i] for i in val_idxs]
+        if args.val_from_train is not None:
+            n_train_val = int(len(train_pids)*args.val_from_train)
+            train_val_pids = rng.choice(
+                train_pids,n_train_val,replace=False)
+            train_pids = [pid for pid in train_pids 
+                          if pid not in train_val_pids]
+        else:
+            train_val_pids = val_pids
         train_list = [data_dict[pid] for pid in train_pids]
+        train_val_list = [data_dict[pid] for pid in train_val_pids]
         val_list = [data_dict[pid] for pid in val_pids]
         
         print("Current fold={}".format(val_fold))
-        print("\tTrain set size={}; validation set size={}".format(
-            len(train_idxs),len(val_idxs)))
+        print("\tTrain set size={}".format(len(train_idxs)))
+        print("\tTrain validation set size={}".format(len(train_val_pids)))
+        print("\tValidation set size={}".format(len(val_idxs)))
+        
+        if len(clinical_feature_keys) > 0:
+            clinical_feature_values = [[train_list[pid][k] 
+                                        for pid in train_list]
+                                       for k in clinical_feature_keys]
+            clinical_feature_values = np.array(clinical_feature_values)
+            clinical_feature_means = np.mean(clinical_feature_values,axis=0)
+            clinical_feature_stds = np.std(clinical_feature_values,axis=0)
+        else:
+            clinical_feature_means = None
+            clinical_feature_stds = None
         
         ckpt_callback,ckpt_path,status = get_ckpt_callback(
             checkpoint_dir=args.checkpoint_dir,
@@ -346,7 +387,7 @@ if __name__ == "__main__":
             cache_rate=args.cache_rate,
             num_workers=args.n_workers)
         train_dataset_val = monai.data.CacheDataset(
-            val_list,transforms_val,
+            train_val_list,transforms_val,
             cache_rate=args.cache_rate,
             num_workers=args.n_workers)
         validation_dataset = monai.data.Dataset(
@@ -440,63 +481,24 @@ if __name__ == "__main__":
             shuffle=False,num_workers=n_workers,
             collate_fn=safe_collate)
 
-        if args.net_type == "unet":
-            act_fn = network_config["activation_fn"]
-        else:
-            act_fn = "swish"
-        adn_fn = get_adn_fn(3,"identity",act_fn=act_fn,
-                            dropout_param=args.dropout_param)
-        batch_preprocessing = BatchPreprocessing(
-            args.label_smoothing,args.mixup_alpha,args.partial_mixup,args.seed)
-        boilerplate_args = {
-            "n_channels":len(keys),
-            "n_classes":n_classes,
-            "training_dataloader_call":train_loader_call,
-            "image_key":"image",
-            "label_key":"label",
-            "n_epochs":args.max_epochs,
-            "warmup_steps":args.warmup_steps,
-            "training_batch_preproc":batch_preprocessing,
-            "start_decay":args.start_decay}
-        if args.net_type == "unet":
-            network = UNetEncoderPL(
-                head_structure=[
-                    network_config["depth"][-1] for _ in range(3)],
-                head_adn_fn=get_adn_fn(
-                    1,"batch",act_fn="gelu",
-                    dropout_param=args.dropout_param),
-                **boilerplate_args,
-                **network_config)
-        elif "vit" in args.net_type:
-            image_size = [int(x) for x in args.crop_size]
-            network_config["image_size"] = image_size
-            if args.net_type == "vit":
-                network = ViTClassifierPL(
-                    adn_fn=get_adn_fn(
-                        1,"identity",act_fn="gelu",
-                        dropout_param=args.dropout_param),
-                    **boilerplate_args,
-                    **network_config)
-            elif args.net_type == "factorized_vit":
-                for k in ["embed_method"]:
-                    if k in network_config:
-                        del network_config[k]
-                network = FactorizedViTClassifierPL(
-                    adn_fn=get_adn_fn(
-                        1,"identity",act_fn="gelu",
-                        dropout_param=args.dropout_param),
-                    **boilerplate_args,
-                    **network_config)                    
-            
-        else:
-            network = ClassNetPL(
-                net_type=args.net_type,n_channels=len(keys),
-                n_classes=n_classes,
-                training_dataloader_call=train_loader_call,
-                image_key="image",label_key="label",
-                adn_fn=adn_fn,n_epochs=args.max_epochs,
-                warmup_steps=args.warmup_steps,
-                **network_config)
+        network = get_classification_network(
+            net_type=args.net_type,
+            network_config=network_config,
+            dropout_param=args.dropout_param,
+            seed=args.seed,
+            n_classes=n_classes,
+            keys=keys,
+            clinical_feature_keys=clinical_feature_keys,
+            train_loader_call=train_loader_call,
+            max_epochs=args.max_epochs,
+            warmup_steps=args.warmup_steps,
+            start_decay=args.start_decay,
+            crop_size=args.crop_size,
+            clinical_feature_means=clinical_feature_means,
+            clinical_feature_stds=clinical_feature_stds,
+            label_smoothing=args.label_smoothing,
+            mixup_alpha=args.mixup_alpha,
+            partial_mixup=args.partial_mixup)
 
         # instantiate callbacks and loggers
         callbacks = [RichProgressBar()]
