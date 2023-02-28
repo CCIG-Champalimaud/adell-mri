@@ -161,7 +161,7 @@ class SliceLinearEmbedding(torch.nn.Module):
         self.init_linear_layers_if_necessary()
         self.init_positional_embedding()
         self.init_class_token_if_necessary()
-        
+            
     def init_class_token_if_necessary(self):
         if self.use_class_token is True:
             self.class_token = torch.nn.Parameter(
@@ -180,13 +180,13 @@ class SliceLinearEmbedding(torch.nn.Module):
     def init_positional_embedding(self):
         if self.learnable_embedding is True:
             self.positional_embedding = torch.nn.Parameter(
-                torch.zeros([1,1,self.n_patches,self.embedding_size]))
+                torch.zeros([1,1,self.n_patches,self.true_n_features]))
             torch.nn.init.trunc_normal_(
                 self.positional_embedding,mean=0.0,std=0.02,a=-2.0,b=2.0)
         else:
             sin_embed = sinusoidal_positional_encoding(
-                self.n_patches,self.embedding_size).reshape(
-                    1,1,self.n_patches,self.embedding_size)
+                self.n_patches,self.true_n_features).reshape(
+                    1,1,self.n_patches,self.true_n_features)
             self.positional_embedding = torch.nn.Parameter(
                 torch.as_tensor(sin_embed,dtype=torch.float32),
                 requires_grad=False)
@@ -1389,9 +1389,9 @@ class FactorizedViT(torch.nn.Module):
             dropout_rate=self.dropout_rate,
             use_class_token=self.use_class_token,
             learnable_embedding=self.learnable_embedding,
-            out_dim=None)
+            out_dim=self.embedding_size)
 
-        self.input_dim_primary = self.embedding.embedding_size
+        self.input_dim_primary = self.embedding.true_n_features
 
         input_dim_primary = self.input_dim_primary
 

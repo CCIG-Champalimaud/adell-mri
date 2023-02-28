@@ -482,12 +482,17 @@ class PrintTyped(monai.transforms.Transform):
 class Printd(monai.transforms.Transform):
     """Convenience MONAI transform that prints elements. Used for debugging.
     """
-    def __init__(self,prefix=""):
+    def __init__(self,prefix="",keys=None):
         self.prefix = prefix
+        self.keys = keys
 
     def __call__(self,X):
         for k in X:
-            print(self.prefix,k,X[k])
+            if self.keys is not None:
+                if k in self.keys:
+                    print(self.prefix,k,X[k])
+            else:
+                print(self.prefix,k,X[k])
         return X
 
 class RandomSlices(monai.transforms.RandomizableTransform):

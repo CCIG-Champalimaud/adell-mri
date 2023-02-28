@@ -830,8 +830,9 @@ class TabularClassifier(torch.nn.Module):
         self.init_normalization_parameters()
 
     def init_mlp(self):
+        nc = 1 if self.n_classes == 2 else self.n_classes
         self.mlp = MLP(input_dim=self.n_features,
-                       output_dim=self.n_classes,
+                       output_dim=nc,
                        structure=self.mlp_structure,
                        adn_fn=self.mlp_adn_fn)
     
@@ -845,9 +846,9 @@ class TabularClassifier(torch.nn.Module):
         else:
             feature_stds = torch.as_tensor(self.feature_stds).reshape(1,-1)
             
-        self.mu = torch.nn.Parameter(feature_means,
+        self.mu = torch.nn.Parameter(feature_means.float(),
                                      requires_grad=False)
-        self.sigma = torch.nn.Parameter(feature_stds,
+        self.sigma = torch.nn.Parameter(feature_stds.float(),
                                         requires_grad=False)
     
     def normalize(self,X:torch.Tensor)->torch.Tensor:
@@ -864,14 +865,37 @@ class HybridClassifier(torch.nn.Module):
         self.convolutional_module = convolutional_module
         self.tabular_module = tabular_module
         
+        self.set_n_classes()
         self.init_weight()
     
     def init_weight(self):
         self.raw_weight = torch.nn.Parameter(torch.ones([1]))
+    
+    def set_n_classes(self):
+        n_classes_conv = None
+        n_classes_tab = None
+        if hasattr(self.convolutional_module,"n_classes"):
+            n_classes_conv = self.convolutional_module.n_classes
+        if hasattr(self.tabular_module,"n_classes"):
+            n_classes_tab = self.tabular_module.n_classes
         
+        if all([(n_classes_conv is not None),(n_classes_tab is not None)]):
+            assert n_classes_conv == n_classes_tab,\
+                "convolutional_module.n_classes should be the same as \
+                    tabular_module.n_classes"
+        if n_classes_conv is not None:
+            self.n_classes = n_classes_conv
+        elif n_classes_tab is not None:
+            self.n_classes = n_classes_tab
+        else:
+            err_message = "{} or {} should be defined".format(
+                "convolutional_module.n_classes",
+                "tabular_module.n_classes")
+            raise ValueError(err_message)
+    
     def forward(self,X_conv:torch.Tensor,X_tab:torch.Tensor)->torch.Tensor:
         class_conv = self.convolutional_module(X_conv)
-        class_tab = self.convolutional_module(X_conv)
+        class_tab = self.tabular_module(X_tab)
         
         weight = F.sigmoid(self.raw_weight)
         class_out = weight * class_conv + (1-weight)*class_tab

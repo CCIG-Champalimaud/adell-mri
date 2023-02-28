@@ -878,7 +878,7 @@ class HybridClassifierPL(HybridClassifier,ClassPLABC):
         self,
         image_key: str="image",
         label_key: str="label",
-        tab_key: str="clinical",
+        tab_key: str="tabular",
         learning_rate: float=0.001,
         batch_size: int=4,
         weight_decay: float=0.0,
@@ -941,7 +941,7 @@ class HybridClassifierPL(HybridClassifier,ClassPLABC):
         self.training_batch_preproc = training_batch_preproc
         self.args = args
         self.kwargs = kwargs
-        
+
         self.setup_metrics()
 
     def training_step(self,batch,batch_idx):

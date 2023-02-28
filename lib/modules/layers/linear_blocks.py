@@ -327,7 +327,7 @@ class MultiHeadSelfAttention(torch.nn.Module):
                           self.qkv_dim // self.n_heads).permute(*permute_dims)
         Q,K,V = QKV[...,self.q_idx],QKV[...,self.k_idx],QKV[...,self.v_idx]
         Q = self.q_norm(Q)
-        K = self.q_norm(K)
+        K = self.k_norm(K)
         S = Q @ torch.transpose(K,-1,-2)
         S = S / self.reg_const
         if self.window_size:

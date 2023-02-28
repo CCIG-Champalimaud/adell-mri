@@ -80,6 +80,16 @@ def get_classification_network(net_type:str,
             **network_config)
     
     if len(clinical_feature_keys) > 0:
+        boilerplate_args_hybrid = {
+            "training_dataloader_call":train_loader_call,
+            "image_key":"image",
+            "label_key":"label",
+            "n_epochs":max_epochs,
+            "warmup_steps":warmup_steps,
+            "training_batch_preproc":batch_preprocessing,
+            "start_decay":start_decay}
+        if "loss_fn" in network_config:
+            boilerplate_args_hybrid["loss_fn"] = network_config["loss_fn"]
         tab_network = TabularClassifier(len(clinical_feature_keys),
                                         mlp_structure=[],
                                         mlp_adn_fn=torch.nn.Identity,
@@ -89,6 +99,6 @@ def get_classification_network(net_type:str,
         network = HybridClassifierPL(
             convolutional_module=network,
             tabular_module=tab_network,
-            **boilerplate_args)
+            **boilerplate_args_hybrid)
 
     return network
