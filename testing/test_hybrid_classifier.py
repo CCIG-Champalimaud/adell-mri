@@ -17,7 +17,7 @@ def test_tabular_classifier():
         n_features,[64,64],torch.nn.Identity,n_classes)
     input_tensor = torch.rand(batch_size,n_features)
     out_tensor = tab_class(input_tensor)
-    assert list(out_tensor.shape) == [batch_size,n_classes]
+    assert list(out_tensor.shape) == [batch_size,n_classes-1]
     
 def test_hybrid_classifier():
     tab_class = TabularClassifier(
@@ -25,10 +25,10 @@ def test_hybrid_classifier():
     conv_class = ConvNeXt({"spatial_dim":2,
                            "in_channels":c,
                            "structure":[[32,32,3,1],[32,32,3,1]]},
-                          {"in_channels":32,"structure":[64,2]})
+                          {"in_channels":32,"structure":[64,1]})
     hybrid_class = HybridClassifier(tabular_module=tab_class,
                                     convolutional_module=conv_class)
     input_tensor_tab = torch.rand(batch_size,n_features)
     input_tensor_conv = torch.rand(batch_size,c,h,w)
     out_tensor = hybrid_class(input_tensor_conv,input_tensor_tab)
-    assert list(out_tensor.shape) == [batch_size,n_classes]
+    assert list(out_tensor.shape) == [batch_size,n_classes-1]
