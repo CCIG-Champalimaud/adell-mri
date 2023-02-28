@@ -219,7 +219,9 @@ class VICRegLoss(torch.nn.Module):
         Returns:
             torch.Tensor: invariance loss
         """
-        return F.mse_loss(X1,X2)
+        n = X1.numel()
+        mse = torch.sum((X1-X2)**2 / n)
+        return mse
     
     def vicreg_loss(self,
                     X1:torch.Tensor,
@@ -239,11 +241,11 @@ class VICRegLoss(torch.nn.Module):
             inv_loss (torch.Tensor) invariance loss
         """
         var_loss = torch.add(
-            self.variance_loss(X1),
-            self.variance_loss(X2)) / 2
+            self.variance_loss(X1) / 2,
+            self.variance_loss(X2) / 2)
         cov_loss = torch.add(
-            self.covariance_loss(X1)/adj,
-            self.covariance_loss(X2)/adj) / 2
+            self.covariance_loss(X1)/adj / 2,
+            self.covariance_loss(X2)/adj / 2)
         inv_loss = self.invariance_loss(X1,X2)
         return var_loss,cov_loss,inv_loss
     
