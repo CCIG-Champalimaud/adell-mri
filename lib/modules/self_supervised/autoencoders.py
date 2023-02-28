@@ -4,6 +4,7 @@ from ..layers.conv_next import ConvNeXtV2Backbone
 from ..layers.vit import TransformerBlockStack,LinearEmbedding
 
 from typing import List,Tuple,Dict,Any
+from ...custom_types import Size2dOr3d
 
 def random_masking(x, mask_ratio, rng):
     """
@@ -39,19 +40,23 @@ def random_masking(x, mask_ratio, rng):
 
 class ConvNeXtAutoEncoder(torch.nn.Module):
     def __init__(self,
+                 image_size:Size2dOr3d,
                  in_channels:int,
                  encoder_structure:List[Tuple[int,int,int,int]],
                  decoder_structure:List[Tuple[int,int,int,int]],
                  spatial_dim:int=2,
                  batch_ensemble:int=0):
         super().__init__()
+        self.image_size = image_size
         self.in_channels = in_channels
         self.encoder_structure = encoder_structure
         self.decoder_structure = decoder_structure
-        # TODO: define maxpool
-        self.maxpool_structure = None
+        self.maxpool_structure = [2 for _ in self.encoder_structure]
         self.spatial_dim = spatial_dim
         self.batch_ensemble = batch_ensemble
+        
+        self.patch_size = [x // (2 ** len(self.maxpool_structure))
+                           for x in self.image_size]
     
     def init_encoder(self):
         self.encoder = ConvNeXtV2Backbone(
@@ -61,10 +66,16 @@ class ConvNeXtAutoEncoder(torch.nn.Module):
             maxpool_structure=self.maxpool_structure,
             batch_ensemble=self.batch_ensemble)
     
+    def conv(self,*args,**kwargs):
+        if self.spatial_dim == 2:
+            return torch.nn.Conv2d(*args,**kwargs)
+        if self.spatial_dim == 3:
+            return torch.nn.Conv3d(*args,**kwargs)
+
     def init_proj(self):
-        self.proj = torch.nn.Conv2d(self.encoder_structure[-1][0],
-                                    self.decoder_structure[0][0],
-                                    1)
+        input_channels = self.encoder_structure[-1][0]
+        output_channels = self.decoder_structure[0][0]
+        self.proj = self.conv(input_channels,output_channels,1)
     
     def init_decoder(self):
         self.encoder = ConvNeXtV2Backbone(
@@ -75,7 +86,9 @@ class ConvNeXtAutoEncoder(torch.nn.Module):
             batch_ensemble=self.batch_ensemble)
     
     def init_pred(self):
-        self.encoder
+        input_channels = self.decoder_structure[-1][0]
+        output_channels = int(np.prod(self.patch_size))
+        self.pred = self.conv(input_channels,output_channels,1)
     
     def forward(self,X):
         return X
