@@ -66,7 +66,7 @@ def get_transforms_unet(x,
                 monai.transforms.ScaleIntensityd(non_adc_keys,0,1))
         if len(adc_image_keys) > 0:
             transforms.append(
-                ConditionalRescalingd(adc_image_keys,1000,0.001))
+                ConditionalRescalingd(adc_image_keys,500,0.001))
             transforms.append(
                 monai.transforms.ScaleIntensityd(
                     adc_image_keys,None,None,-(1-adc_factor)))
@@ -142,7 +142,7 @@ def get_transforms_classification(x,
                 monai.transforms.ScaleIntensityd(non_adc_keys,0,1))
         if len(adc_keys) > 0:
             transforms.append(
-                ConditionalRescalingd(adc_keys,1000,0.001))
+                ConditionalRescalingd(adc_keys,500,0.001))
             transforms.append(
                 monai.transforms.ScaleIntensityd(
                     adc_keys,None,None,-2/3))
@@ -170,8 +170,14 @@ def get_transforms_classification(x,
         transforms.append(
             monai.transforms.ConcatItemsd(keys,"image"))
         if len(clinical_feature_keys) > 0:
-            transforms.append(
-                monai.transforms.ConcatItemsd(clinical_feature_keys,"tabular"))
+            transforms.extend(
+                [monai.transforms.EnsureTyped(
+                    clinical_feature_keys,dtype=np.float32),
+                 monai.transforms.Lambdad(
+                     clinical_feature_keys,
+                     func=lambda x:np.reshape(x,[1])),
+                 monai.transforms.ConcatItemsd(
+                     clinical_feature_keys,"tabular")])
         if isinstance(positive_labels,int):
             positive_labels = [positive_labels]
         transforms.append(

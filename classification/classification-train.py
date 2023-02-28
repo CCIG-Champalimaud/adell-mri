@@ -225,11 +225,9 @@ if __name__ == "__main__":
     else:
         clinical_feature_keys = args.clinical_feature_keys
     
-    print(len(data_dict))
     if args.exclude_ids is not None:
         data_dict = {k:data_dict[k] for k in data_dict
                      if k not in args.exclude_ids.split(",")}
-    print(len(data_dict))
     data_dict = filter_dictionary_with_possible_labels(
         data_dict,args.possible_labels,args.label_keys)
     if len(args.filter_on_keys) > 0:
@@ -237,6 +235,9 @@ if __name__ == "__main__":
             data_dict,args.filter_on_keys)
     data_dict = filter_dictionary_with_presence(
         data_dict,args.image_keys + [args.label_keys] + clinical_feature_keys)
+    if len(clinical_feature_keys) > 0:
+        data_dict = filter_dictionary_with_filters(
+            data_dict,[f"{k}!=nan" for k in clinical_feature_keys])
     if args.subsample_size is not None:
         strata = {}
         for k in data_dict:
@@ -361,12 +362,12 @@ if __name__ == "__main__":
         print("\tValidation set size={}".format(len(val_idxs)))
         
         if len(clinical_feature_keys) > 0:
-            clinical_feature_values = [[train_list[pid][k] 
-                                        for pid in train_list]
+            clinical_feature_values = [[train_sample[k]
+                                        for train_sample in train_list]
                                        for k in clinical_feature_keys]
             clinical_feature_values = np.array(clinical_feature_values)
-            clinical_feature_means = np.mean(clinical_feature_values,axis=0)
-            clinical_feature_stds = np.std(clinical_feature_values,axis=0)
+            clinical_feature_means = np.mean(clinical_feature_values,axis=1)
+            clinical_feature_stds = np.std(clinical_feature_values,axis=1)
         else:
             clinical_feature_means = None
             clinical_feature_stds = None
@@ -458,7 +459,7 @@ if __name__ == "__main__":
             network_config["loss_fn"] = OrdinalSigmoidalLoss(class_weights,n_classes)
         else:
             network_config["loss_fn"] = torch.nn.CrossEntropy(class_weights)
-
+        
         if isinstance(devices,list):
             n_workers = args.n_workers // len(devices)
         else:
