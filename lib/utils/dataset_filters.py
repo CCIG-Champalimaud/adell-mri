@@ -74,17 +74,19 @@ def filter_dictionary_with_filters(D:DatasetDict,
     print("Filtering on: {}".format(filters))
     print("\tInput size: {}".format(len(D)))
     processed_filters = {
-        "eq":[],"gt":[],"lt":[]}
+        "eq":[],"gt":[],"lt":[],"neq":[]}
     for f in filters:
-        if "=" in f:
+        if "!=" in f:
+            processed_filters["neq"].append(f.split("!="))
+        elif "=" in f:
             processed_filters["eq"].append(f.split("="))
         elif ">" in f:
             processed_filters["gt"].append(f.split(">"))
-        elif "=" in f:
+        elif "<" in f:
             processed_filters["lt"].append(f.split("<"))
         else:
-            err = "filter {} must have one of ['=','<','>'].".format(f)
-            err += " For example: age>50 or clinical_variable=true"
+            err = "filter {} must have one of ['=','<','>','!='].".format(f)
+            err += " For example: age>50 or clinical_variable!=true"
             raise NotImplementedError(err)
     out_dict = {}
     for pid in D:
@@ -106,6 +108,9 @@ def filter_dictionary_with_filters(D:DatasetDict,
                             check = False
                     elif k == "lt":
                         if float(D[pid][kk]) >= float(v):
+                            check = False
+                    elif k == "neq":
+                        if str(D[pid][kk]) == v:
                             check = False
                 else:
                     check = False
