@@ -25,9 +25,16 @@ from lib.monai_transforms import get_transforms_classification as get_transforms
 from lib.monai_transforms import get_augmentations_class as get_augmentations
 from lib.modules.classification.pl import TransformableTransformerPL
 from lib.modules.config_parsing import parse_config_2d_classifier_3d
+from lib.utils.parser import get_params,merge_args
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
+
+    # params
+    parser.add_argument(
+        '--params_from',dest='params_from',type=str,default=None,
+        help="Parameter path used to retrieve values for the CLI (can be a path\
+            to a YAML file or 'dvc' to retrieve dvc params)")
 
     # data
     parser.add_argument(
@@ -194,6 +201,10 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
+    if args.params_from is not None:
+        param_dict = get_params(args.params_from)
+        args = merge_args(args,param_dict,sys.argv[1:])
+
     torch.manual_seed(args.seed)
     random.seed(args.seed)
     np.random.seed(args.seed)
@@ -274,6 +285,7 @@ if __name__ == "__main__":
         "possible_labels":args.possible_labels,
         "positive_labels":args.positive_labels,
         "label_key":args.label_keys,
+        "clinical_feature_keys":[],
         "label_mode":label_mode}
     augment_arguments = {
         "augment":args.augment,
