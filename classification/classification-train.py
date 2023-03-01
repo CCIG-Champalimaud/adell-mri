@@ -24,9 +24,16 @@ from lib.monai_transforms import get_augmentations_class as get_augmentations
 from lib.modules.losses import OrdinalSigmoidalLoss
 from lib.modules.config_parsing import parse_config_unet,parse_config_cat
 from lib.utils.network_factories import get_classification_network
+from lib.utils.parser import get_params,merge_args
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
+
+    # params
+    parser.add_argument(
+        '--params_from',dest='params_from',type=str,default=None,
+        help="Parameter path used to retrieve values for the CLI (can be a path\
+            to a YAML file or 'dvc' to retrieve dvc params)")
 
     # data
     parser.add_argument(
@@ -206,6 +213,10 @@ if __name__ == "__main__":
         help="Overrides learning rate in config file")
 
     args = parser.parse_args()
+
+    if args.params_from is not None:
+        param_dict = get_params(args.params_from)
+        args = merge_args(args,param_dict,sys.argv[1:])
 
     torch.manual_seed(args.seed)
     random.seed(args.seed)
