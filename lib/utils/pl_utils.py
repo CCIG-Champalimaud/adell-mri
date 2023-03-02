@@ -53,7 +53,7 @@ def get_ckpt_callback(checkpoint_dir:str,checkpoint_name:str,
         ckpt_callback = ModelCheckpoint(
             dirpath=checkpoint_dir,
             filename=ckpt_name,monitor=monitor,
-            save_last=True,save_top_k=2,mode=mode)
+            save_last=True,save_top_k=1,mode=mode)
         
         ckpt_last = ckpt_last + "_last"
         ckpt_callback.CHECKPOINT_NAME_LAST = ckpt_last
