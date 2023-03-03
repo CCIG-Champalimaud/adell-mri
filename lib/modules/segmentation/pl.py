@@ -5,9 +5,9 @@ import torchmetrics
 import pytorch_lightning as pl
 import torchmetrics.classification as tmc
 from typing import Callable,Dict,List
-from picai_eval import evaluate
 from abc import ABC
 
+from .picai_eval import evaluate
 from .unet import UNet,BrUNet
 from .unetpp import UNetPlusPlus
 from .unetr import UNETR
