@@ -12,15 +12,12 @@ sys.path.append(r"..")
 from lib.utils import safe_collate
 from lib.utils.pl_utils import get_devices
 from lib.monai_transforms import get_transforms_classification as get_transforms
-from lib.modules.classification.pl import (
-    ClassNetPL,UNetEncoderPL,ViTClassifierPL,
-    FactorizedViTClassifierPL)
-from lib.modules.layers.adn_fn import get_adn_fn
 from lib.modules.losses import OrdinalSigmoidalLoss
 from lib.modules.config_parsing import parse_config_unet,parse_config_cat
 from lib.utils.dataset_filters import (
     filter_dictionary_with_filters,filter_dictionary_with_possible_labels,
     filter_dictionary_with_presence)
+from lib.utils.network_factories import get_classification_network
 from lib.utils.parser import get_params,merge_args
 
 if __name__ == "__main__":
@@ -218,10 +215,11 @@ if __name__ == "__main__":
         test_list = [data_dict[pid] for pid in test_ids
                      if pid in data_dict]
         
-        test_dataset = monai.data.CacheDataset(
-            test_list,transforms_val,num_workers=args.n_workers)
+        #test_dataset = monai.data.CacheDataset(
+        #    test_list,transforms_val,num_workers=args.n_workers)
+        test_dataset = monai.data.Dataset(test_list,transforms_val)
         
-        # PL needs a little hint to detect GPUs.
+        # PL sometimes needs a little hint to detect GPUs.
         torch.ones([1]).to("cuda" if "cuda" in args.dev else "cpu")
         
         if n_classes == 2:
@@ -242,58 +240,35 @@ if __name__ == "__main__":
             act_fn = network_config["activation_fn"]
         else:
             act_fn = "swish"
-        adn_fn = get_adn_fn(3,"identity",act_fn=act_fn,dropout_param=0)
         batch_preprocessing = None
-        boilerplate_args = {
-            "n_channels":len(keys),
-            "n_classes":n_classes,
-            "image_key":"image",
-            "label_key":"label"}
 
         if args.one_to_one is True:
             checkpoint_list = [args.checkpoints[iteration]]
         else:
             checkpoint_list = args.checkpoints
         for checkpoint in checkpoint_list:
-            if args.net_type == "unet":
-                network = UNetEncoderPL(
-                    head_structure=[
-                        network_config["depth"][-1] for _ in range(3)],
-                    head_adn_fn=get_adn_fn(
-                        1,"batch",act_fn="gelu",dropout_param=0),
-                    **boilerplate_args,
-                    **network_config)
-            elif "vit" in args.net_type:
-                image_size = [int(x) for x in args.crop_size]
-                network_config["image_size"] = image_size
-                if args.net_type == "vit":
-                    network = ViTClassifierPL(
-                        adn_fn=get_adn_fn(
-                            1,"identity",act_fn="gelu",dropout_param=0),
-                        **boilerplate_args,
-                        **network_config)
-                elif args.net_type == "factorized_vit":
-                    for k in ["embed_method"]:
-                        if k in network_config:
-                            del network_config[k]
-                    network = FactorizedViTClassifierPL(
-                        adn_fn=get_adn_fn(
-                            1,"identity",act_fn="gelu",dropout_param=0),
-                        **boilerplate_args,
-                        **network_config)                    
-                
-            else:
-                network = ClassNetPL(
-                    net_type=args.net_type,n_channels=len(keys),
-                    n_classes=n_classes,
-                    image_key="image",label_key="label",
-                    adn_fn=adn_fn,n_epochs=args.max_epochs,
-                    warmup_steps=args.warmup_steps,
-                    **network_config)
+            network = get_classification_network(
+                net_type=args.net_type,
+                network_config=network_config,
+                dropout_param=0,
+                seed=None,
+                n_classes=n_classes,
+                keys=keys,
+                clinical_feature_keys=clinical_feature_keys,
+                train_loader_call=None,
+                max_epochs=None,
+                warmup_steps=None,
+                start_decay=None,
+                crop_size=args.crop_size,
+                clinical_feature_means=None,
+                clinical_feature_stds=None,
+                label_smoothing=None,
+                mixup_alpha=None,
+                partial_mixup=None)
 
             state_dict = torch.load(checkpoint)["state_dict"]
             state_dict = {k:state_dict[k] for k in state_dict
-                          if k != "loss_fn.weight"}
+                          if "loss_fn.weight" not in k}
             network.load_state_dict(state_dict)
             trainer = Trainer(accelerator=accelerator,devices=devices)
             test_metrics = trainer.test(network,test_loader)[0]
