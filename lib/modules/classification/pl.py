@@ -363,7 +363,7 @@ class SegCatNetPL(SegCatNet,pl.LightningModule):
     def update_metrics(self,metrics,pred,y,**kwargs):
         y = y.long()
         if self.n_classes == 2:
-            pred = F.sigmoid(pred)
+            pred = torch.sigmoid(pred)
         else:
             pred = F.softmax(pred,-1)
         for k in metrics:
