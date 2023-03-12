@@ -3,6 +3,7 @@ import torch.nn.functional as F
 import torchmetrics
 import pytorch_lightning as pl
 import torchmetrics.classification as tmc
+import monai
 from typing import Callable,List,Dict
 from abc import ABC
 
@@ -99,6 +100,12 @@ class ClassPLABC(pl.LightningModule,ABC):
         else:
             loss = self.loss_fn(prediction,y)
         return loss.mean()
+
+    def on_before_batch_transfer(self,batch,dataloader_idx):
+        for key in batch:
+            if isinstance(batch[key],monai.data.MetaTensor):
+                batch[key] = batch[key].as_tensor()
+        return batch
 
     def training_step(self,batch,batch_idx):
         x, y = batch[self.image_key],batch[self.label_key]
