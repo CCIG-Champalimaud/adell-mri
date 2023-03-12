@@ -3,7 +3,6 @@ import torch.nn.functional as F
 import torchmetrics
 import pytorch_lightning as pl
 import torchmetrics.classification as tmc
-import monai
 from typing import Callable,List,Dict
 from abc import ABC
 
@@ -12,6 +11,12 @@ from .classification import (
     UNetEncoder,GenericEnsemble,ViTClassifier,FactorizedViTClassifier,
     TransformableTransformer,HybridClassifier)
 from ..learning_rate import CosineAnnealingWithWarmupLR
+
+try:
+    import monai
+    has_monai = True
+except:
+    has_monai = False
 
 def f1(prediction:torch.Tensor,y:torch.Tensor)->torch.Tensor:
     """
@@ -76,6 +81,13 @@ def get_metric_dict(nc:int,
             metric_dict[prefix+k] = md[k]()
     return metric_dict
 
+def meta_tensors_to_tensors(batch):
+    if has_monai == True:
+        for key in batch:
+            if isinstance(batch[key],monai.data.MetaTensor):
+                batch[key] = batch[key].as_tensor()
+    return batch
+
 class ClassPLABC(pl.LightningModule,ABC):
     """
     Abstract classification class for LightningModules.
@@ -102,10 +114,7 @@ class ClassPLABC(pl.LightningModule,ABC):
         return loss.mean()
 
     def on_before_batch_transfer(self,batch,dataloader_idx):
-        for key in batch:
-            if isinstance(batch[key],monai.data.MetaTensor):
-                batch[key] = batch[key].as_tensor()
-        return batch
+        return meta_tensors_to_tensors(batch)
 
     def training_step(self,batch,batch_idx):
         x, y = batch[self.image_key],batch[self.label_key]
