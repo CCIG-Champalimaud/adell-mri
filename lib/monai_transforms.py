@@ -9,7 +9,8 @@ from .utils import (
     CreateImageAndWeightsd,
     LabelOperatord,
     CopyEntryd,
-    ExposeTransformKeyMetad)
+    ExposeTransformKeyMetad,
+    Offsetd)
 from lib.modules.augmentations import (
     generic_augments,mri_specific_augments,spatial_augments,
     AugmentationWorkhorsed)
@@ -144,8 +145,9 @@ def get_transforms_classification(x,
             transforms.append(
                 ConditionalRescalingd(adc_keys,500,0.001))
             transforms.append(
-                monai.transforms.ScaleIntensityd(
-                    adc_keys,None,None,-2/3))
+                Offsetd(adc_keys,None))
+            transforms.append(
+                monai.transforms.ScaleIntensityd(adc_keys,None,None,-2/3))
         if target_spacing is not None:
             transforms.append(
                 monai.transforms.Spacingd(keys,pixdim=target_spacing))

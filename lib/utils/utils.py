@@ -1109,6 +1109,25 @@ class ConditionalRescalingd(monai.transforms.Transform):
                 data[k] = self.transforms[k](data[k])
         return data
 
+class Offset(monai.transforms.Transform):
+    def __init__(self,offset=None):
+        self.offset = offset
+    
+    def __call__(self,data):
+        offset = data.min() if self.offset is None else self.offset
+        return data - offset
+    
+class Offsetd(monai.transforms.MapTransform):
+    def __init__(self,keys,offset=None):
+        self.keys = keys
+        self.offset = offset
+        self.tr = {k:Offset(offset) for k in self.keys}
+    
+    def __call__(self,data):
+        for k in self.keys:
+            data[k] = self.tr[k](data[k])
+        return data
+
 class CopyEntryd(monai.transforms.Transform):
     def __init__(self,keys,out_keys):
         self.keys = keys

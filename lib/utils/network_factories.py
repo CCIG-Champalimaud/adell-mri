@@ -88,8 +88,11 @@ def get_classification_network(net_type:str,
             "warmup_steps":warmup_steps,
             "training_batch_preproc":batch_preprocessing,
             "start_decay":start_decay}
-        if "loss_fn" in network_config:
-            boilerplate_args_hybrid["loss_fn"] = network_config["loss_fn"]
+        
+        for k in ["learning_rate","batch_size",
+                  "loss_fn","loss_params"]:
+            if k in network_config:
+                boilerplate_args_hybrid[k] = network_config[k]
         tab_network = TabularClassifier(len(clinical_feature_keys),
                                         mlp_structure=[],
                                         mlp_adn_fn=torch.nn.Identity,
