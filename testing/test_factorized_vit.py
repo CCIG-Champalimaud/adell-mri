@@ -41,3 +41,16 @@ def test_factorized_transformer_token():
     out = vit(im)
     token_size = vit.input_dim_primary
     assert list(out.shape) == [batch_size,image_size[-1]+1,token_size]
+
+def test_factorized_transformer_conv():
+    vit = FactorizedViT(
+        image_size=image_size,patch_size=patch_size,n_channels=n_channels,
+        number_of_blocks=4,attention_dim=attention_dim,hidden_dim=hidden_dim,
+        n_heads=n_heads,dropout_rate=0.1,
+        mlp_structure=[64,64],adn_fn=adn_fn,
+        use_class_token=True,embed_method="convolutional")
+    im_size = [batch_size] + [n_channels] + image_size
+    im = torch.rand(im_size)
+    out = vit(im)
+    token_size = vit.input_dim_primary
+    assert list(out.shape) == [batch_size,image_size[-1]+1,token_size]
