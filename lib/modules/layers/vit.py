@@ -141,14 +141,17 @@ class SliceLinearEmbedding(torch.nn.Module):
                  embedding_size:int=None,
                  out_dim:int=None,
                  dropout_rate:float=0.0,
+                 embed_method:str="linear",
                  use_class_token:bool=False,
                  learnable_embedding:bool=True):
         super().__init__()
         self.n_channels = n_channels
         self.image_size = image_size
         self.patch_size = patch_size
+        self.embedding_size = embedding_size
         self.out_dim = out_dim
         self.dropout_rate = dropout_rate
+        self.embed_method = embed_method
         self.use_class_token = use_class_token
         self.learnable_embedding = learnable_embedding
         
@@ -159,9 +162,19 @@ class SliceLinearEmbedding(torch.nn.Module):
         self.embedding_size = np.prod([*patch_size[:2],n_channels])
         
         self.init_linear_layers_if_necessary()
+        self.init_conv_layers_if_necessary()
         self.init_positional_embedding()
         self.init_class_token_if_necessary()
             
+    def init_conv_layers_if_necessary(self):
+        if self.embed_method == "convolutional":
+            self.conv = torch.nn.Sequential(
+                torch.nn.Conv2d(
+                    self.n_channels,self.true_n_features,
+                    self.patch_size[:2],stride=self.patch_size[:2]))
+        else:
+            self.conv = None
+    
     def init_class_token_if_necessary(self):
         if self.use_class_token is True:
             self.class_token = torch.nn.Parameter(
@@ -172,15 +185,23 @@ class SliceLinearEmbedding(torch.nn.Module):
         h,w,s = self.image_size
         c = self.n_channels
         x,y,z = self.patch_size
-
-        return einops.rearrange(
-            image,"b c (h x) (w y) s -> b s (h w) (x y c)",
-            x=x,h=h//x,y=y,w=w//y,b=b,c=c,s=s)
+        if self.embed_method == "linear":
+            return einops.rearrange(
+                image,"b c (h x) (w y) s -> b s (h w) (x y c)",
+                x=x,h=h//x,y=y,w=w//y,b=b,c=c,s=s)
+        else:
+            image = einops.rearrange(
+                image,"b c h w s -> (b s) c h w")
+            image = self.conv(image)
+            return einops.rearrange(
+                image,"(b s) c h w -> b s (h w) c",
+                h=h//x,w=w//y,c=self.true_n_features,s=s)
         
     def init_positional_embedding(self):
         if self.learnable_embedding is True:
             self.positional_embedding = torch.nn.Parameter(
-                torch.zeros([1,1,self.n_patches,self.true_n_features]))
+                torch.zeros([1,self.patch_size[2],
+                             self.n_patches,self.true_n_features]))
             torch.nn.init.trunc_normal_(
                 self.positional_embedding,mean=0.0,std=0.02,a=-2.0,b=2.0)
         else:
@@ -199,15 +220,12 @@ class SliceLinearEmbedding(torch.nn.Module):
         """
         self.map_to_out = torch.nn.Identity()
         self.map_to_in = torch.nn.Identity()
-        if self.out_dim is not None:
-            self.map_to_out = torch.nn.Sequential(
-                torch.nn.LayerNorm(self.embedding_size),
-                torch.nn.Linear(
-                    self.embedding_size,self.out_dim))
-            self.map_to_in = torch.nn.Sequential(
-                torch.nn.Linear(
-                    self.out_dim,self.embedding_size),
-                torch.nn.LayerNorm(self.embedding_size))
+        if self.out_dim is not None and self.out_dim != self.embedding_size:
+            if self.embed_method == "linear":
+                self.map_to_out = torch.nn.Linear(
+                    self.embedding_size,self.out_dim)
+            self.map_to_in = torch.nn.Linear(
+                    self.out_dim,self.embedding_size)
             self.true_n_features = self.out_dim
         else:
             self.true_n_features = self.embedding_size
@@ -347,16 +365,12 @@ class LinearEmbedding(torch.nn.Module):
         """
         self.map_to_out = torch.nn.Identity()
         self.map_to_in = torch.nn.Identity()
-        if self.out_dim is not None:
+        if self.out_dim is not None and self.out_dim != self.n_features:
             if self.embed_method == "linear":
-                self.map_to_out = torch.nn.Sequential(
-                    torch.nn.LayerNorm(self.n_features),
-                    torch.nn.Linear(
-                        self.n_features,self.out_dim))
-            self.map_to_in = torch.nn.Sequential(
-                torch.nn.Linear(
-                    self.out_dim,self.n_features),
-                torch.nn.LayerNorm(self.n_features))
+                self.map_to_out = torch.nn.Linear(
+                    self.n_features,self.out_dim)
+            self.map_to_in = torch.nn.Linear(
+                self.out_dim,self.n_features)
 
     def init_dropout(self):
         """Initialises the dropout operation that is applied after adding the
@@ -882,7 +896,7 @@ class TransformerBlockStack(torch.nn.Module):
                  attention_dim:int,
                  hidden_dim:int,
                  n_heads:int=4,
-                 mlp_structure:List[int]=[128,128],
+                 mlp_structure:List[int]=[128],
                  dropout_rate:float=0.0,
                  adn_fn:Callable=get_adn_fn(1,"identity","gelu"),
                  window_size:Size2dOr3d=None):
@@ -895,7 +909,7 @@ class TransformerBlockStack(torch.nn.Module):
                 modules).
             n_heads (int, optional): number of attention heads. Defaults to 4.
             mlp_structure (List[int], optional): hidden layer structure. 
-                Should be a list of ints. Defaults to [32,32].
+                Should be a list of ints. Defaults to [128].
             dropout_rate (float, optional): dropout rate, applied to the output
                 of each sub-layer. Defaults to 0.0.
             adn_fn (Callable, optional): function that returns a 
@@ -1035,7 +1049,7 @@ class SWINTransformerBlockStack(torch.nn.Module):
                  n_heads:int=4,
                  dropout_rate:float=0.0,
                  embed_method:str="linear",
-                 mlp_structure:Union[List[int],float]=[32,32],
+                 mlp_structure:Union[List[int],float]=[128],
                  adn_fn=get_adn_fn(1,"identity","gelu")):
         """
         Args:
@@ -1201,7 +1215,7 @@ class ViT(torch.nn.Module):
                  n_heads:int=4,
                  dropout_rate:float=0.0,
                  embed_method:str="linear",
-                 mlp_structure:Union[List[int],float]=[32,32],
+                 mlp_structure:Union[List[int],float]=[128],
                  adn_fn=get_adn_fn(1,"identity","gelu"),
                  use_class_token:bool=False,
                  learnable_embedding:bool=True,
@@ -1220,7 +1234,8 @@ class ViT(torch.nn.Module):
                 None (same as inferred output dimension).
             dropout_rate (float, optional): dropout rate of the dropout 
                 operations applied throughout this module. Defaults to 0.0.
-            embed_method (str, optional): . Defaults to "linear".
+            embed_method (str, optional): image embedding method. Defaults to
+                "linear".
             window_size (Size2dOr3d, optional): window size for windowed MSA.
                 Defaults to None (regular ViT).
             n_heads (int, optional): number of attention heads. Defaults to 4.
@@ -1351,7 +1366,8 @@ class FactorizedViT(torch.nn.Module):
                  embedding_size:int=None,
                  n_heads:int=4,
                  dropout_rate:float=0.0,
-                 mlp_structure:Union[List[int],float]=[32,32],
+                 embed_method:str="linear",
+                 mlp_structure:Union[List[int],float]=[128],
                  adn_fn=get_adn_fn(1,"identity","gelu"),
                  use_class_token:bool=False,
                  learnable_embedding:bool=True):
@@ -1369,7 +1385,8 @@ class FactorizedViT(torch.nn.Module):
                 None (same as inferred output dimension).
             dropout_rate (float, optional): dropout rate of the dropout 
                 operations applied throughout this module. Defaults to 0.0.
-            embed_method (str, optional): . Defaults to "linear".
+            embed_method (str, optional): image embedding method. Defaults to
+                "linear".
             window_size (Size2dOr3d, optional): window size for windowed MSA.
                 Defaults to None (regular ViT).
             n_heads (int, optional): number of attention heads. Defaults to 4.
@@ -1399,6 +1416,7 @@ class FactorizedViT(torch.nn.Module):
         self.embedding_size = embedding_size
         self.n_heads = n_heads
         self.dropout_rate = dropout_rate
+        self.embed_method = embed_method
         self.mlp_structure = mlp_structure
         self.adn_fn = adn_fn
         self.use_class_token = use_class_token
@@ -1410,6 +1428,7 @@ class FactorizedViT(torch.nn.Module):
             n_channels=self.n_channels,
             embedding_size=self.embedding_size,
             dropout_rate=self.dropout_rate,
+            embed_method=self.embed_method,
             use_class_token=self.use_class_token,
             learnable_embedding=self.learnable_embedding,
             out_dim=self.embedding_size)
@@ -1453,7 +1472,7 @@ class FactorizedViT(torch.nn.Module):
         if self.use_class_token is True:
             self.slice_class_token = torch.nn.Parameter(
                 torch.zeros([1,1,input_dim_primary]))
-    
+
     def forward(
         self,
         X:torch.Tensor)->Tuple[torch.Tensor,TensorList]:
