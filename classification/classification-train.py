@@ -100,7 +100,7 @@ if __name__ == "__main__":
         required=True)
     parser.add_argument(
         '--net_type',dest='net_type',
-        help="Classification type. Can be categorical (cat) or ordinal (ord)",
+        help="Classification type.",
         choices=["cat","ord","unet","vit","factorized_vit"],default="cat")
     
     # training
@@ -546,7 +546,8 @@ if __name__ == "__main__":
             gradient_clip_val=args.gradient_clip_val,
             strategy=strategy,
             accumulate_grad_batches=args.accumulate_grad_batches,
-            check_val_every_n_epoch=1)
+            check_val_every_n_epoch=1,
+            deterministic=True)
 
         trainer.fit(network,train_loader,train_val_loader)
 
