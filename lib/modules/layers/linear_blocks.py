@@ -312,8 +312,7 @@ class MultiHeadSelfAttention(torch.nn.Module):
         Args:
             X (torch.Tensor): tensor with shape 
                 [...,self.input_dim]
-            mask (torch.Tensor): attention masking tensor. Should have shape
-                [].
+            mask (torch.Tensor): attention masking tensor.
 
         Returns:
             torch.Tensor: tensor with shape [...,self.output_dim]
