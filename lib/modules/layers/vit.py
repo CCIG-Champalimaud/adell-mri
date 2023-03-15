@@ -200,7 +200,7 @@ class SliceLinearEmbedding(torch.nn.Module):
     def init_positional_embedding(self):
         if self.learnable_embedding is True:
             self.positional_embedding = torch.nn.Parameter(
-                torch.zeros([1,self.patch_size[2],
+                torch.zeros([1,self.image_size[2],
                              self.n_patches,self.true_n_features]))
             torch.nn.init.trunc_normal_(
                 self.positional_embedding,mean=0.0,std=0.02,a=-2.0,b=2.0)
