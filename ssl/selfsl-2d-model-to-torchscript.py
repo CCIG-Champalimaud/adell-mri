@@ -101,6 +101,8 @@ if __name__ == "__main__":
     state_dict = torch.load(
         args.checkpoint,
         map_location=args.dev.split(":")[0])['state_dict']
+    state_dict = {k:state_dict[k] for k in state_dict
+                  if "prediction_head" not in k}
     inc = ssl.load_state_dict(state_dict)
     ssl.eval()
     
