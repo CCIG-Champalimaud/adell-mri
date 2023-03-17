@@ -115,7 +115,7 @@ def generate_mask(image_size:Size2dOr3d,
             cnt += 1
 
         mask_windows = window_partition(img_mask, window_size)  # nW, window_size, window_size, 1
-        mask_windows = mask_windows.view(-1,np.prod(window_size))
+        mask_windows = mask_windows.view(-1,int(np.prod(window_size)))
         attn_mask = mask_windows.unsqueeze(1) - mask_windows.unsqueeze(2)
         attn_mask = attn_mask.masked_fill(
             attn_mask != 0, 
@@ -157,9 +157,9 @@ class SliceLinearEmbedding(torch.nn.Module):
         
         self.drop_op = torch.nn.Dropout(self.dropout_rate)
         
-        self.n_patches = np.prod([
-            s // p for s,p in zip(self.image_size[:2],self.patch_size[:2])])
-        self.embedding_size = np.prod([*patch_size[:2],n_channels])
+        self.n_patches = int(np.prod([
+            s // p for s,p in zip(self.image_size[:2],self.patch_size[:2])]))
+        self.embedding_size = int(np.prod([*patch_size[:2],n_channels]))
         
         self.init_linear_layers_if_necessary()
         self.init_conv_layers_if_necessary()
@@ -179,7 +179,7 @@ class SliceLinearEmbedding(torch.nn.Module):
         if self.use_class_token is True:
             self.class_token = torch.nn.Parameter(
             torch.zeros([1,1,1,self.true_n_features]))
-        
+    
     def linearize_image_slices(self,image:torch.Tensor)->torch.Tensor:
         b = image.shape[0]
         h,w,s = self.image_size
@@ -188,7 +188,7 @@ class SliceLinearEmbedding(torch.nn.Module):
         if self.embed_method == "linear":
             return einops.rearrange(
                 image,"b c (h x) (w y) s -> b s (h w) (x y c)",
-                x=x,h=h//x,y=y,w=w//y,b=b,c=c,s=s)
+                x=x,h=h//x,y=y,w=w//y,c=c,s=s)
         else:
             image = einops.rearrange(
                 image,"b c h w s -> (b s) c h w")
@@ -222,8 +222,10 @@ class SliceLinearEmbedding(torch.nn.Module):
         self.map_to_in = torch.nn.Identity()
         if self.out_dim is not None and self.out_dim != self.embedding_size:
             if self.embed_method == "linear":
-                self.map_to_out = torch.nn.Linear(
-                    self.embedding_size,self.out_dim)
+                self.map_to_out = torch.nn.Sequential(
+                    torch.nn.LayerNorm(self.embedding_size),
+                    torch.nn.Linear(
+                        self.embedding_size,self.out_dim))
             self.map_to_in = torch.nn.Linear(
                     self.out_dim,self.embedding_size)
             self.true_n_features = self.out_dim
@@ -367,8 +369,10 @@ class LinearEmbedding(torch.nn.Module):
         self.map_to_in = torch.nn.Identity()
         if self.out_dim is not None and self.out_dim != self.n_features:
             if self.embed_method == "linear":
-                self.map_to_out = torch.nn.Linear(
-                    self.n_features,self.out_dim)
+                self.map_to_out = torch.nn.Sequential(
+                    torch.nn.LayerNorm(self.n_features),
+                    torch.nn.Linear(
+                        self.n_features,self.out_dim))
             self.map_to_in = torch.nn.Linear(
                 self.out_dim,self.n_features)
 
@@ -401,7 +405,7 @@ class LinearEmbedding(torch.nn.Module):
             extra_patches = 1
             extra_features = self.n_channels
         self.n_patches = int(np.prod(self.n_patches_split) * extra_patches)
-        self.n_features = np.prod(self.patch_size) * extra_features
+        self.n_features = int(np.prod(self.patch_size) * extra_features)
     
     def initialize_classification_token(self):
         """Initializes the classification token.
