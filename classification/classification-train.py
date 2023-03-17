@@ -376,7 +376,8 @@ if __name__ == "__main__":
             clinical_feature_values = [[train_sample[k]
                                         for train_sample in train_list]
                                        for k in clinical_feature_keys]
-            clinical_feature_values = np.array(clinical_feature_values)
+            clinical_feature_values = np.array(clinical_feature_values,
+                                               dtype=np.float32)
             clinical_feature_means = np.mean(clinical_feature_values,axis=1)
             clinical_feature_stds = np.std(clinical_feature_values,axis=1)
         else:
