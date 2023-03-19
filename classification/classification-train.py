@@ -249,15 +249,16 @@ if __name__ == "__main__":
     if len(clinical_feature_keys) > 0:
         data_dict = filter_dictionary_with_filters(
             data_dict,[f"{k}!=nan" for k in clinical_feature_keys])
-    if args.subsample_size is not None:
+    if args.subsample_size is not None and len(data_dict) > args.subsample_size:
         strata = {}
         for k in data_dict:
             label = data_dict[k][args.label_keys]
             if label not in strata:
                 strata[label] = []
             strata[label].append(k)
-        p = [len(strata[k]) / len(data_dict) for k in strata]
-        split = rng.multinomial(args.subsample_size,p)
+        strata = {k:strata[k] for k in sorted(strata.keys())}
+        ps = [len(strata[k]) / len(data_dict) for k in strata]
+        split = [int(p*args.subsample_size) for p in ps]
         ss = []
         for k,s in zip(strata,split):
             ss.extend(rng.choice(strata[k],size=s,replace=False,shuffle=False))
