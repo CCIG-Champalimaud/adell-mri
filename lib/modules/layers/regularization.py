@@ -131,7 +131,38 @@ class GRN(torch.nn.Module):
         self.gamma = torch.nn.Parameter(torch.zeros(sh))
         self.beta = torch.nn.Parameter(torch.zeros(sh))
     
-    def forward(self,X):
+    def forward(self,X:torch.Tensor)->torch.Tensor:
         gx = torch.norm(X, p=2, dim=self.dims, keepdim=True)
         nx = gx / (gx.mean(dim=-1, keepdim=True)+1e-6)
         return self.gamma * (X * nx) + self.beta + X
+
+class ChannelDropout(torch.nn.Module):
+    def __init__(self,
+                 dropout_prob:float,
+                 channel_axis:int=1):
+        """Drops out random channels rather than random cells in the Tensor.
+
+        Args:
+            dropout_prob (float): probability of dropout.
+            channel_axis (int, optional): channel corresponding to the. 
+                Defaults to 1.
+        """
+        super().__init__()
+        self.dropout_prob = dropout_prob
+        self.channel_axis = channel_axis
+        
+    def forward(self,X:torch.Tensor)->torch.Tensor:
+        if self.dropout_prob > 0:
+            n_channels = X.shape[self.channel_axis]
+            dropout = torch.rand([n_channels]) > self.dropout_prob
+            new_shape = []
+            for idx in range(len(X.shape)):
+                if idx == self.channel_axis:
+                    new_shape.append(n_channels)
+                else:
+                    new_shape.append(1)
+            dropout = dropout.reshape(*new_shape)
+            dropout = dropout.expand_as(X)
+            dropout = dropout.float()
+            X = X * dropout
+        return X

@@ -6,6 +6,7 @@ from copy import deepcopy
 
 from .linear_blocks import MultiHeadSelfAttention
 from .linear_blocks import MLP
+from .regularization import ChannelDropout
 from .adn_fn import get_adn_fn
 from ...custom_types import *
 
@@ -1203,9 +1204,11 @@ class SWINTransformerBlockStack(torch.nn.Module):
 
 class ViT(torch.nn.Module):
     """Vision transformer module. Put more simply, it is the 
-    concatenation of a LinearEmbedding and a TransformberBlockStack [1].
+    concatenation of a LinearEmbedding and a TransformberBlockStack [1]. This 
+    model includes the possibility of PatchErasing regularization [2].
     
     [1] https://arxiv.org/abs/2010.11929
+    [2] https://arxiv.org/abs/2209.15006
     """
     def __init__(self,
                  image_size:Size2dOr3d,
@@ -1223,7 +1226,8 @@ class ViT(torch.nn.Module):
                  adn_fn=get_adn_fn(1,"identity","gelu"),
                  use_class_token:bool=False,
                  learnable_embedding:bool=True,
-                 channel_to_token:bool=False):
+                 channel_to_token:bool=False,
+                 patch_erasing:float=None):
         """
         Args:
             image_size (Size2dOr3d): size of the input image.
@@ -1261,6 +1265,8 @@ class ViT(torch.nn.Module):
             channel_to_token (bool, optional): embeds the channel dimension as
                 tokens rather than as part of the embedding. Works only with
                 "linear" embedding. Defaults to False.
+            patch_erasing (float, optional): erases (sets to 0) a fraction of 
+                patches. Defaults to None (no patch erasing).
         """
         super().__init__()
         self.image_size = image_size
@@ -1278,6 +1284,7 @@ class ViT(torch.nn.Module):
         self.use_class_token = use_class_token
         self.learnable_embedding = learnable_embedding
         self.channel_to_token = channel_to_token
+        self.patch_erasing = patch_erasing
         
         self.embedding = LinearEmbedding(
             image_size=self.image_size,
@@ -1286,12 +1293,16 @@ class ViT(torch.nn.Module):
             window_size=self.window_size,
             out_dim=embedding_size,
             embed_method=self.embed_method,
-            dropout_rate=self.dropout_rate,
+            dropout_rate=0.0 if self.patch_erasing else self.dropout_rate,
             use_class_token=self.use_class_token,
             learnable_embedding=self.learnable_embedding,
             channel_to_token=self.channel_to_token)
-        
         self.input_dim_primary = self.embedding.true_n_features
+        if self.patch_erasing:
+            self.patch_erasing_op = ChannelDropout(self.patch_erasing)
+        else:
+            self.patch_erasing_op = torch.nn.Identity()
+        
         if isinstance(self.mlp_structure,float):
             self.mlp_structure = [
                 int(self.input_dim_primary*self.mlp_structure)]
@@ -1343,7 +1354,7 @@ class ViT(torch.nn.Module):
         if isinstance(return_at,list):
             assert max(return_at) < self.number_of_blocks,\
                 "max(return_at) should be smaller than self.number_of_blocks"
-        embeded_X = self.embedding(X)
+        embeded_X = self.patch_erasing_op(self.embedding(X))
         if return_at == "end" or return_at is None:
             return_at = []
         outputs = []
@@ -1356,9 +1367,11 @@ class ViT(torch.nn.Module):
 class FactorizedViT(torch.nn.Module):
     """Factorized vision transformer module. Put more simply, it is the 
     concatenation of a SliceLinearEmbedding and two TransformberBlockStack [1]
-    (corresponding to within and between slice interactions).
+    (corresponding to within and between slice interactions). This model 
+    includes the possibility of PatchErasing regularization [2].
     
     [1] https://www.sciencedirect.com/science/article/pii/S0010482522008459?via%3Dihub
+    [2] https://arxiv.org/abs/2209.15006
     """
     def __init__(self,
                  image_size:Size2dOr3d,
@@ -1374,7 +1387,8 @@ class FactorizedViT(torch.nn.Module):
                  mlp_structure:Union[List[int],float]=[128],
                  adn_fn=get_adn_fn(1,"identity","gelu"),
                  use_class_token:bool=False,
-                 learnable_embedding:bool=True):
+                 learnable_embedding:bool=True,
+                 patch_erasing:float=True):
         """
         Args:
             image_size (Size2dOr3d): size of the input image.
@@ -1409,6 +1423,8 @@ class FactorizedViT(torch.nn.Module):
             learnable_embedding (bool, optional): if embedding is 
                 non-trainable, a sinusoidal positional embedding is used.
                 Defaults to True.
+            patch_erasing (float, optional): erases (sets to 0) a fraction of 
+                patches. Defaults to None (no patch erasing).
         """
         super().__init__()
         self.image_size = image_size
@@ -1425,6 +1441,7 @@ class FactorizedViT(torch.nn.Module):
         self.adn_fn = adn_fn
         self.use_class_token = use_class_token
         self.learnable_embedding = learnable_embedding
+        self.patch_erasing = patch_erasing
         
         self.embedding = SliceLinearEmbedding(
             image_size=self.image_size,
@@ -1436,10 +1453,12 @@ class FactorizedViT(torch.nn.Module):
             use_class_token=self.use_class_token,
             learnable_embedding=self.learnable_embedding,
             out_dim=self.embedding_size)
-
         self.input_dim_primary = self.embedding.true_n_features
-
         input_dim_primary = self.input_dim_primary
+        if self.patch_erasing:
+            self.patch_erasing_op = ChannelDropout(self.patch_erasing,2)
+        else:
+            self.patch_erasing_op = torch.nn.Identity()
 
         if self.hidden_dim is None:
             hidden_dim = input_dim_primary
@@ -1460,7 +1479,7 @@ class FactorizedViT(torch.nn.Module):
             hidden_dim=hidden_dim,
             n_heads=self.n_heads,
             mlp_structure=self.mlp_structure,
-            dropout_rate=self.dropout_rate,
+            dropout_rate=0.0 if self.patch_erasing else self.dropout_rate,
             adn_fn=self.adn_fn)
         
         self.transformer_block_between = TransformerBlockStack(
@@ -1492,7 +1511,7 @@ class FactorizedViT(torch.nn.Module):
                 the ith transformer outputs, where i is contained in return_at.
                 Same shape as the final output.
         """
-        embeded_X = self.embedding(X)
+        embeded_X = self.patch_erasing_op(self.embedding(X))
         embeded_X,_ = self.transformer_block_within(embeded_X)
         # extract the maximum value of each token for all slices
         if self.use_class_token is True:

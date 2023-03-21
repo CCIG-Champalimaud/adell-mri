@@ -67,5 +67,24 @@ def test_transformer_windowed(embed_method,scale):
     assert list(out.shape) == size
     assert list(vit.embedding.rearrange_rescale(out,scale).shape) == output_image_size
     assert list(vit.embedding.rearrange_inverse(out).shape) == im_size
-    
-test_transformer("convolutional",1)
+
+@pytest.mark.parametrize("embed_method",[
+    "linear","convolutional"])
+def test_transformer_erase(embed_method):
+    vit = ViT(
+        image_size=image_size,patch_size=patch_size,n_channels=n_channels,
+        number_of_blocks=4,attention_dim=attention_dim,hidden_dim=hidden_dim,
+        n_heads=n_heads,dropout_rate=0.1,embed_method=embed_method,
+        mlp_structure=[64,64],window_size=window_size,adn_fn=adn_fn,
+        patch_erasing=0.1)
+    im_size = [batch_size] + [n_channels] + image_size
+    output_image_size = [batch_size,n_channels*1**len(image_size)] 
+    output_image_size += [x//1 for x in image_size]
+    im = torch.rand(im_size)
+    out,_ = vit(im)
+    token_size = vit.input_dim_primary
+    n_patches = vit.embedding.n_patches
+    size = [batch_size,np.prod(vit.embedding.n_windows),n_patches,token_size]
+    assert list(out.shape) == size
+    assert list(vit.embedding.rearrange_rescale(out,1).shape) == output_image_size
+    assert list(vit.embedding.rearrange_inverse(out).shape) == im_size
