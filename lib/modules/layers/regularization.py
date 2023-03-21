@@ -152,11 +152,15 @@ class ChannelDropout(torch.nn.Module):
         self.channel_axis = channel_axis
         
     def forward(self,X:torch.Tensor)->torch.Tensor:
-        if self.dropout_prob > 0:
-            n_channels = X.shape[self.channel_axis]
-            dropout = torch.rand([n_channels]) > self.dropout_prob
+        if self.dropout_prob > 0 and self.training is True:
+            sh = X.shape
+            n_batches = sh[0]
+            n_channels = sh[self.channel_axis]
+            dropout = torch.rand([n_batches,n_channels]) > self.dropout_prob
             new_shape = []
-            for idx in range(len(X.shape)):
+            for idx in range(len(sh)):
+                if idx == 0:
+                    new_shape.append(n_batches)
                 if idx == self.channel_axis:
                     new_shape.append(n_channels)
                 else:
