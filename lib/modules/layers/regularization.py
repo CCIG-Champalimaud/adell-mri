@@ -161,12 +161,11 @@ class ChannelDropout(torch.nn.Module):
             for idx in range(len(sh)):
                 if idx == 0:
                     new_shape.append(n_batches)
-                if idx == self.channel_axis:
+                elif idx == self.channel_axis:
                     new_shape.append(n_channels)
                 else:
                     new_shape.append(1)
             dropout = dropout.reshape(*new_shape)
-            dropout = dropout.expand_as(X)
-            dropout = dropout.float()
+            dropout = dropout.float().to(X.device)
             X = X * dropout
         return X
