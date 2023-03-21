@@ -549,7 +549,7 @@ if __name__ == "__main__":
             strategy=strategy,
             accumulate_grad_batches=args.accumulate_grad_batches,
             check_val_every_n_epoch=1,
-            deterministic=True)
+            deterministic="warn")
 
         trainer.fit(network,train_loader,train_val_loader)
 
