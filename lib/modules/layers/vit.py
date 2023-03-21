@@ -1298,7 +1298,7 @@ class ViT(torch.nn.Module):
             learnable_embedding=self.learnable_embedding,
             channel_to_token=self.channel_to_token)
         self.input_dim_primary = self.embedding.true_n_features
-        if self.patch_erasing:
+        if self.patch_erasing is not None:
             self.patch_erasing_op = ChannelDropout(self.patch_erasing)
         else:
             self.patch_erasing_op = torch.nn.Identity()
@@ -1388,7 +1388,7 @@ class FactorizedViT(torch.nn.Module):
                  adn_fn=get_adn_fn(1,"identity","gelu"),
                  use_class_token:bool=False,
                  learnable_embedding:bool=True,
-                 patch_erasing:float=True):
+                 patch_erasing:float=None):
         """
         Args:
             image_size (Size2dOr3d): size of the input image.
