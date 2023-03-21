@@ -345,12 +345,11 @@ def get_augmentations_class(augment,
     if "rbf" in augment and len(t2_keys) > 0:
         augments.append(
             monai.transforms.RandBiasFieldd(t2_keys,degree=3,prob=prob))
-        
+
     if "affine" in augment:
         augments.append(
             monai.transforms.RandAffined(
                 all_keys,
-                scale_range=[0.05 for _ in range(3)],
                 translate_range=[4,4,1],
                 rotate_range=[np.pi/16],
                 prob=prob,mode=intp_resampling_augmentations,
