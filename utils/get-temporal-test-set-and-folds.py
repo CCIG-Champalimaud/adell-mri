@@ -30,6 +30,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     data_dict = json.load(open(args.dataset_json,'r'))
+    
     if args.all_keys is not None:
         new_dict = {}
         for k in data_dict:
@@ -40,10 +41,16 @@ if __name__ == "__main__":
             if check == True:
                 new_dict[k] = data_dict[k]
         data_dict = new_dict
-
+    
+    data_dict = {k:data_dict[k]
+                 for k in data_dict 
+                 if "study_date" in data_dict[k]}
+    
     if args.stratify is not None:
         for s in args.stratify:
-            data_dict = {k:data_dict[k] for k in data_dict if s in data_dict[k]}
+            for k in data_dict:
+                if s not in data_dict[k]:
+                    data_dict[k][s] = None
         strata = ["".join([str(data_dict[k][kk]) for kk in args.stratify])
                   for k in data_dict]
         for u,c in zip(*np.unique(strata,return_counts=True)):
@@ -53,12 +60,12 @@ if __name__ == "__main__":
         strata = None
     
     data_dict = {k:data_dict[k] for k in sorted(
-        data_dict,key=lambda k: data_dict[k]["date"])}
+        data_dict,key=lambda k: data_dict[k]["study_date"])}
     all_pids = [k for k in data_dict]
     n = int((1 - args.fraction_test) * len(all_pids))
     all_idxs = [i for i in range(len(all_pids))]
     all_train_pids,test_pids = all_idxs[:n],all_idxs[n:]
-        
+
     if args.n_folds > 1:
         if strata is not None:
             fold_generator = StratifiedKFold(
