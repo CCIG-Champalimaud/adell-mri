@@ -566,9 +566,7 @@ class ViTClassifier(ViT):
         Returns:
             torch.Tensor: tensor of shape [...,self.input_dim_primary]
         """
-        embeded_X = self.embedding(X)
-        for block in self.tbs.transformer_blocks:
-            embeded_X = block(embeded_X)
+        embeded_X,_ = super().forward(X)
         if self.use_class_token is True:
             embeded_X = embeded_X[:,0]
         else:
@@ -635,17 +633,7 @@ class FactorizedViTClassifier(FactorizedViT):
         Returns:
             torch.Tensor: tensor of shape [...,self.input_dim_primary]
         """
-        embeded_X = self.embedding(X)
-        embeded_X,_ = self.transformer_block_within(embeded_X)
-        # extract the maximum value of each token for all slices
-        if self.use_class_token is True:
-            embeded_X = embeded_X[:,:,0]
-            class_token = einops.repeat(
-                self.slice_class_token,'() n e -> b n e',b=X.shape[0])
-            embeded_X = torch.concat([class_token,embeded_X],1)
-        else:
-            embeded_X = embeded_X.mean(-2)
-        embeded_X,_ = self.transformer_block_between(embeded_X)
+        embeded_X = super().forward(X)
         if self.use_class_token is True:
             embeded_X = embeded_X[:,0]
         else:
