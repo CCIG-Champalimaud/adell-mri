@@ -1293,7 +1293,7 @@ class ViT(torch.nn.Module):
             window_size=self.window_size,
             out_dim=embedding_size,
             embed_method=self.embed_method,
-            dropout_rate=0.0 if self.patch_erasing else self.dropout_rate,
+            dropout_rate=self.dropout_rate,
             use_class_token=self.use_class_token,
             learnable_embedding=self.learnable_embedding,
             channel_to_token=self.channel_to_token)
@@ -1479,7 +1479,7 @@ class FactorizedViT(torch.nn.Module):
             hidden_dim=hidden_dim,
             n_heads=self.n_heads,
             mlp_structure=self.mlp_structure,
-            dropout_rate=0.0 if self.patch_erasing else self.dropout_rate,
+            dropout_rate=self.dropout_rate,
             adn_fn=self.adn_fn)
         
         self.transformer_block_between = TransformerBlockStack(
