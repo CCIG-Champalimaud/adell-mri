@@ -547,10 +547,12 @@ class ViTClassifier(ViT):
             nc = 1
         else:
             nc = self.n_classes
-        self.classification_layer = MLP(
-            self.input_dim_primary,nc,
-            [self.input_dim_primary for _ in range(3)],
-            adn_fn=get_adn_fn(1,"layer","gelu"))
+        self.classification_layer = torch.nn.Sequential(
+            MLP(
+                self.input_dim_primary,nc,
+                [self.input_dim_primary for _ in range(1)],
+                adn_fn=get_adn_fn(1,"layer","gelu"))
+        )
 
     def forward(
         self,
@@ -615,10 +617,11 @@ class FactorizedViTClassifier(FactorizedViT):
             nc = 1
         else:
             nc = self.n_classes
-        self.classification_layer = MLP(
-            self.input_dim_primary,nc,
-            [self.input_dim_primary for _ in range(3)],
-            adn_fn=get_adn_fn(1,"layer","gelu"))
+        self.classification_layer = torch.nn.Sequential(
+            MLP(
+                self.input_dim_primary,nc,
+                [self.input_dim_primary for _ in range(1)],
+                adn_fn=get_adn_fn(1,"layer","gelu")))
     
     def forward(
         self,
