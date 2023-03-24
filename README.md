@@ -1,6 +1,6 @@
-# Methods for classification, segmentation and detection using multi-parametric MRI
+# ADeLL-MRI - a Deep-Learning Library for MRI
 
-Here I implement and develop methods for classification, segmentation and detection using different MRI modalities, but these are more generically applicable to other problems - I try to follow a modular design and development, such that networks can be deployed to different problems as necessary. I also do some work with self supervised learning methods, and have recently started to implement some building blocks for continuous learning. I prefer to organize data using `json` files so I have developed a number of scripts that allow me to achieve this (i.e. `utils/get-dataset-json.py`) and generate "dataset JSON files". By a dataset JSON file I merely mean a JSON file with the following format:
+Here I implement and develop methods for **classification**, **segmentation**, **self-supervised learning** and **detection** using different MRI modalities, but these are more generically applicable to other problems - I try to follow a modular design and development, such that networks can be deployed to different problems as necessary. I also do some work with self supervised learning methods, and have recently started to implement some building blocks for continuous learning. I prefer to organize data using `json` files so I have developed a number of scripts that allow me to achieve this (i.e. `utils/get-dataset-json.py`) and generate "dataset JSON files". By a dataset JSON file I merely mean a JSON file with the following format:
 
 ```
 entry_1
@@ -29,8 +29,8 @@ Then, using some minor JSON manipulation and [`MONAI`](https://monai.io/) I am a
 ## Implemented methods for object classification
 
 * ResNet-based methods mostly (in `lib/modules/res_net.py`), but others can be easily constructed with the building blocks in `lib/modules/layers.py`
-* (**ConvNeXt**)[https://arxiv.org/abs/2201.03545] - an upgrade to CNNs that makes them comparable to vision tranformers including SWin (in `lib/modules/conv_next.py`)
-* (**Vision transformer**)[https://arxiv.org/abs/2010.11929v2] - A transformer, but for images
+* [**ConvNeXt**](https://arxiv.org/abs/2201.03545) - an upgrade to CNNs that makes them comparable to vision tranformers including SWin (in `lib/modules/conv_next.py`)
+* [**Vision transformer**](https://arxiv.org/abs/2010.11929v2) - A transformer, but for images
 * **Factorized vision transformer** - A transformer that first processes information *within* slices (3rd spatial dimension) and only then *between* slices.
 
 ## Implemented methods for self-supervised learning
