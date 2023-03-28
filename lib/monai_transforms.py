@@ -10,7 +10,8 @@ from .utils import (
     LabelOperatord,
     CopyEntryd,
     ExposeTransformKeyMetad,
-    Offsetd)
+    Offsetd,
+    MaskToAdjustedAnchorsd)
 from lib.modules.augmentations import (
     generic_augments,mri_specific_augments,spatial_augments,
     AugmentationWorkhorsed)
@@ -121,6 +122,48 @@ def get_transforms_unet(x,
             transforms.append(monai.transforms.ToTensord(image_keys + ["mask"],
                                                          track_meta=False))
         return transforms
+
+def get_transforms_detection(keys,
+                             adc_keys,
+                             t2_keys,
+                             anchor_array,
+                             input_size,
+                             output_size,
+                             iou_threshold,
+                             box_class_key,
+                             shape_key,
+                             box_key,
+                             augments):
+    input_size = [int(x) for x in input_size]
+    intp_resampling = ["area" for _ in keys]
+    non_adc_keys = [k for k in keys if k not in adc_keys]
+    transforms = [
+        monai.transforms.LoadImaged(keys,ensure_channel_first=True),
+        monai.transforms.Orientationd(keys,"RAS")]
+    if len(non_adc_keys) > 0:
+        transforms.append(
+            monai.transforms.ScaleIntensityd(non_adc_keys,0,1))
+    if len(adc_keys) > 0:
+        transforms.append(
+            ConditionalRescalingd(adc_keys,500,0.001))
+        transforms.append(
+            Offsetd(adc_keys,None))
+        transforms.append(
+            monai.transforms.ScaleIntensityd(adc_keys,None,None,-2/3))
+    transforms.extend([
+        monai.transforms.Resized(keys,tuple(input_size),
+                                 mode=intp_resampling),
+        MaskToAdjustedAnchorsd(
+            anchor_sizes=anchor_array,input_sh=input_size,
+            output_sh=output_size,iou_thresh=iou_threshold,
+            bb_key=box_key,class_key=box_class_key,shape_key=shape_key,
+            output_key="bb_map")])
+    transforms.append(
+        get_augmentations_class(augments,keys,keys,t2_keys,intp_resampling))
+    transforms.append(
+        monai.transforms.ConcatItemsd(keys,"image"))
+    transforms.append(monai.transforms.EnsureTyped(keys))
+    return transforms
 
 def get_transforms_classification(x,
                                   keys,
