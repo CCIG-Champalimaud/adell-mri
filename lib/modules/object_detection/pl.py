@@ -3,10 +3,29 @@ import torch
 import torch.nn.functional as F
 import torchmetrics
 import pytorch_lightning as pl
-from typing import Callable
+from typing import Callable,Tuple
 
 from .nets import YOLONet3d,CoarseDetector3d
 from .map import mAP
+from ..classification.pl import meta_tensors_to_tensors
+
+def real_boxes_from_centres_sizes(
+    centres:torch.Tensor,sizes:torch.Tensor,anchors:torch.Tensor,
+    h:torch.Tensor,w:torch.Tensor,d:torch.Tensor,a:torch.Tensor,
+    correction_factor:torch.Tensor)->Tuple[torch.Tensor,
+                                           torch.Tensor,
+                                           torch.Tensor,
+                                           torch.Tensor]:
+    centres[:,0] = centres[:,0] + h
+    centres[:,1] = centres[:,1] + w
+    centres[:,2] = centres[:,2] + d
+    centres = centres * correction_factor
+    anchors = torch.stack(torch.split(anchors.squeeze(),3))
+    sizes = torch.exp(sizes)
+    sizes = sizes * anchors[a] / 2
+    tl_corner = centres - sizes
+    br_corner = centres + sizes
+    return tl_corner,br_corner,centres,sizes
 
 class YOLONet3dPL(YOLONet3d,pl.LightningModule):
     def __init__(
@@ -62,7 +81,7 @@ class YOLONet3dPL(YOLONet3d,pl.LightningModule):
         """
         
         super().__init__(*args,**kwargs)
-
+        
         self.image_key = image_key
         self.label_key = label_key
         self.boxes_key = boxes_key
@@ -89,24 +108,33 @@ class YOLONet3dPL(YOLONet3d,pl.LightningModule):
         self.loss_accumulator = 0.
         self.loss_accumulator_d = 0.
    
-    def calculate_loss(self,prediction,y,y_class,b,h,w,d,a,weights=None):
+    def on_before_batch_transfer(self,batch,dataloader_idx):
+        return meta_tensors_to_tensors(batch)
+        
+    def calculate_loss(self,prediction,y,y_class,b,h,w,d,a,
+                       correction_factor,weights=None):
         bb_center,bb_size,bb_object,bb_cl = prediction
         pred_centers = bb_center[b,:,h,w,d,a]
-        y_centers = y[b,:,h,w,d,a][:,self.center_idxs]
-        pred_size = torch.exp(bb_size[b,:,h,w,d,a])/2
-        y_size = torch.exp(y[b,:,h,w,d,a][:,self.size_idxs])/2
+        y_centers = y[:,self.center_idxs][b,:,h,w,d,a]
+        pred_size = bb_size[b,:,h,w,d,a]
+        y_size = y[:,self.size_idxs][b,:,h,w,d,a]
+        
+        tl_pred,br_pred,centers_pred,_ = real_boxes_from_centres_sizes(
+            pred_centers,pred_size,self.anchor_tensor,
+            h,w,d,a,correction_factor)
+        tl_y,br_y,centers_y,_ = real_boxes_from_centres_sizes(
+            y_centers,y_size,self.anchor_tensor,
+            h,w,d,a,correction_factor)
 
-        pred_corners = torch.cat(
-            [pred_centers-pred_size,pred_centers+pred_size],1)
-        y_corners = torch.cat(
-            [y_centers-y_size,y_centers+y_size],1)
-        iou,cpd,ar = self.reg_loss_fn(
-            pred_corners,y_corners)
+        pred_corners = torch.cat([tl_pred,br_pred],1)
+        y_corners = torch.cat([tl_y,br_y],1)
+        iou,cpd,ar = self.reg_loss_fn(pred_corners,y_corners,
+                                      centers_pred,centers_y)
         cla_loss = self.classification_loss_fn(
             bb_cl[b,:,h,w,d],y_class[b,h,w,d],
             **self.classification_loss_params)
 
-        y_object = torch.zeros_like(bb_object,device=self.dev)
+        y_object = torch.zeros_like(bb_object,device=iou.device)
         y_object[b,:,h,w,d,a] = torch.unsqueeze(iou,1)
 
         obj_loss = self.object_loss_fn(
@@ -120,7 +148,8 @@ class YOLONet3dPL(YOLONet3d,pl.LightningModule):
             output = output + cla_loss.mean()
         return output.mean()
     
-    def retrieve_correct(self,prediction,target,target_class,typ,b,h,w,d,a):
+    def retrieve_correct(self,prediction,target,target_class,
+                         typ,b,h,w,d,a,correction_factor=None):
         typ = typ.lower()
         if typ == "center":
             p,t = prediction[0],target[:,self.center_idxs,:,:,:,:]
@@ -133,105 +162,89 @@ class YOLONet3dPL(YOLONet3d,pl.LightningModule):
             p,t = prediction[3],target_class
             t = torch.round(t).int()
         elif typ == "map":
-            p,t = self.recover_boxes_batch(*prediction,to_dict=True),None
+            p = self.recover_boxes_batch(*prediction,
+                                         correction_factor=correction_factor,
+                                         to_dict=True)
+            t = None
         if typ not in ["obj","map","class"]:
             p,t = p[b,:,h,w,d,a],t[b,:,h,w,d,a]
         elif typ == "class":
             p,t = p[b,:,h,w,d],t[b,h,w,d]
         return p,t
 
-    def training_step(self,batch,batch_idx):
+    def calculate_correction_factor(self,
+                                    x:torch.Tensor,
+                                    y:torch.Tensor)->torch.Tensor:
+        corr_fac = torch.Tensor(np.array(x.shape[2:]))
+        corr_fac = corr_fac / torch.Tensor(np.array(y.shape[2:]))
+        corr_fac = corr_fac.to(x.device)
+        return corr_fac
+
+    def step(self,batch,batch_idx,metrics):
         x, y = batch[self.image_key],batch[self.label_key].float()
+        corr_fac = self.calculate_correction_factor(x,y)
         prediction = list(self.forward(x))
         y_class,y = y[:,0,:,:,:],y[:,1:,:,:,:]
         y = torch.stack(self.split(y,self.n_b,1),-1)
         b,h,w,d,a = torch.where(y[:,0,:,:,:,:] > self.iou_threshold)
         prediction[:-1] = [torch.stack(self.split(x,self.n_b,1),-1)
                            for x in prediction[:-1]]
-        batch_size = int(prediction[0].shape[0])
-        if batch_size == 1:
-            y = torch.unsqueeze(y,0)
 
-        loss = self.calculate_loss(prediction,y,y_class,b,h,w,d,a)
+        loss = self.calculate_loss(prediction,y,y_class,b,h,w,d,a,
+                                   correction_factor=corr_fac)
 
-        self.log("train_loss", loss)
-        for k_typ in self.train_metrics:
+        for k_typ in metrics:
             k,typ = k_typ.split('_')
+            typ = typ.lower()
             cur_pred,cur_target = self.retrieve_correct(
                 prediction,y,y_class,typ,b,h,w,d,a)
-            self.train_metrics[k_typ](cur_pred,cur_target)
-            self.log(
-                k,self.train_metrics[k_typ],on_epoch=True,
-                on_step=False,prog_bar=True)
+            if typ.lower() != "map":
+                cur_pred,cur_target = self.retrieve_correct(
+                    prediction,y,y_class,typ,b,h,w,d,a)
+                metrics[k_typ](cur_pred,cur_target)
+            else:
+                cur_pred,cur_target = self.retrieve_correct(
+                    prediction,y,y_class,typ,b,h,w,d,a,
+                    correction_factor=corr_fac)
+                cur_target = [
+                    {'boxes':batch[self.boxes_key][i],
+                     'labels':batch[self.box_label_key][i]}
+                     for i in range(batch[self.boxes_key].shape[0])]
+                for t in cur_target:
+                    if len(t['boxes'].shape) == 2:
+                        t['boxes'] = torch.concat(
+                            [t['boxes'][:,:3],t['boxes'][:,3:]],
+                            axis=1)
+                    else:
+                        t['boxes'] = torch.concat(
+                            [t['boxes'][:,:,0],t['boxes'][:,:,1]],axis=1)
+                    t['boxes'] = t['boxes'].to(loss.device)
+                    t['labels'] = torch.as_tensor(t['labels']).to(loss.device)
+                metrics[k_typ](cur_pred,cur_target)
+            self.log(k,metrics[k_typ],on_epoch=True,
+                     on_step=False,prog_bar=True,sync_dist=True,
+                     batch_size=x.shape[0])
+        return loss
+
+    def training_step(self,batch,batch_idx):
+        batch_size = batch[self.image_key].shape[0]
+        loss = self.step(batch,batch_idx,self.train_metrics)
+        self.log("loss",loss,prog_bar=True,on_step=True,
+                 batch_size=batch_size)
         return loss
     
     def validation_step(self,batch,batch_idx):
-        x, y = batch[self.image_key],batch[self.label_key].float()
-        prediction = list(self.forward(x))
-        y_class,y = y[:,0,:,:,:],y[:,1:,:,:,:]
-        y = torch.stack(self.split(y,self.n_b,1),-1)
-        b,h,w,d,a = torch.where(y[:,0,:,:,:,:] > self.iou_threshold)
-        prediction[:-1] = [torch.stack(self.split(x,self.n_b,1),-1)
-                           for x in prediction[:-1]]
-        batch_size = int(prediction[0].shape[0])
-        if batch_size == 1:
-            y = torch.unsqueeze(y,0)
-
-        loss = self.calculate_loss(prediction,y,y_class,b,h,w,d,a)
-
-        self.loss_accumulator += loss
-        self.loss_accumulator_d += 1.
-        for k_typ in self.val_metrics:
-            k,typ = k_typ.split('_')
-            cur_pred,cur_target = self.retrieve_correct(
-                prediction,y,y_class,typ,b,h,w,d,a)
-            if typ.lower() != "map":
-                self.val_metrics[k_typ].update(cur_pred,cur_target)
-            else:
-                cur_pred,cur_target = self.retrieve_correct(
-                    prediction,y,y_class,typ,b,h,w,d,a)
-                cur_target = [
-                    {'boxes':batch[self.boxes_key][i],
-                     'labels':batch[self.box_label_key][i]}
-                     for i in range(batch[self.boxes_key].shape[0])]
-                for t in cur_target:
-                    t['boxes'] = torch.concat(
-                        [t['boxes'][:,:,0],t['boxes'][:,:,1]],axis=1)
-                    t['boxes'] = t['boxes'].to(self.dev)
-                    t['labels'] = torch.as_tensor(t['labels']).to(self.dev)
-                self.val_metrics[k_typ].update(cur_pred,cur_target)
+        batch_size = batch[self.image_key].shape[0]
+        loss = self.step(batch,batch_idx,self.val_metrics)
+        self.log("val_loss",loss,prog_bar=True,on_epoch=True,
+                 batch_size=batch_size)
         return loss
 
     def test_step(self,batch,batch_idx):
-        x, y = batch[self.image_key],batch[self.label_key].float()
-        prediction = list(self.forward(x))
-        y_class,y = y[:,0,:,:,:],y[:,1:,:,:,:]
-        y = torch.stack(self.split(y,self.n_b,1),-1)
-        b,h,w,d,a = torch.where(y[:,0,:,:,:,:] > self.iou_threshold)
-        prediction[:-1] = [torch.stack(self.split(x,self.n_b,1),-1)
-                           for x in prediction[:-1]]
-
-        loss = self.calculate_loss(prediction,y,y_class,b,h,w,d,a)
-
-        for k_typ in self.test_metrics:
-            k,typ = k_typ.split('_')
-            if typ.lower() != "map":
-                cur_pred,cur_target = self.retrieve_correct(
-                    prediction,y,y_class,typ,b,h,w,d,a)
-                self.test_metrics[k_typ].update(cur_pred,cur_target)
-            else:
-                cur_pred,cur_target = self.retrieve_correct(
-                    prediction,y,y_class,typ,b,h,w,d,a)
-                cur_target = [
-                    {'boxes':batch[self.boxes_key][i],
-                     'labels':batch[self.box_label_key][i]}
-                     for i in range(batch[self.boxes_key].shape[0])]
-                for t in cur_target:
-                    t['boxes'] = torch.concat(
-                        [t['boxes'][:,:,0],t['boxes'][:,:,1]],axis=1)
-                    t['boxes'] = t['boxes'].to(self.dev)
-                    t['labels'] = torch.as_tensor(t['labels']).to(self.dev)
-                self.test_metrics[k_typ].update(cur_pred,cur_target)
+        batch_size = batch[self.image_key].shape[0]
+        loss = self.step(batch,batch_idx,self.test_metrics)
+        self.log("test_loss",loss,on_epoch=True,
+                 batch_size=batch_size)
         return loss
 
     def train_dataloader(self) -> torch.utils.data.DataLoader:
@@ -250,20 +263,10 @@ class YOLONet3dPL(YOLONet3d,pl.LightningModule):
                 "monitor":"val_loss"}
     
     def on_validation_epoch_end(self):
-        for k_typ in self.val_metrics: 
-            k,typ = k_typ.split('_')
-            val = self.val_metrics[k_typ].compute()
-            self.log(
-                k,val,prog_bar=True)
-            self.val_metrics[k_typ].reset()
-        val_loss = self.loss_accumulator/self.loss_accumulator_d
         sch = self.lr_schedulers().state_dict()
         lr = self.learning_rate
         last_lr = sch['_last_lr'][0] if '_last_lr' in sch else lr
         self.log("lr",last_lr)
-        self.log("val_loss",val_loss,prog_bar=True)
-        self.loss_accumulator = 0.
-        self.loss_accumulator_d = 0.
 
     def setup_metrics(self):
         if self.n_c == 2:
@@ -274,24 +277,25 @@ class YOLONet3dPL(YOLONet3d,pl.LightningModule):
             "cMSE_center":torchmetrics.MeanSquaredError(),
             "sMSE_size":torchmetrics.MeanSquaredError(),
             "objF1_obj":torchmetrics.FBetaScore(
-                None,threshold=self.iou_threshold),
+                task="binary",threshold=self.iou_threshold),
             "objRec_obj":torchmetrics.Recall(
-                None,threshold=self.iou_threshold)})
+                task="binary",threshold=self.iou_threshold)})
         self.val_metrics = torch.nn.ModuleDict({
             "v:cMSE_center":torchmetrics.MeanSquaredError(),
             "v:sMSE_size":torchmetrics.MeanSquaredError(),
             "v:objF1_obj":torchmetrics.FBetaScore(
-                None,threshold=self.iou_threshold)})
+                task="binary",threshold=self.iou_threshold),
+            "v:mAP_mAP":mAP(iou_threshold=self.iou_threshold)})
         self.test_metrics = torch.nn.ModuleDict({
-            "testcMSE_center":torchmetrics.MeanSquaredError(),
-            "testsMSE_size":torchmetrics.MeanSquaredError(),
-            "testobjRec_obj":torchmetrics.Recall(
-                None,threshold=self.iou_threshold),
-            "testobjPre_obj":torchmetrics.Precision(
-                None,threshold=self.iou_threshold),   
-            "testobjF1_obj":torchmetrics.FBetaScore(
-                None,threshold=self.iou_threshold),
-            "testmAP_mAP":mAP(iou_threshold=self.iou_threshold)})
+            "t:cMSE_center":torchmetrics.MeanSquaredError(),
+            "t:sMSE_size":torchmetrics.MeanSquaredError(),
+            "t:objRec_obj":torchmetrics.Recall(
+                task="binary",threshold=self.iou_threshold),
+            "t:objPre_obj":torchmetrics.Precision(
+                task="binary",threshold=self.iou_threshold),   
+            "t:objF1_obj":torchmetrics.FBetaScore(
+                task="binary",threshold=self.iou_threshold),
+            "t:mAP_mAP":mAP(iou_threshold=self.iou_threshold)})
 
         if self.n_c > 2:
             # no point in including this in the two class scenario
@@ -390,13 +394,13 @@ class CoarseDetector3dPL(CoarseDetector3d,pl.LightningModule):
 
         loss = self.calculate_loss(prediction,y)
 
-        self.log("train_loss", loss)
+        self.log("train_loss", loss, batch_size=x.shape[0])
         for k_typ in self.train_metrics:
             k,typ = k_typ.split('_')
             self.train_metrics[k_typ](prediction,y.int())
             self.log(
                 k,self.train_metrics[k_typ],on_epoch=True,
-                on_step=False,prog_bar=True)
+                on_step=False,prog_bar=True,batch_size=x.shape[0])
         return loss
     
     def validation_step(self,batch,batch_idx):
@@ -422,7 +426,7 @@ class CoarseDetector3dPL(CoarseDetector3d,pl.LightningModule):
             self.val_metrics[k_typ](prediction,y.int())
             self.log(
                 k,self.val_metrics[k_typ],on_epoch=True,
-                on_step=False,prog_bar=True)
+                on_step=False,prog_bar=True, batch_size=x.shape[0])
         return loss
 
     def test_step(self,batch,batch_idx):
@@ -445,7 +449,8 @@ class CoarseDetector3dPL(CoarseDetector3d,pl.LightningModule):
             k,typ = k_typ.split('_')
             self.test_metrics[k_typ](prediction,y.int())
             self.log(
-                k,self.test_metrics[k_typ],on_epoch=True,on_step=False)
+                k,self.test_metrics[k_typ],on_epoch=True,on_step=False,
+                batch_size=x.shape[0])
         return loss
 
     def train_dataloader(self) -> torch.utils.data.DataLoader:

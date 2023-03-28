@@ -4,7 +4,7 @@ import torchmetrics
 
 from .utils import check_overlap,calculate_iou
 
-class mAP(torch.nn.Module):
+class mAP(torchmetrics.metric.Metric):
     def __init__(self,ndim=3,score_threshold=0.5,iou_threshold=0.5,n_classes=2):
         """Mean average precision implementation for any number of dimensions.
 
@@ -22,7 +22,8 @@ class mAP(torch.nn.Module):
         self.n_classes = n_classes
         # will do most of the AP heavylifting
         nc = None if n_classes==2 else n_classes
-        self.average_precision = torchmetrics.AveragePrecision(nc)
+        self.average_precision = torchmetrics.AveragePrecision(
+            task="binary",num_classes=2)
         
         self.pred_list = []
         self.target_list = []
@@ -43,6 +44,9 @@ class mAP(torch.nn.Module):
             else:
                 raise ValueError(
                     "{} should have the keys {}".format(what,K))
+            for k in K:
+                if len(y[k].shape) == 0:
+                    y[k] = y[k].unsqueeze(0)
             if len(np.unique([y[k].shape[0] for k in K])) > 1:
                 raise ValueError(
                     "Inputs in {} should have the same number of elements".format(what))
@@ -109,10 +113,10 @@ class mAP(torch.nn.Module):
         if self.hits > 0:
             return self.average_precision.compute()
         else:
-            return torch.nan
+            return torch.Tensor([torch.nan])
     
     def reset(self):
         self.pred_list = []
         self.target_list = []
-        self.hit = 0
+        self.hits = 0
         self.average_precision.reset()

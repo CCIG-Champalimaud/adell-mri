@@ -625,7 +625,10 @@ def mc_unified_focal_loss(pred:torch.Tensor,
 
 def complete_iou_loss(
     a:torch.Tensor,
-    b:torch.Tensor,ndim:int=3)->Tuple[torch.Tensor,torch.Tensor,torch.Tensor]:
+    b:torch.Tensor,
+    a_center:torch.Tensor=None,
+    b_center:torch.Tensor=None,
+    ndim:int=3)->Tuple[torch.Tensor,torch.Tensor,torch.Tensor]:
     """Calculates the complete IoU loss as proposed by Zheng et al. [1] for 
     any given number of spatial dimensions. 
     Combines three components - the IoU loss, the minimization of the distance
@@ -638,6 +641,10 @@ def complete_iou_loss(
     Args:
         a (torch.Tensor): set of n bounding boxes.
         b (torch.Tensor): set of n bounding boxes.
+        a_center (torch.Tensor, optional): n bounding box centers for a. 
+            Defaults to None (computes from bounding boxes).
+        b_center (torch.Tensor, optional): n bounding box centers for b.
+            Defaults to None (computes from bounding boxes).
         ndim (int, optional): Number of spatial dimensions. Defaults to 3.
 
     Returns:
@@ -652,8 +659,10 @@ def complete_iou_loss(
     a_size = a_br - a_tl + 1
     b_size = b_br - b_tl + 1
     inter_size = inter_br - inter_tl + 1
-    a_center = (a_tl + a_br)/2
-    b_center = (b_tl + b_br)/2
+    if a_center is None:
+        a_center = (a_tl + a_br)/2
+    if b_center is None:
+        b_center = (b_tl + b_br)/2
     diag_tl = torch.minimum(a_tl,b_tl)
     diag_br = torch.maximum(a_br,b_br)
     # calculate IoU
