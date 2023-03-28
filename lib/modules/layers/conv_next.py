@@ -107,12 +107,16 @@ class ConvNeXtBackbone(torch.nn.Module):
             self.conv_op = torch.nn.Conv3d
             self.max_pool_op = torch.nn.MaxPool3d
 
-    def init_layers(self):
+    def init_input_layer(self):
         f = self.structure[0][0]
-        self.input_layer = torch.nn.Sequential(
+        return torch.nn.Sequential(
             self.conv_op(
                 self.in_channels,f,4,stride=4),
             LayerNorm(f,data_format="channels_first"))
+
+    def init_layers(self):
+        f = self.structure[0][0]
+        self.input_layer = self.init_input_layer()
         if self.batch_ensemble > 0:
             self.input_layer = BatchEnsembleWrapper(
                 self.input_layer,self.batch_ensemble,
@@ -179,6 +183,14 @@ class ConvNeXtBackbone(torch.nn.Module):
             return self.forward_with_intermediate(X,after_pool=after_pool)
         else:
             return self.forward_regular(X,batch_idx=batch_idx)
+
+class ConvNeXtBackboneDetection(ConvNeXtBackbone):
+    def init_input_layer(self):
+        f = self.structure[0][0]
+        return torch.nn.Sequential(
+            self.conv_op(
+                self.in_channels,f,7,stride=2,padding=7//2),
+            LayerNorm(f,data_format="channels_first"))
 
 class ConvNeXtV2Backbone(torch.nn.Module):
     def __init__(

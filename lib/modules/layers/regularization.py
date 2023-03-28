@@ -57,8 +57,8 @@ class LayerNorm(torch.nn.Module):
 
     def __init__(self, normalized_shape, eps=1e-6, data_format="channels_last"):
         super().__init__()
-        self.weight = torch.nn.Parameter(torch.ones(normalized_shape))
-        self.bias = torch.nn.Parameter(torch.zeros(normalized_shape))
+        self.weight = torch.nn.Parameter(torch.ones([1,normalized_shape]))
+        self.bias = torch.nn.Parameter(torch.zeros([1,normalized_shape]))
         self.eps = eps
         self.data_format = data_format
         if self.data_format not in ["channels_last", "channels_first"]:
@@ -68,13 +68,14 @@ class LayerNorm(torch.nn.Module):
     def forward(self, x):
         if self.data_format == "channels_last":
             return F.layer_norm(
-                x, self.normalized_shape, self.weight, self.bias, self.eps
-            )
+                x, self.normalized_shape, self.weight, self.bias, self.eps)
         elif self.data_format == "channels_first":
+            l = len(x.shape)
             u = x.mean(1, keepdim=True)
             s = (x - u).pow(2).mean(1, keepdim=True)
             x = (x - u) / torch.sqrt(s + self.eps)
-            x = self.weight[:, None, None] * x + self.bias[:, None, None]
+            sh = [1,self.normalized_shape[0],*[1 for _ in range(2,l)]]
+            x = self.weight.reshape(sh) * x + self.bias.reshape(sh)
             return x
 
 class LayerNormChannelsFirst(torch.nn.Module):
