@@ -90,6 +90,10 @@ if __name__ == "__main__":
         '--max_epochs',dest="max_epochs",
         help="Maximum number of training epochs",default=100,type=int)
     parser.add_argument(
+        '--warmup_steps',dest='warmup_steps',type=float,default=0.0,
+        help="Number of warmup steps (if SWA is triggered it starts after\
+            this number of steps).")
+    parser.add_argument(
         '--n_folds',dest="n_folds",
         help="Number of validation folds",default=5,type=int)
     parser.add_argument(
@@ -129,11 +133,10 @@ if __name__ == "__main__":
         help="IoU threshold for pred-gt overlaps.",default=0.5)
     parser.add_argument(
         '--dropout_param',dest='dropout_param',type=float,
-        help="Parameter for dropout.",default=0.1)
+        help="Parameter for dropout.",default=0.0)
     parser.add_argument(
         '--subsample_size',dest='subsample_size',type=int,
-        help="Subsamples data to a given size",
-        default=None)
+        help="Subsamples data to a given size",default=None)
 
     args = parser.parse_args()
 
@@ -264,6 +267,8 @@ if __name__ == "__main__":
             train_loader_call=train_loader,
             iou_threshold=args.iou_threshold,
             anchor_array=anchor_array,
+            n_epochs=args.max_epochs,
+            warmup_steps=args.warmup_steps,
             dev=devices)
         
         callbacks = [RichProgressBar()]

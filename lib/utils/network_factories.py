@@ -122,6 +122,8 @@ def get_detection_network(net_type:str,
                           train_loader_call:Callable,
                           iou_threshold:float,
                           anchor_array:np.ndarray,
+                          n_epochs:int,
+                          warmup_steps:int,
                           dev:str)->torch.nn.Module:
     if "activation_fn" in network_config:
         act_fn = network_config["activation_fn"]
@@ -163,13 +165,14 @@ def get_detection_network(net_type:str,
         training_dataloader_call=train_loader_call,
         image_key="image",label_key="bb_map",boxes_key="boxes",
         box_label_key="labels",
-        anchor_sizes=anchor_array,
-        n_c=2,adn_fn=adn_fn,iou_threshold=iou_threshold,
+        anchor_sizes=anchor_array,n_c=2,adn_fn=adn_fn,
+        iou_threshold=iou_threshold,
         classification_loss_fn=classification_loss_fn,
         object_loss_fn=object_loss_fn,
         reg_loss_fn=complete_iou_loss,
         classification_loss_params=classification_loss_params,
         object_loss_params=object_loss_params,
+        n_epochs=n_epochs,warmup_steps=warmup_steps,
         **net_cfg)
 
     return network

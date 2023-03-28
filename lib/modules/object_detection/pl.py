@@ -3,11 +3,12 @@ import torch
 import torch.nn.functional as F
 import torchmetrics
 import pytorch_lightning as pl
-from typing import Callable,Tuple
+from typing import Callable,Tuple,Union
 
 from .nets import YOLONet3d,CoarseDetector3d
 from .map import mAP
 from ..classification.pl import meta_tensors_to_tensors
+from ..learning_rate import CosineAnnealingWithWarmupLR
 
 def real_boxes_from_centres_sizes(
     centres:torch.Tensor,sizes:torch.Tensor,anchors:torch.Tensor,
@@ -45,6 +46,9 @@ class YOLONet3dPL(YOLONet3d,pl.LightningModule):
         classification_loss_params: dict={},
         object_loss_params: dict={},
         iou_threshold: float=0.5,
+        n_epochs: int=100,
+        warmup_steps: Union[int,float]=0,
+        start_decay: int=None,
         *args,**kwargs) -> torch.nn.Module:
         """YOLO-like network implementation for Pytorch Lightning.
 
@@ -97,6 +101,9 @@ class YOLONet3dPL(YOLONet3d,pl.LightningModule):
         self.classification_loss_params = classification_loss_params
         self.object_loss_params = object_loss_params
         self.iou_threshold = iou_threshold
+        self.n_epochs = n_epochs
+        self.warmup_steps = warmup_steps
+        self.start_decay = start_decay
 
         self.object_idxs = np.array([0])
         self.center_idxs = np.array([1,2,3])
@@ -254,9 +261,9 @@ class YOLONet3dPL(YOLONet3d,pl.LightningModule):
         optimizer = torch.optim.AdamW(
             self.parameters(),lr=self.learning_rate,
             weight_decay=self.weight_decay,amsgrad=True)
-        lr_schedulers = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer,patience=5,min_lr=5e-5,factor=0.1,verbose=True,
-            cooldown=5)
+        lr_schedulers = CosineAnnealingWithWarmupLR(
+            optimizer,T_max=self.n_epochs,start_decay=self.start_decay,
+            n_warmup_steps=self.warmup_steps)
 
         return {"optimizer":optimizer,
                 "lr_scheduler":lr_schedulers,
