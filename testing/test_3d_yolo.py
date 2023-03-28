@@ -12,7 +12,7 @@ def test_yolo():
         [32,32,5],
         [64,64,7]
     ]
-    yolo = YOLONet3d(1,n_c=4,anchor_sizes=anchor_sizes,dev='cpu')
+    yolo = YOLONet3d("resnet",1,n_c=4,anchor_sizes=anchor_sizes,dev='cpu')
 
     input_tensor = torch.ones([1,1,32,32,21])
 
