@@ -665,7 +665,8 @@ class MaskToAdjustedAnchors(monai.transforms.Transform):
             size adjustments (3) to the anchor.
         """
         bb_vertices = np.array(bb_vertices)
-        bb_vertices[:,:,1]-bb_vertices[:,:,0]
+        bb_vertices = np.stack([bb_vertices[:,:3],bb_vertices[:,3:]],axis=-1)
+        # bb_vertices[:,:,1]-bb_vertices[:,:,0]
         if shape is None:
             shape = self.input_sh
             rel_sh = self.rel_sh
@@ -683,7 +684,7 @@ class MaskToAdjustedAnchors(monai.transforms.Transform):
             cl = classes[i]
             for I,long_anchor in enumerate(self.long_anchors):
                 anchor_size = long_anchor[0,:,1] - long_anchor[0,:,0]
-                rel_bb_size_adj = rel_bb_size/anchor_size
+                rel_bb_size_adj = np.log(rel_bb_size/anchor_size)
                 anchor_dim = long_anchor[0,:,1]-long_anchor[0,:,0]
                 intersects = np.logical_and(
                     np.all(long_anchor[:,:,1]>rel_bb_vert[i,:,0],axis=1),
@@ -705,7 +706,7 @@ class MaskToAdjustedAnchors(monai.transforms.Transform):
 
                 box_coords = box_coords[distance_idx]
                 center_adjustment = center_adjustment[distance_idx]
-
+                
                 for j in range(box_coords.shape[0]):
                     idx = tuple(
                         [tuple([1+k+I*7 for k in range(7)]),
