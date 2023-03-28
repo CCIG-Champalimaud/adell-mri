@@ -1,4 +1,5 @@
 import argparse
+import json
 import numpy as np
 from sklearn.cluster import KMeans
 from tqdm import tqdm
@@ -10,7 +11,7 @@ if __name__ == "__main__":
 
     parser.add_argument(
         '--input_path',dest="input_path",required=True,
-        help="Path to csv with bounding boxes")
+        help="Path to JSON with bounding boxes")
     parser.add_argument(
         '--spatial_dim',dest="spatial_dim",default=2,type=int,
         choices=[2,3],help="Spatial dimension")
@@ -27,16 +28,19 @@ if __name__ == "__main__":
     all_ids = []
     ndim = args.spatial_dim
     with open(args.input_path,'r') as o:
-        for line in o:
-            line = line.strip().split(',')
-            image_id = line[0]
-            bb = np.array(line[1:-ndim-1]).astype(np.int32)
-            sh = np.array(line[-ndim-1:-1]).astype(np.int32)
-            bb = bb[ndim:] - bb[:ndim]
-            if np.all(bb > 0):
-                all_bb.append(bb)
-                all_sh.append(sh)
-                all_ids.append(image_id)
+        data = json.load(o)
+    
+    for k in data:
+        box = data[k]["boxes"][0]
+        shape = data[k]["shape"]
+        image_id = k
+        bb = np.array(box).astype(np.int32)
+        sh = np.array(shape).astype(np.int32)
+        bb = bb[ndim:] - bb[:ndim]
+        if np.all(bb > 0):
+            all_bb.append(bb)
+            all_sh.append(sh)
+            all_ids.append(image_id)
     
     all_bb = np.array(all_bb)
     all_sh = np.array(all_sh)
