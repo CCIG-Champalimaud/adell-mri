@@ -189,7 +189,7 @@ class ConvNeXtBackboneDetection(ConvNeXtBackbone):
         f = self.structure[0][0]
         return torch.nn.Sequential(
             self.conv_op(
-                self.in_channels,f,7,stride=2,padding=7//2),
+                self.in_channels,f,2,stride=2),
             LayerNorm(f,data_format="channels_first"))
 
 class ConvNeXtV2Backbone(torch.nn.Module):
