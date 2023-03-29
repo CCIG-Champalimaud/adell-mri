@@ -79,7 +79,9 @@ if __name__ == "__main__":
         help="No. of workers",default=0,type=int)
     parser.add_argument(
         '--augment',dest='augment',type=str,nargs="+",
-        help="Use data augmentations",default=[])
+        default=[],choices=["intensity","noise","rbf","rotate","trivial"],
+        help="Use data augmentations (use rotate with care, not very stable \
+            when objects are close to the border)")
     parser.add_argument(
         '--loss_gamma',dest="loss_gamma",
         help="Gamma for focal loss",default=2.0,type=float)
@@ -308,3 +310,5 @@ if __name__ == "__main__":
             except:
                 value = float(out)
             print("{},{},{},{}".format(k,val_fold,0,value))
+        
+        torch.cuda.empty_cache()
