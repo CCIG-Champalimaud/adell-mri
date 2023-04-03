@@ -1,11 +1,12 @@
 import torch
 import torch.nn.functional as F
 from math import sqrt
-
+from copy import deepcopy
 from ...custom_types import *
 
 def cos_sim(x:torch.Tensor,y:torch.Tensor)->torch.Tensor:
-    """Calculates the cosine similarity between x and y.
+    """Calculates the cosine similarity between x and y (wraps the functional
+    function for simplicity).
 
     Args:
         x (torch.Tensor): tensor
@@ -14,11 +15,7 @@ def cos_sim(x:torch.Tensor,y:torch.Tensor)->torch.Tensor:
     Returns:
         torch.Tensor: cosine similarity between x and y
     """
-    x,y = x.flatten(start_dim=1),y.flatten(start_dim=1)
-    x,y = x.unsqueeze(1),y.unsqueeze(0)
-    n = torch.sum(x*y,axis=-1)
-    d = torch.multiply(torch.norm(x,2,-1),torch.norm(y,2,-1))
-    return n/d
+    return F.cosine_similarity(x[:,None,:],y[None,:,:],dim=-1)
 
 def standardize(x:torch.Tensor,d:int=0)->torch.Tensor:
     """Standardizes x (subtracts mean and divides by std) according to 
@@ -53,7 +50,7 @@ def pearson_corr(x:torch.Tensor,y:torch.Tensor)->torch.Tensor:
     d = torch.multiply(torch.norm(x,2,-1),torch.norm(y,2,-1))
     return n/d
 
-def cos_dist(x:torch.Tensor,y:torch.Tensor,center)->torch.Tensor:
+def cos_dist(x:torch.Tensor,y:torch.Tensor)->torch.Tensor:
     """Calculates the cosine distance between x and y.
 
     Args:
@@ -63,7 +60,7 @@ def cos_dist(x:torch.Tensor,y:torch.Tensor,center)->torch.Tensor:
     Returns:
         torch.Tensor: cosine distance between x and y
     """
-    return 1 - cos_sim(x,y,center)
+    return 1 - cos_sim(x,y)
 
 def barlow_twins_loss(x:torch.Tensor,
                       y:torch.Tensor,
@@ -104,9 +101,8 @@ def simsiam_loss(x1:torch.Tensor,x2:torch.Tensor)->torch.Tensor:
     Returns:
         torch.Tensor: SimSiam loss
     """
-    x1 = x1/torch.functional.norm(x1,2,-1).unsqueeze(1)
-    x2 = x2/torch.functional.norm(x2,2,-1).unsqueeze(1)
-    return -torch.sum(x1*x2,1).mean()
+    cos_sim = F.cosine_similarity(x1,x2)
+    return - cos_sim.mean()
 
 def byol_loss(x1:torch.Tensor,x2:torch.Tensor)->torch.Tensor:
     """Loss for the BYOL (bootstrap your own latent) protocol.
@@ -479,6 +475,36 @@ class VICRegLocalLoss(VICRegLoss):
                 self.nu*cov_loss * self.alpha,
                 local_loss)
 
+class NTXentLoss(torch.nn.Module):
+    """
+    Quick and simple implementation of the NT-Xent loss used in the 
+    SimCLR paper. 
+    """
+    def __init__(self,temperature=1.0):
+        """
+        Args:
+            temperature (float, optional): temperature for the scaled 
+                cross-entropy calculation. Defaults to 1.0.
+        """
+        super().__init__()
+        self.temperature = temperature
+    
+    def forward(self,X1:torch.Tensor,X2:torch.Tensor):
+        dev = X1.device
+        # calculate denominator
+        X_cat = torch.cat([X1,X2],0)
+        n2 = X_cat.shape[0]
+        sim_mat = cos_sim(X_cat,X_cat) / self.temperature
+        mask = torch.eye(n2,device=dev,dtype=torch.bool)
+        sim = sim_mat[mask.roll(shifts=mask.shape[0] // 2, dims=0)]
+        mask = torch.zeros_like(sim_mat).masked_fill(mask,-torch.inf)
+        desim = torch.logsumexp(sim_mat + mask,dim=-1)
+
+        loss = - sim + desim
+        loss = loss.mean()
+        
+        return loss
+        
 class ContrastiveDistanceLoss(torch.nn.Module):
     def __init__(self,dist_p=2,random_sample=False,margin=1,
                  dev="cpu",loss_type="pairwise",dist_type="euclidean"):
@@ -550,11 +576,13 @@ class ContrastiveDistanceLoss(torch.nn.Module):
             self.margin + hard_positives - hard_negatives)
         return triplet_loss
 
-    def forward(self,X:torch.Tensor,y:torch.Tensor):
-        if isinstance(X,list):
-            X1,X2 = X
-        else:
-            X1,X2 = X,X
+    def forward(self,X1:torch.Tensor,X2:torch.Tensor=None,y:torch.Tensor=None):
+        if isinstance(X1,list):
+            X1,X2 = X1
+        if X2 is None:
+            X2 = deepcopy(X1)
+        if y is None:
+            y = torch.ones([X1.shape[0]])
         y1,y2 = y.unsqueeze(0),y.unsqueeze(1)
         is_same = y1 == y2
         if self.loss_type == "pairwise":
