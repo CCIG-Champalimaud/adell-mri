@@ -29,14 +29,17 @@ def filter_orientations(
         for kk in dicom_dictionary[k]:
             new_dicom_dictionary[k][kk] = []
             for dcm_dict in dicom_dictionary[k][kk]:
-                if dcm_dict["orientation"] is not None:
-                    is_bad = np.all(
-                        np.isclose(
-                            dcm_dict["orientation"][-3:],[0,0,-1]))
-                    if is_bad == True and keep_bad == False:
-                        pass
-                    else:
-                        new_dicom_dictionary[k][kk].append(dcm_dict)
+                if ".dcm" in dcm_dict["image"]:
+                    if dcm_dict["orientation"] is not None:
+                        is_bad = np.all(
+                            np.isclose(
+                                dcm_dict["orientation"][-3:],[0,0,-1]))
+                        if is_bad == True and keep_bad == False:
+                            pass
+                        else:
+                            new_dicom_dictionary[k][kk].append(dcm_dict)
+                else:
+                    new_dicom_dictionary[k][kk].append(dcm_dict)
 
     new_dict = {}
     for k in new_dicom_dictionary:
