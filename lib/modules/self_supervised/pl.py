@@ -11,7 +11,6 @@ from ..layers.conv_next import ConvNeXt
 from .self_supervised import (
     BarlowTwinsLoss, VICRegLocalLoss, 
     byol_loss, simsiam_loss, VICRegLoss,NTXentLoss)
-from lightly.loss import NTXentLoss
 from ..segmentation.unet import UNet
 from ..learning_rate import CosineAnnealingWithWarmupLR
 
