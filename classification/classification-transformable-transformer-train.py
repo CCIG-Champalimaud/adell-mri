@@ -69,6 +69,9 @@ if __name__ == "__main__":
         '--target_spacing',dest='target_spacing',action="store",default=None,
         help="Resamples all images to target spacing",nargs='+',type=float)
     parser.add_argument(
+        '--target_size',dest='target_size',action="store",default=None,
+        help="Resizes all images to target size",nargs='+',type=int)
+    parser.add_argument(
         '--pad_size',dest='pad_size',action="store",
         default=None,type=float,nargs='+',
         help="Size of central padded image after resizing (if none is specified\
@@ -130,6 +133,9 @@ if __name__ == "__main__":
     parser.add_argument(
         '--folds',dest="folds",type=str,default=None,nargs="+",
         help="Comma-separated IDs to be used in each space-separated fold")
+    parser.add_argument(
+        '--exclude_ids',dest='exclude_ids',type=str,default=None,
+        help="Comma separated list of IDs to exclude.")
     parser.add_argument(
         '--checkpoint_dir',dest='checkpoint_dir',type=str,default=None,
         help='Path to directory where checkpoints will be saved.')
@@ -217,6 +223,9 @@ if __name__ == "__main__":
     output_file = open(args.metric_path,'w')
 
     data_dict = json.load(open(args.dataset_json,'r'))
+    if args.exclude_ids is not None:
+        data_dict = {k:data_dict[k] for k in data_dict
+                     if k not in args.exclude_ids.split(",")}
     data_dict = filter_dictionary_with_possible_labels(
         data_dict,args.possible_labels,args.label_keys)
     if len(args.filter_on_keys) > 0:
@@ -280,6 +289,7 @@ if __name__ == "__main__":
         "keys":keys,
         "adc_keys":adc_keys,
         "target_spacing":args.target_spacing,
+        "target_size":args.target_size,
         "crop_size":args.crop_size,
         "pad_size":args.pad_size,
         "possible_labels":args.possible_labels,
@@ -456,7 +466,7 @@ if __name__ == "__main__":
             print("2D module output size not specified, inferring...")
             input_example = torch.rand(1,1,256,256).to(args.dev.split(":")[0])
             output = network_config["module"](input_example)
-            network_config["module_out_dim"] = int(output.shape[-1])
+            network_config["module_out_dim"] = int(output.shape[1])
             print("2D module output size={}".format(
                 network_config["module_out_dim"]))
         network = TransformableTransformerPL(
