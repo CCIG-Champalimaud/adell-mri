@@ -72,7 +72,9 @@ if __name__ == "__main__":
 
     network_config_correct = {k:network_config_correct[k]
                               for k in network_config_correct
-                              if k != "prediction_head_args"}
+                              if k not in ["prediction_head_args",
+                                           "projection_head_args"]}
+    network_config_correct["projection_head_args"] = {}
     if args.net_type == "unet_encoder":
         network_config_correct["encoder_only"] = True
         fn_args = [k for k in inspect.signature(UNet).parameters]
@@ -103,6 +105,10 @@ if __name__ == "__main__":
         map_location=args.dev.split(":")[0])['state_dict']
     state_dict = {k:state_dict[k] for k in state_dict
                   if "prediction_head" not in k}
+    state_dict = {k:state_dict[k] for k in state_dict
+                  if "projection_head" not in k}
+    state_dict = {k:state_dict[k] for k in state_dict
+                  if "ema" not in k}
     inc = ssl.load_state_dict(state_dict)
     ssl.eval()
     

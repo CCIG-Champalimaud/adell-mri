@@ -10,8 +10,10 @@ from ..layers.res_net import ResNet
 from ..layers.conv_next import ConvNeXt
 from .self_supervised import (
     BarlowTwinsLoss, VICRegLocalLoss, 
-    byol_loss, simsiam_loss, VICRegLoss)
+    byol_loss, simsiam_loss, VICRegLoss,NTXentLoss)
+from lightly.loss import NTXentLoss
 from ..segmentation.unet import UNet
+from ..learning_rate import CosineAnnealingWithWarmupLR
 
 class BarlowTwinsPL(ResNet,pl.LightningModule):
     def __init__(
@@ -84,7 +86,7 @@ class BarlowTwinsPL(ResNet,pl.LightningModule):
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(
             self.parameters(),lr=self.learning_rate,
-            weight_decay=self.weight_decay,amsgrad=True)
+            weight_decay=self.weight_decay)
         lr_schedulers = torch.optim.lr_scheduler.ReduceLROnPlateau(
             optimizer,patience=5,cooldown=5,min_lr=1e-6,factor=0.25,
             verbose=True)
@@ -112,7 +114,7 @@ class BarlowTwinsPL(ResNet,pl.LightningModule):
             self.val_metrics["V"+k] = metric_dict[k]()
             self.test_metrics["T"+k] = metric_dict[k]()
 
-class NonContrastiveBasePL(pl.LightningModule,ABC):
+class SelfSLBasePL(pl.LightningModule,ABC):
     """Abstract method for non-contrastive PL modules. Features some very
     basic but helpful functions which I use consistently when training 
     non-contrastive self-supervised models.
@@ -142,6 +144,8 @@ class NonContrastiveBasePL(pl.LightningModule,ABC):
             self.loss = VICRegLoss(**self.vic_reg_loss_params)
         if self.vic_reg_local is True:
             self.loss = VICRegLocalLoss(**self.vic_reg_loss_params)
+        if self.simclr is True:
+            self.loss = NTXentLoss(temperature=self.temperature)
 
     def calculate_loss(self,y1,y2,*args):
         if self.stop_gradient is False:
@@ -168,13 +172,12 @@ class NonContrastiveBasePL(pl.LightningModule,ABC):
                 params_no_decay.append(p)
             else:
                 params_decay.append(p)
-        optimizer = torch.optim.SGD(
-            [{"params":params_no_decay,"weight_decay":0},
-             {"params":params_decay}],
-            momentum=0.9,
+        optimizer = torch.optim.Adam(
+            params_decay + params_no_decay,
             lr=self.learning_rate,weight_decay=self.weight_decay)
-        lr_schedulers = torch.optim.lr_scheduler.CosineAnnealingLR(
-            optimizer,self.n_epochs)
+        lr_schedulers = lr_schedulers = CosineAnnealingWithWarmupLR(
+            optimizer,T_max=self.n_epochs,start_decay=self.start_decay,
+            n_warmup_steps=self.warmup_steps,eta_min=1e-5)
 
         return {"optimizer":optimizer,
                 "lr_scheduler":lr_schedulers,
@@ -198,7 +201,7 @@ class NonContrastiveBasePL(pl.LightningModule,ABC):
             self.val_metrics["V"+k] = metric_dict[k]()
             self.test_metrics["T"+k] = metric_dict[k]()
 
-class NonContrastiveResNetPL(ResNet,NonContrastiveBasePL):
+class SelfSLResNetPL(ResNet,SelfSLBasePL):
     """Operates a number of non-contrastive self-supervised learning 
     methods, all of which use non-contrastive approaches to self-supervised
     learning. Included here are:
@@ -222,9 +225,13 @@ class NonContrastiveResNetPL(ResNet,NonContrastiveBasePL):
         weight_decay: float=0.005,
         training_dataloader_call: Callable=None,
         n_epochs: int=1000,
+        warmup_steps: int=0,
+        start_decay: int=None,
         ema: torch.nn.Module=None,
         vic_reg: bool=False,
         vic_reg_local: bool=False,
+        simclr: bool=False,
+        temperature: float=1.0,
         vic_reg_loss_params: dict={},
         stop_gradient: bool=True,
         channels_to_batch: bool=False,
@@ -249,6 +256,10 @@ class NonContrastiveResNetPL(ResNet,NonContrastiveBasePL):
                 called, returns the training dataloader. Defaults to None.
             n_epochs (int, optional): number of training epochs. Defaults to 
                 1000.
+            warmup_steps (int, optional): number of warmup steps. Defaults 
+                to 0.
+            start_decay (int, optional): number of steps after which decay
+                begins. Defaults to None (decay starts after warmup).
             ema (float, torch.nn.Module): exponential moving decay module 
                 (EMA). Must have an update method that takes model as input 
                 and updates the weights based on this. Defaults to None.
@@ -257,6 +268,10 @@ class NonContrastiveResNetPL(ResNet,NonContrastiveBasePL):
                 Defaults to False.
             vic_reg_local (bool, optional): uses the VICRegL method from 
                 Bardes et al. (2022). Overrides vic_reg. Defaults to False.
+            simclr (bool, optional): uses the SimCLR self-SL protocol. Defaults
+                to False.
+            temperature (float, optional): temperature for NTXent (when 
+                simclr == True). Defaults to 1.0.
             vic_reg_loss_params (dict, optional): parameters for the VICRegLoss
                 module. Defaults to {} (the default parameters).
             stop_gradient (bool, optional): stops gradients when calculating
@@ -274,9 +289,13 @@ class NonContrastiveResNetPL(ResNet,NonContrastiveBasePL):
         self.weight_decay = weight_decay
         self.training_dataloader_call = training_dataloader_call
         self.n_epochs = n_epochs
+        self.warmup_steps = warmup_steps
+        self.start_decay = start_decay
         self.ema = ema
         self.vic_reg = vic_reg
         self.vic_reg_local = vic_reg_local
+        self.simclr = simclr
+        self.temperature = temperature
         self.vic_reg_loss_params = vic_reg_loss_params
         self.stop_gradient = stop_gradient
         self.channels_to_batch = channels_to_batch
@@ -286,9 +305,13 @@ class NonContrastiveResNetPL(ResNet,NonContrastiveBasePL):
         
         super().__init__(*args,**kwargs)
 
-        if self.stop_gradient is False and self.vic_reg is False:
+        if all([
+            self.stop_gradient is False,
+            self.vic_reg is False,
+            self.vic_reg_local is False,
+            self.simclr is False]):
             warnings.warn("stop_gradient=False should not (in theory) be used\
-                with vic_reg=False or vic_reg_local=False")
+            with vic_reg=False, vic_reg_local=False or simclr=False")
 
         self.init_loss()
         if self.ema is not None:
@@ -316,7 +339,11 @@ class NonContrastiveResNetPL(ResNet,NonContrastiveBasePL):
             return op(x,ret)
 
     def step(self,batch,loss_str:str,metrics:dict,train=False):
-        if self.vic_reg_local is False:
+        if self.simclr is True:
+            ret_string_1 = "projection"
+            ret_string_2 = "projection"
+            other_args = []
+        elif self.vic_reg_local is False:
             ret_string_1 = "prediction"
             ret_string_2 = "projection"
             other_args = []
@@ -337,8 +364,10 @@ class NonContrastiveResNetPL(ResNet,NonContrastiveBasePL):
         losses = self.calculate_loss(y1,y2,*other_args)
         self.update_metrics(y1,y2,metrics)
         
-        # loss is already symmetrised for VICReg and VICRegL
-        if (self.vic_reg is False) and (self.vic_reg_local is False):
+        # loss is already symmetrised for VICReg, VICRegL and SimCLR
+        if all([self.vic_reg is False,
+                self.vic_reg_local is False,
+                self.simclr is False]):
             y1_ = self.forward_ema_stop_grad(x1,ret=ret_string_1)
             y2_ = self.forward(x2,ret=ret_string_2)
             losses = losses + self.calculate_loss(y2_,y1_,*other_args)
@@ -380,7 +409,7 @@ class NonContrastiveResNetPL(ResNet,NonContrastiveBasePL):
         loss = self.step(batch,"test_loss",self.test_metrics)
         return loss
 
-class NonContrastiveUNetPL(UNet,NonContrastiveBasePL):
+class SelfSLUNetPL(UNet,SelfSLBasePL):
     """Operates a number of non-contrastive self-supervised learning 
     methods, all of which use non-contrastive approaches to self-supervised
     learning. Included here are:
@@ -404,9 +433,13 @@ class NonContrastiveUNetPL(UNet,NonContrastiveBasePL):
         weight_decay: float=0.005,
         training_dataloader_call: Callable=None,
         n_epochs: int=1000,
+        warmup_steps: int=0,
+        start_decay: int=None,
         ema: torch.nn.Module=None,
         vic_reg: bool=False,
         vic_reg_local: bool=False,
+        simclr: bool=False,
+        temperature: float=1.0,
         vic_reg_loss_params: dict={},
         stop_gradient: bool=True,
         channels_to_batch: bool=False,
@@ -429,6 +462,12 @@ class NonContrastiveUNetPL(UNet,NonContrastiveBasePL):
                 Defaults to 0.005.
             training_dataloader_call (Callable, optional): function that, when
                 called, returns the training dataloader. Defaults to None.
+            n_epochs (int, optional): number of training epochs. Defaults to 
+                1000.
+            warmup_steps (int, optional): number of warmup steps. Defaults 
+                to 0.
+            start_decay (int, optional): number of steps after which decay
+                begins. Defaults to None (decay starts after warmup).
             ema (float, torch.nn.Module): exponential moving decay module 
                 (EMA). Must have an update method that takes model as input 
                 and updates the weights based on this. Defaults to None.
@@ -437,6 +476,10 @@ class NonContrastiveUNetPL(UNet,NonContrastiveBasePL):
                 Defaults to False.
             vic_reg_local (bool, optional): uses the VICRegL method from 
                 Bardes et al. (2022). Overrides vic_reg. Defaults to False.
+            simclr (bool, optional): uses the SimCLR self-SL protocol. Defaults
+                to False.
+            temperature (float, optional): temperature for NTXent (when 
+                simclr == True). Defaults to 1.0.
             vic_reg_loss_params (dict, optional): parameters for the VICRegLoss
                 module. Defaults to {} (the default parameters).
             stop_gradient (bool, optional): stops gradients when calculating
@@ -454,9 +497,13 @@ class NonContrastiveUNetPL(UNet,NonContrastiveBasePL):
         self.weight_decay = weight_decay
         self.training_dataloader_call = training_dataloader_call
         self.n_epochs = n_epochs
+        self.warmup_steps = warmup_steps
+        self.start_decay = start_decay
         self.ema = ema
         self.vic_reg = vic_reg
         self.vic_reg_local = vic_reg_local
+        self.simclr = simclr
+        self.temperature = temperature
         self.vic_reg_loss_params = vic_reg_loss_params
         self.stop_gradient = stop_gradient
         self.channels_to_batch = channels_to_batch
@@ -467,9 +514,13 @@ class NonContrastiveUNetPL(UNet,NonContrastiveBasePL):
         kwargs["encoder_only"] = True
         super().__init__(*args,**kwargs)
 
-        if self.stop_gradient is False and self.vic_reg is False:
+        if all([
+            self.stop_gradient is False,
+            self.vic_reg is False,
+            self.vic_reg_local is False,
+            self.simclr is False]):
             warnings.warn("stop_gradient=False should not (in theory) be used\
-                with vic_reg=False or vic_reg_local=False")
+            with vic_reg=False, vic_reg_local=False or simclr=False")
 
         self.init_loss()
         if self.ema is not None:
@@ -559,7 +610,7 @@ class NonContrastiveUNetPL(UNet,NonContrastiveBasePL):
         loss = self.step(batch,"test_loss",self.test_metrics)
         return loss
 
-class NonContrastiveConvNeXtPL(ConvNeXt,NonContrastiveBasePL):
+class SelfSLConvNeXtPL(ConvNeXt,SelfSLBasePL):
     """Operates a number of non-contrastive self-supervised learning 
     methods, all of which use non-contrastive approaches to self-supervised
     learning. Included here are:
@@ -583,9 +634,13 @@ class NonContrastiveConvNeXtPL(ConvNeXt,NonContrastiveBasePL):
         weight_decay: float=0.005,
         training_dataloader_call: Callable=None,
         n_epochs: int=1000,
+        warmup_steps: int=0,
+        start_decay: int=None,
         ema: torch.nn.Module=None,
         vic_reg: bool=False,
         vic_reg_local: bool=False,
+        simclr: bool=False,
+        temperature: float=1.0,
         vic_reg_loss_params: dict={},
         stop_gradient: bool=True,
         channels_to_batch: bool=False,
@@ -610,6 +665,10 @@ class NonContrastiveConvNeXtPL(ConvNeXt,NonContrastiveBasePL):
                 called, returns the training dataloader. Defaults to None.
             n_epochs (int, optional): number of training epochs. Defaults to 
                 1000.
+            warmup_steps (int, optional): number of warmup steps. Defaults 
+                to 0.
+            start_decay (int, optional): number of steps after which decay
+                begins. Defaults to None (decay starts after warmup).
             ema (float, torch.nn.Module): exponential moving decay module 
                 (EMA). Must have an update method that takes model as input 
                 and updates the weights based on this. Defaults to None.
@@ -618,6 +677,10 @@ class NonContrastiveConvNeXtPL(ConvNeXt,NonContrastiveBasePL):
                 Defaults to False.
             vic_reg_local (bool, optional): uses the VICRegL method from 
                 Bardes et al. (2022). Overrides vic_reg. Defaults to False.
+            simclr (bool, optional): uses the SimCLR self-SL protocol. Defaults
+                to False.
+            temperature (float, optional): temperature for NTXent (when 
+                simclr == True). Defaults to 1.0.
             vic_reg_loss_params (dict, optional): parameters for the VICRegLoss
                 module. Defaults to {} (the default parameters).
             stop_gradient (bool, optional): stops gradients when calculating
@@ -635,9 +698,12 @@ class NonContrastiveConvNeXtPL(ConvNeXt,NonContrastiveBasePL):
         self.weight_decay = weight_decay
         self.training_dataloader_call = training_dataloader_call
         self.n_epochs = n_epochs
-        self.ema = ema
+        self.warmup_steps = warmup_steps
+        self.start_decay = start_decay
         self.vic_reg = vic_reg
         self.vic_reg_local = vic_reg_local
+        self.simclr = simclr
+        self.temperature = temperature
         self.vic_reg_loss_params = vic_reg_loss_params
         self.stop_gradient = stop_gradient
         self.channels_to_batch = channels_to_batch
@@ -646,10 +712,16 @@ class NonContrastiveConvNeXtPL(ConvNeXt,NonContrastiveBasePL):
             kwargs["backbone_args"]["in_channels"] = 1
         
         super().__init__(*args,**kwargs)
+        
+        self.ema = ema
 
-        if self.stop_gradient is False and self.vic_reg is False:
+        if all([
+            self.stop_gradient is False,
+            self.vic_reg is False,
+            self.vic_reg_local is False,
+            self.simclr is False]):
             warnings.warn("stop_gradient=False should not (in theory) be used\
-                with vic_reg=False or vic_reg_local=False")
+            with vic_reg=False, vic_reg_local=False or simclr=False")
 
         self.init_loss()
         if self.ema is not None:
@@ -677,7 +749,11 @@ class NonContrastiveConvNeXtPL(ConvNeXt,NonContrastiveBasePL):
             return op(x,ret)
 
     def step(self,batch,loss_str:str,metrics:dict,train=False):
-        if self.vic_reg_local is False:
+        if self.simclr is True:
+            ret_string_1 = "projection"
+            ret_string_2 = "projection"
+            other_args = []
+        elif self.vic_reg_local is False:
             ret_string_1 = "prediction"
             ret_string_2 = "projection"
             other_args = []
@@ -689,17 +765,20 @@ class NonContrastiveConvNeXtPL(ConvNeXt,NonContrastiveBasePL):
             other_args = [box_1,box_2]
         
         x1,x2 = batch[self.aug_image_key_1],batch[self.aug_image_key_2]
+                
         if self.channels_to_batch is True:
             x1 = x1.reshape(-1,1,*x1.shape[2:])
             x2 = x2.reshape(-1,1,*x1.shape[2:])
         y1 = self.forward(x1,ret=ret_string_1)
         y2 = self.forward_ema_stop_grad(x2,ret=ret_string_2)
-                    
+                            
         losses = self.calculate_loss(y1,y2,*other_args)
         self.update_metrics(y1,y2,metrics)
         
         # loss is already symmetrised for VICReg and VICRegL
-        if (self.vic_reg is False) and (self.vic_reg_local is False):
+        if all([self.vic_reg is False,
+                self.vic_reg_local is False,
+                self.simclr is False]):
             y1_ = self.forward_ema_stop_grad(x1,ret=ret_string_1)
             y2_ = self.forward(x2,ret=ret_string_2)
             losses = losses + self.calculate_loss(y2_,y1_,*other_args)

@@ -3,8 +3,8 @@ sys.path.append(r"..")
 from lib.utils import safe_collate,ExponentialMovingAverage
 from lib.utils.pl_utils import get_devices,get_ckpt_callback,get_logger
 from lib.modules.self_supervised.pl import (
-    NonContrastiveResNetPL,NonContrastiveUNetPL,
-    NonContrastiveConvNeXtPL)
+    SelfSLResNetPL,SelfSLUNetPL,
+    SelfSLConvNeXtPL)
 from lib.modules.config_parsing import parse_config_ssl,parse_config_unet
 from lib.utils.dicom_loader import (
     DICOMDataset, SliceSampler, filter_orientations)
@@ -135,6 +135,10 @@ if __name__ == "__main__":
         '--max_epochs',dest="max_epochs",
         help="Maximum number of training epochs",default=100,type=int)
     parser.add_argument(
+        '--warmup_steps',dest='warmup_steps',type=float,default=0.0,
+        help="Number of warmup steps (if SWA is triggered it starts after\
+            this number of steps).")
+    parser.add_argument(
         '--accumulate_grad_batches',dest="accumulate_grad_batches",
         help="Number batches to accumulate before backpropgating gradient",
         default=1,type=int)
@@ -175,6 +179,9 @@ if __name__ == "__main__":
         '--vicregl',dest='vicregl',action="store_true",
         help="Use VICRegL loss")
     parser.add_argument(
+        '--simclr',dest='simclr',action="store_true",
+        help="Use SimCLR loss")
+    parser.add_argument(
         '--resume_from_last',dest='resume_from_last',action="store_true",
         help="Resumes training from last checkpoint.")
 
@@ -185,6 +192,8 @@ if __name__ == "__main__":
     np.random.seed(args.seed)
     g = torch.Generator()
     g.manual_seed(args.seed)
+    
+    n_iterations = 10
     
     accelerator,devices,strategy = get_devices(args.dev)
 
@@ -225,16 +234,6 @@ if __name__ == "__main__":
     if (args.batch_size is not None) and (args.batch_size != "tune"):
         network_config["batch_size"] = args.batch_size
         network_config_correct["batch_size"] = args.batch_size
-
-    if args.ema is True:
-        bs = network_config_correct["batch_size"]
-        ema_params = {
-            "decay":0.99,
-            "final_decay":1.0,
-            "n_steps":args.max_epochs*len(data_dict)/bs}
-        ema = ExponentialMovingAverage(**ema_params)
-    else:
-        ema = None
 
     if args.random_crop_size is None:
         roi_size = [128,128]
@@ -282,7 +281,17 @@ if __name__ == "__main__":
     train_dataset = DICOMDataset(
         train_list,
         monai.transforms.Compose(transforms))
-    sampler = SliceSampler(train_list,n_iterations=10)
+    sampler = SliceSampler(train_list,n_iterations=n_iterations)
+
+    if args.ema is True:
+        bs = network_config_correct["batch_size"]
+        ema_params = {
+            "decay":0.99,
+            "final_decay":1.0,
+            "n_steps":args.max_epochs*len(sampler)/bs}
+        ema = ExponentialMovingAverage(**ema_params)
+    else:
+        ema = None
 
     if isinstance(devices,list):
         n_workers = args.n_workers // len(devices)
@@ -298,46 +307,31 @@ if __name__ == "__main__":
     train_loader = train_loader_call(
         network_config_correct["batch_size"],False)
 
+    boilerplate = {
+        "training_dataloader_call":train_loader_call,
+        "aug_image_key_1":"augmented_image_1",
+        "aug_image_key_2":"augmented_image_2",
+        "box_key_1":"box_1",
+        "box_key_2":"box_2",
+        "n_epochs":args.max_epochs,
+        "warmup_steps":args.warmup_steps,
+        "vic_reg":args.vicreg,
+        "vic_reg_local":args.vicregl,
+        "simclr":args.simclr,
+        "ema":ema,
+        "stop_gradient":args.simclr is False,
+        "temperature":0.1}
+
     if args.net_type == "unet_encoder":
-        ssl = NonContrastiveUNetPL(
-            training_dataloader_call=train_loader_call,
-            aug_image_key_1="augmented_image_1",
-            aug_image_key_2="augmented_image_2",
-            box_key_1="box_1",
-            box_key_2="box_2",
-            n_epochs=args.max_epochs,
-            vic_reg=args.vicreg,
-            vic_reg_local=args.vicregl,
-            ema=ema,
-            **network_config_correct)
+        ssl = SelfSLUNetPL(**boilerplate,**network_config_correct)
     elif args.net_type == "convnext":
         network_config_correct["backbone_args"] = {
             k:network_config_correct["backbone_args"][k] 
             for k in network_config_correct["backbone_args"]
             if k not in ["res_type"]}
-        ssl = NonContrastiveConvNeXtPL(
-            training_dataloader_call=train_loader_call,
-            aug_image_key_1="augmented_image_1",
-            aug_image_key_2="augmented_image_2",
-            box_key_1="box_1",
-            box_key_2="box_2",
-            n_epochs=args.max_epochs,
-            vic_reg=args.vicreg,
-            vic_reg_local=args.vicregl,
-            ema=ema,
-            **network_config_correct)
+        ssl = SelfSLConvNeXtPL(**boilerplate,**network_config_correct)
     else:
-        ssl = NonContrastiveResNetPL(
-            training_dataloader_call=train_loader_call,
-            aug_image_key_1="augmented_image_1",
-            aug_image_key_2="augmented_image_2",
-            box_key_1="box_1",
-            box_key_2="box_2",
-            n_epochs=args.max_epochs,
-            vic_reg=args.vicreg,
-            vic_reg_local=args.vicregl,
-            ema=ema,
-            **network_config_correct)
+        ssl = SelfSLResNetPL(**boilerplate,**network_config_correct)
 
     if args.from_checkpoint is not None:
         state_dict = torch.load(

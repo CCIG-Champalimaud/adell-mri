@@ -27,8 +27,7 @@ from lib.modules.augmentations import (
     AugmentationWorkhorsed,generic_augments,mri_specific_augments,
     spatial_augments)
 from lib.modules.self_supervised.pl import (
-    NonContrastiveResNetPL,NonContrastiveUNetPL,
-    NonContrastiveConvNeXtPL)
+    SelfSLResNetPL,SelfSLUNetPL,SelfSLConvNeXtPL)
 from lib.utils import ExponentialMovingAverage
 from lib.modules.config_parsing import parse_config_ssl,parse_config_unet
 
