@@ -390,4 +390,6 @@ class ExponentialMovingAverage(torch.nn.Module):
                        (1.-self.decay) * (shadow_params[name]-param))
             
             self.decay = self.step*self.slope + self.intercept
+            if self.decay > 1.0:
+                self.decay = 1.0
             self.step += 1
