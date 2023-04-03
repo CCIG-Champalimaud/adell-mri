@@ -14,7 +14,8 @@ from typing import List,Union,Tuple
 
 def get_ckpt_callback(checkpoint_dir:str,checkpoint_name:str,
                       max_epochs:int,resume_from_last:bool,
-                      val_fold:int=None,monitor="val_loss")->ModelCheckpoint:
+                      val_fold:int=None,monitor="val_loss",
+                      n_best_ckpts:int=1)->ModelCheckpoint:
     """Gets a checkpoint callback for PyTorch Lightning. The format for 
     for the last and 2 best checkpoints, respectively is:
     1. "{name}_fold{fold}_last.ckpt"
@@ -30,6 +31,8 @@ def get_ckpt_callback(checkpoint_dir:str,checkpoint_name:str,
         val_fold (int, optional): ID for the validation fold. Defaults to None.
         monitor (str, optional): metric which should be monitored when defining
             the best checkpoints. Defaults to "val_loss".
+        n_best_ckpts (int, optional): number of best performing models to be
+            saved. Defaults to 1.
 
     Returns:
         ModelCheckpoint: PyTorch Lightning checkpoint callback.
@@ -53,7 +56,7 @@ def get_ckpt_callback(checkpoint_dir:str,checkpoint_name:str,
         ckpt_callback = ModelCheckpoint(
             dirpath=checkpoint_dir,
             filename=ckpt_name,monitor=monitor,
-            save_last=True,save_top_k=1,mode=mode)
+            save_last=True,save_top_k=n_best_ckpts,mode=mode)
         
         ckpt_last = ckpt_last + "_last"
         ckpt_callback.CHECKPOINT_NAME_LAST = ckpt_last
