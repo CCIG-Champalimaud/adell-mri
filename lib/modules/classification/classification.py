@@ -807,7 +807,9 @@ class TransformableTransformer(torch.nn.Module):
             [sh[0],n_slices,self.module_out_dim],
             device=X.device)
         for i,X_slice in enumerate(self.iter_over_dim(X)):
-            ssl_representation[:,i,:] = self.module(X_slice)
+            mod_out = self.module(X_slice)
+            mod_out = mod_out.flatten(start_dim=2).max(-1).values
+            ssl_representation[:,i,:] = mod_out
         return ssl_representation
 
     def forward(self,X:torch.Tensor)->torch.Tensor:
