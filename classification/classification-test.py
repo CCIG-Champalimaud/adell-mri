@@ -140,7 +140,7 @@ if __name__ == "__main__":
         data_dict = filter_dictionary_with_filters(
             data_dict,args.filter_on_keys)
     data_dict = filter_dictionary_with_presence(
-        data_dict,args.image_keys + [args.label_keys])
+        data_dict,args.image_keys + [args.label_keys] + clinical_feature_keys)
     if args.subsample_size is not None:
         strata = {}
         for k in data_dict:
