@@ -1306,12 +1306,11 @@ class RandAffineWithBoxesd(monai.transforms.RandomizableTransform):
                 if is_array:
                     X[k] = X[k].cpu().numpy()
         return X
-    
+
 class RandRotateWithBoxesd(monai.transforms.RandomizableTransform):
     """
-    EXPERIMENTAL.
-    Uses MONAI's `RandAffined` to transform an image and then applies
-    the same affine transform to a bounding box with format xy(z)xy(z).
+    Uses MONAI's `RandAffined` to rotate an image and then applies
+    the same rotation transform to a bounding box with format xy(z)xy(z).
     """
 
     def __init__(self,
