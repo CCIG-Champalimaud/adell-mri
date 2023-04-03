@@ -179,6 +179,7 @@ def get_transforms_classification(x,
                                   possible_labels,
                                   positive_labels,
                                   label_key,
+                                  target_size=None,
                                   label_mode=None):
     non_adc_keys = [k for k in keys if k not in adc_keys]
     if x == "pre":
@@ -198,6 +199,9 @@ def get_transforms_classification(x,
         if target_spacing is not None:
             transforms.append(
                 monai.transforms.Spacingd(keys,pixdim=target_spacing))
+        if target_size is not None:
+            transforms.append(
+                monai.transforms.Resized(keys=keys,spatial_size=target_size))
         if pad_size is not None:
             transforms.append(
                 monai.transforms.SpatialPadd(
@@ -268,7 +272,7 @@ def get_pre_transforms_ssl(all_keys,
             monai.transforms.ScaleIntensityd(non_adc_keys,0,1))
     if len(adc_keys) > 0:
         transforms.extend([
-            ConditionalRescalingd(adc_keys,1000,0.001),
+            ConditionalRescalingd(adc_keys,500,0.001),
             monai.transforms.ScaleIntensityd(
                 adc_keys,None,None,-2/3)])
     if crop_size is not None:
@@ -421,7 +425,8 @@ def get_augmentations_detection(augment,
                                 box_keys,
                                 t2_keys,
                                 intp_resampling_augmentations):
-    valid_arg_list = ["intensity","noise","rbf","rotate","trivial"]
+    valid_arg_list = ["intensity","noise","rbf","rotate","trivial",
+                      "distortion"]
     for a in augment:
         if a not in valid_arg_list:
             raise NotImplementedError(
@@ -460,6 +465,10 @@ def get_augmentations_detection(augment,
                 prob=prob,mode=["bilinear" for _ in image_keys],
                 padding_mode="zeros"))
     
+    if "distortion" in augment:
+        augments.append(
+            monai.transforms.RandGridDistortion(image_keys))
+    
     if "trivial" in augment:
         augments = monai.transforms.OneOf(augments)
     else:
@@ -487,9 +496,6 @@ def get_augmentations_ssl(all_keys:List[str],
         # the sharpens are remarkably slow, not worth it imo
         "gaussian_sharpen_x","gaussian_sharpen_y","gaussian_sharpen_z"]
     if vicregl == True:
-        # cannot get the transform information out of MONAI at the moment
-        # so the best step forward is to avoid comparing regions which *may*
-        # not correspond to one another
         transforms_to_remove.extend(spatial_augments)
     if n_dim == 2:
         transforms_to_remove.extend(
@@ -500,10 +506,13 @@ def get_augmentations_ssl(all_keys:List[str],
     cropping_strategy = []
 
     if scaled_crop_size is not None:
+        small_crop_size = [x//2 for x in scaled_crop_size]
         cropping_strategy.extend([
+            monai.transforms.SpatialPadd(all_keys + copied_keys,
+                                         small_crop_size),
             monai.transforms.RandSpatialCropd(
                 all_keys+copied_keys,
-                roi_size=[x//4 for x in scaled_crop_size],
+                roi_size=small_crop_size,
                 random_size=True),
             monai.transforms.Resized(all_keys+copied_keys,
                                      scaled_crop_size)])
@@ -528,14 +537,15 @@ def get_augmentations_ssl(all_keys:List[str],
         cropping_strategy.append(
             monai.transforms.RandSpatialCropd(
                 all_keys+copied_keys,roi_size=roi_size,random_size=False))
+    dropout_size = tuple([x // 10 for x in roi_size])
     return [
         *cropping_strategy,
         AugmentationWorkhorsed(
-            augmentations=aug_list,
-            keys=all_keys,mask_keys=[],max_mult=0.5,N=2,
-            dropout_size=(8,8)),
+            augmentations=aug_list,keys=all_keys,
+            mask_keys=[],max_mult=0.5,N=3,
+            dropout_size=dropout_size),
         AugmentationWorkhorsed(
-            augmentations=aug_list,
-            keys=copied_keys,mask_keys=[],max_mult=0.5,N=2,
-            dropout_size=(8,8)),
+            augmentations=aug_list,keys=copied_keys,
+            mask_keys=[],max_mult=0.5,N=3,
+            dropout_size=dropout_size),
         ]
