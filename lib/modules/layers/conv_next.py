@@ -153,7 +153,7 @@ class ConvNeXtBackbone(torch.nn.Module):
         if isinstance(m, (torch.nn.Conv3d, torch.nn.Linear)):
             torch.nn.init.trunc_normal_(m.weight, std=0.02)
             torch.nn.init.constant_(m.bias, 0)
-
+    
     def forward_with_intermediate(self,X,after_pool=False):
         X = self.input_layer(X)
         output_list = []
@@ -342,15 +342,18 @@ class ConvNeXt(torch.nn.Module):
             **self.backbone_args)
     
     def init_projection_head(self):
-        try:
-            d = self.projection_head_args["structure"][-1]
-            norm_fn = self.projection_head_args["adn_fn"](d).norm_fn
-        except:
-            norm_fn = torch.nn.LayerNorm
-        self.projection_head = torch.nn.Sequential(
-            ProjectionHead(
-                **self.projection_head_args),
-            norm_fn(d))
+        if len(self.projection_head_args) > 0:
+            try:
+                d = self.projection_head_args["structure"][-1]
+                norm_fn = self.projection_head_args["adn_fn"](d).norm_fn
+            except:
+                norm_fn = torch.nn.LayerNorm
+            self.projection_head = torch.nn.Sequential(
+                ProjectionHead(
+                    **self.projection_head_args),
+                norm_fn(d))
+        else:
+            self.projection_head = torch.nn.Identity()
 
     def init_prediction_head(self):
         if self.prediction_head_args is not None:
