@@ -11,7 +11,7 @@ from ..layers.res_net import ResNet,ResNetBackboneAlt,ProjectionHead
 from ..layers.self_attention import (
     ConcurrentSqueezeAndExcite2d,ConcurrentSqueezeAndExcite3d)
 from ..segmentation.unet import UNet
-from ..layers.linear_blocks import MLP
+from ..layers.linear_blocks import MLP,SeqPool
 from ..layers.vit import ViT,FactorizedViT,TransformerBlockStack
 
 resnet_default = [(64,128,5,2),(128,256,3,5)]
@@ -528,6 +528,9 @@ class ViTClassifier(ViT):
     """
     Implementation of the vision transformer (ViT) as a classifier.
     """
+    """
+    Implementation of the vision transformer (ViT) as a classifier.
+    """
     def __init__(self,
                  n_classes:int,
                  use_class_token:bool=False,
@@ -535,11 +538,18 @@ class ViTClassifier(ViT):
         """
         Args:
             n_classes (int): number of classses.
-            use_class_token (bool, optional): whether a class token is being 
-                used. Defaults to False.
+            use_class_token (Union[str,bool], optional): whether a class token 
+                is being used. If "seqpool" uses the SeqPool method described 
+                in the compact convolutional transformers paper. Defaults to 
+                False.
             args, kwargs: args that are to be used to parametrize the ViT.
         """
-        kwargs["use_class_token"] = use_class_token
+        if use_class_token == "seqpool":
+            kwargs["use_class_token"] = False
+            self.use_seq_pool = True
+        else:
+            kwargs["use_class_token"] = use_class_token
+            self.use_seq_pool = False
         super().__init__(*args,**kwargs)
         self.n_classes = n_classes
 
@@ -547,6 +557,8 @@ class ViTClassifier(ViT):
             nc = 1
         else:
             nc = self.n_classes
+        if self.use_seq_pool == True:
+            self.seqpool = SeqPool(self.input_dim_primary)
         self.classification_layer = torch.nn.Sequential(
             MLP(
                 self.input_dim_primary,nc,
@@ -570,7 +582,9 @@ class ViTClassifier(ViT):
             torch.Tensor: tensor of shape [...,self.input_dim_primary]
         """
         embeded_X,_ = super().forward(X)
-        if self.use_class_token is True:
+        if self.use_seq_pool is True:
+            embeded_X = self.seqpool(embeded_X).squeeze(1)
+        elif self.use_class_token is True:
             embeded_X = embeded_X[:,0]
         else:
             embeded_X = embeded_X.mean(1)
@@ -605,18 +619,27 @@ class FactorizedViTClassifier(FactorizedViT):
         """
         Args:
             n_classes (int): number of classses.
-            use_class_token (bool, optional): whether a class token is being 
-                used. Defaults to False.
+            use_class_token (Union[str,bool], optional): whether a class token 
+                is being used. If "seqpool" uses the SeqPool method described 
+                in the compact convolutional transformers paper. Defaults to 
+                False.
             args, kwargs: args that are to be used to parametrize the ViT.
         """
-        kwargs["use_class_token"] = use_class_token
+        if use_class_token == "seqpool":
+            kwargs["use_class_token"] = False
+            self.use_seq_pool = True
+        else:
+            kwargs["use_class_token"] = use_class_token
+            self.use_seq_pool = False
         super().__init__(*args,**kwargs)
         self.n_classes = n_classes
-        
+
         if self.n_classes == 2:
             nc = 1
         else:
             nc = self.n_classes
+        if self.use_seq_pool is True:
+            self.seqpool = SeqPool(self.input_dim_primary)
         self.classification_layer = torch.nn.Sequential(
             MLP(
                 self.input_dim_primary,nc,
@@ -639,7 +662,9 @@ class FactorizedViTClassifier(FactorizedViT):
             torch.Tensor: tensor of shape [...,self.input_dim_primary]
         """
         embeded_X = super().forward(X)
-        if self.use_class_token is True:
+        if self.use_seq_pool is True:
+            embeded_X = self.seqpool(embeded_X).squeeze(1)
+        elif self.use_class_token is True:
             embeded_X = embeded_X[:,0]
         else:
             embeded_X = embeded_X.mean(1)

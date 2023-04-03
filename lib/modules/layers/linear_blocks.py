@@ -210,6 +210,16 @@ class SelfAttention(torch.nn.Module):
         V_tilde = S @ V
         return V_tilde
 
+class SeqPool(torch.nn.Module):
+    def __init__(self,n_features):
+        super().__init__()
+        self.n_features = n_features
+        self.g = torch.nn.Linear(self.n_features,1)
+    
+    def forward(self,X:torch.Tensor)->torch.Tensor:
+        attn =  torch.softmax(self.g(X).swapaxes(1,2),-1)
+        return attn @ X
+
 class MultiHeadSelfAttention(torch.nn.Module):
     """Module composed of several self-attention modules which calculate
     a set of self-attention outputs, concatenates them, and applies a 
