@@ -153,10 +153,14 @@ def get_detection_network(net_type:str,
     if "batch_size" not in net_cfg:
         net_cfg["batch_size"] = 1
         
-    object_loss_params = get_loss_param_dict(
-        1.0,loss_gamma,loss_comb,0.5)[object_loss_key]
-    classification_loss_params = get_loss_param_dict(
-        class_weights,loss_gamma,loss_comb,0.5)[class_loss_key]
+    if (loss_gamma is None) or (loss_comb is None) or (class_weights is None):
+        object_loss_params = {}
+        classification_loss_params = {}
+    else:
+        object_loss_params = get_loss_param_dict(
+            1.0,loss_gamma,loss_comb,0.5)[object_loss_key]
+        classification_loss_params = get_loss_param_dict(
+            class_weights,loss_gamma,loss_comb,0.5)[class_loss_key]
 
     adn_fn = get_adn_fn(
         3,norm_fn="batch",
@@ -170,8 +174,8 @@ def get_detection_network(net_type:str,
         classification_loss_fn=classification_loss_fn,
         object_loss_fn=object_loss_fn,
         reg_loss_fn=complete_iou_loss,
-        classification_loss_params=classification_loss_params,
         object_loss_params=object_loss_params,
+        classification_loss_params=classification_loss_params,
         n_epochs=n_epochs,warmup_steps=warmup_steps,
         **net_cfg)
 

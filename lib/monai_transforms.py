@@ -11,7 +11,8 @@ from .utils import (
     CopyEntryd,
     ExposeTransformKeyMetad,
     Offsetd,
-    MaskToAdjustedAnchorsd)
+    MaskToAdjustedAnchorsd,
+    RandRotateWithBoxesd)
 from lib.modules.augmentations import (
     generic_augments,mri_specific_augments,spatial_augments,
     AugmentationWorkhorsed)
@@ -133,7 +134,8 @@ def get_transforms_detection(keys,
                              box_class_key,
                              shape_key,
                              box_key,
-                             augments):
+                             augments,
+                             predict=False):
     input_size = [int(x) for x in input_size]
     intp_resampling = ["area" for _ in keys]
     non_adc_keys = [k for k in keys if k not in adc_keys]
@@ -152,14 +154,16 @@ def get_transforms_detection(keys,
             monai.transforms.ScaleIntensityd(adc_keys,None,None,-2/3))
     transforms.extend([
         monai.transforms.Resized(keys,tuple(input_size),
-                                 mode=intp_resampling),
-        MaskToAdjustedAnchorsd(
+                                 mode=intp_resampling)])
+    transforms.append(
+        get_augmentations_detection(augments,keys,[box_key],
+                                    t2_keys,intp_resampling))
+    if predict == False:
+        transforms.append(MaskToAdjustedAnchorsd(
             anchor_sizes=anchor_array,input_sh=input_size,
             output_sh=output_size,iou_thresh=iou_threshold,
             bb_key=box_key,class_key=box_class_key,shape_key=shape_key,
-            output_key="bb_map")])
-    transforms.append(
-        get_augmentations_class(augments,keys,keys,t2_keys,intp_resampling))
+            output_key="bb_map"))
     transforms.append(
         monai.transforms.ConcatItemsd(keys,"image"))
     transforms.append(monai.transforms.EnsureTyped(keys))
@@ -404,6 +408,56 @@ def get_augmentations_class(augment,
                 all_keys,
                 shear_range=((0.9,1.1),(0.9,1.1),(0.9,1.1)),
                 prob=prob,mode=intp_resampling_augmentations,
+                padding_mode="zeros"))
+    
+    if "trivial" in augment:
+        augments = monai.transforms.OneOf(augments)
+    else:
+        augments = monai.transforms.Compose(augments)
+    return augments
+
+def get_augmentations_detection(augment,
+                                image_keys,
+                                box_keys,
+                                t2_keys,
+                                intp_resampling_augmentations):
+    valid_arg_list = ["intensity","noise","rbf","rotate","trivial"]
+    for a in augment:
+        if a not in valid_arg_list:
+            raise NotImplementedError(
+                "augment can only contain {}".format(valid_arg_list))
+    
+    augments = []
+    prob = 0.1
+    if "trivial" in augment:
+        augments.append(monai.transforms.Identityd(image_keys))
+        prob = 1.0
+
+    if "intensity" in augment:
+        augments.extend([
+            monai.transforms.RandAdjustContrastd(
+                image_keys,gamma=(0.5,1.5),prob=prob),
+            monai.transforms.RandStdShiftIntensityd(
+                image_keys,factors=0.1,prob=prob),
+            monai.transforms.RandShiftIntensityd(
+                image_keys,offsets=0.1,prob=prob)])
+    
+    if "noise" in augment:
+        augments.extend([
+            monai.transforms.RandRicianNoised(
+                image_keys,std=0.02,prob=prob)])
+        
+    if "rbf" in augment and len(t2_keys) > 0:
+        augments.append(
+            monai.transforms.RandBiasFieldd(t2_keys,degree=3,prob=prob))
+
+    if "rotate" in augment:
+        augments.append(
+            RandRotateWithBoxesd(
+                image_keys=image_keys,
+                box_keys=box_keys,
+                rotate_range=[np.pi/16],
+                prob=prob,mode=["bilinear" for _ in image_keys],
                 padding_mode="zeros"))
     
     if "trivial" in augment:
