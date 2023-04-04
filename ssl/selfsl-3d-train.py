@@ -391,7 +391,7 @@ if __name__ == "__main__":
         network_config_correct["batch_size"],False)
 
     if args.unet_encoder is True:
-        ssl = NonContrastiveUNetPL(
+        ssl = SelfSLUNetPL(
             training_dataloader_call=train_loader_call,
             aug_image_key_1="augmented_image_1",
             aug_image_key_2="augmented_image_2",
@@ -403,7 +403,7 @@ if __name__ == "__main__":
             ema=ema,
             **network_config_correct)
     else:
-        ssl = NonContrastiveResNetPL(
+        ssl = SelfSLResNetPL(
             training_dataloader_call=train_loader_call,
             aug_image_key_1="augmented_image_1",
             aug_image_key_2="augmented_image_2",
