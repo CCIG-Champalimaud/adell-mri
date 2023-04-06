@@ -1301,7 +1301,7 @@ class ViT(torch.nn.Module):
         if self.patch_erasing is not None:
             self.patch_erasing_op = ChannelDropout(self.patch_erasing)
         else:
-            self.patch_erasing_op = torch.nn.Identity()
+            self.patch_erasing_op = None
         
         if isinstance(self.mlp_structure,float):
             self.mlp_structure = [
@@ -1354,7 +1354,9 @@ class ViT(torch.nn.Module):
         if isinstance(return_at,list):
             assert max(return_at) < self.number_of_blocks,\
                 "max(return_at) should be smaller than self.number_of_blocks"
-        embeded_X = self.patch_erasing_op(self.embedding(X))
+        embeded_X = self.embedding(X)
+        if self.patch_erasing is not None:
+            embeded_X = self.patch_erasing_op(embeded_X)
         if return_at == "end" or return_at is None:
             return_at = []
         outputs = []
@@ -1458,7 +1460,7 @@ class FactorizedViT(torch.nn.Module):
         if self.patch_erasing:
             self.patch_erasing_op = ChannelDropout(self.patch_erasing,2)
         else:
-            self.patch_erasing_op = torch.nn.Identity()
+            self.patch_erasing_op = None
 
         if self.hidden_dim is None:
             hidden_dim = input_dim_primary
@@ -1511,7 +1513,9 @@ class FactorizedViT(torch.nn.Module):
                 the ith transformer outputs, where i is contained in return_at.
                 Same shape as the final output.
         """
-        embeded_X = self.patch_erasing_op(self.embedding(X))
+        embeded_X = self.embedding(X)
+        if self.patch_erasing_op is not None:
+            embeded_X = self.patch_erasing_op(embeded_X)
         embeded_X,_ = self.transformer_block_within(embeded_X)
         # extract the maximum value of each token for all slices
         if self.use_class_token is True:
