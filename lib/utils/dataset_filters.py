@@ -95,8 +95,7 @@ def filter_dictionary_with_filters(D:DatasetDict,
             for kk,v in processed_filters[k]:
                 if kk in D[pid]:
                     if k == "eq":
-                        # if there is a 
-                        if "[" in D[pid][kk] or isinstance(D[pid][kk],list):
+                        if "[" in str(D[pid][kk]) or isinstance(D[pid][kk],list):
                             tmp = [str(x) for x in D[pid][kk]]
                             if v not in tmp:
                                 check = False
