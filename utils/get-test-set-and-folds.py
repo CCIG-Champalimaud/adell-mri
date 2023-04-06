@@ -44,7 +44,9 @@ if __name__ == "__main__":
     
     if args.stratify is not None:
         for s in args.stratify:
-            data_dict = {k:data_dict[k] for k in data_dict if s in data_dict[k]}
+            for k in data_dict:
+                if s not in data_dict[k]:
+                    data_dict[k][s] = None
         strata = ["".join([str(data_dict[k][kk]) for kk in args.stratify])
                   for k in data_dict]
         for u,c in zip(*np.unique(strata,return_counts=True)):
