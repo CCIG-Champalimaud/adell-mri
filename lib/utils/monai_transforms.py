@@ -1357,3 +1357,30 @@ class RandRotateWithBoxesd(monai.transforms.RandomizableTransform):
             for k in self.box_keys:
                 X[k] = self.affine_box(X[k]-center_rep,affine) + center_rep
         return X
+    
+class SampleChannelDim(monai.transforms.Transform):
+    def __init__(self,n_channels:int,channel_dim:int=0):
+        self.n_channels = n_channels
+        self.channel_dim = channel_dim
+        
+    def __call__(self,X):
+        if X.shape[self.channel_dim] > self.n_channels:
+            samples = np.random.choice(
+                X.shape[self.channel_dim],self.n_channels,
+                replace=False)
+            X = X.index_select(self.channel_dim,torch.as_tensor(samples))
+        return X
+    
+class SampleChannelDimd(monai.transforms.MapTransform):
+    def __init__(self,keys:List[str],n_channels:int,channel_dim:int=0):
+        self.keys = keys
+        self.n_channels = n_channels
+        self.channel_dim = channel_dim
+        
+        self.transform = SampleChannelDim(self.n_channels,
+                                          self.channel_dim)
+        
+    def __call__(self,X):
+        for k in self.keys:
+            X[k] = self.transform(X[k])
+        return X

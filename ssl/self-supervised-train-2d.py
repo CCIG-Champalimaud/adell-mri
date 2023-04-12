@@ -118,6 +118,9 @@ if __name__ == "__main__":
     parser.add_argument(
         '--from_checkpoint',dest='from_checkpoint',action="store",
         help="Uses this checkpoint as a starting point for the network")
+    parser.add_argument(
+        '--n_series_iterations',dest="n_series_iterations",default=2,type=int,
+        help="Number of iterations over each series per epoch")
     
     # training
     parser.add_argument(
@@ -193,7 +196,7 @@ if __name__ == "__main__":
     g = torch.Generator()
     g.manual_seed(args.seed)
     
-    n_iterations = 10
+    n_iterations = args.n_series_iterations
     
     accelerator,devices,strategy = get_devices(args.dev)
 
@@ -208,7 +211,7 @@ if __name__ == "__main__":
     all_keys = [*keys]
 
     data_dict = json.load(open(args.dataset_json,'r'))
-    data_dict = filter_orientations(data_dict)
+    #data_dict = filter_orientations(data_dict)
     data_dict = filter_dicom_dict_on_presence(data_dict,all_keys)
 
     if args.subsample_size is not None:
@@ -250,6 +253,7 @@ if __name__ == "__main__":
         "target_spacing":args.target_spacing,
         "crop_size":args.crop_size,
         "pad_size":args.pad_size,
+        "n_channels":1,
         "n_dim":2}
     
     post_transform_args = {

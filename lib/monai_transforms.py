@@ -1,4 +1,5 @@
 import numpy as np
+import torch
 import monai
 
 from typing import List
@@ -12,7 +13,8 @@ from .utils import (
     ExposeTransformKeyMetad,
     Offsetd,
     MaskToAdjustedAnchorsd,
-    RandRotateWithBoxesd)
+    RandRotateWithBoxesd,
+    SampleChannelDimd)
 from lib.modules.augmentations import (
     generic_augments,mri_specific_augments,spatial_augments,
     AugmentationWorkhorsed)
@@ -197,8 +199,11 @@ def get_transforms_classification(x,
             transforms.append(
                 monai.transforms.ScaleIntensityd(adc_keys,None,None,-2/3))
         if target_spacing is not None:
-            transforms.append(
-                monai.transforms.Spacingd(keys,pixdim=target_spacing))
+            transforms.extend(
+                [   
+                    monai.transforms.Spacingd(
+                        keys,pixdim=target_spacing,dtype=torch.float32),
+                ])
         if target_size is not None:
             transforms.append(
                 monai.transforms.Resized(keys=keys,spatial_size=target_size))
@@ -247,6 +252,7 @@ def get_pre_transforms_ssl(all_keys,
                            target_spacing,
                            crop_size,
                            pad_size,
+                           n_channels=1,
                            n_dim=3):
     intp = []
     intp_resampling_augmentations = []
@@ -258,6 +264,8 @@ def get_pre_transforms_ssl(all_keys,
     transforms = [
         monai.transforms.LoadImaged(
             all_keys,ensure_channel_first=True,image_only=True),
+        SampleChannelDimd(all_keys,n_channels),
+        SampleChannelDimd(all_keys,1,3),
         monai.transforms.SqueezeDimd(all_keys,-1,update_meta=False)]
     if n_dim == 3:
         transforms.append(monai.transforms.Orientationd(all_keys,"RAS"))

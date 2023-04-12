@@ -1,7 +1,6 @@
 import numpy as np
 import torch
 import monai
-from copy import deepcopy
 from collections import abc
 
 from typing import Sequence,Callable,Union,Tuple,Dict
@@ -108,7 +107,8 @@ class DICOMDataset(torch.utils.data.Dataset):
         if isinstance(data_i,str):
             print(real_index,data_i)
         if self.transform is not None:
-            return monai.transforms.apply_transform(self.transform, data_i)
+            d = monai.transforms.apply_transform(self.transform, data_i)
+            return d
         else:
             return data_i
 
