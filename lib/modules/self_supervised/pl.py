@@ -764,7 +764,7 @@ class SelfSLConvNeXtPL(ConvNeXt,SelfSLBasePL):
             other_args = [box_1,box_2]
         
         x1,x2 = batch[self.aug_image_key_1],batch[self.aug_image_key_2]
-                
+        
         if self.channels_to_batch is True:
             x1 = x1.reshape(-1,1,*x1.shape[2:])
             x2 = x2.reshape(-1,1,*x1.shape[2:])
@@ -774,7 +774,7 @@ class SelfSLConvNeXtPL(ConvNeXt,SelfSLBasePL):
         losses = self.calculate_loss(y1,y2,*other_args)
         self.update_metrics(y1,y2,metrics)
         
-        # loss is already symmetrised for VICReg and VICRegL
+        # loss is already symmetrised for VICReg, VICRegL and SimCLR
         if all([self.vic_reg is False,
                 self.vic_reg_local is False,
                 self.simclr is False]):
