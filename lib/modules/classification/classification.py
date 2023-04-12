@@ -742,6 +742,7 @@ class TransformableTransformer(torch.nn.Module):
                  module_out_dim:int,
                  n_classes:int,
                  classification_structure:torch.nn.Module,
+                 input_dim:int=None,
                  classification_adn_fn:Callable=get_adn_fn(
                      1,"layer","gelu",0.1),
                  n_slices:int=None,
@@ -756,6 +757,9 @@ class TransformableTransformer(torch.nn.Module):
             n_classes (int): number of output classes.
             classification_structure (torch.nn.Module): structure for the 
                 classification MLP.
+            input_dim (int, optional): input dimension for the transformer. If
+                different from module_out_dim, applies linear layer to input.
+                Defaults to None (same as module_out_dim).
             classification_adn_fn (Callable, optional): ADN function for the
                 MLP module. Defaults to get_adn_fn( 1,"layer","gelu",0.1).
             n_slices (int, optional): number of slices. Used to initialize 
@@ -773,18 +777,32 @@ class TransformableTransformer(torch.nn.Module):
         self.module_out_dim = module_out_dim
         self.n_classes = n_classes
         self.classification_structure = classification_structure
+        self.input_dim = input_dim
         self.classification_adn_fn = classification_adn_fn
         self.n_slices = n_slices
         self.dim = dim
         self.use_class_token = use_class_token
         
-        kwargs["input_dim_primary"] = module_out_dim
-        kwargs["attention_dim"] = module_out_dim
-        kwargs["hidden_dim"] = module_out_dim
-        self.input_norm = torch.nn.LayerNorm(module_out_dim)
+        if input_dim is not None and input_dim != module_out_dim:
+            self.transformer_input_dim = input_dim
+            self.input_layer = torch.nn.Sequential(
+                torch.nn.LayerNorm(module_out_dim),
+                torch.nn.Linear(module_out_dim,input_dim),
+                torch.nn.LayerNorm(input_dim))
+        else:
+            self.transformer_input_dim = module_out_dim
+            self.input_layer = torch.nn.LayerNorm(module_out_dim)
+            
+        print(self.transformer_input_dim,
+              self.module_out_dim,
+              self.input_dim)
+        
+        kwargs["input_dim_primary"] = self.transformer_input_dim
+        kwargs["attention_dim"] = self.transformer_input_dim
+        kwargs["hidden_dim"] = self.transformer_input_dim
         self.tbs = TransformerBlockStack(*args,**kwargs)
         self.classification_module = MLP(
-            self.module_out_dim,
+            self.transformer_input_dim,
             1 if self.n_classes == 2 else self.n_classes,
             structure=self.classification_structure,
             adn_fn=self.classification_adn_fn)
@@ -797,7 +815,7 @@ class TransformableTransformer(torch.nn.Module):
         """
         if self.use_class_token is True:
             self.class_token = torch.nn.Parameter(
-               torch.zeros([1,1,self.module_out_dim]))
+               torch.zeros([1,1,self.transformer_input_dim]))
     
     def init_positional_embedding(self):
         """
@@ -806,7 +824,7 @@ class TransformableTransformer(torch.nn.Module):
         self.positional_embedding = None
         if self.n_slices is not None:
             self.positional_embedding = torch.nn.Parameter(
-                torch.zeros([1,self.n_slices,self.module_out_dim]))
+                torch.zeros([1,self.n_slices,self.transformer_input_dim]))
             torch.nn.init.trunc_normal_(
                 self.positional_embedding,mean=0.0,std=0.02,a=-2.0,b=2.0)
 
@@ -850,7 +868,7 @@ class TransformableTransformer(torch.nn.Module):
         batch_size = sh[0]
         # tried to replace this with vmap but it leads to OOM errors?
         ssl_representation = self.v_module(X)
-        ssl_representation = self.input_norm(ssl_representation)
+        ssl_representation = self.input_layer(ssl_representation)
         if self.positional_embedding is not None:
             ssl_representation = ssl_representation + self.positional_embedding
         if self.use_class_token == True:
