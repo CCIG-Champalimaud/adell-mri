@@ -1,3 +1,4 @@
+import os
 import argparse
 import random
 import json
@@ -224,8 +225,13 @@ if __name__ == "__main__":
 
     data_dict = json.load(open(args.dataset_json,'r'))
     if args.exclude_ids is not None:
+        if os.path.isfile(args.exclude_ids):
+            with open(args.exclude_ids,"r") as o:
+                exclude_ids = [x.strip() for x in o.readlines()]
+        else:
+            exclude_ids = args.exclude_ids.split(",")
         data_dict = {k:data_dict[k] for k in data_dict
-                     if k not in args.exclude_ids.split(",")}
+                     if k not in exclude_ids}
     data_dict = filter_dictionary_with_possible_labels(
         data_dict,args.possible_labels,args.label_keys)
     if len(args.filter_on_keys) > 0:
@@ -304,19 +310,18 @@ if __name__ == "__main__":
         "image_keys":keys,
         "intp_resampling_augmentations":["bilinear" for _ in keys]}
 
+    transforms_common = get_transforms("pre",**transform_arguments)
     transforms_train = monai.transforms.Compose([
-        *get_transforms("pre",**transform_arguments),
+        get_augmentations(**augment_arguments),
+        *get_transforms("post",**transform_arguments),
+        EinopsRearranged("image","c h w d -> 1 h w (d c)"),
+        ScaleIntensityAlongDimd("image",dim=-1)])
+    transforms_val = monai.transforms.Compose([
         get_augmentations(**augment_arguments),
         *get_transforms("post",**transform_arguments),
         EinopsRearranged("image","c h w d -> 1 h w (d c)"),
         ScaleIntensityAlongDimd("image",dim=-1)])
     transforms_train.set_random_state(args.seed)
-
-    transforms_val = monai.transforms.Compose([
-        *get_transforms("pre",**transform_arguments),
-        *get_transforms("post",**transform_arguments),
-        EinopsRearranged("image","c h w d -> 1 h w (d c)"),
-        ScaleIntensityAlongDimd("image",dim=-1)])
     
     if args.folds is None:
         if args.n_folds > 1:
@@ -336,6 +341,13 @@ if __name__ == "__main__":
             folds.append([train_idxs,val_idxs])
         fold_generator = iter(folds)
 
+    for i,k in enumerate(data_dict):
+        data_dict[k]["index"] = i
+    full_dataset = monai.data.CacheDataset(
+        [data_dict[pid] for pid in data_dict],transforms_common,
+        cache_rate=args.cache_rate,
+        num_workers=args.n_workers)
+    
     for val_fold in range(args.n_folds):
         train_idxs,val_idxs = next(fold_generator)
         train_pids = [all_pids[i] for i in train_idxs]
@@ -343,16 +355,12 @@ if __name__ == "__main__":
         train_list = [data_dict[pid] for pid in train_pids]
         val_list = [data_dict[pid] for pid in val_pids]
         
-        train_dataset = monai.data.CacheDataset(
-            train_list,transforms_train,
-            cache_rate=args.cache_rate,
-            num_workers=args.n_workers)
-        train_dataset_val = monai.data.CacheDataset(
-            val_list,transforms_val,
-            cache_rate=args.cache_rate,
-            num_workers=args.n_workers)
+        train_dataset = monai.data.Dataset(
+            [full_dataset[i] for i in train_idxs],transform=transforms_train)
+        train_dataset_val = monai.data.Dataset(
+            [full_dataset[i] for i in val_idxs],transform=transforms_val)
         validation_dataset = monai.data.Dataset(
-            val_list,transforms_val)
+            [full_dataset[i] for i in val_idxs],transform=transforms_val)
 
         classes = []
         for p in train_list:
