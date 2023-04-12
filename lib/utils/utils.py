@@ -213,10 +213,14 @@ def safe_collate(X:List[TensorIterable])->List[TensorIterable]:
         input).
     """
     def cat(x):
-        try: x = [torch.as_tensor(y) for y in x]
-        except: return x
-        try: return torch.stack(x)
-        except: return x
+        try: 
+            x = [torch.as_tensor(y) for y in x]
+        except Exception:
+            return x
+        try: 
+            return torch.stack(x)
+        except Exception as e:
+            return x
 
     example = X[0]
     # this small check unpacks the batch in case RandCropByPosNegLabeld
