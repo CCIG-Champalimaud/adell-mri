@@ -56,9 +56,13 @@ if __name__ == "__main__":
         strata = None
     
     all_pids = [k for k in data_dict]
-    all_train_pids,test_pids = train_test_split(
-        range(len(all_pids)),test_size=args.fraction_test,
-        random_state=args.seed,shuffle=True,stratify=strata)
+    if args.fraction_test > 0.0:
+        all_train_pids,test_pids = train_test_split(
+            range(len(all_pids)),test_size=args.fraction_test,
+            random_state=args.seed,shuffle=True,stratify=strata)
+    else:
+        all_train_pids = range(len(all_pids))
+        test_pids = []
 
     if args.n_folds > 1:
         if strata is not None:
