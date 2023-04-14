@@ -783,6 +783,11 @@ class TransformableTransformer(torch.nn.Module):
         self.dim = dim
         self.use_class_token = use_class_token
         
+        self.vol_to_2d = einops.layers.torch.Rearrange(
+            "b c h w d -> (b d) c h w")
+        self.rep_to_emb = einops.layers.torch.Rearrange(
+            "(b d) v -> b d v",d=self.n_slices)
+        
         if input_dim is not None and input_dim != module_out_dim:
             self.transformer_input_dim = input_dim
             self.input_layer = torch.nn.Sequential(
@@ -793,10 +798,6 @@ class TransformableTransformer(torch.nn.Module):
             self.transformer_input_dim = module_out_dim
             self.input_layer = torch.nn.LayerNorm(module_out_dim)
             
-        print(self.transformer_input_dim,
-              self.module_out_dim,
-              self.input_dim)
-        
         kwargs["input_dim_primary"] = self.transformer_input_dim
         kwargs["attention_dim"] = self.transformer_input_dim
         kwargs["hidden_dim"] = self.transformer_input_dim
@@ -824,7 +825,7 @@ class TransformableTransformer(torch.nn.Module):
         self.positional_embedding = None
         if self.n_slices is not None:
             self.positional_embedding = torch.nn.Parameter(
-                torch.zeros([1,self.n_slices,self.transformer_input_dim]))
+                torch.zeros([1,self.n_slices,1]))
             torch.nn.init.trunc_normal_(
                 self.positional_embedding,mean=0.0,std=0.02,a=-2.0,b=2.0)
 
@@ -854,6 +855,13 @@ class TransformableTransformer(torch.nn.Module):
             mod_out = mod_out.flatten(start_dim=2).max(-1).values
             ssl_representation[:,i,:] = mod_out
         return ssl_representation
+    
+    def v_module(self,X:torch.Tensor)->torch.Tensor:
+        X = self.vol_to_2d(X)
+        X = self.module(X)
+        X = X.flatten(start_dim=2).max(-1).values
+        X = self.rep_to_emb(X)
+        return X
 
     def forward(self,X:torch.Tensor)->torch.Tensor:
         """Forward pass.
