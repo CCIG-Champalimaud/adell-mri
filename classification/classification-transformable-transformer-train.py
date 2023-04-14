@@ -230,8 +230,10 @@ if __name__ == "__main__":
                 exclude_ids = [x.strip() for x in o.readlines()]
         else:
             exclude_ids = args.exclude_ids.split(",")
+        a = len(data_dict)
         data_dict = {k:data_dict[k] for k in data_dict
                      if k not in exclude_ids}
+        print("Excluded {} cases with --exclude_ids".format(a - len(data_dict)))
     data_dict = filter_dictionary_with_possible_labels(
         data_dict,args.possible_labels,args.label_keys)
     if len(args.filter_on_keys) > 0:
