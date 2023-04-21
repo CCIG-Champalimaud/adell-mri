@@ -277,9 +277,6 @@ if __name__ == "__main__":
         '--early_stopping',dest='early_stopping',type=int,default=None,
         help="No. of checks before early stop (defaults to no early stop).")
     parser.add_argument(
-        '--swa',dest='swa',action="store_true",
-        help="Use stochastic gradient averaging.",default=False)
-    parser.add_argument(
         '--class_weights',dest='class_weights',type=str,nargs='+',
         help="Class weights (by alphanumeric order).",default=[1.])
 
@@ -402,6 +399,9 @@ if __name__ == "__main__":
         "label_mode": label_mode,
         "fill_missing": args.missing_to_empty is not None,
         "brunet": args.unet_model == "brunet"}
+    transform_arguments_val = {k:transform_arguments[k]
+                               for k in transform_arguments}
+    transform_arguments_val["random_crop_size"] = None
     augment_arguments = {
         "augment":args.augment,
         "all_keys":all_keys,
@@ -415,22 +415,22 @@ if __name__ == "__main__":
             *get_transforms("post",**transform_arguments)]
 
         transforms_train_val = [
-            *get_transforms("pre",**transform_arguments),
-            *get_transforms("post",**transform_arguments)]
+            *get_transforms("pre",**transform_arguments_val),
+            *get_transforms("post",**transform_arguments_val)]
 
         transforms_val = [
-            *get_transforms("pre",**transform_arguments),
-            *get_transforms("post",**transform_arguments)]
+            *get_transforms("pre",**transform_arguments_val),
+            *get_transforms("post",**transform_arguments_val)]
     else:
         transforms_train = [
             *get_augmentations(**augment_arguments),
-            *get_transforms("post",**transform_arguments)]
+            *get_transforms("post",**transform_arguments_val)]
 
         transforms_train_val = [
-            *get_transforms("post",**transform_arguments)]
+            *get_transforms("post",**transform_arguments_val)]
 
         transforms_val = [
-            *get_transforms("post",**transform_arguments)]
+            *get_transforms("post",**transform_arguments_val)]
         
         transform_all_data = get_transforms("pre",**transform_arguments)
 
@@ -545,8 +545,7 @@ if __name__ == "__main__":
             val_list = [dataset_full[i] for i in val_idxs]
             train_dataset = monai.data.Dataset(
                 train_list,
-                monai.transforms.Compose(transforms_train),
-                cache_rate=args.cache_rate)
+                monai.transforms.Compose(transforms_train))
             train_dataset_val = monai.data.Dataset(
                 train_val_list,
                 monai.transforms.Compose(transforms_train_val))
@@ -587,7 +586,10 @@ if __name__ == "__main__":
             
         # include some constant label images
         sampler = None
-        ad = "adaptive" in args.class_weights[0]
+        if isinstance(args.class_weights[0],str):
+            ad = "adaptive" in args.class_weights[0]
+        else:
+            ad = False
         if args.constant_ratio is not None or ad:
             cl = []
             pos_pixel_sum = 0
@@ -814,16 +816,13 @@ if __name__ == "__main__":
                 picai_eval=args.picai_eval,
                 lr_encoder=args.lr_encoder,
                 polynomial_lr_decay=args.polynomial_lr_decay,
-                **network_config)            
+                **network_config)
 
         if args.early_stopping is not None:
             early_stopping = EarlyStopping(
                 'val_loss',patience=args.early_stopping,
                 strict=True,mode="min")
             callbacks.append(early_stopping)
-        if args.swa == True:
-            swa_callback = StochasticWeightAveraging()
-            callbacks.append(swa_callback)
                 
         if args.summary_name is not None and args.project_name is not None:
             wandb.finish()
