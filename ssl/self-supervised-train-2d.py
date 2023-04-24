@@ -121,6 +121,9 @@ if __name__ == "__main__":
     parser.add_argument(
         '--n_series_iterations',dest="n_series_iterations",default=2,type=int,
         help="Number of iterations over each series per epoch")
+    parser.add_argument(
+        '--n_transforms',dest="n_transforms",default=3,type=int,
+        help="Number of augmentations for each image")
     
     # training
     parser.add_argument(
@@ -266,7 +269,7 @@ if __name__ == "__main__":
         "scaled_crop_size":args.scaled_crop_size,
         "roi_size":roi_size,
         "vicregl":args.vicregl,
-        "n_transforms":3,
+        "n_transforms":args.n_transforms,
         "n_dim":2
     }
 
