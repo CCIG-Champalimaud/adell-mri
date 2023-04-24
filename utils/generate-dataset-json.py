@@ -4,6 +4,7 @@ import re
 import argparse
 import numpy as np
 import monai
+from pathlib import Path
 from skimage import measure
 from glob import glob
 from tqdm import tqdm
@@ -28,6 +29,13 @@ def mask_to_bb(img:np.ndarray)->list:
 
     return bb_vertices,c
 
+def glob_with_re(path:str,re_pattern:str)->list:
+    compiled_re_pattern = re.compile(re_pattern)
+    output = [str(x) for x in Path(path).rglob("*")]
+    output = [x for x in output
+              if compiled_re_pattern.search(x) is not None]
+    return output
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Creates JSON file with paths and bounding boxes.")
@@ -50,7 +58,7 @@ if __name__ == "__main__":
             a modality).")
     parser.add_argument(
         '--mask_pattern',dest="mask_pattern",default="*nii.gz",
-        help="Pattern to match  for mask")
+        help="Pattern to match for mask")
     parser.add_argument(
         '--id_pattern',dest="id_pattern",default="*",type=str,
         help="Pattern to extract IDs from image files")
@@ -60,18 +68,19 @@ if __name__ == "__main__":
     parser.add_argument(
         '--strict',dest="strict",action="store_true",
         help="Only includes images with a corresponding mask")
+    parser.add_argument(
+        '--skip_detection',dest="skip_detection",action="store_true",
+        help="Skips object detection")
     
     args = parser.parse_args()
 
     t = monai.transforms.Compose([
-        monai.transforms.LoadImaged(['image']),
-        monai.transforms.AddChanneld(['image']),
+        monai.transforms.LoadImaged(['image'],ensure_channel_first=True),
         monai.transforms.Orientationd(['image'],"RAS")])
 
     bb_dict = {}
     all_paths = {
-        p:glob(os.path.join(args.input_path,p))
-        for p in args.patterns}
+        p:glob_with_re(args.input_path,p) for p in args.patterns}
     class_dict_csv = {}
     if args.class_csv_path:
         with open(args.class_csv_path,'r') as o:
@@ -79,7 +88,7 @@ if __name__ == "__main__":
                 l = l.strip().split(',')
                 identifier,cl = l[0],l[-1]
                 class_dict_csv[identifier] = cl
-    mask_paths = glob(os.path.join(args.mask_path,args.mask_pattern))
+    mask_paths = glob_with_re(args.mask_path,args.mask_pattern)
     for file_path in tqdm(all_paths[args.patterns[0]]):
         image_id = re.search(args.id_pattern,file_path).group()
         alt_file_paths = []
@@ -101,23 +110,24 @@ if __name__ == "__main__":
         if len(mask_path) > 0:
             mask_path = mask_path[0]
             bb_dict[image_id][args.mask_key] = mask_path
-            bb_dict[image_id]["boxes"] = []
-            bb_dict[image_id]["shape"] = ""
-            bb_dict[image_id]["labels"] = []
-            fdata = t({'image':mask_path})['image'][0]
-            sh = np.array(fdata.shape)
-            unique_labels = []
-            for bb,c in zip(*mask_to_bb(fdata)):
-                c = int(c)
-                bb = [int(x) for x in bb.flatten("F")]
-                bb_dict[image_id]["boxes"].append(bb)
-                bb_dict[image_id]["labels"].append(c)
-                if c not in unique_labels:
-                    unique_labels.append(c)
-            bb_dict[image_id]["shape"] = [int(x) for x in sh]
-            if len(unique_labels) == 0:
-                unique_labels = [0]
-            bb_dict[image_id]["image_labels"] = unique_labels
+            if args.skip_detection != True:
+                bb_dict[image_id]["boxes"] = []
+                bb_dict[image_id]["shape"] = ""
+                bb_dict[image_id]["labels"] = []
+                fdata = t({'image':mask_path})['image'][0]
+                sh = np.array(fdata.shape)
+                unique_labels = []
+                for bb,c in zip(*mask_to_bb(fdata)):
+                    c = int(c)
+                    bb = [int(x) for x in bb.flatten("F")]
+                    bb_dict[image_id]["boxes"].append(bb)
+                    bb_dict[image_id]["labels"].append(c)
+                    if c not in unique_labels:
+                        unique_labels.append(c)
+                bb_dict[image_id]["shape"] = [int(x) for x in sh]
+                if len(unique_labels) == 0:
+                    unique_labels = [0]
+                bb_dict[image_id]["image_labels"] = unique_labels
         elif image_id in class_dict_csv:
             bb_dict[image_id] = {
                 "image":file_path,
