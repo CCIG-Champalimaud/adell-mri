@@ -852,14 +852,14 @@ class TransformableTransformer(torch.nn.Module):
             device=X.device)
         for i,X_slice in enumerate(self.iter_over_dim(X)):
             mod_out = self.module(X_slice)
-            mod_out = mod_out.flatten(start_dim=2).max(-1).values
+            mod_out = mod_out.flatten(start_dim=2).mean(-1)
             ssl_representation[:,i,:] = mod_out
         return ssl_representation
     
     def v_module(self,X:torch.Tensor)->torch.Tensor:
         X = self.vol_to_2d(X)
         X = self.module(X)
-        X = X.flatten(start_dim=2).max(-1).values
+        X = X.flatten(start_dim=2).mean(-1)
         X = self.rep_to_emb(X)
         return X
 
