@@ -343,8 +343,6 @@ if __name__ == "__main__":
             folds.append([train_idxs,val_idxs])
         fold_generator = iter(folds)
 
-    for i,k in enumerate(data_dict):
-        data_dict[k]["index"] = i
     full_dataset = monai.data.CacheDataset(
         [data_dict[pid] for pid in data_dict],transforms_common,
         cache_rate=args.cache_rate,
@@ -453,7 +451,7 @@ if __name__ == "__main__":
             shuffle=False,num_workers=n_workers,
             collate_fn=safe_collate)
 
-        print("Setting up training...")
+        print("Loading data...")
         batch_preprocessing = BatchPreprocessing(
             args.label_smoothing,args.mixup_alpha,args.partial_mixup,args.seed)
         n_slices = int(len(keys) * args.crop_size[-1])
