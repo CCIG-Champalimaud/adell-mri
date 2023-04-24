@@ -32,14 +32,15 @@ def process_dicom(dcm):
         orientation = None
     return dcm,study_uid,series_uid,orientation
 
-def update_dict(d,study_uid,series_uid,orientation,dcm):
-    if study_uid not in d:
-        d[study_uid] = {}
-    if series_uid not in d[study_uid]:
-        d[study_uid][series_uid] = []
-    d[study_uid][series_uid].append({
-        "image":dcm,
-        "orientation":orientation})
+def update_dict(d,study_uid,series_uid,orientation,dcm,excluded_ids=[]):
+    if study_uid not in excluded_ids:
+        if study_uid not in d:
+            d[study_uid] = {}
+        if series_uid not in d[study_uid]:
+            d[study_uid][series_uid] = []
+        d[study_uid][series_uid].append({
+            "image":dcm,
+            "orientation":orientation})
     return d
 
 if __name__ == "__main__":
@@ -48,6 +49,9 @@ if __name__ == "__main__":
     parser.add_argument(
         '--input_path',dest="input_path",required=True,
         help="Path to folder containing nibabel compatible files")
+    parser.add_argument(
+        '--excluded_ids',dest="excluded_ids",default=None,
+        help="Study UIDs to be excluded",nargs="+")
     parser.add_argument(
         '--patterns',dest="patterns",default=["*dcm"],nargs="+",
         help="Pattern to match for inputs (assumes each pattern corresponds to\
@@ -62,7 +66,12 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     path = Path(args.input_path)
-        
+    
+    if args.excluded_ids is not None:
+        excluded_ids = args.excluded_ids
+    else:
+        excluded_ids = []
+    
     dicom_dict = {}
     for pattern in args.patterns:
         all_dicoms = list(path.rglob(pattern))
@@ -73,7 +82,8 @@ if __name__ == "__main__":
                     if out is not None:
                         dcm,study_uid,series_uid,orientation = out
                         update_dict(
-                            dicom_dict,study_uid,series_uid,orientation,dcm)
+                            dicom_dict,study_uid,series_uid,orientation,dcm,
+                            excluded_ids)
                     pbar.update()
             else:
                 pool = Pool(args.n_workers)
@@ -81,7 +91,8 @@ if __name__ == "__main__":
                     if out is not None:
                         dcm,study_uid,series_uid,orientation = out
                         update_dict(
-                            dicom_dict,study_uid,series_uid,orientation,dcm)
+                            dicom_dict,study_uid,series_uid,orientation,dcm,
+                            excluded_ids)
                     pbar.update()
 
     pretty_dict = json.dumps(dicom_dict,indent=2)
