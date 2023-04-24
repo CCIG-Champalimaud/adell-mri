@@ -7,7 +7,7 @@ from lib.modules.self_supervised.pl import (
     SelfSLConvNeXtPL)
 from lib.modules.config_parsing import parse_config_ssl,parse_config_unet
 from lib.utils.dicom_loader import (
-    DICOMDataset, SliceSampler, filter_orientations)
+    DICOMDataset, SliceSampler)
 from lib.monai_transforms import (
     get_pre_transforms_ssl,get_post_transforms_ssl,get_augmentations_ssl)
 
@@ -266,6 +266,7 @@ if __name__ == "__main__":
         "scaled_crop_size":args.scaled_crop_size,
         "roi_size":roi_size,
         "vicregl":args.vicregl,
+        "n_transforms":3,
         "n_dim":2
     }
 
