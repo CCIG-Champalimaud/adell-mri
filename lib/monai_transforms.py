@@ -493,6 +493,7 @@ def get_augmentations_ssl(all_keys:List[str],
                           scaled_crop_size:List[int],
                           roi_size:List[int],
                           vicregl:bool,
+                          n_transforms=3,
                           n_dim:int=3):
     def flatten_box(box):
         box1 = np.array(box[::2])
@@ -555,10 +556,10 @@ def get_augmentations_ssl(all_keys:List[str],
         *cropping_strategy,
         AugmentationWorkhorsed(
             augmentations=aug_list,keys=all_keys,
-            mask_keys=[],max_mult=0.5,N=3,
+            mask_keys=[],max_mult=0.5,N=n_transforms,
             dropout_size=dropout_size),
         AugmentationWorkhorsed(
             augmentations=aug_list,keys=copied_keys,
-            mask_keys=[],max_mult=0.5,N=3,
+            mask_keys=[],max_mult=0.5,N=n_transforms,
             dropout_size=dropout_size),
         ]
