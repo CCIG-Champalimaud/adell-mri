@@ -44,6 +44,7 @@ def get_transforms_unet(x,
                         feature_key_net: str=None,
                         resize_size: List[int]=None,
                         crop_size: List[int]=None,
+                        pad_size: List[int]=None,
                         random_crop_size: List[int]=None,
                         label_mode: str=None,
                         fill_missing: bool=False,
@@ -81,15 +82,14 @@ def get_transforms_unet(x,
                      if kk in resize_keys]
             transforms.append(monai.transforms.Resized(
                 resize_keys,tuple(resize_size),mode=intp_))
+        # sets pad op
+        if pad_size is not None:
+            transforms.append(
+                monai.transforms.SpatialPadd(all_keys,pad_size))
         # sets crop op
         if crop_size is not None:
-            crop_size = [int(crop_size[0]),
-                         int(crop_size[1]),
-                         int(crop_size[2])]
-
-            transforms.extend([
-                monai.transforms.CenterSpatialCropd(all_keys,crop_size),
-                monai.transforms.SpatialPadd(all_keys,crop_size)])
+            transforms.extend(
+                monai.transforms.CenterSpatialCropd(all_keys,crop_size))
         # sets indices for random crop op
         transforms.extend([monai.transforms.EnsureTyped(all_keys),
                            CombineBinaryLabelsd(label_keys,"any","mask"),
@@ -364,6 +364,7 @@ def get_augmentations_unet(augment,
             [
                 monai.transforms.RandCropByPosNegLabeld(
                     [*image_keys,"mask"],"mask",random_crop_size,
+                    allow_smaller=False,
                     fg_indices_key="mask_fg_indices",
                     bg_indices_key="mask_bg_indices")])
         
