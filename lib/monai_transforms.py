@@ -91,13 +91,13 @@ def get_transforms_unet(x,
                 monai.transforms.CenterSpatialCropd(all_keys,crop_size),
                 monai.transforms.SpatialPadd(all_keys,crop_size)])
         # sets indices for random crop op
-        if random_crop_size is not None:
-            transforms.append(monai.transforms.FgBgToIndicesd("mask"))
         transforms.extend([monai.transforms.EnsureTyped(all_keys),
                            CombineBinaryLabelsd(label_keys,"any","mask"),
                            LabelOperatorSegmentationd(
                                ["mask"],possible_labels,
                                mode=label_mode,positive_labels=positive_labels)])
+        if random_crop_size is not None:
+            transforms.append(monai.transforms.FgBgToIndicesd("mask"))
         return transforms
     
     elif x == "post":
@@ -352,17 +352,21 @@ def get_augmentations_unet(augment,
             monai.transforms.RandGibbsNoised(
                 image_keys,alpha=(0.0,0.6),prob=0.25)]
 
+    else:
+        augments = []
+
     #augments.append(
     #    monai.transforms.RandFlipd(
     #        all_keys,prob=0.25,spatial_axis=[0,1,2]))
 
     if random_crop_size is not None:
-        augments.append(
-            monai.transforms.RandCropByPosNegLabeld(
-                ["image","mask"],"mask",random_crop_size,
-                fg_indices_key="mask_fg_indices",
-                bg_indices_key="mask_fg_indices"))
-    
+        augments.extend(
+            [
+                monai.transforms.RandCropByPosNegLabeld(
+                    [*image_keys,"mask"],"mask",random_crop_size,
+                    fg_indices_key="mask_fg_indices",
+                    bg_indices_key="mask_bg_indices")])
+        
     return augments
 
 def get_augmentations_class(augment,
