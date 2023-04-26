@@ -114,6 +114,7 @@ class UNetBasePL(pl.LightningModule,ABC):
     def __init__(self):
         super().__init__()
         
+        self.max_batch_size = 8
         self.raise_nan_loss = False
 
     def calculate_loss(self,prediction,y):
@@ -124,11 +125,31 @@ class UNetBasePL(pl.LightningModule,ABC):
         y = y.type_as(prediction)
         loss = self.loss_fn_class(prediction,y)
         return loss.mean()
+    
+    def check_loss(self,x,y,pred,loss):
+        if self.raise_nan_loss is True and torch.isnan(loss) is True:
+            print("Nan loss detected! ({})".format(loss.detach()))
+            for i,sx in enumerate(x):
+                print("\t0",[sx.detach().max(),sx.detach().min()])
+            print("\tOutput:",[pred.detach().max(),pred.detach().min()])
+            print("\tTruth:",[y.min(),y.max()])
+            print("\tModel parameters:")
+            for n,p in self.named_parameters():
+                pn = p.norm()
+                if (torch.isnan(pn) is True) or (torch.isinf(pn) is True) or True:
+                    print("\t\tparameter norm({})={}".format(n,pn))
+            for n,p in self.named_parameters():
+                if p.grad is not None:
+                    pg = p.grad.mean()
+                    if (torch.isnan(pg) is True) or (torch.isinf(pg) is True) or True:
+                        print("\t\taverage grad({})={}".format(n,pg))
+            raise RuntimeError(
+                "nan found in loss (see above for details)")
 
     def step(self,x,y,y_class,x_cond,x_fc):
         y = torch.round(y)
         output = self.forward(
-            x,X_skip_layer=x_cond,X_feature_conditioning=x_fc)
+            X=x,X_skip_layer=x_cond,X_feature_conditioning=x_fc)
         if self.deep_supervision is False:
             prediction,pred_class = output
         else:
@@ -153,26 +174,6 @@ class UNetBasePL(pl.LightningModule,ABC):
             output_loss = loss
 
         return prediction,pred_class,loss,class_loss,output_loss
-
-    def check_loss(self,x,y,pred,loss):
-        if self.raise_nan_loss is True and torch.isnan(loss) is True:
-            print("Nan loss detected! ({})".format(loss.detach()))
-            for i,sx in enumerate(x):
-                print("\t0",[sx.detach().max(),sx.detach().min()])
-            print("\tOutput:",[pred.detach().max(),pred.detach().min()])
-            print("\tTruth:",[y.min(),y.max()])
-            print("\tModel parameters:")
-            for n,p in self.named_parameters():
-                pn = p.norm()
-                if (torch.isnan(pn) is True) or (torch.isinf(pn) is True) or True:
-                    print("\t\tparameter norm({})={}".format(n,pn))
-            for n,p in self.named_parameters():
-                if p.grad is not None:
-                    pg = p.grad.mean()
-                    if (torch.isnan(pg) is True) or (torch.isinf(pg) is True) or True:
-                        print("\t\taverage grad({})={}".format(n,pg))
-            raise RuntimeError(
-                "nan found in loss (see above for details)")
 
     def training_step(self,batch,batch_idx):
         x, y = batch[self.image_key],batch[self.label_key]
@@ -221,22 +222,30 @@ class UNetBasePL(pl.LightningModule,ABC):
         else:
             x_fc = None
 
-        pred_final,pred_class,loss,class_loss,output_loss = self.step(
-            x,y,y_class,x_cond,x_fc)
-        
-        if self.picai_eval is True:
-            for s_p,s_y in zip(pred_final.squeeze(1).detach().cpu().numpy(),
-                               y.squeeze(1).detach().cpu().numpy()):
-                self.all_pred.append(s_p)
-                self.all_true.append(s_y)
+        bs = x.shape[0]
+        mbs = self.batch_size
+        for i in range(0,bs,mbs):
+            m,M = i,i+mbs
+            out = self.step(x[m:M],
+                            y[m:M],
+                            y_class[m:M] if y_class is not None else None,
+                            x_cond[m:M] if x_cond is not None else None,
+                            x_fc[m:M] if x_cond is not None else None)
+            pred_final,pred_class,loss,class_loss,output_loss = out
+            
+            if self.picai_eval is True:
+                for s_p,s_y in zip(pred_final.squeeze(1).detach().cpu().numpy(),
+                                   y[m:M].squeeze(1).detach().cpu().numpy()):
+                    self.all_pred.append(s_p)
+                    self.all_true.append(s_y)
 
-        self.log("val_loss",loss.detach(),prog_bar=True,
-                 on_epoch=True,batch_size=y.shape[0],
-                 sync_dist=True)
+            self.log("val_loss",loss.detach(),prog_bar=True,
+                    on_epoch=True,batch_size=M-m,
+                    sync_dist=True)
 
-        update_metrics(
-            self,self.val_metrics,pred_final,y,pred_class,y_class,
-            on_epoch=True,prog_bar=True)
+            update_metrics(
+                self,self.val_metrics,pred_final,y[m:M],pred_class,y_class,
+                on_epoch=True,prog_bar=True)
 
     def test_step(self,batch,batch_idx):
         x, y = batch[self.image_key],batch[self.label_key]
@@ -253,18 +262,26 @@ class UNetBasePL(pl.LightningModule,ABC):
         else:
             x_fc = None
 
-        pred_final,pred_class,loss,class_loss,output_loss = self.step(
-            x,y,y_class,x_cond,x_fc)
+        bs = x.shape[0]
+        mbs = self.batch_size
+        for i in range(0,bs,mbs):
+            m,M = i,i+mbs
+            out = self.step(x[m:M],
+                            y[m:M],
+                            y_class[m:M] if y_class is not None else None,
+                            x_cond[m:M] if x_cond is not None else None,
+                            x_fc[m:M] if x_cond is not None else None)
+            pred_final,pred_class,loss,class_loss,output_loss = out
         
-        if self.picai_eval is True:
-            for s_p,s_y in zip(pred_final.squeeze(1).detach().cpu().numpy(),
-                               y.squeeze(1).detach().cpu().numpy()):
-                self.all_pred.append(s_p)
-                self.all_true.append(s_y)
+            if self.picai_eval is True:
+                for s_p,s_y in zip(pred_final.squeeze(1).detach().cpu().numpy(),
+                                y.squeeze(1).detach().cpu().numpy()):
+                    self.all_pred.append(s_p)
+                    self.all_true.append(s_y)
 
-        update_metrics(
-            self,self.test_metrics,pred_final,y,pred_class,y_class,
-            on_epoch=True,on_step=False,prog_bar=True)
+            update_metrics(
+                self,self.test_metrics,pred_final,y,pred_class,y_class,
+                on_epoch=True,on_step=False,prog_bar=True)
         
     def train_dataloader(self) -> torch.utils.data.DataLoader:
         return self.training_dataloader_call(self.batch_size)
