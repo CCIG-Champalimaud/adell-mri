@@ -25,8 +25,8 @@ from lib.utils import (
     collate_last_slice,
     RandomSlices,
     SlicesToFirst,
-    PrintShaped,
-    safe_collate)
+    safe_collate,PrintShaped,
+    safe_collate_crops)
 from lib.monai_transforms import get_transforms_unet as get_transforms
 from lib.monai_transforms import get_augmentations_unet as get_augmentations
 from lib.modules.layers import ResNet
@@ -82,8 +82,8 @@ if __name__ == "__main__":
         default=None,type=float,nargs='+',
         help="Size of random crop (last step of the preprocessing pipeline).")
     parser.add_argument(
-        '--number_of_crops',dest='number_of_crops',action="store",
-        default=None,type=int,help="Number of random crops.")
+        '--n_crops',dest='n_crops',action="store",
+        default=1,type=int,help="Number of random crops.")
     parser.add_argument(
         '--target_spacing',dest='target_spacing',action="store",default=None,
         help="Resamples all images to target spacing",nargs='+',type=float)
@@ -417,7 +417,8 @@ if __name__ == "__main__":
         "all_keys":all_keys,
         "image_keys":keys,
         "intp_resampling_augmentations":intp_resampling_augmentations,
-        "random_crop_size":args.random_crop_size}
+        "random_crop_size":args.random_crop_size,
+        "n_crops":args.n_crops}
     if args.pre_load == False:
         transforms_train = [
             *get_transforms("pre",**transform_arguments),
@@ -426,12 +427,14 @@ if __name__ == "__main__":
 
         transforms_train_val = [
             *get_transforms("pre",**transform_arguments_val),
-            GetAllCropsd(args.image_keys + ["mask"],args.random_crop_size),
+            GetAllCropsd(args.image_keys + ["mask"],
+                         args.random_crop_size),
             *get_transforms("post",**transform_arguments_val)]
 
         transforms_val = [
             *get_transforms("pre",**transform_arguments_val),
-            GetAllCropsd(args.image_keys + ["mask"],args.random_crop_size),
+            GetAllCropsd(args.image_keys + ["mask"],
+                         args.random_crop_size),
             *get_transforms("post",**transform_arguments_val)]
     else:
         transforms_train = [
@@ -439,11 +442,13 @@ if __name__ == "__main__":
             *get_transforms("post",**transform_arguments_val)]
 
         transforms_train_val = [
-            GetAllCropsd(args.image_keys + ["mask"],args.random_crop_size),
+            GetAllCropsd(args.image_keys + ["mask"],
+                         args.random_crop_size),
             *get_transforms("post",**transform_arguments_val)]
 
         transforms_val = [
-            GetAllCropsd(args.image_keys + ["mask"],args.random_crop_size),
+            GetAllCropsd(args.image_keys + ["mask"],
+                         args.random_crop_size),
             *get_transforms("post",**transform_arguments_val)]
         
         transform_all_data = get_transforms("pre",**transform_arguments)
@@ -466,6 +471,8 @@ if __name__ == "__main__":
         transforms_val.append(
             SlicesToFirst(["image","mask"]))
         collate_fn = collate_last_slice
+    elif args.random_crop_size is not None:
+        collate_fn = safe_collate_crops
     else:
         collate_fn = safe_collate
 
@@ -664,7 +671,7 @@ if __name__ == "__main__":
 
         train_loader = train_loader_call(network_config["batch_size"])
         train_val_loader = monai.data.ThreadDataLoader(
-            train_dataset_val,batch_size=network_config["batch_size"],
+            train_dataset_val,batch_size=1,
             shuffle=False,num_workers=args.n_workers,
             collate_fn=collate_fn,persistent_workers=True)
         validation_loader = monai.data.ThreadDataLoader(
