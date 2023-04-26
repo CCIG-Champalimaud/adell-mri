@@ -90,26 +90,29 @@ def get_transforms_unet(x,
         if crop_size is not None:
             transforms.extend(
                 monai.transforms.CenterSpatialCropd(all_keys,crop_size))
-        # sets indices for random crop op
-        transforms.extend([monai.transforms.EnsureTyped(all_keys),
+        transforms.extend([monai.transforms.EnsureTyped(all_keys,dtype=torch.float32),
                            CombineBinaryLabelsd(label_keys,"any","mask"),
                            LabelOperatorSegmentationd(
                                ["mask"],possible_labels,
                                mode=label_mode,positive_labels=positive_labels)])
+        # sets indices for random crop op
         if random_crop_size is not None:
             transforms.append(monai.transforms.FgBgToIndicesd("mask"))
         return transforms
     
     elif x == "post":
+        keys = []
         transforms = []
         if brunet is False:
             transforms.append(
                 monai.transforms.ConcatItemsd(image_keys,"image"))
             
         if len(all_aux_keys) > 0:
+            keys.append(all_aux_keys)
             transforms.append(monai.transforms.ConcatItemsd(
                 all_aux_keys,aux_key_net))
         if len(feature_keys) > 0:
+            keys.append(feature_keys)
             transforms.extend([
                 monai.transforms.EnsureTyped(
                     feature_keys,dtype=np.float32),
@@ -119,11 +122,14 @@ def get_transforms_unet(x,
                 monai.transforms.ConcatItemsd(
                     feature_keys,feature_key_net)])
         if brunet is False:
+            keys.append("image")
             transforms.append(monai.transforms.ToTensord(["image","mask"],
                                                          track_meta=False))
         else:
+            keys.extend(image_keys)
             transforms.append(monai.transforms.ToTensord(image_keys + ["mask"],
                                                          track_meta=False))
+        transforms.append(monai.transforms.SelectItemsd(keys + ["mask"]))
         return transforms
 
 def get_transforms_detection(keys,
@@ -308,7 +314,8 @@ def get_augmentations_unet(augment,
                            all_keys,
                            image_keys,
                            intp_resampling_augmentations,
-                           random_crop_size: List[int]=None):
+                           random_crop_size: List[int]=None,
+                           n_crops: int=1):
     valid_arg_list = ["full","light","lightest","none",True]
     if augment not in valid_arg_list:
         raise NotImplementedError(
@@ -364,7 +371,7 @@ def get_augmentations_unet(augment,
             [
                 monai.transforms.RandCropByPosNegLabeld(
                     [*image_keys,"mask"],"mask",random_crop_size,
-                    allow_smaller=False,
+                    allow_smaller=False,num_samples=n_crops,
                     fg_indices_key="mask_fg_indices",
                     bg_indices_key="mask_bg_indices")])
         
