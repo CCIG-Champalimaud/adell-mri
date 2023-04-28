@@ -213,7 +213,7 @@ def generalized_dice_loss(pred:torch.Tensor,
         
     cl_dice = torch.divide(2.*(tp*weight) + smooth,
                            2.*(tp*weight) + fp + fn + smooth)
-    return cl_dice
+    return 1 - cl_dice
 
 def binary_focal_tversky_loss(pred:torch.Tensor,
                               target:torch.Tensor,
