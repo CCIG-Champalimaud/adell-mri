@@ -19,18 +19,65 @@ from lib.modules.augmentations import (
     generic_augments,mri_specific_augments,spatial_augments,
     AugmentationWorkhorsed)
 
+class TransformWrapper:
+    def __init__(self,data_dictionary,transform):
+        self.data_dictionary = data_dictionary
+        self.transform = transform
+    
+    def __call__(self,key):
+        return key,self.transform(self.data_dictionary[key])
+
 def unbox(x):
     if isinstance(x,list):
         return x[0]
     else:
         return x
 
+def get_transforms_unet_seg(seg_keys,
+                            target_spacing,
+                            resize_size,
+                            resize_keys,
+                            pad_size,
+                            crop_size,
+                            label_mode,
+                            positive_labels):
+    intp = ["nearest" for _ in seg_keys]
+    transforms = [
+        monai.transforms.LoadImaged(
+            seg_keys,ensure_channel_first=True,
+            allow_missing_keys=seg_keys,image_only=True)]
+    # sets orientation
+    transforms.append(monai.transforms.Orientationd(seg_keys,"RAS"))
+    if target_spacing is not None:
+        transforms.append(monai.transforms.Spacingd(
+            keys=seg_keys,pixdim=target_spacing,
+            mode=intp))
+    # sets resize
+    if resize_size is not None and len(resize_keys) > 0:
+        intp_ = [k for k,kk in zip(intp,seg_keys) 
+                 if kk in resize_keys]
+        transforms.append(monai.transforms.Resized(
+            resize_keys,tuple(resize_size),mode=intp_))
+    # sets pad op
+    if pad_size is not None:
+        transforms.append(
+            monai.transforms.SpatialPadd(seg_keys,pad_size))
+    # sets crop op
+    if crop_size is not None:
+        transforms.extend(
+            monai.transforms.CenterSpatialCropd(seg_keys,crop_size))
+    transforms.extend([CombineBinaryLabelsd(seg_keys,"any","mask"),
+                       LabelOperatorSegmentationd(
+                           ["mask"],seg_keys,
+                           mode=label_mode,positive_labels=positive_labels)])
+    return transforms
+
 def get_transforms_unet(x,
                         all_keys: List[str],
                         image_keys: List[str],
                         label_keys: List[str],
                         non_adc_keys: List[str],
-                        adc_image_keys: List[str],
+                        adc_keys: List[str],
                         target_spacing: List[float],
                         intp: List[str],
                         intp_resampling_augmentations: List[str],
@@ -70,12 +117,12 @@ def get_transforms_unet(x,
         if len(non_adc_keys) > 0:
             transforms.append(
                 monai.transforms.ScaleIntensityd(non_adc_keys,0,1))
-        if len(adc_image_keys) > 0:
+        if len(adc_keys) > 0:
             transforms.append(
-                ConditionalRescalingd(adc_image_keys,500,0.001))
+                ConditionalRescalingd(adc_keys,500,0.001))
             transforms.append(
                 monai.transforms.ScaleIntensityd(
-                    adc_image_keys,None,None,-(1-adc_factor)))
+                    adc_keys,None,None,-(1-adc_factor)))
         # sets resize
         if resize_size is not None and len(resize_keys) > 0:
             intp_ = [k for k,kk in zip(intp,all_keys) 
@@ -88,28 +135,31 @@ def get_transforms_unet(x,
                 monai.transforms.SpatialPadd(all_keys,pad_size))
         # sets crop op
         if crop_size is not None:
-            transforms.extend(
+            transforms.append(
                 monai.transforms.CenterSpatialCropd(all_keys,crop_size))
-        # sets indices for random crop op
-        transforms.extend([monai.transforms.EnsureTyped(all_keys),
+        transforms.extend([monai.transforms.EnsureTyped(all_keys,dtype=torch.float32),
                            CombineBinaryLabelsd(label_keys,"any","mask"),
                            LabelOperatorSegmentationd(
                                ["mask"],possible_labels,
                                mode=label_mode,positive_labels=positive_labels)])
+        # sets indices for random crop op
         if random_crop_size is not None:
             transforms.append(monai.transforms.FgBgToIndicesd("mask"))
         return transforms
     
     elif x == "post":
+        keys = []
         transforms = []
         if brunet is False:
             transforms.append(
                 monai.transforms.ConcatItemsd(image_keys,"image"))
             
         if len(all_aux_keys) > 0:
+            keys.append(all_aux_keys)
             transforms.append(monai.transforms.ConcatItemsd(
                 all_aux_keys,aux_key_net))
         if len(feature_keys) > 0:
+            keys.append(feature_keys)
             transforms.extend([
                 monai.transforms.EnsureTyped(
                     feature_keys,dtype=np.float32),
@@ -119,11 +169,14 @@ def get_transforms_unet(x,
                 monai.transforms.ConcatItemsd(
                     feature_keys,feature_key_net)])
         if brunet is False:
+            keys.append("image")
             transforms.append(monai.transforms.ToTensord(["image","mask"],
                                                          track_meta=False))
         else:
+            keys.extend(image_keys)
             transforms.append(monai.transforms.ToTensord(image_keys + ["mask"],
                                                          track_meta=False))
+        transforms.append(monai.transforms.SelectItemsd(keys + ["mask"]))
         return transforms
 
 def get_transforms_detection(keys,
@@ -307,66 +360,92 @@ def get_post_transforms_ssl(all_keys,
 def get_augmentations_unet(augment,
                            all_keys,
                            image_keys,
-                           intp_resampling_augmentations,
-                           random_crop_size: List[int]=None):
-    valid_arg_list = ["full","light","lightest","none",True]
-    if augment not in valid_arg_list:
-        raise NotImplementedError(
-            "augment must be one of {}".format(valid_arg_list))
-    if augment == "full" or augment is True:
-        augments = [
-            monai.transforms.RandBiasFieldd(image_keys,degree=3,prob=0.1),
-            monai.transforms.RandAdjustContrastd(image_keys,prob=0.25),
+                           t2_keys,
+                           random_crop_size: List[int]=None,
+                           n_crops: int=1):
+    valid_arg_list = ["intensity","noise","rbf","affine","shear","flip",
+                      "blur","trivial"]
+    interpolation = ["bilinear" if k in image_keys else "nearest" 
+                     for k in all_keys]
+    for a in augment:
+        if a not in valid_arg_list:
+            raise NotImplementedError(
+                "augment can only contain {}".format(valid_arg_list))
+    augments = []
+    
+    prob = 0.1
+    if "trivial" in augment:
+        augments.append(monai.transforms.Identityd(image_keys))
+        prob = 1.0
+
+    if "intensity" in augment:
+        augments.extend([
+            monai.transforms.RandAdjustContrastd(
+                image_keys,gamma=(0.5,1.5),prob=prob),
+            monai.transforms.RandStdShiftIntensityd(
+                image_keys,factors=0.1,prob=prob),
+            monai.transforms.RandShiftIntensityd(
+                image_keys,offsets=0.1,prob=prob)])
+    
+    if "blur" in augment:
+        augments.extend([
+            monai.transforms.RandGaussianSmoothd(image_keys)
+        ])
+    
+    if "noise" in augment:
+        augments.extend([
             monai.transforms.RandRicianNoised(
-                image_keys,std=0.05,prob=0.25),
+                image_keys,std=0.02,prob=prob),
             monai.transforms.RandGibbsNoised(
-                image_keys,alpha=(0.0,0.6),prob=0.25),
+                image_keys,alpha=(0.0,0.6),prob=0.25)])
+        
+    if "flip" in augment:
+        augments.append(
+            monai.transforms.RandFlipd(
+                all_keys,prob=prob,spatial_axis=0))
+
+    if "rbf" in augment and len(t2_keys) > 0:
+        augments.append(
+            monai.transforms.RandBiasFieldd(
+                t2_keys,degree=3,prob=prob))
+
+    if "affine" in augment:
+        augments.append(
             monai.transforms.RandAffined(
                 all_keys,
-                scale_range=[0.1,0.1,0.1],
-                rotate_range=[np.pi/8,np.pi/8,np.pi/16],
-                translate_range=[10,10,1],
+                translate_range=[4,4,1],
+                rotate_range=[np.pi/16],
+                prob=prob,mode=interpolation,
+                padding_mode="zeros"))
+        
+    if "shear" in augment:
+        augments.append(
+            monai.transforms.RandAffined(
+                all_keys,
                 shear_range=((0.9,1.1),(0.9,1.1),(0.9,1.1)),
-                prob=0.5,mode=intp_resampling_augmentations,
-                padding_mode="zeros")]
-    elif augment == "light":
-        augments = [
-            monai.transforms.RandAdjustContrastd(image_keys,prob=0.25),
-            monai.transforms.RandRicianNoised(
-                image_keys,std=0.05,prob=0.25),
-            monai.transforms.RandGibbsNoised(
-                image_keys,alpha=(0.0,0.6),prob=0.25),
-            monai.transforms.RandAffined(
-                all_keys,
-                scale_range=[0.1,0.1,0.1],
-                rotate_range=[np.pi/8,np.pi/8,np.pi/16],
-                translate_range=[10,10,1],
-                prob=0.5,mode=intp_resampling_augmentations,
-                padding_mode="zeros")]
-
-    elif augment == "lightest":
-        augments = [
-            monai.transforms.RandAdjustContrastd(image_keys,prob=0.25),
-            monai.transforms.RandRicianNoised(
-                image_keys,std=0.05,prob=0.25),
-            monai.transforms.RandGibbsNoised(
-                image_keys,alpha=(0.0,0.6),prob=0.25)]
-
+                prob=prob,mode=interpolation,
+                padding_mode="zeros"))
+    
+    if "trivial" in augment:
+        augments = monai.transforms.OneOf(augments)
     else:
-        augments = []
-
-    #augments.append(
-    #    monai.transforms.RandFlipd(
-    #        all_keys,prob=0.25,spatial_axis=[0,1,2]))
+        augments = monai.transforms.Compose(augments)
 
     if random_crop_size is not None:
-        augments.extend(
-            [
-                monai.transforms.RandCropByPosNegLabeld(
-                    [*image_keys,"mask"],"mask",random_crop_size,
-                    allow_smaller=False,
-                    fg_indices_key="mask_fg_indices",
-                    bg_indices_key="mask_bg_indices")])
+        # do a first larger crop that prevents artefacts introduced by 
+        # affine transforms and then crop the rest
+        pre_final_size = [int(i * 1.10) for i in random_crop_size]
+        augments = [
+            monai.transforms.RandCropByPosNegLabeld(
+                [*image_keys,"mask"],"mask",pre_final_size,
+                allow_smaller=True,num_samples=n_crops,
+                fg_indices_key="mask_fg_indices",
+                bg_indices_key="mask_bg_indices"),
+            augments,
+            monai.transforms.CenterSpatialCropd([*image_keys,"mask"],
+                                                random_crop_size)
+            ]
+        augments = monai.transforms.Compose(augments)
         
     return augments
 

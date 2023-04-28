@@ -1390,7 +1390,8 @@ class GetAllCrops(monai.transforms.Transform):
     Works similarly to RandCropByPosNegLabeld but returns all the crops in 
     a volume or image.
     """
-    def __init__(self,size:Union[Tuple[int,int],Tuple[int,int,int]]):
+    def __init__(self,
+                 size:Union[Tuple[int,int],Tuple[int,int,int]]):
         self.size = size
         self.ndim = len(size)
 
@@ -1400,18 +1401,18 @@ class GetAllCrops(monai.transforms.Transform):
             for j_1 in range(0,sh[1],self.size[1]):
                 i_2 = i_1 + self.size[0]
                 j_2 = j_1 + self.size[1]
-                if (i_2 < sh[0]) and (j_2 < sh[1]):
+                if (i_2 < sh[0]+1) and (j_2 < sh[1]+1):
                     yield X[:,i_1:i_2,j_1:j_2]
 
     def get_all_crops_3d(self,X:torch.Tensor)->torch.Tensor:
-        sh = X.shape[1:]
+        sh = [x for x in X.shape[1:]]
         for i_1 in range(0,sh[0],self.size[0]):
             for j_1 in range(0,sh[1],self.size[1]):
                 for k_1 in range(0,sh[2],self.size[2]):
                     i_2 = i_1 + self.size[0]
                     j_2 = j_1 + self.size[1]
                     k_2 = k_1 + self.size[2]
-                    if (i_2 < sh[0]) and (j_2 < sh[1]) and (k_2 < sh[2]):
+                    if (i_2 < (sh[0]+1)) and (j_2 < (sh[1]+1)) and (k_2 < (sh[2]+1)):
                         yield X[:,i_1:i_2,j_1:j_2,k_1:k_2]
 
     def get_all_crops(self,X:torch.Tensor)->torch.Tensor:
@@ -1447,7 +1448,7 @@ class GetAllCropsd(monai.transforms.MapTransform):
             output = {k:element for k,element in zip(self.keys,elements)}
             # make sure dictionary contains everything else
             for k in X:
-                if k not in self.keys:
+                if k not in output:
                     output[k] = X[k]
             outputs.append(output)
-        return output
+        return outputs

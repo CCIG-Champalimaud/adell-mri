@@ -195,9 +195,6 @@ def collate_last_slice(X:List[TensorIterable])->TensorIterable:
             pass
 
     example = X[0]
-    if len(example) == 1:
-        X = unpack_crops(X)
-        example = X[0]
     if isinstance(example,list):
         output = []
         for elements in zip(*X):
@@ -233,11 +230,6 @@ def safe_collate(X:List[TensorIterable])->List[TensorIterable]:
             return x
 
     example = X[0]
-    # this small check unpacks the batch in case RandCropByPosNegLabeld
-    # was used since it returns a list (?????)
-    if len(example) == 1:
-        X = unpack_crops(X)
-        example = X[0]
     if isinstance(example,list):
         output = []
         for elements in zip(*X):
@@ -254,6 +246,20 @@ def safe_collate(X:List[TensorIterable])->List[TensorIterable]:
                     elements.append(None)
             output[k] = cat(elements)
     return output
+
+def safe_collate_crops(X:List[List[TensorIterable]])->List[TensorIterable]:
+    """Similar to safe_collate but handles output from MONAI cropping 
+    functions.
+
+    Args:
+        X (List[List[TensorIterable]]): a list of lists or dicts of tensors.
+
+    Returns:
+        List[TensorIterable]: a list or dict of tensors (depending on the
+        input).
+    """
+    X = unpack_crops(X)
+    return safe_collate(X)
 
 def load_bb(path:str)->BBDict:
     with open(path) as o:

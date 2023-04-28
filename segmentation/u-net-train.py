@@ -12,8 +12,6 @@ from tqdm import tqdm
 
 from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import EarlyStopping
-from pytorch_lightning.loggers import WandbLogger
-from pytorch_lightning.callbacks.model_checkpoint import ModelCheckpoint
 from pytorch_lightning.callbacks import RichProgressBar
 
 import sys
@@ -25,8 +23,9 @@ from lib.utils import (
     collate_last_slice,
     RandomSlices,
     SlicesToFirst,
-    PrintShaped,
-    safe_collate)
+    safe_collate,
+    safe_collate_crops)
+from lib.utils.pl_utils import get_ckpt_callback,get_logger,get_devices
 from lib.monai_transforms import get_transforms_unet as get_transforms
 from lib.monai_transforms import get_augmentations_unet as get_augmentations
 from lib.modules.layers import ResNet
@@ -82,8 +81,8 @@ if __name__ == "__main__":
         default=None,type=float,nargs='+',
         help="Size of random crop (last step of the preprocessing pipeline).")
     parser.add_argument(
-        '--number_of_crops',dest='number_of_crops',action="store",
-        default=None,type=int,help="Number of random crops.")
+        '--n_crops',dest='n_crops',action="store",
+        default=1,type=int,help="Number of random crops.")
     parser.add_argument(
         '--target_spacing',dest='target_spacing',action="store",default=None,
         help="Resamples all images to target spacing",nargs='+',type=float)
@@ -106,10 +105,13 @@ if __name__ == "__main__":
         help="Keys corresponding to input images which are segmentation masks",
         default=None)
     parser.add_argument(
-        '--adc_image_keys',dest='adc_image_keys',type=str,nargs='+',
+        '--adc_keys',dest='adc_keys',type=str,nargs='+',
         help="Keys corresponding to input images which are ADC maps \
             (normalized differently)",
         default=None)
+    parser.add_argument(
+        '--t2_keys',dest='t2_keys',type=str,nargs='+',
+        help="Keys corresponding to T2W images",default=None)
     parser.add_argument(
         '--feature_keys',dest='feature_keys',type=str,nargs='+',
         help="Keys corresponding to tabular features in the JSON dataset",
@@ -177,8 +179,8 @@ if __name__ == "__main__":
         '--lr_encoder',dest='lr_encoder',action="store",default=None,type=float,
         help="Sets learning rate for encoder.")
     parser.add_argument(
-        '--polynomial_lr_decay',dest='polynomial_lr_decay',action="store_true",
-        default=False,help="Decays the LR at a polynomial rate.")
+        '--cosine_decay',dest='cosine_decay',action="store_true",
+        default=False,help="Decreases the LR using cosine decay.")
     parser.add_argument(
         '--from_checkpoint',dest='from_checkpoint',action="store",nargs="+",
         default=None,
@@ -203,10 +205,8 @@ if __name__ == "__main__":
         '--n_devices',dest='n_devices',
         help="Number of devices",default=1,type=int)
     parser.add_argument(
-        '--augment',dest='augment',action="store",
-        choices=["full","light","lightest","none"],
-        help="Sets data augmentation. Light skips shear + RBF, lightest skips\
-            all affine transforms + RBF",default="none")
+        '--augment',dest='augment',action="store",nargs="+",
+        help="Sets data augmentation.",default=[])
     parser.add_argument(
         '--pre_load',dest='pre_load',action="store_true",
         help="Load and process data to memory at the beginning of training",
@@ -231,6 +231,9 @@ if __name__ == "__main__":
     parser.add_argument(
         '--max_epochs',dest="max_epochs",
         help="Maximum number of training epochs",default=100,type=int)
+    parser.add_argument(
+        '--dataset_iterations_per_epoch',dest="dataset_iterations_per_epoch",
+        help="Number of dataset iterations per epoch",default=1.0,type=float)
     parser.add_argument(
         '--precision',dest='precision',type=str,default="32",
         help="Floating point precision",choices=["16","32","bf16"])
@@ -261,7 +264,7 @@ if __name__ == "__main__":
         '--checkpoint_name',dest='checkpoint_name',type=str,default=None,
         help='Checkpoint ID.')
     parser.add_argument(
-        '--metric_monitor',dest='metric_monitor',type=str,default="val_loss",
+        '--monitor',dest='monitor',type=str,default="val_loss",
         help='Metric to monitor when saving the best ckpt.')
     parser.add_argument(
         '--summary_dir',dest='summary_dir',type=str,default="summaries",
@@ -270,7 +273,7 @@ if __name__ == "__main__":
         '--summary_name',dest='summary_name',type=str,default=None,
         help='Summary name.')
     parser.add_argument(
-        '--project_name',dest='project_name',type=str,default="summaries",
+        '--project_name',dest='project_name',type=str,default=None,
         help='Project name for wandb.')
     parser.add_argument(
         '--resume',dest='resume',type=str,default="allow",
@@ -294,6 +297,9 @@ if __name__ == "__main__":
     np.random.seed(args.seed)
     g = torch.Generator()
     g.manual_seed(args.seed)
+    
+    accelerator,devices,strategy = get_devices(args.dev)
+    dev = args.dev.split(":")[0]
 
     if args.possible_labels == 2 or args.positive_labels is not None:
         n_classes = 2
@@ -304,7 +310,8 @@ if __name__ == "__main__":
     label_keys = args.mask_keys
     
     mask_image_keys = if_none_else(args.mask_image_keys,[])
-    adc_image_keys = if_none_else(args.adc_image_keys,[])
+    adc_keys = if_none_else(args.adc_keys,[])
+    t2_keys = if_none_else(args.t2_keys,[])
     aux_keys = if_none_else(args.skip_key,[])
     aux_mask_keys = if_none_else(args.skip_mask_key,[])
     resize_keys = if_none_else(args.resize_keys,[])
@@ -320,7 +327,7 @@ if __name__ == "__main__":
     else:
         feature_key_net = None
 
-    adc_image_keys = [k for k in adc_image_keys if k in keys]
+    adc_keys = [k for k in adc_keys if k in keys]
     intp = []
     intp_resampling_augmentations = []
     for k in keys:
@@ -330,7 +337,7 @@ if __name__ == "__main__":
         else:
             intp.append("area")
             intp_resampling_augmentations.append("bilinear")
-    non_adc_keys = [k for k in keys if k not in adc_image_keys]
+    non_adc_keys = [k for k in keys if k not in adc_keys]
     intp.extend(["nearest"]*len(label_keys))
     intp.extend(["area"]*len(aux_keys))
     intp.extend(["nearest"]*len(aux_mask_keys))
@@ -345,6 +352,7 @@ if __name__ == "__main__":
         args.crop_size = [round(x) for x in args.crop_size]
     if args.pad_size is not None:
         args.pad_size = [round(x) for x in args.pad_size]
+    label_mode = "binary" if n_classes == 2 else "cat"
     if args.random_crop_size is not None:
         args.random_crop_size = [round(x) for x in args.random_crop_size]
 
@@ -384,13 +392,12 @@ if __name__ == "__main__":
     if args.learning_rate is not None:
         network_config["learning_rate"] = args.learning_rate
     
-    label_mode = "binary" if n_classes == 2 else "cat"
     transform_arguments = {
         "all_keys": all_keys,
         "image_keys": keys,
         "label_keys": label_keys,
         "non_adc_keys": non_adc_keys,
-        "adc_image_keys": adc_image_keys,
+        "adc_keys": adc_keys,
         "target_spacing": args.target_spacing,
         "intp": intp,
         "intp_resampling_augmentations": intp_resampling_augmentations,
@@ -411,39 +418,44 @@ if __name__ == "__main__":
         "brunet": args.unet_model == "brunet"}
     transform_arguments_val = {k:transform_arguments[k]
                                for k in transform_arguments}
-    transform_arguments_val["random_crop_size"] = None
     augment_arguments = {
         "augment":args.augment,
         "all_keys":all_keys,
         "image_keys":keys,
-        "intp_resampling_augmentations":intp_resampling_augmentations,
-        "random_crop_size":args.random_crop_size}
+        "t2_keys":t2_keys,
+        "random_crop_size":args.random_crop_size,
+        "n_crops":args.n_crops}
+    if args.random_crop_size:
+        get_all_crops_transform = [GetAllCropsd(
+            args.image_keys + ["mask"],args.random_crop_size)]
+    else:
+        get_all_crops_transform = []
     if args.pre_load == False:
         transforms_train = [
             *get_transforms("pre",**transform_arguments),
-            *get_augmentations(**augment_arguments),
+            get_augmentations(**augment_arguments),
             *get_transforms("post",**transform_arguments)]
 
         transforms_train_val = [
             *get_transforms("pre",**transform_arguments_val),
-            GetAllCropsd(args.image_keys + ["mask"],args.random_crop_size),
+            *get_all_crops_transform,
             *get_transforms("post",**transform_arguments_val)]
 
         transforms_val = [
             *get_transforms("pre",**transform_arguments_val),
-            GetAllCropsd(args.image_keys + ["mask"],args.random_crop_size),
+            *get_all_crops_transform,
             *get_transforms("post",**transform_arguments_val)]
     else:
         transforms_train = [
-            *get_augmentations(**augment_arguments),
+            get_augmentations(**augment_arguments),
             *get_transforms("post",**transform_arguments_val)]
 
         transforms_train_val = [
-            GetAllCropsd(args.image_keys + ["mask"],args.random_crop_size),
+            *get_all_crops_transform,
             *get_transforms("post",**transform_arguments_val)]
 
         transforms_val = [
-            GetAllCropsd(args.image_keys + ["mask"],args.random_crop_size),
+            *get_all_crops_transform,
             *get_transforms("post",**transform_arguments_val)]
         
         transform_all_data = get_transforms("pre",**transform_arguments)
@@ -466,6 +478,8 @@ if __name__ == "__main__":
         transforms_val.append(
             SlicesToFirst(["image","mask"]))
         collate_fn = collate_last_slice
+    elif args.random_crop_size is not None:
+        collate_fn = safe_collate_crops
     else:
         collate_fn = safe_collate
 
@@ -496,33 +510,16 @@ if __name__ == "__main__":
 
         ckpt_path = None
 
-        if args.checkpoint_name is not None:
-            ckpt_name = args.checkpoint_name + "_fold" + str(val_fold)
-            ckpt_name = ckpt_name + "_best"
-            mode = "min" if "loss" in args.metric_monitor else "max"
-            ckpt_callback = ModelCheckpoint(
-                dirpath=args.checkpoint_dir,
-                filename=ckpt_name,monitor=args.metric_monitor,
-                save_last=True,save_top_k=1,mode=mode)
-            ckpt_last = \
-                args.checkpoint_name + "_fold" + str(val_fold) + "_last"
-            ckpt_callback.CHECKPOINT_NAME_LAST = ckpt_last
-            ckpt_last_full = os.path.join(
-                args.checkpoint_dir,ckpt_last+'.ckpt')
-            if os.path.exists(ckpt_last_full) and args.resume_from_last == True:
-                ckpt_path = ckpt_last_full
-                epoch = torch.load(ckpt_path)["epoch"]
-                if epoch >= (args.max_epochs-1):
-                    print("Training has finished for this fold, skipping")
-                    continue
-                else:
-                    print("Resuming training from checkpoint in {} (epoch={})".format(
-                        ckpt_path,epoch))
-            callbacks.append(ckpt_callback)
-
-            ckpt = True
-        else:
-            ckpt = False
+        ckpt_callback,ckpt_path,status = get_ckpt_callback(
+            checkpoint_dir=args.checkpoint_dir,
+            checkpoint_name=args.checkpoint_name,
+            max_epochs=args.max_epochs,
+            resume_from_last=args.resume_from_last,
+            val_fold=val_fold,
+            monitor=args.monitor)
+        ckpt = ckpt_callback is not None
+        if status == "finished":
+            continue
 
         if args.from_checkpoint is not None:
             if len(args.from_checkpoint) >= (val_fold+1):
@@ -567,23 +564,6 @@ if __name__ == "__main__":
                 val_list,
                 monai.transforms.Compose(transforms_val))
 
-        # correctly assign devices
-        if ":" in args.dev:
-            devices = args.dev.split(":")[-1].split(",")
-            devices = [int(i) for i in devices]
-            dev = args.dev.split(":")[0]
-            if len(devices) > 1:
-                strategy = "ddp"
-            else:
-                strategy = None
-        else:
-            devices = args.n_devices
-            dev = args.dev
-            if devices > 1:
-                strategy = "ddp"
-            else:
-                strategy = None
-
         # calculate the mean/std of tabular features
         if feature_keys is not None:
             all_params = {"mean":[],"std":[]}
@@ -599,7 +579,13 @@ if __name__ == "__main__":
             all_params = None
             
         # include some constant label images
-        sampler = None
+        n_samples = int(
+            len(train_dataset) * args.dataset_iterations_per_epoch)
+        sampler = torch.utils.data.RandomSampler(
+            ["element" for _ in train_idxs],
+            num_samples=n_samples,
+            replacement=len(train_dataset) < n_samples,
+            generator=g)
         if isinstance(args.class_weights[0],str):
             ad = "adaptive" in args.class_weights[0]
         else:
@@ -664,7 +650,7 @@ if __name__ == "__main__":
 
         train_loader = train_loader_call(network_config["batch_size"])
         train_val_loader = monai.data.ThreadDataLoader(
-            train_dataset_val,batch_size=network_config["batch_size"],
+            train_dataset_val,batch_size=1,
             shuffle=False,num_workers=args.n_workers,
             collate_fn=collate_fn,persistent_workers=True)
         validation_loader = monai.data.ThreadDataLoader(
@@ -743,7 +729,7 @@ if __name__ == "__main__":
                 n_input_branches=len(keys),
                 picai_eval=args.picai_eval,
                 lr_encoder=args.lr_encoder,
-                polynomial_lr_decay=args.polynomial_lr_decay,
+                cosine_decay=args.cosine_decay,
                 **network_config)
             if args.encoder_checkpoint is not None and args.res_config_file is None:
                 for encoder,ckpt in zip(unet.encoders,args.encoder_checkpoint):
@@ -764,7 +750,7 @@ if __name__ == "__main__":
                 n_epochs=args.max_epochs,
                 picai_eval=args.picai_eval,
                 lr_encoder=args.lr_encoder,
-                polynomial_lr_decay=args.polynomial_lr_decay,
+                cosine_decay=args.cosine_decay,
                 **network_config)
         elif args.unet_model == "unet":
             encoding_operations = encoding_operations[0]
@@ -783,7 +769,7 @@ if __name__ == "__main__":
                 n_epochs=args.max_epochs,
                 picai_eval=args.picai_eval,
                 lr_encoder=args.lr_encoder,
-                polynomial_lr_decay=args.polynomial_lr_decay,
+                cosine_decay=args.cosine_decay,
                 **network_config)
         elif args.unet_model == "unetr":
             sd = network_config["spatial_dimensions"]
@@ -808,7 +794,7 @@ if __name__ == "__main__":
                 n_epochs=args.max_epochs,
                 picai_eval=args.picai_eval,
                 lr_encoder=args.lr_encoder,
-                polynomial_lr_decay=args.polynomial_lr_decay,
+                cosine_decay=args.cosine_decay,
                 **network_config)
         elif args.unet_model == "swin":
             size = get_size(args.random_crop_size,
@@ -830,7 +816,7 @@ if __name__ == "__main__":
                 n_epochs=args.max_epochs,
                 picai_eval=args.picai_eval,
                 lr_encoder=args.lr_encoder,
-                polynomial_lr_decay=args.polynomial_lr_decay,
+                cosine_decay=args.cosine_decay,
                 **network_config)
 
         if args.early_stopping is not None:
@@ -839,18 +825,9 @@ if __name__ == "__main__":
                 strict=True,mode="min")
             callbacks.append(early_stopping)
                 
-        if args.summary_name is not None and args.project_name is not None:
-            wandb.finish()
-            wandb_resume = args.resume
-            if wandb_resume == "none":
-                wandb_resume = None
-            run_name = args.summary_name.replace(':','_') 
-            run_name = run_name + "_fold_{}".format(val_fold)
-            logger = WandbLogger(
-                save_dir=args.summary_dir,project=args.project_name,
-                name=run_name,version=run_name,reinit=True,resume=wandb_resume)
-        else:
-            logger = None
+        logger = get_logger(args.summary_name,args.summary_dir,
+                            args.project_name,args.resume,
+                            fold=val_fold)
 
         precision = {"32":32,"16":16,"bf16":"bf16"}[args.precision]
         trainer = Trainer(
