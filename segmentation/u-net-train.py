@@ -2,7 +2,6 @@ import argparse
 import random
 import json
 import os
-
 import numpy as np
 import torch
 import monai
@@ -12,19 +11,21 @@ from sklearn.model_selection import KFold,train_test_split
 from tqdm import tqdm
 
 from pytorch_lightning import Trainer
-from pytorch_lightning.callbacks import EarlyStopping,StochasticWeightAveraging
+from pytorch_lightning.callbacks import EarlyStopping
 from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.callbacks.model_checkpoint import ModelCheckpoint
 from pytorch_lightning.callbacks import RichProgressBar
 
 import sys
-sys.path.append(r"..")
+sys.path.append(os.path.join(os.path.realpath(os.path.dirname(__file__)),".."))
 from lib.utils import (
+    GetAllCropsd,
     PartiallyRandomSampler,
     get_loss_param_dict,
     collate_last_slice,
     RandomSlices,
     SlicesToFirst,
+    PrintShaped,
     safe_collate)
 from lib.monai_transforms import get_transforms_unet as get_transforms
 from lib.monai_transforms import get_augmentations_unet as get_augmentations
@@ -69,14 +70,20 @@ if __name__ == "__main__":
         '--resize_keys',dest='resize_keys',type=str,nargs='+',default=None,
         help="Keys that will be resized to input size")
     parser.add_argument(
+        '--pad_size',dest='pad_size',action="store",
+        default=None,type=float,nargs='+',
+        help="Padding size after resizing.")
+    parser.add_argument(
         '--crop_size',dest='crop_size',action="store",
         default=None,type=float,nargs='+',
-        help="Size of central crop after resizing (if none is specified then\
-            no cropping is performed).")
+        help="Crop size after padding.")
     parser.add_argument(
         '--random_crop_size',dest='random_crop_size',action="store",
         default=None,type=float,nargs='+',
         help="Size of random crop (last step of the preprocessing pipeline).")
+    parser.add_argument(
+        '--number_of_crops',dest='number_of_crops',action="store",
+        default=None,type=int,help="Number of random crops.")
     parser.add_argument(
         '--target_spacing',dest='target_spacing',action="store",default=None,
         help="Resamples all images to target spacing",nargs='+',type=float)
@@ -336,6 +343,8 @@ if __name__ == "__main__":
         args.resize_size = [round(x) for x in args.resize_size]
     if args.crop_size is not None:
         args.crop_size = [round(x) for x in args.crop_size]
+    if args.pad_size is not None:
+        args.pad_size = [round(x) for x in args.pad_size]
     if args.random_crop_size is not None:
         args.random_crop_size = [round(x) for x in args.random_crop_size]
 
@@ -394,6 +403,7 @@ if __name__ == "__main__":
         "aux_key_net": aux_key_net,
         "feature_key_net": feature_key_net,
         "resize_size": args.resize_size,
+        "pad_size": args.pad_size,
         "crop_size": args.crop_size,
         "random_crop_size": args.random_crop_size,
         "label_mode": label_mode,
@@ -416,10 +426,12 @@ if __name__ == "__main__":
 
         transforms_train_val = [
             *get_transforms("pre",**transform_arguments_val),
+            GetAllCropsd(args.image_keys + ["mask"],args.random_crop_size),
             *get_transforms("post",**transform_arguments_val)]
 
         transforms_val = [
             *get_transforms("pre",**transform_arguments_val),
+            GetAllCropsd(args.image_keys + ["mask"],args.random_crop_size),
             *get_transforms("post",**transform_arguments_val)]
     else:
         transforms_train = [
@@ -427,9 +439,11 @@ if __name__ == "__main__":
             *get_transforms("post",**transform_arguments_val)]
 
         transforms_train_val = [
+            GetAllCropsd(args.image_keys + ["mask"],args.random_crop_size),
             *get_transforms("post",**transform_arguments_val)]
 
         transforms_val = [
+            GetAllCropsd(args.image_keys + ["mask"],args.random_crop_size),
             *get_transforms("post",**transform_arguments_val)]
         
         transform_all_data = get_transforms("pre",**transform_arguments)
@@ -543,13 +557,13 @@ if __name__ == "__main__":
             train_list = [dataset_full[i] for i in train_idxs]
             train_val_list = [dataset_full[i] for i in train_val_idxs]
             val_list = [dataset_full[i] for i in val_idxs]
-            train_dataset = monai.data.Dataset(
+            train_dataset = monai.data.CacheDataset(
                 train_list,
                 monai.transforms.Compose(transforms_train))
-            train_dataset_val = monai.data.Dataset(
+            train_dataset_val = monai.data.CacheDataset(
                 train_val_list,
                 monai.transforms.Compose(transforms_train_val))
-            validation_dataset = monai.data.Dataset(
+            validation_dataset = monai.data.CacheDataset(
                 val_list,
                 monai.transforms.Compose(transforms_val))
 
@@ -775,6 +789,7 @@ if __name__ == "__main__":
             sd = network_config["spatial_dimensions"]
             size = get_size(args.random_crop_size,
                             args.crop_size,
+                            args.pad_size,
                             args.resize_size)
             network_config["image_size"] = size[:sd]
             network_config["patch_size"] = network_config["patch_size"][:sd]

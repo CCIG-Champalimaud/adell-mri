@@ -176,6 +176,13 @@ def get_loss_param_dict(
         "mse":{}}
     return loss_param_dict
 
+def unpack_crops(X:List[TensorIterable])->TensorIterable:
+    output = []
+    for x in X:
+        for xx in x:
+            output.append(xx)
+    return output
+
 def collate_last_slice(X:List[TensorIterable])->TensorIterable:
     def swap(x):
         out = x.permute(0,3,1,2)
@@ -188,6 +195,9 @@ def collate_last_slice(X:List[TensorIterable])->TensorIterable:
             pass
 
     example = X[0]
+    if len(example) == 1:
+        X = unpack_crops(X)
+        example = X[0]
     if isinstance(example,list):
         output = []
         for elements in zip(*X):
@@ -213,7 +223,7 @@ def safe_collate(X:List[TensorIterable])->List[TensorIterable]:
         input).
     """
     def cat(x):
-        try: 
+        try:
             x = [torch.as_tensor(y) for y in x]
         except Exception:
             return x
@@ -226,7 +236,7 @@ def safe_collate(X:List[TensorIterable])->List[TensorIterable]:
     # this small check unpacks the batch in case RandCropByPosNegLabeld
     # was used since it returns a list (?????)
     if len(example) == 1:
-        X = [x[0] for x in X]
+        X = unpack_crops(X)
         example = X[0]
     if isinstance(example,list):
         output = []

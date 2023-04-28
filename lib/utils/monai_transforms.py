@@ -1380,7 +1380,74 @@ class SampleChannelDimd(monai.transforms.MapTransform):
         self.transform = SampleChannelDim(self.n_channels,
                                           self.channel_dim)
         
-    def __call__(self,X):
+    def __call__(self,X:Dict[str,torch.Tensor]):
         for k in self.keys:
             X[k] = self.transform(X[k])
         return X
+
+class GetAllCrops(monai.transforms.Transform):
+    """
+    Works similarly to RandCropByPosNegLabeld but returns all the crops in 
+    a volume or image.
+    """
+    def __init__(self,size:Union[Tuple[int,int],Tuple[int,int,int]]):
+        self.size = size
+        self.ndim = len(size)
+
+    def get_all_crops_2d(self,X:torch.Tensor)->torch.Tensor:
+        sh = X.shape[1:]
+        for i_1 in range(0,sh[0],self.size[0]):
+            for j_1 in range(0,sh[1],self.size[1]):
+                i_2 = i_1 + self.size[0]
+                j_2 = j_1 + self.size[1]
+                if (i_2 < sh[0]) and (j_2 < sh[1]):
+                    yield X[:,i_1:i_2,j_1:j_2]
+
+    def get_all_crops_3d(self,X:torch.Tensor)->torch.Tensor:
+        sh = X.shape[1:]
+        for i_1 in range(0,sh[0],self.size[0]):
+            for j_1 in range(0,sh[1],self.size[1]):
+                for k_1 in range(0,sh[2],self.size[2]):
+                    i_2 = i_1 + self.size[0]
+                    j_2 = j_1 + self.size[1]
+                    k_2 = k_1 + self.size[2]
+                    if (i_2 < sh[0]) and (j_2 < sh[1]) and (k_2 < sh[2]):
+                        yield X[:,i_1:i_2,j_1:j_2,k_1:k_2]
+
+    def get_all_crops(self,X:torch.Tensor)->torch.Tensor:
+        if self.ndim == 2:
+            yield from self.get_all_crops_2d(X)
+        if self.ndim == 3:
+            yield from self.get_all_crops_3d(X)
+
+    def __call__(self,X:torch.Tensor)->List[torch.Tensor]:
+        if self.size is not None:
+            X = [x for x in self.get_all_crops(X)]
+        return X
+
+class GetAllCropsd(monai.transforms.MapTransform):
+    """
+    Dictionary version of GetAllCrops.
+    """
+    def __init__(self,
+                 keys:List[str],
+                 size:Union[Tuple[int,int],Tuple[int,int,int]]):
+        self.keys = keys
+        self.size = size
+        
+        self.tr = GetAllCrops(self.size)
+    
+    def __call__(self,X:Dict[str,torch.Tensor])->List[Dict[str,torch.Tensor]]:
+        output_crops = {k:X[k] for k in X}
+        outputs = []
+        for k in self.keys:
+            output_crops[k] = list(self.tr(X[k]))
+        
+        for elements in zip(*[output_crops[k] for k in self.keys]):
+            output = {k:element for k,element in zip(self.keys,elements)}
+            # make sure dictionary contains everything else
+            for k in X:
+                if k not in self.keys:
+                    output[k] = X[k]
+            outputs.append(output)
+        return output
