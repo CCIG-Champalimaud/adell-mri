@@ -749,7 +749,7 @@ class SelfSLConvNeXtPL(ConvNeXt,SelfSLBasePL):
 
     def step(self,batch,loss_str:str,metrics:dict,train=False):
         if self.simclr is True:
-            ret_string_1 = "projection"
+            ret_string_1 = "prediction"
             ret_string_2 = "projection"
             other_args = []
         elif self.vic_reg_local is False:
