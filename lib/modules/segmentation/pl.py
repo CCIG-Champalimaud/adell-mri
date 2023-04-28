@@ -12,8 +12,8 @@ from .unet import UNet,BrUNet
 from .unetpp import UNetPlusPlus
 from .unetr import UNETR
 from .unetr import SWINUNet
-from ..learning_rate import poly_lr_decay
 from ..extract_lesion_candidates import extract_lesion_candidates
+from ..learning_rate import CosineAnnealingWithWarmupLR
 
 def binary_iou_manual(pred,truth):
     binary_pred = pred > 0.5
@@ -114,7 +114,7 @@ class UNetBasePL(pl.LightningModule,ABC):
     def __init__(self):
         super().__init__()
         
-        self.max_batch_size = 8
+        self.train_batch_size = None
         self.raise_nan_loss = False
 
     def calculate_loss(self,prediction,y):
@@ -205,6 +205,8 @@ class UNetBasePL(pl.LightningModule,ABC):
             self,self.train_metrics,pred_final,y,pred_class,y_class,
             on_epoch=True,on_step=False,prog_bar=True)
         
+        self.train_batch_size = x.shape[0]
+        
         return output_loss
     
     def validation_step(self,batch,batch_idx):
@@ -223,7 +225,10 @@ class UNetBasePL(pl.LightningModule,ABC):
             x_fc = None
 
         bs = x.shape[0]
-        mbs = self.batch_size
+        if self.train_batch_size is None:
+            mbs = self.batch_size
+        else:
+            mbs = self.train_batch_size
         for i in range(0,bs,mbs):
             m,M = i,i+mbs
             out = self.step(x[m:M],
@@ -244,7 +249,8 @@ class UNetBasePL(pl.LightningModule,ABC):
                     sync_dist=True)
 
             update_metrics(
-                self,self.val_metrics,pred_final,y[m:M],pred_class,y_class,
+                self,self.val_metrics,pred_final,
+                y[m:M],pred_class,y_class[m:M] if y_class is not None else None,
                 on_epoch=True,prog_bar=True)
 
     def test_step(self,batch,batch_idx):
@@ -263,7 +269,10 @@ class UNetBasePL(pl.LightningModule,ABC):
             x_fc = None
 
         bs = x.shape[0]
-        mbs = self.batch_size
+        if self.train_batch_size is None:
+            mbs = self.batch_size
+        else:
+            mbs = self.train_batch_size
         for i in range(0,bs,mbs):
             m,M = i,i+mbs
             out = self.step(x[m:M],
@@ -275,13 +284,14 @@ class UNetBasePL(pl.LightningModule,ABC):
         
             if self.picai_eval is True:
                 for s_p,s_y in zip(pred_final.squeeze(1).detach().cpu().numpy(),
-                                y.squeeze(1).detach().cpu().numpy()):
+                                   y.squeeze(1).detach().cpu().numpy()):
                     self.all_pred.append(s_p)
                     self.all_true.append(s_y)
 
             update_metrics(
-                self,self.test_metrics,pred_final,y,pred_class,y_class,
-                on_epoch=True,on_step=False,prog_bar=True)
+                self,self.test_metrics,pred_final,
+                y[m:M],pred_class,y_class[m:M] if y_class is not None else None,
+                on_epoch=True,prog_bar=True)
         
     def train_dataloader(self) -> torch.utils.data.DataLoader:
         return self.training_dataloader_call(self.batch_size)
@@ -307,19 +317,23 @@ class UNetBasePL(pl.LightningModule,ABC):
         optimizer = torch.optim.AdamW(
             parameters,lr=self.learning_rate,
             weight_decay=self.weight_decay,eps=eps)
-
-        return {"optimizer":optimizer,
-                "monitor":"val_loss"}
+        
+        if self.cosine_decay == True:
+            lr_schedulers = CosineAnnealingWithWarmupLR(
+                optimizer,T_max=self.n_epochs,start_decay=0,n_warmup_steps=0)
+            
+            return {"optimizer":optimizer,
+                    "lr_scheduler":lr_schedulers,
+                    "monitor":"val_loss"}
+        else:
+            return {"optimizer":optimizer,
+                    "monitor":"val_loss"}
     
     def on_train_epoch_end(self):
         # updating the lr here rather than as a PL lr_scheduler... 
         # basically the lr_scheduler (as I was using it at least)
         # is not terribly compatible with starting and stopping training
         opt = self.optimizers()
-        if self.polynomial_lr_decay is True:
-            poly_lr_decay(opt,self.trainer.current_epoch,
-                          initial_lr=self.learning_rate,
-                          max_decay_steps=self.n_epochs,end_lr=1e-6,power=0.9)
         try:
             last_lr = [x["lr"] for x in opt.param_groups][-1]
         except:
@@ -380,7 +394,7 @@ class UNetPL(UNet,UNetBasePL):
         feature_conditioning_key: str=None,
         learning_rate: float=0.001,
         lr_encoder: float=None,
-        polynomial_lr_decay: bool=True,
+        cosine_decay: bool=True,
         batch_size: int=4,
         n_epochs: int=100,
         weight_decay: float=0.005,
@@ -402,7 +416,7 @@ class UNetPL(UNet,UNetBasePL):
             learning_rate (float, optional): learning rate. Defaults to 0.001.
             lr_encoder (float, optional): encoder learning rate. Defaults to None
                 (same as learning_rate).
-            polynomial_lr_decay (bool, optional): triggers polynomial learning rate
+            cosine_decay (bool, optional): triggers cosine learning rate
                 decay. Defaults to True.
             batch_size (int, optional): batch size. Defaults to 4.
             n_epochs (int, optional): number of epochs. Defaults to 100.
@@ -428,7 +442,7 @@ class UNetPL(UNet,UNetBasePL):
         self.feature_conditioning_key = feature_conditioning_key
         self.learning_rate = learning_rate
         self.lr_encoder = lr_encoder
-        self.polynomial_lr_decay = polynomial_lr_decay
+        self.cosine_decay = cosine_decay
         self.batch_size = batch_size
         self.n_epochs = n_epochs
         self.weight_decay = weight_decay
@@ -457,7 +471,7 @@ class UNETRPL(UNETR,UNetBasePL):
         feature_conditioning_key: str=None,
         learning_rate: float=0.001,
         lr_encoder: float=None,
-        polynomial_lr_decay: bool=True,
+        cosine_decay: bool=True,
         batch_size: int=4,
         n_epochs: int=100,
         weight_decay: float=0.005,
@@ -479,7 +493,7 @@ class UNETRPL(UNETR,UNetBasePL):
             learning_rate (float, optional): learning rate. Defaults to 0.001.
             lr_encoder (float, optional): encoder learning rate. Defaults to None
                 (same as learning_rate).
-            polynomial_lr_decay (bool, optional): triggers polynomial learning rate
+            cosine_decay (bool, optional): triggers cosine learning rate
                 decay. Defaults to True.
             batch_size (int, optional): batch size. Defaults to 4.
             n_epochs (int, optional): number of epochs. Defaults to 100.
@@ -503,7 +517,7 @@ class UNETRPL(UNETR,UNetBasePL):
         self.feature_conditioning_key = feature_conditioning_key
         self.learning_rate = learning_rate
         self.lr_encoder = lr_encoder
-        self.polynomial_lr_decay = polynomial_lr_decay
+        self.cosine_decay = cosine_decay
         self.batch_size = batch_size
         self.n_epochs = n_epochs
         self.weight_decay = weight_decay
@@ -532,7 +546,7 @@ class SWINUNetPL(SWINUNet,UNetBasePL):
         feature_conditioning_key: str=None,
         learning_rate: float=0.001,
         lr_encoder: float=None,
-        polynomial_lr_decay: bool=True,
+        cosine_decay: bool=True,
         batch_size: int=4,
         n_epochs: int=100,
         weight_decay: float=0.005,
@@ -554,7 +568,7 @@ class SWINUNetPL(SWINUNet,UNetBasePL):
             learning_rate (float, optional): learning rate. Defaults to 0.001.
             lr_encoder (float, optional): encoder learning rate. Defaults to None
                 (same as learning_rate).
-            polynomial_lr_decay (bool, optional): triggers polynomial learning rate
+            cosine_decay (bool, optional): triggers cosine learning rate
                 decay. Defaults to True.
             batch_size (int, optional): batch size. Defaults to 4.
             n_epochs (int, optional): number of epochs. Defaults to 100.
@@ -579,7 +593,7 @@ class SWINUNetPL(SWINUNet,UNetBasePL):
         self.feature_conditioning_key = feature_conditioning_key
         self.learning_rate = learning_rate
         self.lr_encoder = lr_encoder
-        self.polynomial_lr_decay = polynomial_lr_decay
+        self.cosine_decay = cosine_decay
         self.batch_size = batch_size
         self.n_epochs = n_epochs
         self.weight_decay = weight_decay
@@ -606,7 +620,7 @@ class UNetPlusPlusPL(UNetPlusPlus,UNetBasePL):
         feature_conditioning_key: str=None,
         learning_rate: float=0.001,
         lr_encoder: float=None,
-        polynomial_lr_decay: bool=True,
+        cosine_decay: bool=True,
         batch_size: int=4,
         n_epochs: int=100,
         weight_decay: float=0.005,
@@ -657,7 +671,7 @@ class UNetPlusPlusPL(UNetPlusPlus,UNetBasePL):
         self.feature_conditioning_key = feature_conditioning_key
         self.learning_rate = learning_rate
         self.lr_encoder = lr_encoder
-        self.polynomial_lr_decay = polynomial_lr_decay
+        self.cosine_decay = cosine_decay
         self.batch_size = batch_size
         self.n_epochs = n_epochs
         self.weight_decay = weight_decay
@@ -811,7 +825,7 @@ class BrUNetPL(BrUNet,UNetBasePL):
         feature_conditioning_key: str=None,
         learning_rate: float=0.001,
         lr_encoder: float=None,
-        polynomial_lr_decay: bool=True,
+        cosine_decay: bool=True,
         batch_size: int=4,
         n_epochs: int=100,
         weight_decay: float=0.005,
@@ -862,7 +876,7 @@ class BrUNetPL(BrUNet,UNetBasePL):
         self.feature_conditioning_key = feature_conditioning_key
         self.learning_rate = learning_rate
         self.lr_encoder = lr_encoder
-        self.polynomial_lr_decay = polynomial_lr_decay
+        self.cosine_decay = cosine_decay
         self.batch_size = batch_size
         self.n_epochs = n_epochs
         self.weight_decay = weight_decay
