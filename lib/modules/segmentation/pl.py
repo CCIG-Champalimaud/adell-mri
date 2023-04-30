@@ -373,10 +373,10 @@ class UNetBasePL(pl.LightningModule,ABC):
     def setup_metrics(self):
         self.train_metrics = get_metric_dict(
             self.n_classes,self.bottleneck_classification,
-            ["IoU"],prefix="")
+            ["IoU","Dice"],prefix="")
         self.val_metrics = get_metric_dict(
             self.n_classes,self.bottleneck_classification,
-            ["IoU","AUC_bn"],prefix="V_")
+            ["IoU","Dice","AUC_bn"],prefix="V_")
         self.test_metrics = get_metric_dict(
             self.n_classes,self.bottleneck_classification,
             None,prefix="T_")
