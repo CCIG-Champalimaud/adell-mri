@@ -243,8 +243,10 @@ if __name__ == "__main__":
     parser.add_argument(
         '--folds',dest="folds",
         help="Specifies the comma separated IDs for each fold (overrides\
-            n_folds)",
-        default=None,type=str,nargs='+')
+            n_folds)",default=None,type=str,nargs='+')
+    parser.add_argument(
+        '--excluded_ids',dest="excluded_ids",nargs="+",default=None,
+        help="Excludes these IDs from training and testing")
     parser.add_argument(
         '--use_val_as_train_val',dest='use_val_as_train_val',action="store_true",
         help="Use validation set as training validation set.",default=False)
@@ -357,6 +359,9 @@ if __name__ == "__main__":
         args.random_crop_size = [round(x) for x in args.random_crop_size]
 
     data_dict = json.load(open(args.dataset_json,'r'))
+    if args.excluded_ids is not None:
+        data_dict = {k:data_dict[k] for k in data_dict
+                     if k not in args.excluded_ids}
     if args.missing_to_empty is None:
         data_dict = {
             k:data_dict[k] for k in data_dict
@@ -491,13 +496,23 @@ if __name__ == "__main__":
             fold_generator = iter(
                 [train_test_split(range(len(all_pids)),test_size=0.2)])
     else:
-        args.n_folds = len(args.folds)
+        if os.path.exists(args.folds[0]) and len(args.folds) == 1:
+            args.folds = args.folds[0]
+            with open(args.folds) as o:
+                args.folds = [x.strip() for x in o.readlines()]
         folds = []
-        for val_ids in args.folds:
+        for fold_idx,val_ids in enumerate(args.folds):
             val_ids = val_ids.split(',')
             train_idxs = [i for i,x in enumerate(all_pids) if x not in val_ids]
             val_idxs = [i for i,x in enumerate(all_pids) if x in val_ids]
+            if len(train_idxs) == 0:
+                print("No train samples in fold {}".format(fold_idx))
+                continue
+            if len(val_idxs) == 0:
+                print("No val samples in fold {}".format(fold_idx))
+                continue
             folds.append([train_idxs,val_idxs])
+        args.n_folds = len(folds)
         fold_generator = iter(folds)
 
     output_file = open(args.metric_path,'w')
@@ -520,6 +535,7 @@ if __name__ == "__main__":
         ckpt = ckpt_callback is not None
         if status == "finished":
             continue
+        callbacks.append(ckpt_callback)
 
         if args.from_checkpoint is not None:
             if len(args.from_checkpoint) >= (val_fold+1):
