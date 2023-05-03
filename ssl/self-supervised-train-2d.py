@@ -116,6 +116,9 @@ if __name__ == "__main__":
         '--ema',dest="ema",action="store_true",
         help="Includes exponential moving average teacher (like BYOL)")
     parser.add_argument(
+        '--lars',dest="lars",action="store_true",
+        help="Wraps optimizer with LARS")
+    parser.add_argument(
         '--from_checkpoint',dest='from_checkpoint',action="store",
         help="Uses this checkpoint as a starting point for the network")
     parser.add_argument(
@@ -328,7 +331,8 @@ if __name__ == "__main__":
         "simclr":args.simclr,
         "ema":ema,
         "stop_gradient":args.simclr is False,
-        "temperature":0.1}
+        "temperature":0.1,
+        "lars":args.lars}
 
     if args.net_type == "unet_encoder":
         ssl = SelfSLUNetPL(**boilerplate,**network_config_correct)

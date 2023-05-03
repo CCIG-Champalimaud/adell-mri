@@ -171,9 +171,13 @@ class SelfSLBasePL(pl.LightningModule,ABC):
                 params_no_decay.append(p)
             else:
                 params_decay.append(p)
-        optimizer = torch.optim.Adam(
+        optimizer = torch.optim.SGD(
             params_decay + params_no_decay,
-            lr=self.learning_rate,weight_decay=self.weight_decay)
+            lr=self.learning_rate,weight_decay=self.weight_decay,
+            momentum=0.9)
+        if self.lars == True:
+            from torchlars import LARS
+            optimizer = LARS(optimizer,eps=1e-8,trust_coef=0.001)
         lr_schedulers = lr_schedulers = CosineAnnealingWithWarmupLR(
             optimizer,T_max=self.n_epochs,start_decay=self.start_decay,
             n_warmup_steps=self.warmup_steps,eta_min=1e-5)
@@ -233,6 +237,7 @@ class SelfSLResNetPL(ResNet,SelfSLBasePL):
         temperature: float=1.0,
         vic_reg_loss_params: dict={},
         stop_gradient: bool=True,
+        lars: bool=False,
         channels_to_batch: bool=False,
         *args,**kwargs):
         """
@@ -275,6 +280,7 @@ class SelfSLResNetPL(ResNet,SelfSLBasePL):
                 module. Defaults to {} (the default parameters).
             stop_gradient (bool, optional): stops gradients when calculating
                 losses. Useful for VICReg. Defaults to True.
+            lars (bool, optional): uses LARS. Defaults to False.
             channels_to_batch (bool, optional): resizes the input such that 
                 each channel becomes an element of the batch. Defaults to 
                 False.
@@ -297,6 +303,7 @@ class SelfSLResNetPL(ResNet,SelfSLBasePL):
         self.temperature = temperature
         self.vic_reg_loss_params = vic_reg_loss_params
         self.stop_gradient = stop_gradient
+        self.lars = lars
         self.channels_to_batch = channels_to_batch
         
         if channels_to_batch is True:
@@ -441,6 +448,7 @@ class SelfSLUNetPL(UNet,SelfSLBasePL):
         temperature: float=1.0,
         vic_reg_loss_params: dict={},
         stop_gradient: bool=True,
+        lars: bool=False,
         channels_to_batch: bool=False,
         *args,**kwargs):
         """
@@ -483,6 +491,7 @@ class SelfSLUNetPL(UNet,SelfSLBasePL):
                 module. Defaults to {} (the default parameters).
             stop_gradient (bool, optional): stops gradients when calculating
                 losses. Useful for VICReg. Defaults to True.
+            lars (bool, optional): uses LARS. Defaults to False.
             channels_to_batch (bool, optional): resizes the input such that 
                 each channel becomes an element of the batch. Defaults to 
                 False.
@@ -505,6 +514,7 @@ class SelfSLUNetPL(UNet,SelfSLBasePL):
         self.temperature = temperature
         self.vic_reg_loss_params = vic_reg_loss_params
         self.stop_gradient = stop_gradient
+        self.lars = lars
         self.channels_to_batch = channels_to_batch
         
         if channels_to_batch is True:
@@ -642,6 +652,7 @@ class SelfSLConvNeXtPL(ConvNeXt,SelfSLBasePL):
         temperature: float=1.0,
         vic_reg_loss_params: dict={},
         stop_gradient: bool=True,
+        lars: bool=True,
         channels_to_batch: bool=False,
         *args,**kwargs):
         """
@@ -684,6 +695,7 @@ class SelfSLConvNeXtPL(ConvNeXt,SelfSLBasePL):
                 module. Defaults to {} (the default parameters).
             stop_gradient (bool, optional): stops gradients when calculating
                 losses. Useful for VICReg. Defaults to True.
+            lars (bool, optional): uses LARS. Defaults to False.
             channels_to_batch (bool, optional): resizes the input such that 
                 each channel becomes an element of the batch. Defaults to 
                 False.
@@ -705,6 +717,7 @@ class SelfSLConvNeXtPL(ConvNeXt,SelfSLBasePL):
         self.temperature = temperature
         self.vic_reg_loss_params = vic_reg_loss_params
         self.stop_gradient = stop_gradient
+        self.lars = lars
         self.channels_to_batch = channels_to_batch
         
         if channels_to_batch is True:
@@ -749,7 +762,7 @@ class SelfSLConvNeXtPL(ConvNeXt,SelfSLBasePL):
 
     def step(self,batch,loss_str:str,metrics:dict,train=False):
         if self.simclr is True:
-            ret_string_1 = "prediction"
+            ret_string_1 = "projection"
             ret_string_2 = "projection"
             other_args = []
         elif self.vic_reg_local is False:

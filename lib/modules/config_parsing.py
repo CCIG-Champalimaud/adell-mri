@@ -56,9 +56,10 @@ def parse_config_ssl(config_file:str,dropout_param:float,n_keys:int):
         1,network_config["norm_fn"],network_config["act_fn"],
         dropout_param=dropout_param)
 
-    network_config["prediction_head_args"]["adn_fn"] = get_adn_fn(
-        1,network_config["norm_fn"],network_config["act_fn"],
-        dropout_param=dropout_param)
+    if "prediction_head_args" in network_config:
+        network_config["prediction_head_args"]["adn_fn"] = get_adn_fn(
+            1,network_config["norm_fn"],network_config["act_fn"],
+            dropout_param=dropout_param)
     network_config_correct = {
         k:network_config[k] for k in network_config
         if k not in ["norm_fn","act_fn"]
