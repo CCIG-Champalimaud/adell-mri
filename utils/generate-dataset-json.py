@@ -49,7 +49,7 @@ if __name__ == "__main__":
         help="Path to folder containing nibabel compatible masks")
     parser.add_argument(
         '--mask_key',dest="mask_key",default="mask",
-        help="Custom mask for the key. Helpful if later merging json files")
+        help="Custom key for the mask. Helpful if later merging json files")
     parser.add_argument(
         '--class_csv_path',dest="class_csv_path",default=None,
         help="Path to CSV with classes. Assumes first column is study ID and \
