@@ -1,11 +1,11 @@
 import argparse
 import os
-import nibabel as nib
 import SimpleITK as sitk
 import re
 import numpy as np
 from glob import glob
 from tqdm import tqdm
+from pathlib import Path
 
 desc = """
 Merges two masks keeping pixels which are non-zero in either mask.
@@ -52,7 +52,13 @@ if __name__ == "__main__":
     parser.add_argument(
         "--output_path",dest="output_path",type=str,
         required=True,
-        help="Output path for images.")
+        help="Output path for images.")    
+    parser.add_argument(
+        "--strict",dest="strict",action="store_true",
+        help="Stores only images if both masks are present.")
+    parser.add_argument(
+        "--argmax",dest="argmax",action="store_true",
+        help="Stores the images in argmax format.")
 
     args = parser.parse_args()
 
@@ -69,22 +75,30 @@ if __name__ == "__main__":
     iou_list = []
     path_dict_keys = list(path_dict.keys())
     for patient_id in tqdm(path_dict_keys):
+        image_out = None
         if len(path_dict[patient_id]) == 2:
             image_1_ = sitk.ReadImage(path_dict[patient_id][0])
             image_2_ = sitk.ReadImage(path_dict[patient_id][1])
             image_2_ = resample_image_to_target(image_2_,image_1_)
             image_1 = sitk.GetArrayFromImage(image_1_)
             image_2 = sitk.GetArrayFromImage(image_2_)
-            image_out = np.where((image_1 + image_2) > 0,1,0)
+            if args.argmax == True:
+                image_out = np.zeros_like(image_1)
+                image_out[image_1 > 0] = 1
+                image_out[image_2 > 0] = 2
+            else:
+                image_out = np.where((image_1 + image_2) > 0,1,0)
             image_out = sitk.GetImageFromArray(image_out)
             image_out.CopyInformation(image_1_)
-        else:
+        elif args.strict == False:
             image_1_ = sitk.ReadImage(path_dict[patient_id][0])
             image_1 = sitk.GetArrayFromImage(image_1_)
             image_out = np.where((image_1) > 0,1,0)
             image_out = sitk.GetImageFromArray(image_out)
             image_out.CopyInformation(image_1_)
-        image_out = sitk.Cast(image_out,sitk.sitkInt16)
-        output_path_image = os.path.join(
-            args.output_path,patient_id + ".nii.gz")
-        sitk.WriteImage(image_out,output_path_image)
+        if image_out is not None:
+            image_out = sitk.Cast(image_out,sitk.sitkInt16)
+            output_path_image = os.path.join(
+                args.output_path,patient_id + ".nii.gz")
+            Path(output_path_image).parent.mkdir(parents=True,exist_ok=True)
+            sitk.WriteImage(image_out,output_path_image)
