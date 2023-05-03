@@ -5,7 +5,6 @@ import os
 import numpy as np
 import torch
 import monai
-import wandb
 import gc
 from sklearn.model_selection import KFold,train_test_split
 from tqdm import tqdm
@@ -29,13 +28,7 @@ from lib.utils.pl_utils import get_ckpt_callback,get_logger,get_devices
 from lib.monai_transforms import get_transforms_unet as get_transforms
 from lib.monai_transforms import get_augmentations_unet as get_augmentations
 from lib.modules.layers import ResNet
-from lib.modules.segmentation.pl import (
-    UNetPL,
-    UNetPlusPlusPL,
-    BrUNetPL,
-    UNETRPL,
-    SWINUNetPL
-    )
+from lib.utils.network_factories import get_segmentation_network
 from lib.modules.config_parsing import parse_config_unet,parse_config_ssl
 
 torch.backends.cudnn.benchmark = True
@@ -47,13 +40,6 @@ def if_none_else(x,obj):
 
 def inter_size(a,b):
     return len(set.intersection(set(a),set(b)))
-
-def get_size(*size_list):
-    for size in size_list:
-        if size is not None:
-            return size
-    raise Exception("One of --random_crop_size, --crop_size or --resize_size\
-        has to be defined.")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -354,9 +340,9 @@ if __name__ == "__main__":
         args.crop_size = [round(x) for x in args.crop_size]
     if args.pad_size is not None:
         args.pad_size = [round(x) for x in args.pad_size]
-    label_mode = "binary" if n_classes == 2 else "cat"
     if args.random_crop_size is not None:
         args.random_crop_size = [round(x) for x in args.random_crop_size]
+    label_mode = "binary" if n_classes == 2 else "cat"
 
     data_dict = json.load(open(args.dataset_json,'r'))
     if args.excluded_ids is not None:
@@ -535,7 +521,8 @@ if __name__ == "__main__":
         ckpt = ckpt_callback is not None
         if status == "finished":
             continue
-        callbacks.append(ckpt_callback)
+        if ckpt_callback is not None:
+            callbacks.append(ckpt_callback)
 
         if args.from_checkpoint is not None:
             if len(args.from_checkpoint) >= (val_fold+1):
@@ -582,17 +569,17 @@ if __name__ == "__main__":
 
         # calculate the mean/std of tabular features
         if feature_keys is not None:
-            all_params = {"mean":[],"std":[]}
+            all_feature_params = {"mean":[],"std":[]}
             for kk in feature_keys:
                 f = np.array([x[kk] for x in train_list])
-                all_params["mean"].append(np.mean(f))
-                all_params["std"].append(np.std(f))
-            all_params["mean"] = torch.as_tensor(
-                all_params["mean"],dtype=torch.float32,device=dev)
-            all_params["std"] = torch.as_tensor(
-                all_params["std"],dtype=torch.float32,device=dev)
+                all_feature_params["mean"].append(np.mean(f))
+                all_feature_params["std"].append(np.std(f))
+            all_feature_params["mean"] = torch.as_tensor(
+                all_feature_params["mean"],dtype=torch.float32,device=dev)
+            all_feature_params["std"] = torch.as_tensor(
+                all_feature_params["std"],dtype=torch.float32,device=dev)
         else:
-            all_params = None
+            all_feature_params = None
             
         # include some constant label images
         n_samples = int(
@@ -657,17 +644,21 @@ if __name__ == "__main__":
             if loss_params["eps"] < 1e-4:
                 loss_params["eps"] = 1e-4
 
+        if isinstance(devices,list):
+            nw = args.n_workers // len(devices)
+        else:
+            nw = args.n_workers
         def train_loader_call(batch_size): 
             return monai.data.ThreadDataLoader(
                 train_dataset,batch_size=batch_size,
-                num_workers=args.n_workers,generator=g,sampler=sampler,
+                num_workers=nw,generator=g,sampler=sampler,
                 collate_fn=collate_fn,pin_memory=True,
                 persistent_workers=True,drop_last=True)
 
         train_loader = train_loader_call(network_config["batch_size"])
         train_val_loader = monai.data.ThreadDataLoader(
             train_dataset_val,batch_size=1,
-            shuffle=False,num_workers=args.n_workers,
+            shuffle=False,num_workers=nw,
             collate_fn=collate_fn,persistent_workers=True)
         validation_loader = monai.data.ThreadDataLoader(
             validation_dataset,batch_size=1,
@@ -727,113 +718,31 @@ if __name__ == "__main__":
         else:
             encoding_operations = [None]
 
-        if args.unet_model == "brunet":
-            nc = network_config["n_channels"]
-            network_config["n_channels"] = nc // len(keys)
-            unet = BrUNetPL(
-                training_dataloader_call=train_loader_call,
-                encoders=encoding_operations,
-                image_keys=keys,label_key="mask",
-                loss_params=loss_params,n_classes=n_classes,
-                bottleneck_classification=args.bottleneck_classification,
-                skip_conditioning=len(all_aux_keys),
-                skip_conditioning_key=aux_key_net,
-                feature_conditioning=len(feature_keys),
-                feature_conditioning_params=all_params,
-                feature_conditioning_key=feature_key_net,
-                n_epochs=args.max_epochs,
-                n_input_branches=len(keys),
-                picai_eval=args.picai_eval,
-                lr_encoder=args.lr_encoder,
-                cosine_decay=args.cosine_decay,
-                **network_config)
-            if args.encoder_checkpoint is not None and args.res_config_file is None:
-                for encoder,ckpt in zip(unet.encoders,args.encoder_checkpoint):
-                    encoder.load_state_dict(torch.load(ckpt)["state_dict"])
-        elif args.unet_model == "unetpp":
-            encoding_operations = encoding_operations[0]
-            unet = UNetPlusPlusPL(
-                training_dataloader_call=train_loader_call,
-                encoding_operations=encoding_operations,
-                image_key="image",label_key="mask",
-                loss_params=loss_params,n_classes=n_classes,
-                bottleneck_classification=args.bottleneck_classification,
-                skip_conditioning=len(all_aux_keys),
-                skip_conditioning_key=aux_key_net,
-                feature_conditioning=len(feature_keys),
-                feature_conditioning_params=all_params,
-                feature_conditioning_key=feature_key_net,
-                n_epochs=args.max_epochs,
-                picai_eval=args.picai_eval,
-                lr_encoder=args.lr_encoder,
-                cosine_decay=args.cosine_decay,
-                **network_config)
-        elif args.unet_model == "unet":
-            encoding_operations = encoding_operations[0]
-            unet = UNetPL(
-                training_dataloader_call=train_loader_call,
-                encoding_operations=encoding_operations,
-                image_key="image",label_key="mask",
-                loss_params=loss_params,n_classes=n_classes,
-                bottleneck_classification=args.bottleneck_classification,
-                skip_conditioning=len(all_aux_keys),
-                skip_conditioning_key=aux_key_net,
-                feature_conditioning=len(feature_keys),
-                feature_conditioning_params=all_params,
-                feature_conditioning_key=feature_key_net,
-                deep_supervision=args.deep_supervision,
-                n_epochs=args.max_epochs,
-                picai_eval=args.picai_eval,
-                lr_encoder=args.lr_encoder,
-                cosine_decay=args.cosine_decay,
-                **network_config)
-        elif args.unet_model == "unetr":
-            sd = network_config["spatial_dimensions"]
-            size = get_size(args.random_crop_size,
-                            args.crop_size,
-                            args.pad_size,
-                            args.resize_size)
-            network_config["image_size"] = size[:sd]
-            network_config["patch_size"] = network_config["patch_size"][:sd]
-
-            unet = UNETRPL(
-                training_dataloader_call=train_loader_call,
-                image_key="image",label_key="mask",
-                loss_params=loss_params,n_classes=n_classes,
-                bottleneck_classification=args.bottleneck_classification,
-                skip_conditioning=len(all_aux_keys),
-                skip_conditioning_key=aux_key_net,
-                feature_conditioning=len(feature_keys),
-                feature_conditioning_params=all_params,
-                feature_conditioning_key=feature_key_net,
-                deep_supervision=args.deep_supervision,
-                n_epochs=args.max_epochs,
-                picai_eval=args.picai_eval,
-                lr_encoder=args.lr_encoder,
-                cosine_decay=args.cosine_decay,
-                **network_config)
-        elif args.unet_model == "swin":
-            size = get_size(args.random_crop_size,
-                            args.crop_size,
-                            args.resize_size)
-            sd = network_config["spatial_dimensions"]
-            network_config["image_size"] = size[:sd]
-            unet = SWINUNetPL(
-                training_dataloader_call=train_loader_call,
-                image_key="image",label_key="mask",
-                loss_params=loss_params,n_classes=n_classes,
-                bottleneck_classification=args.bottleneck_classification,
-                skip_conditioning=len(all_aux_keys),
-                skip_conditioning_key=aux_key_net,
-                feature_conditioning=len(feature_keys),
-                feature_conditioning_params=all_params,
-                feature_conditioning_key=feature_key_net,
-                deep_supervision=args.deep_supervision,
-                n_epochs=args.max_epochs,
-                picai_eval=args.picai_eval,
-                lr_encoder=args.lr_encoder,
-                cosine_decay=args.cosine_decay,
-                **network_config)
+        unet = get_segmentation_network(
+            net_type=args.unet_model,
+            network_config=network_config,
+            loss_params=loss_params,
+            bottleneck_classification=args.bottleneck_classification,
+            clinical_feature_keys=feature_keys,
+            all_aux_keys=aux_keys,
+            clinical_feature_params=all_feature_params,
+            clinical_feature_key_net=feature_key_net,
+            aux_key_net=aux_key_net,
+            max_epochs=args.max_epochs,
+            encoding_operations=encoding_operations,
+            picai_eval=args.picai_eval,
+            lr_encoder=args.lr_encoder,
+            cosine_decay=args.cosine_decay,
+            encoder_checkpoint=args.bottleneck_classification,
+            res_config_file=args.res_config_file,
+            deep_supervision=args.deep_supervision,
+            n_classes=n_classes,
+            keys=keys,
+            train_loader_call=train_loader_call,
+            random_crop_size=args.random_crop_size,
+            crop_size=args.crop_size,
+            pad_size=args.pad_size,
+            resize_size=args.resize_size)
 
         if args.early_stopping is not None:
             early_stopping = EarlyStopping(
@@ -861,27 +770,29 @@ if __name__ == "__main__":
         trainer.fit(unet,train_loader,train_val_loader)
         
         print("Validating...")
-        if ckpt == True:
-            test_metrics = trainer.test(
-                unet,validation_loader,ckpt_path="best")[0]
+        if ckpt is True:
+            ckpt_list = ["last","best"]
         else:
+            ckpt_list = ["last"]
+        for ckpt_key in ckpt_list:
             test_metrics = trainer.test(
-                unet,validation_loader)[0]
-        for k in test_metrics:
-            out = test_metrics[k]
-            if n_classes == 2:
-                try:
-                    value = float(out.detach().numpy())
-                except:
-                    value = float(out)
-                x = "{},{},{},{}".format(k,val_fold,0,value)
-                output_file.write(x+'\n')
-                print(x)
-            else:
-                for i,v in enumerate(out):
-                    x = "{},{},{},{}".format(k,val_fold,i,v)
+                unet,validation_loader,ckpt_path=ckpt_key)[0]
+            for k in test_metrics:
+                out = test_metrics[k]
+                if n_classes == 2:
+                    try:
+                        value = float(out.detach().numpy())
+                    except Exception:
+                        value = float(out)
+                    x = "{},{},{},{},{}".format(k,ckpt_key,val_fold,0,value)
                     output_file.write(x+'\n')
                     print(x)
+                else:
+                    for i,v in enumerate(out):
+                        x = "{},{},{},{},{}".format(k,ckpt_key,val_fold,i,v)
+                        output_file.write(x+'\n')
+                        print(x)
+
         print("="*80)
         gc.collect()
         
