@@ -680,6 +680,7 @@ class UNetPlusPlusPL(UNetPlusPlus,UNetBasePL):
         self.loss_params = loss_params
         self.picai_eval = picai_eval
         
+        self.deep_supervision = True
         self.loss_fn_class = torch.nn.BCEWithLogitsLoss()
         self.setup_metrics()
 
@@ -689,133 +690,6 @@ class UNetPlusPlusPL(UNetPlusPlus,UNetBasePL):
 
         self.bn_mult = 0.1
    
-    def calculate_loss(self,prediction,prediction_aux,y):
-        loss = self.loss_fn(prediction,y,**self.loss_params)
-        n = len(prediction_aux)
-        for i,p in enumerate(prediction_aux):
-            l = self.loss_fn(p,y,**self.loss_params)
-            # scales based on the resolution of the output
-            loss = loss + l / (2**(n-i+1))
-        return loss.mean()
-    
-    def step(self,x,y,y_class,x_cond,x_fc):
-        y = torch.round(y)
-        prediction,prediction_aux,pred_class = self.forward(
-            x,X_skip_layer=x_cond,X_feature_conditioning=x_fc,
-            return_aux=True)
-
-        loss = self.calculate_loss(prediction,prediction_aux,y)
-        if self.bottleneck_classification is True:
-            class_loss = self.calculate_loss_class(pred_class,y_class)
-            output_loss = loss + class_loss * self.bn_mult
-        else:
-            class_loss = None
-            output_loss = loss
-
-        n = len(prediction_aux)
-        D = [1/(2**(n-i+1)) for i in range(n)]
-        pred_final = torch.add(
-            prediction,
-            sum([x*d for x,d in zip(prediction_aux,D)]))
-        pred_final = pred_final / (1+sum(D))
-
-        return pred_final,pred_class,output_loss,loss,class_loss
-
-    def calculate_loss_class(self,prediction,y):
-        loss = self.loss_fn_class(
-            prediction,y.type(torch.int32))
-        return loss.mean()
-
-    def training_step(self,batch,batch_idx):
-        x, y = batch[self.image_key],batch[self.label_key]
-        if self.skip_conditioning_key is not None:
-            x_cond = batch[self.skip_conditioning_key]
-        else:
-            x_cond = None
-        if self.bottleneck_classification is True:
-            y_class = y.flatten(start_dim=1).max(1).values
-        else:
-            y_class = None
-        if self.feature_conditioning_key is not None:
-            x_fc = batch[self.feature_conditioning_key]
-        else:
-            x_fc = None
-
-        pred_final,pred_class,output_loss,loss,class_loss = self.step(
-            x,y,y_class,x_cond,x_fc)
-
-        if class_loss is not None:
-            self.log("train_cl_loss",class_loss,batch_size=y.shape[0],
-                     sync_dist=True)
-        self.log("train_loss", loss,batch_size=y.shape[0],
-                 sync_dist=True)
-
-        update_metrics(
-            self.train_metrics,pred_final,y,pred_class,y_class,
-            on_epoch=True,on_step=False,prog_bar=True)
-        return output_loss
-    
-    def validation_step(self,batch,batch_idx):
-        x, y = batch[self.image_key],batch[self.label_key]
-        if self.skip_conditioning_key is not None:
-            x_cond = batch[self.skip_conditioning_key]
-        else:
-            x_cond = None
-        if self.bottleneck_classification is True:
-            y_class = y.flatten(start_dim=1).max(1).values
-        else:
-            y_class = None
-        if self.feature_conditioning_key is not None:
-            x_fc = batch[self.feature_conditioning_key]
-        else:
-            x_fc = None
-        
-        pred_final,pred_class,output_loss,loss,class_loss = self.step(
-            x,y,y_class,x_cond,x_fc)
-
-        if self.picai_eval is True:
-            for s_p,s_y in zip(pred_final.squeeze(1).detach().cpu().numpy(),
-                               y.squeeze(1).detach().cpu().numpy()):
-                self.all_pred.append(s_p)
-                self.all_true.append(s_y)
-
-        self.log("val_loss",loss,prog_bar=True,on_epoch=True,
-                  batch_size=y.shape[0],sync_dist=True)
-        if class_loss is not None:
-            self.log("val_loss_cl",class_loss,prog_bar=True,on_epoch=True,
-                     batch_size=y.shape[0],sync_dist=True)
-
-        update_metrics(
-            self.val_metrics,pred_final,y,pred_class,y_class,
-            on_epoch=True,prog_bar=True)
-
-    def test_step(self,batch,batch_idx):
-        x, y = batch[self.image_key],batch[self.label_key]
-        if self.skip_conditioning_key is not None:
-            x_cond = batch[self.skip_conditioning_key]
-        else:
-            x_cond = None
-        if self.bottleneck_classification is True:
-            y_class = y.flatten(start_dim=1).max(1).values
-        else:
-            y_class = None
-        if self.feature_conditioning_key is not None:
-            x_fc = batch[self.feature_conditioning_key]
-        else:
-            x_fc = None
-            
-        pred_final,pred_class,output_loss,loss,class_loss = self.step(
-            x,y,y_class,x_cond,x_fc)
-        
-        if self.picai_eval is True:
-            for s_p,s_y in zip(pred_final.squeeze(1).detach().cpu().numpy(),
-                               y.squeeze(1).detach().cpu().numpy()):
-                self.all_pred.append(s_p)
-                self.all_true.append(s_y)
-
-        update_metrics(
-            self,self.test_metrics,pred_final,y,pred_class,y_class)
-
 class BrUNetPL(BrUNet,UNetBasePL):
     def __init__(
         self,
