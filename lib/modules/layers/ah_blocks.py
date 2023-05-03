@@ -1,5 +1,4 @@
 import torch
-from .standard_blocks import ConvolutionalBlock2d
 from .standard_blocks import ConvolutionalBlock3d
 
 class Refine2d(torch.nn.Module):

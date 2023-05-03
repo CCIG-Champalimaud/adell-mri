@@ -3,7 +3,7 @@ import pytorch_lightning as pl
 import torch.nn.functional as F
 
 from copy import deepcopy
-from ..custom_types import *
+from typing import Sequence
 
 def reshape_weight_to_matrix(weight: torch.Tensor,dim:int=0) -> torch.Tensor:
     """Reshapes an n-dimensional tensor into a matrix.

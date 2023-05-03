@@ -1,9 +1,10 @@
 import time
+import numpy as np
 import torch
 import torch.nn.functional as F
 import einops
 
-from ...custom_types import *
+from ...custom_types import TensorList
 from ..layers.adn_fn import ActDropNorm,get_adn_fn
 from ..layers.batch_ensemble import BatchEnsembleWrapper
 from ..layers.standard_blocks import GlobalPooling
@@ -13,6 +14,8 @@ from ..layers.self_attention import (
 from ..segmentation.unet import UNet
 from ..layers.linear_blocks import MLP,SeqPool
 from ..layers.vit import ViT,FactorizedViT,TransformerBlockStack
+
+from typing import Union,Dict,List,Tuple,Callable
 
 resnet_default = [(64,128,5,2),(128,256,3,5)]
 maxpool_default = [(2,2,2),(2,2,2)]
@@ -247,8 +250,10 @@ class SegCatNet(torch.nn.Module):
         self.n_features_final_layer = n_features_final_layer
         self.n_classes = n_classes
 
-        if self.n_classes == 2: self.nc = 1
-        else: self.nc = self.n_classes
+        if self.n_classes == 2: 
+            self.nc = 1
+        else: 
+            self.nc = self.n_classes
 
         self.init_final_layer_classification()
         self.init_bottleneck_classification()
@@ -844,7 +849,7 @@ class TransformableTransformer(torch.nn.Module):
                         for j in range(len(X.shape))]
             yield X[tuple(curr_idx)]
             
-    def v_module(self,X:torch.Tensor)->torch.Tensor:
+    def v_module_old(self,X:torch.Tensor)->torch.Tensor:
         sh = X.shape
         n_slices = sh[2+self.dim]
         ssl_representation = torch.zeros(

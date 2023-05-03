@@ -1,6 +1,6 @@
 import torch
 from typing import OrderedDict
-from ..activations import *
+from ..activations import activation_factory
 from ..layers.regularization import LayerNormChannelsFirst
 
 def get_adn_fn(spatial_dim,norm_fn="batch",

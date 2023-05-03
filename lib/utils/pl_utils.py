@@ -8,7 +8,6 @@ import torch
 import wandb
 from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.callbacks.model_checkpoint import ModelCheckpoint
-from pytorch_lightning.strategies import DDPStrategy
 
 from typing import List,Union,Tuple
 

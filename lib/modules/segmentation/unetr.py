@@ -1,3 +1,4 @@
+import numpy as np
 import torch
 import torch.nn.functional as F
 
@@ -5,7 +6,9 @@ from .unet import UNet
 from ..layers.adn_fn import get_adn_fn
 from ..layers.vit import ViT
 from ..layers.vit import SWINTransformerBlockStack
-from ...custom_types import *
+from ...custom_types import Size2dOr3d
+
+from typing import List,Callable,Dict,Union
 
 class UNETR(UNet,torch.nn.Module):
     def __init__(

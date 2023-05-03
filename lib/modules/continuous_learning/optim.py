@@ -34,8 +34,10 @@ def create_param_groups(model:torch.nn.Module,
         ParamGroupDict: a dictionary of values that can be set as `params` in
             torch.optim.Optimizer objects.
     """
-    if kwargs_groups is None: kwargs_groups = [{} for _ in var_groups]
-    if include_leftovers is True: leftovers = {"params":[]}
+    if kwargs_groups is None: 
+        kwargs_groups = [{} for _ in var_groups]
+    if include_leftovers is True: 
+        leftovers = {"params":[]}
     assert len(kwargs_groups) == len(var_groups), \
         "len(kwargs_groups) should be the same as len(var_groups)"
     params = []

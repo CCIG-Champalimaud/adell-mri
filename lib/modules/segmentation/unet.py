@@ -1,3 +1,4 @@
+import numpy as np
 import torch
 import torch.nn.functional as F
 
@@ -12,9 +13,9 @@ from ..layers.multi_resolution import (
 from ..layers.adn_fn import (
     get_adn_fn,ActDropNorm)
 from ..layers.utils import crop_to_size
-from ...custom_types import *
+from ...custom_types import ModuleList
 
-from typing import List
+from typing import List,Dict
 
 class UNet(torch.nn.Module):
     """Standard U-Net [1] implementation. Features some useful additions 

@@ -8,8 +8,24 @@ from copy import deepcopy
 from glob import glob
 from collections import OrderedDict
 
-from typing import Dict,List,Tuple,Any
-from ..modules.losses import *
+from typing import Dict,List,Tuple
+from ..modules.losses import (
+    binary_cross_entropy,
+    binary_focal_loss,
+    generalized_dice_loss,
+    binary_focal_tversky_loss,
+    combo_loss,
+    hybrid_focal_loss,
+    unified_focal_loss,
+    cat_cross_entropy,
+    mc_focal_loss,
+    mc_focal_tversky_loss,
+    mc_combo_loss,
+    mc_hybrid_focal_loss,
+    mc_unified_focal_loss,
+    weighted_mse,
+    eps
+)
 from ..custom_types import (
     DatasetDict,SizeDict,SpacingDict,FloatOrTensor,
     TensorIterable,BBDict)
@@ -191,7 +207,7 @@ def collate_last_slice(X:List[TensorIterable])->TensorIterable:
         try:
             o = torch.cat([swap(y) for y in x])
             return o
-        except:
+        except Exception:
             pass
 
     example = X[0]
@@ -226,7 +242,7 @@ def safe_collate(X:List[TensorIterable])->List[TensorIterable]:
             return x
         try: 
             return torch.stack(x)
-        except Exception as e:
+        except Exception:
             return x
 
     example = X[0]

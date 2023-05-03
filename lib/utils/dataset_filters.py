@@ -1,4 +1,4 @@
-from typing import Dict,List
+from typing import List
 from ..custom_types import DatasetDict
 
 def filter_dictionary_with_presence(D:DatasetDict,

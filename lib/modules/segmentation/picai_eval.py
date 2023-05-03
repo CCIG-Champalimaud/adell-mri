@@ -1,6 +1,7 @@
 # FROM: https://github.com/DIAGNijmegen/picai_eval/blob/main/src/picai_eval/eval.py
 
-#  Copyright 2022 Diagnostic Image Analysis Group, Radboudumc, Nijmegen, The Netherlands
+#  Copyright 2022 Diagnostic Image Analysis Group, Radboudumc, Nijmegen,
+#  The Netherlands
 #
 #  Licensed under the Apache License, Version 2.0 (the "License");
 #  you may not use this file except in compliance with the License.
@@ -410,7 +411,8 @@ def evaluate_folder(
     y_det = []
     y_true = []
     if subject_list:
-        # collect the detection maps and labels for each case specified in the subject list
+        # collect the detection maps and labels for each case specified in the 
+        # subject list
         for subject_id in subject_list:
             # construct paths to detection maps and labels
             found_pred, found_label = False, False

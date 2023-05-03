@@ -49,10 +49,11 @@ class UOut(torch.nn.Module):
 
 class LayerNorm(torch.nn.Module):
     # from: https://github.com/facebookresearch/VICRegL/blob/main/convnext.py
-    r""" LayerNorm that supports two data formats: channels_last (default) or channels_first. 
-    The ordering of the dimensions in the inputs. channels_last corresponds to inputs with 
-    shape (batch_size, height, width, channels) while channels_first corresponds to inputs 
-    with shape (batch_size, channels, height, width).
+    r""" LayerNorm that supports two data formats: channels_last (default) or
+    channels_first. The ordering of the dimensions in the inputs. channels_last 
+    corresponds to inputs with shape (batch_size, height, width, channels) while 
+    channels_first corresponds to inputs with shape (batch_size, channels, height, 
+    width).
     """
 
     def __init__(self, normalized_shape, eps=1e-6, data_format="channels_last"):

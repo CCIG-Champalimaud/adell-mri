@@ -384,10 +384,10 @@ if __name__ == "__main__":
                     value = float(out.detach().numpy())
                 except:
                     value = float(out)
-                x = "{},{},{},{}".format(checkpoint,k,0,0,value)
+                x = "{},{},{},{},{}".format(checkpoint,k,0,0,value)
                 print(x)
             else:
                 for i,v in enumerate(out):
-                    x = "{},{},{},{}".format(checkpoint,k,0,i,v)
+                    x = "{},{},{},{},{}".format(checkpoint,k,0,i,v)
                     print(x)
         gc.collect()

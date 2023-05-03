@@ -26,8 +26,9 @@ class FeaturePyramidNetworkBackbone(torch.nn.Module):
             structure (List[Tuple[int,int,int,int]]): Structure of the backbone.
                 Only the first three integers of each element are used, corresponding
                 to input features, output features and kernel size.
-            maxpool_structure (List[Union[Tuple[int,int],Tuple[int,int,int]]], optional): 
-                The maxpooling structure used for the backbone. Defaults to None.
+            maxpool_structure (List[Union[Tuple[int,int],Tuple[int,int,int]]], 
+                optional): The maxpooling structure used for the backbone. Defaults to 
+                None.
             adn_fn (torch.nn.Module, optional): the activation-dropout-normalization
                 module used. Defaults to torch.nn.Identity.
         """

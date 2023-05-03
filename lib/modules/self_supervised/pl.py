@@ -4,7 +4,7 @@ import pytorch_lightning as pl
 import warnings
 from abc import ABC
 
-from ...custom_types import *
+from ...custom_types import (Callable)
 
 from ..layers.res_net import ResNet
 from ..layers.conv_next import ConvNeXt
@@ -393,12 +393,12 @@ class SelfSLResNetPL(ResNet,SelfSLBasePL):
             loss_str_list = self.loss_str_dict["vicreg"]
         else:
             return loss
-        for s,l in zip(loss_str_list,losses):
-            if s is not None:
-                sub_loss_str = "{}:{}".format(loss_str,s)
+        for loss_s,loss_val in zip(loss_str_list,losses):
+            if loss_s is not None:
+                sub_loss_str = "{}:{}".format(loss_str,loss_s)
             else:
                 sub_loss_str = loss_str
-            self.log(sub_loss_str,l,batch_size=x1.shape[0],
+            self.log(sub_loss_str,loss_val,batch_size=x1.shape[0],
                      on_epoch=True,on_step=False,prog_bar=True,
                      sync_dist=True)
         return loss

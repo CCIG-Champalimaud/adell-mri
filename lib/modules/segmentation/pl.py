@@ -56,8 +56,10 @@ def update_metrics(cls:pl.LightningModule,
         pred_class (torch.Tensor): class probability.
         y_class (torch.Tensor): class ground truths.
     """
-    try: y = torch.round(y).int()
-    except: pass
+    try: 
+        y = torch.round(y).int()
+    except: 
+        pass
     y = y.long()
     pred = pred.squeeze(1)
     y = y.squeeze(1)
@@ -312,8 +314,10 @@ class UNetBasePL(pl.LightningModule,ABC):
             parameters = [
                 {'params': encoder_params,'lr':lr_encoder},
                 {'params': rest_of_params}]
-        if self.precision != 32: eps = 1e-4
-        else: eps = 1e-8
+        if self.precision != 32: 
+            eps = 1e-4
+        else: 
+            eps = 1e-8
         optimizer = torch.optim.AdamW(
             parameters,lr=self.learning_rate,
             weight_decay=self.weight_decay,eps=eps)

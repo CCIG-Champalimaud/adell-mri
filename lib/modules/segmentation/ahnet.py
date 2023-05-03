@@ -59,20 +59,20 @@ class AHNet(torch.nn.Module):
     def init_layers_2d(self):
         """Initializes the 2D layers.
         """
-        O = self.out_channels
+        n_out = self.out_channels
         self.res_layer_1 = AnysotropicHybridInput(
-            2,self.in_channels,O,kernel_size=7,
+            2,self.in_channels,n_out,kernel_size=7,
             adn_fn=self.adn_fn,adn_args=self.adn_args)
         self.max_pool_1 = torch.nn.MaxPool2d(3,stride=2,padding=1)
         self.res_layers = torch.nn.ModuleList([
             AnysotropicHybridResidual(
-                2,O,O,adn_fn=self.adn_fn,adn_args=self.adn_args)
+                2,n_out,n_out,adn_fn=self.adn_fn,adn_args=self.adn_args)
             for _ in range(self.n_layers-1)])
 
         self.gcn_refine = torch.nn.ModuleList([
             torch.nn.Sequential(
-                GCN2d(O,O,k,self.adn_fn,self.adn_args),
-                Refine2d(O,3,self.adn_fn,self.adn_args))
+                GCN2d(n_out,n_out,k,self.adn_fn,self.adn_args),
+                Refine2d(n_out,3,self.adn_fn,self.adn_args))
             for k in self.gcn_k_size[:(self.n_layers+1)]])
         
         self.upsampling_ops = torch.nn.ModuleList([
@@ -80,16 +80,16 @@ class AHNet(torch.nn.Module):
         for _ in range(self.n_layers-1):
             op = torch.nn.Sequential(
                 torch.nn.Upsample(scale_factor=2,mode="bilinear"),
-                Refine2d(O,3,self.adn_fn,self.adn_args))
+                Refine2d(n_out,3,self.adn_fn,self.adn_args))
             self.upsampling_ops.append(op)
 
         if self.n_classes == 2:
             self.final_layer = torch.nn.Sequential(
-                torch.nn.Conv2d(O,1,1),
+                torch.nn.Conv2d(n_out,1,1),
                 torch.nn.Sigmoid())
         else:
             self.final_layer = torch.nn.Sequential(
-                torch.nn.Conv2d(O,self.n_classes,1),
+                torch.nn.Conv2d(n_out,self.n_classes,1),
                 torch.nn.Softmax(1))
 
     def forward_2d(self,X:torch.Tensor)->torch.Tensor:
@@ -124,7 +124,7 @@ class AHNet(torch.nn.Module):
     def init_layers_3d(self):
         """Initializes the 3D layers.
         """
-        O = self.out_channels
+        n_out = self.out_channels
         adn_args = self.adn_args.copy()
         adn_args["norm_fn"] = torch.nn.BatchNorm3d
         self.max_pool_1_3d = torch.nn.Sequential(
@@ -138,19 +138,19 @@ class AHNet(torch.nn.Module):
             for _ in range(self.n_layers)])
 
         self.decoder_ops_3d = [
-            AHNetDecoder3d(O,self.adn_fn,adn_args)
+            AHNetDecoder3d(n_out,self.adn_fn,adn_args)
             for _ in range(self.n_layers)]
 
         # this could perhaps be changed to an atrous operation
-        self.psp_op = PyramidSpatialPooling3d(O,levels=self.psp_levels)
+        self.psp_op = PyramidSpatialPooling3d(n_out,levels=self.psp_levels)
         
         if self.n_classes == 2:
             self.final_layer_3d = torch.nn.Sequential(
-                torch.nn.Conv3d(O*len(self.psp_levels)+O,1,1),
+                torch.nn.Conv3d(n_out*len(self.psp_levels)+n_out,1,1),
                 torch.nn.Sigmoid())
         else:
             self.final_layer_3d = torch.nn.Sequential(
-                torch.nn.Conv3d(O*len(self.psp_levels)+O,self.n_classes,1),
+                torch.nn.Conv3d(n_out*len(self.psp_levels)+n_out,self.n_classes,1),
                 torch.nn.Softmax(1))
 
     def forward_3d(self,X:torch.Tensor)->torch.Tensor:
