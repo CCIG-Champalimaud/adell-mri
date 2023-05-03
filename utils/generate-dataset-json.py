@@ -9,6 +9,8 @@ from skimage import measure
 from glob import glob
 from tqdm import tqdm
 
+from typing import List
+
 def value_range(x):
     return x.min(),x.max()
 
@@ -29,9 +31,9 @@ def mask_to_bb(img:np.ndarray)->list:
 
     return bb_vertices,c
 
-def glob_with_re(path:str,re_pattern:str)->list:
+def search_with_re(all_paths:List[str],re_pattern:str)->list:
     compiled_re_pattern = re.compile(re_pattern)
-    output = [str(x) for x in Path(path).rglob("*")]
+    output = all_paths
     output = [x for x in output
               if compiled_re_pattern.search(x) is not None]
     return output
@@ -47,7 +49,7 @@ if __name__ == "__main__":
         help="Path to folder containing nibabel compatible masks")
     parser.add_argument(
         '--mask_key',dest="mask_key",default="mask",
-        help="Custom mask for the key. Helpful if later merging json files")
+        help="Custom key for the mask. Helpful if later merging json files")
     parser.add_argument(
         '--class_csv_path',dest="class_csv_path",default=None,
         help="Path to CSV with classes. Assumes first column is study ID and \
@@ -79,8 +81,12 @@ if __name__ == "__main__":
         monai.transforms.Orientationd(['image'],"RAS")])
 
     bb_dict = {}
+    all_paths = [
+        str(x) for x in Path(args.input_path).rglob("*")]
+    all_mask_paths = [
+        str(x) for x in Path(args.mask_path).rglob("*")]
     all_paths = {
-        p:glob_with_re(args.input_path,p) for p in args.patterns}
+        p:search_with_re(all_paths,p) for p in args.patterns}
     class_dict_csv = {}
     if args.class_csv_path:
         with open(args.class_csv_path,'r') as o:
@@ -88,7 +94,7 @@ if __name__ == "__main__":
                 l = l.strip().split(',')
                 identifier,cl = l[0],l[-1]
                 class_dict_csv[identifier] = cl
-    mask_paths = glob_with_re(args.mask_path,args.mask_pattern)
+    mask_paths = search_with_re(all_mask_paths,args.mask_pattern)
     for file_path in tqdm(all_paths[args.patterns[0]]):
         image_id = re.search(args.id_pattern,file_path).group()
         alt_file_paths = []

@@ -194,7 +194,7 @@ class UNetPlusPlus(UNet):
              for s in S])
 
     def forward(self,X:torch.Tensor,
-                return_aux=False,
+                return_aux=True,
                 X_skip_layer:torch.Tensor=None,
                 X_feature_conditioning:torch.Tensor=None,
                 return_features=False)->torch.Tensor:
@@ -279,4 +279,4 @@ class UNetPlusPlus(UNet):
             bn_out = self.bottleneck_classifier(bottleneck)
         else:
             bn_out = None
-        return curr,curr_aux,bn_out
+        return curr,bn_out,curr_aux

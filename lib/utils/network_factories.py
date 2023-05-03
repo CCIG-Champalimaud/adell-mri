@@ -12,6 +12,14 @@ from ..modules.classification.pl import (
 from ..modules.losses import complete_iou_loss
 from ..modules.object_detection.pl import YOLONet3dPL
 from ..utils import get_loss_param_dict,loss_factory
+# segmentation
+from lib.modules.segmentation.pl import (
+    UNetPL,
+    UNetPlusPlusPL,
+    BrUNetPL,
+    UNETRPL,
+    SWINUNetPL
+    )
 
 from typing import Dict,Any,List,Callable
 
@@ -180,3 +188,107 @@ def get_detection_network(net_type:str,
         **net_cfg)
 
     return network
+
+def get_segmentation_network(net_type:str,
+                             network_config:Dict[str,Any],
+                             loss_params:Dict[str,Any],
+                             bottleneck_classification:bool,
+                             clinical_feature_keys:List[str],
+                             all_aux_keys:List[str],
+                             clinical_feature_params:Dict[str,torch.Tensor],
+                             clinical_feature_key_net:str,
+                             aux_key_net:str,
+                             max_epochs:int,
+                             encoding_operations:List[torch.nn.Module],
+                             picai_eval:bool,
+                             lr_encoder:float,
+                             cosine_decay:bool,
+                             encoder_checkpoint:str,
+                             res_config_file:str,
+                             deep_supervision:bool,
+                             n_classes:int,
+                             keys:List[str],
+                             train_loader_call:Callable,
+                             random_crop_size:List[int],
+                             crop_size:List[int],
+                             pad_size:List[int],
+                             resize_size:List[int])->torch.nn.Module:
+    
+    def get_size(*size_list):
+        for size in size_list:
+            if size is not None:
+                return size
+
+    size = get_size(random_crop_size,
+                    crop_size,
+                    pad_size,
+                    resize_size)
+
+    boilerplate = dict(
+        training_dataloader_call=train_loader_call,
+        label_key="mask",
+        loss_params=loss_params,
+        n_classes=n_classes,
+        bottleneck_classification=bottleneck_classification,
+        skip_conditioning=len(all_aux_keys),
+        skip_conditioning_key=aux_key_net,
+        feature_conditioning=len(clinical_feature_keys),
+        feature_conditioning_params=clinical_feature_params,
+        feature_conditioning_key=clinical_feature_key_net,
+        n_epochs=max_epochs,
+        picai_eval=picai_eval,
+        lr_encoder=lr_encoder,
+        cosine_decay=cosine_decay
+    )
+
+    if net_type == "brunet":
+        nc = network_config["n_channels"]
+        network_config["n_channels"] = nc // len(keys)
+        unet = BrUNetPL(
+            encoders=encoding_operations,
+            image_keys=keys,
+            n_input_branches=len(keys),
+            deep_supervision=deep_supervision,
+            **boilerplate,
+            **network_config)
+        if encoder_checkpoint is not None and res_config_file is None:
+            for encoder,ckpt in zip(unet.encoders,encoder_checkpoint):
+                encoder.load_state_dict(torch.load(ckpt)["state_dict"])
+
+    elif net_type == "unetpp":
+        encoding_operations = encoding_operations[0]
+        unet = UNetPlusPlusPL(
+            encoding_operations=encoding_operations,
+            image_key="image",
+            **boilerplate,
+            **network_config)
+
+    elif net_type == "unet":
+        encoding_operations = encoding_operations[0]
+        unet = UNetPL(
+            encoding_operations=encoding_operations,
+            image_key="image",
+            deep_supervision=deep_supervision,
+            **boilerplate,
+            **network_config)
+
+    elif net_type == "unetr":
+        sd = network_config["spatial_dimensions"]
+        network_config["image_size"] = size[:sd]
+        network_config["patch_size"] = network_config["patch_size"][:sd]
+        unet = UNETRPL(
+            image_key="image",
+            deep_supervision=deep_supervision,
+            **boilerplate,
+            **network_config)
+
+    elif net_type == "swin":
+        sd = network_config["spatial_dimensions"]
+        network_config["image_size"] = size[:sd]
+        unet = SWINUNetPL(
+            image_key="image",
+            deep_supervision=deep_supervision,
+            **boilerplate,
+            **network_config)
+
+    return unet
