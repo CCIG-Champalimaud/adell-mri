@@ -116,7 +116,7 @@ def get_transforms_unet(x,
         # sets intensity transforms for ADC and other sequence types
         if len(non_adc_keys) > 0:
             transforms.append(
-                monai.transforms.ScaleIntensityd(non_adc_keys,0,1))
+                monai.transforms.NormalizeIntensityd(non_adc_keys,0,1))
         if len(adc_keys) > 0:
             transforms.append(
                 ConditionalRescalingd(adc_keys,500,0.001))
@@ -373,7 +373,7 @@ def get_augmentations_unet(augment,
                 "augment can only contain {}".format(valid_arg_list))
     augments = []
     
-    prob = 0.1
+    prob = 0.2
     if "trivial" in augment:
         augments.append(monai.transforms.Identityd(image_keys))
         prob = 1.0
