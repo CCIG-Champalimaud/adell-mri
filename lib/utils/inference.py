@@ -27,7 +27,8 @@ class SlidingWindowSegmentation:
                  sliding_window_size:Shape,
                  inference_function:Callable,
                  n_classes:int,
-                 stride:Shape=None):
+                 stride:Shape=None,
+                 inference_batch_size:int=1):
         """
         Args:
             sliding_window_size (Shape): size of the sliding window. Should be
@@ -36,11 +37,14 @@ class SlidingWindowSegmentation:
             n_classes (int): number of channels in the output.
             stride (Shape, optional): stride for the sliding window. Defaults to 
                 None (same as sliding_window_size).
+            inference_batch_size (int, optional): batch size for inference. 
+                Defaults to 1.
         """
         self.sliding_window_size = sliding_window_size
         self.inference_function = inference_function
         self.n_classes = n_classes
         self.stride = stride
+        self.inference_batch_size = inference_batch_size
         
         if self.stride is None:
             self.stride = self.sliding_window_size
@@ -91,7 +95,7 @@ class SlidingWindowSegmentation:
             raise NotImplementedError(
                 "Supported inputs are np.ndarray, dict, tuple, list")
             
-    def get_zeros_fn(self,X:MultiFormatInput)->Shape:
+    def get_zeros_fn(self,X:MultiFormatInput)->Callable:
         """
         Gets the zero function from a possibly 1-level nested structure of 
         tensors or numpy arrays.
@@ -105,7 +109,7 @@ class SlidingWindowSegmentation:
                 tuple or list.
 
         Returns:
-            Shape: np.zeros if inferred type is np.ndarray, torch.zeros if inferred
+            Callable: np.zeros if inferred type is np.ndarray, torch.zeros if inferred
                 type is torch.Tensor.
         """
         if isinstance(X,(np.ndarray,torch.Tensor)):
@@ -122,6 +126,38 @@ class SlidingWindowSegmentation:
             return np.zeros
         elif isinstance(x,torch.Tensor):
             return torch.zeros
+
+    def get_split_fn(self,X:MultiFormatInput)->Shape:
+        """
+        Gets the split function from a possibly 1-level nested structure of 
+        tensors or numpy arrays.
+
+        Args:
+            X (MultiFormatInput): a tensor, an array or a dictionary/list/tuple of
+                tensors and arrays.
+
+        Raises:
+            NotImplementedError: error if input is not tensor, array, dict, 
+                tuple or list.
+
+        Returns:
+            Callable: np.split if inferred type is np.ndarray, torch.split if inferred
+                type is torch.Tensor.
+        """
+        if isinstance(X,(np.ndarray,torch.Tensor)):
+            x = X
+        elif isinstance(X,dict):
+            k = list(X.keys())[0]
+            x = X[k]
+        elif isinstance(X,(tuple,list)):
+            x = X[0]
+        else:
+            raise NotImplementedError(
+                "Supported inputs are np.ndarray, dict, tuple, list")
+        if isinstance(x,np.ndarray):
+            return np.split
+        elif isinstance(x,torch.Tensor):
+            return torch.split
 
     def extract_patch_from_array(self,X:TensorOrArray,coords:Coords)->TensorOrArray:
         """
@@ -296,6 +332,31 @@ class SlidingWindowSegmentation:
             output_denominator[:,:,x1:x2,y1:y2,z1:z2] += tmp_den
         return output_array,output_denominator
 
+    def cat_array(self,X:List[TensorOrArray],*args,**kwargs)->TensorOrArray:
+        if isinstance(X[0],np.ndarray):
+            return np.concatenate(X,*args,**kwargs)
+        elif isinstance(X[0],torch.Tensor):
+            return torch.cat(X,*args,**kwargs)
+
+    def cat(self,X:List[MultiFormatInput],*args,**kwargs)->MultiFormatInput:
+        if isinstance(X[0],(np.ndarray,torch.Tensor)):
+            return self.cat_array(X,*args,**kwargs)
+        elif isinstance(X[0],dict):
+            output = {k:[] for k in X[0]}
+            for x in X:
+                for k in x:
+                    output[k].append(x[k])
+            return {k:self.cat_array(output[k]) for k in output}
+        elif isinstance(X[0],(tuple,list)):
+            output = [[] for _ in X[0]]
+            for x in X:
+                for i in range(len(x)):
+                    output[i].append(x[i])
+            return [self.cat_array(o) for o in output]
+        else:
+            raise NotImplementedError(
+                "Supported inputs are np.ndarray, dict, tuple, list")
+
     def __call__(self,
                  X:MultiFormatInput)->TensorOrArray:
         """
@@ -312,13 +373,25 @@ class SlidingWindowSegmentation:
             TensorOrArray: output prediction.
         """
         output_size = list(self.get_shape(X))
-        output_size[1] = self.n_classes
         zeros_fn = self.get_zeros_fn(X)
+        split_fn = self.get_split_fn(X)
+        output_size[1] = self.n_classes
         output_array = zeros_fn(output_size)
         output_denominator = zeros_fn(output_size)
+        batch = []
+        batch_coords = []
         for cropped_input,coords in self.get_all_crops(X):
-            tmp_out = self.inference_function(cropped_input)
-            output_array,output_denominator = self.update_output(
-                output_array,output_denominator,tmp_out,coords)
+            batch.append(cropped_input)
+            batch_coords.append(coords)
+            if len(batch) == self.inference_batch_size:
+                original_batch_size = output_size[0]
+                batch = self.cat(batch)
+                batch_out = self.inference_function(cropped_input)
+                batch_out = split_fn(batch_out,original_batch_size,0)
+                for out,coords in zip(batch_out,batch_coords):
+                    output_array,output_denominator = self.update_output(
+                        output_array,output_denominator,out,coords)
+                batch = []
+                batch_coords = []
         output_array = output_array / output_denominator
         return output_array
