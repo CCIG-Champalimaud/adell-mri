@@ -1,14 +1,15 @@
 import argparse
 import json
+import sys
 import os
 import numpy as np
 import torch
 import monai
 import gc
-
+from itertools import product
+from tqdm import trange
 from pytorch_lightning import Trainer
 
-import sys
 sys.path.append(os.path.join(os.path.realpath(os.path.dirname(__file__)),".."))
 from lib.utils import (
     collate_last_slice,
@@ -18,7 +19,8 @@ from lib.monai_transforms import get_transforms_unet as get_transforms
 from lib.modules.layers import ResNet
 from lib.utils.network_factories import get_segmentation_network
 from lib.modules.config_parsing import parse_config_unet,parse_config_ssl
-
+from lib.modules.segmentation.pl import get_metric_dict
+from typing import Callable
 torch.backends.cudnn.benchmark = True
 
 def if_none_else(x,obj):
@@ -37,8 +39,14 @@ if __name__ == "__main__":
         '--dataset_json',dest='dataset_json',type=str,
         help="JSON containing dataset information",required=True)
     parser.add_argument(
-        '--test_ids',dest='test_ids',type=str,nargs="+",
-        help="Identifiers used in testing",required=True)
+        '--test_ids',dest='test_ids',type=str,nargs="+",required=True,
+        help="Comma-separated identifiers used in testing (more than one set \
+            of test ids can be specified). Can also be one CSV if set_ids is \
+            specified; in that case, each line is a fold/set and the first value\
+            should be the fold/set identifier.")
+    parser.add_argument(
+        '--set_ids',dest='set_ids',type=str,nargs="+",default=None,
+        help="Specifies substrings to select sets in test_ids")
     parser.add_argument(
         '--excluded_ids',dest="excluded_ids",nargs="+",default=None,
         help="Excludes these IDs from training and testing")
@@ -119,7 +127,7 @@ if __name__ == "__main__":
         help="If some images or masks are missing, assume they are empty \
             tensors.")
     
-    # network + training
+    # network + inference
     parser.add_argument(
         '--config_file',dest="config_file",
         help="Path to network configuration file (yaml)",
@@ -135,6 +143,14 @@ if __name__ == "__main__":
     parser.add_argument(
         '--checkpoints',dest='checkpoints',action="store",required=True,
         help="Paths to checkpoints.",nargs="+")
+    parser.add_argument(
+        '--paired',dest='paired',
+        action="store_true",
+        help="Test checkpoints only on the corresponding test_ids.")
+    parser.add_argument(
+        '--per_sample',dest='per_sample',
+        action="store_true",
+        help="Also calculates metrics on a per sample basis.")
     
     # network, pipeline
     parser.add_argument(
@@ -149,6 +165,9 @@ if __name__ == "__main__":
     parser.add_argument(
         '--picai_eval',dest='picai_eval',action="store_true",
         help="Validates model using PI-CAI metrics.")
+    parser.add_argument(
+        '--metric_path',dest='metric_path',type=str,default="metrics.csv",
+        help='Path to file with CV metrics + information.')
 
     args = parser.parse_args()
 
@@ -200,8 +219,6 @@ if __name__ == "__main__":
         args.resize_size = [round(x) for x in args.resize_size]
 
     data_dict = json.load(open(args.dataset_json,'r'))
-    data_dict = {k:data_dict[k] for k in data_dict
-                 if k in args.test_ids}
     if args.excluded_ids is not None:
         data_dict = {k:data_dict[k] for k in data_dict
                      if k not in args.excluded_ids}
@@ -229,9 +246,6 @@ if __name__ == "__main__":
         data_dict = {
             k:data_dict[k] for k in data_dict
             if np.isnan(data_dict[k][kk]) == False}
-
-    all_pids = [k for k in data_dict]
-    data_list = [data_dict[k] for k in all_pids]
     
     network_config,loss_key = parse_config_unet(
         args.config_file,len(keys),n_classes)
@@ -273,10 +287,6 @@ if __name__ == "__main__":
 
     torch.cuda.empty_cache()
 
-    dataset = monai.data.Dataset(
-        data_list,
-        monai.transforms.Compose(transforms))
-
     # correctly assign devices
     if ":" in args.dev:
         devices = args.dev.split(":")[-1].split(",")
@@ -288,23 +298,13 @@ if __name__ == "__main__":
 
     # calculate the mean/std of tabular features
     if feature_keys is not None:
-        all_feature_params = {"mean":[],"std":[]}
-        for kk in feature_keys:
-            f = np.array([x[kk] for x in data_list])
-            all_feature_params["mean"].append(np.mean(f))
-            all_feature_params["std"].append(np.std(f))
-        all_feature_params["mean"] = torch.as_tensor(
-            all_feature_params["mean"],dtype=torch.float32,device=dev)
-        all_feature_params["std"] = torch.as_tensor(
-            all_feature_params["std"],dtype=torch.float32,device=dev)
+        all_feature_params = {}
+        all_feature_params["mean"] = torch.zeros(
+            len(feature_keys),dtype=torch.float32,device=dev)
+        all_feature_params["std"] = torch.ones(
+            len(feature_keys),dtype=torch.float32,device=dev)
     else:
         all_feature_params = None
-
-    loader = monai.data.ThreadDataLoader(
-        dataset,batch_size=1,
-        num_workers=args.n_workers,
-        collate_fn=collate_fn,pin_memory=True,
-        persistent_workers=True,drop_last=True)
 
     if args.res_config_file is not None:
         _,network_config_ssl = parse_config_ssl(
@@ -369,25 +369,63 @@ if __name__ == "__main__":
         pad_size=args.pad_size,
         resize_size=args.resize_size)
     
-    for checkpoint in args.checkpoints:
+    out_file = open(args.metric_path,"w")
+    
+    ckpt_to_data_map = zip if args.paired is True else product
+    if os.path.exists(args.test_ids[0]) and args.set_ids is not None:
+        selected_test_ids = []
+        with open(args.test_ids[0]) as o:
+            for line in o:
+                for set_id in args.set_ids:
+                    if set_id in line:
+                        selected_test_ids.append(line)
+        args.test_ids = selected_test_ids
+    n_ckpt = len(args.checkpoints)
+    n_data = len(args.test_ids)
+    all_metrics = []
+    for checkpoint_idx,test_idx in zip(range(n_ckpt),range(n_data)):
+        checkpoint = args.checkpoints[checkpoint_idx]
+        test_ids = [k for k in args.test_ids[test_idx].split(",")
+                    if k in data_dict]
+        curr_dict = {k:data_dict[k] for k in data_dict
+                     if k in test_ids}
+        data_list = [curr_dict[k] for k in curr_dict]
+        dataset = monai.data.Dataset(
+            data_list,
+            monai.transforms.Compose(transforms))
+
         state_dict = torch.load(checkpoint)["state_dict"]
         state_dict = {k:state_dict[k] for k in state_dict
                       if "deep_supervision_ops" not in k}
         unet.load_state_dict(state_dict)
         trainer = Trainer(accelerator=dev,devices=devices)
         
-        test_metrics = trainer.test(unet,loader)[0]
-        for k in test_metrics:
-            out = test_metrics[k]
-            if n_classes == 2:
-                try:
-                    value = float(out.detach().numpy())
-                except:
-                    value = float(out)
-                x = "{},{},{},{},{}".format(checkpoint,k,0,0,value)
-                print(x)
-            else:
-                for i,v in enumerate(out):
-                    x = "{},{},{},{},{}".format(checkpoint,k,0,i,v)
-                    print(x)
+        metrics = get_metric_dict(n_classes,False,prefix="T_")
+        metrics_global = get_metric_dict(n_classes,False,prefix="T_")
+        metrics_dict = {"global_metrics":{},
+                        "checkpoint":checkpoint}
+        if args.per_sample is True:
+            metrics_dict["metrics"] = {}
+        for i in trange(len(dataset)):
+            data_element = dataset[i]
+            test_id = test_ids[i]
+            pred = unet.predict_step(data_element,0,not_batched=True)[0][0]
+            pred = pred.round().long()
+            y = data_element["mask"].round().int()
+            if args.per_sample is True:
+                metrics_dict["metrics"][test_id] = {}
+                for k in metrics:
+                    metrics[k].update(pred,y)
+                    v = metrics[k].compute().cpu().numpy().tolist()
+                    metrics_dict["metrics"][test_id][k] = v
+                    metrics[k].reset()
+                    metrics_global[k].update(pred,y)
+            for k in metrics_global:
+                metrics_global[k].update(pred,y)
+        for k in metrics_global:
+            v = metrics_global[k].compute().cpu().numpy().tolist()
+            metrics_dict["global_metrics"][k] = v
+        all_metrics.append(metrics_dict)
+        metrics_json = json.dumps(all_metrics,indent=2)
+        out_file.write(metrics_json)
         gc.collect()
