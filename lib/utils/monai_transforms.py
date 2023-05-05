@@ -8,6 +8,7 @@ from skimage.morphology import convex_hull_image
 from copy import deepcopy
 from itertools import product
 from typing import List,Iterable,Tuple,Dict,Union,Any,Optional
+from sklearn.cluster import DBSCAN
 from ..custom_types import TensorDict,TensorOrNDarray,NDArrayOrTensorDict
 
 def normalize_along_slice(X:torch.Tensor,
@@ -1455,31 +1456,51 @@ class SampleChannelDimd(monai.transforms.MapTransform):
 class GetAllCrops(monai.transforms.Transform):
     """
     Works similarly to RandCropByPosNegLabeld but returns all the crops in 
-    a volume or image.
+    a volume or image. Pads the image such that most of the volume is contained
+    in the crops (this skips padding dimensions where the padding is greater
+    than half of the crop size).
     """
     def __init__(self,
                  size:Union[Tuple[int,int],Tuple[int,int,int]]):
         self.size = size
         self.ndim = len(size)
 
+    def get_pad_size(self,sh):
+        remainder = [(y - (x % y)) if x > y else 0 for x,y in zip(sh,self.size)]
+        remainder = [x if x < (y//2) else 0 
+                     for x,y in zip(remainder,self.size)]
+        remainder = [(x//2,x-x//2) for x in remainder]
+        pad_size = [(0,0),*remainder]
+        return pad_size
+
+    def pad(self,X):
+        # pad
+        pad_size = self.get_pad_size(X.shape)
+        X = np.pad(X,pad_size,"constant",constant_values=0)
+        return X
+
     def get_all_crops_2d(self,X:torch.Tensor)->torch.Tensor:
         sh = X.shape[1:]
+        X = self.pad(X)
         for i_1 in range(0,sh[0],self.size[0]):
             for j_1 in range(0,sh[1],self.size[1]):
                 i_2 = i_1 + self.size[0]
                 j_2 = j_1 + self.size[1]
-                if (i_2 < sh[0]+1) and (j_2 < sh[1]+1):
+                if all([i_2 < (sh[0] + 1),j_2 < (sh[1] + 1)]):
                     yield X[:,i_1:i_2,j_1:j_2]
 
     def get_all_crops_3d(self,X:torch.Tensor)->torch.Tensor:
         sh = [x for x in X.shape[1:]]
+        X = self.pad(X)        
         for i_1 in range(0,sh[0],self.size[0]):
             for j_1 in range(0,sh[1],self.size[1]):
                 for k_1 in range(0,sh[2],self.size[2]):
                     i_2 = i_1 + self.size[0]
                     j_2 = j_1 + self.size[1]
                     k_2 = k_1 + self.size[2]
-                    if (i_2 < (sh[0]+1)) and (j_2 < (sh[1]+1)) and (k_2 < (sh[2]+1)):
+                    if all([i_2 < (sh[0] + 1),
+                            j_2 < (sh[1] + 1),
+                            k_2 < (sh[2] + 1)]):
                         yield X[:,i_1:i_2,j_1:j_2,k_1:k_2]
 
     def get_all_crops(self,X:torch.Tensor)->torch.Tensor:
@@ -1521,5 +1542,77 @@ class GetAllCropsd(monai.transforms.MapTransform):
         return outputs
     
 class DbscanAssistedSegmentSelection(monai.transforms.MapTransform):
-    def __init__(self,min_dist:int=1):
-        self.min_dist
+    """
+    A segment ("connected" component) selection module. It uses DBSCAN under the
+    hood to get rid of spurious, small and noisy activations while maintaining 
+    loosely connected components as specified using min_dist. If nothing else is
+    specified, then the this will just get rid of small noise specs; if 
+    filter_by_size==True it will filter by size and return the largest keep_n 
+    segments. If filter_by_dist_to_centre==True, this will return only the segment
+    which is closest to the centre. If more than one channel is provided, it performs
+    this separately for each channel.
+    """
+    def __init__(self,
+                 min_dist:int=1,
+                 filter_by_size:bool=False,
+                 filter_by_dist_to_centre:bool=False,
+                 keep_n:int=1):
+        self.min_dist = min_dist
+        self.filter_by_size = filter_by_size
+        self.filter_by_dist_to_centre = filter_by_dist_to_centre
+        self.keep_n = keep_n
+    
+    def __call__(self, X: Union[torch.Tensor,np.ndarray]):
+        sh = np.array(X.shape[1:])
+        image_centre = sh / 2
+        if isinstance(X,torch.Tensor):
+            X = X.detach().cpu().numpy()
+            is_tensor = True
+        else:
+            is_tensor = False
+        output = []
+        for i in range(X.shape[0]):
+            dbscan = DBSCAN(self.min_dist)
+            coords = np.stack(np.where(X[i] > 0.5),1)
+            labels = dbscan.fit(coords).labels_
+            unique_labels = np.unique(labels)
+            unique_labels = unique_labels[unique_labels > 0]
+            
+            output[i] = np.zeros(*sh)
+            
+            dist_to_centre = {}
+            sizes = {}
+            for label in unique_labels:
+                idxs = labels == label
+                dist_to_centre[label] = np.square(
+                    np.mean(coords[idxs]) - image_centre)
+                sizes[label] = np.sum(idxs)
+            
+            labels_to_keep = []
+            if self.filter_by_size == True:
+                sorted_labels = sorted(sizes.keys(),key=lambda k: -sizes[k])
+                if len(sorted_labels) > self.keep_n:
+                    sorted_labels = sorted_labels[:self.keep_n]
+                labels_to_keep.extend(sorted_labels)
+            
+            if self.filter_by_dist_to_centre == True:
+                sorted_labels = sorted(dist_to_centre.keys(),
+                                       key=lambda k: sizes[k])
+                label_to_keep = None
+                idx = 0
+                while label_to_keep is None:
+                    curr_label = sorted_labels[idx]
+                    if self.filter_by_size == True:
+                        if curr_label in labels_to_keep == True:
+                            label_to_keep = curr_label
+                    else:
+                        label_to_keep = curr_label
+                    idx += 1
+                labels_to_keep = [label_to_keep]
+            for label in labels_to_keep:
+                output[i][coords[labels == label]] = 1.0
+        
+        output = np.stack(output)
+        if is_tensor:
+            output = torch.as_tensor(output)
+        return output
