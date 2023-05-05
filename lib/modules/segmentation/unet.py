@@ -340,7 +340,7 @@ class UNet(torch.nn.Module):
                 if self.spatial_dimensions == 3:
                     upscale_ops.append(
                         torch.nn.ConvTranspose3d(d1,d2,s,stride=s,padding=p))
-            self.upscale_ops = torch.nn.ModuleList(upscale_ops)
+        self.upscale_ops = torch.nn.ModuleList(upscale_ops)
     
     def init_link_ops(self):
         """Initializes linking (skip) operations.
@@ -495,13 +495,16 @@ class UNet(torch.nn.Module):
             op = torch.nn.Conv3d
         if self.n_classes > 2:
             return torch.nn.Sequential(
-                op(d,d,1),self.adn_fn(d),
+                op(d,d,1),
+                self.adn_fn(d),
                 op(d,self.n_classes,1),
                 torch.nn.Softmax(dim=1))
         else:
             # coherces to a binary classification problem rather than
             # to a multiclass problem with two classes
             return torch.nn.Sequential(
+                op(d,d,1),
+                self.adn_fn(d),
                 op(d,1,1),
                 torch.nn.Sigmoid())
 
