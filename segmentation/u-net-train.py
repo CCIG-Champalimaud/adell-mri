@@ -211,6 +211,10 @@ if __name__ == "__main__":
         help="Learning rate (overrides the lr specified in network_config)",
         default=None,type=float)
     parser.add_argument(
+        '--batch_size',dest="batch_size",
+        help="Batch size (overrides the batch size specified in network_config)",
+        default=None,type=int)
+    parser.add_argument(
         '--gradient_clip_val',dest="gradient_clip_val",
         help="Value for gradient clipping",
         default=0.0,type=float)
@@ -382,6 +386,8 @@ if __name__ == "__main__":
         args.config_file,len(keys),n_classes)
     if args.learning_rate is not None:
         network_config["learning_rate"] = args.learning_rate
+    if args.batch_size is not None:
+        network_config["batch_size"] = args.batch_size
     
     transform_arguments = {
         "all_keys": all_keys,
@@ -409,6 +415,8 @@ if __name__ == "__main__":
         "brunet": args.unet_model == "brunet"}
     transform_arguments_val = {k:transform_arguments[k]
                                for k in transform_arguments}
+    transform_arguments_val["random_crop_size"] = None
+    transform_arguments_val["crop_size"] = None
     augment_arguments = {
         "augment":args.augment,
         "all_keys":all_keys,
@@ -434,7 +442,6 @@ if __name__ == "__main__":
 
         transforms_val = [
             *get_transforms("pre",**transform_arguments_val),
-            *get_all_crops_transform,
             *get_transforms("post",**transform_arguments_val)]
     else:
         transforms_train = [
@@ -446,7 +453,6 @@ if __name__ == "__main__":
             *get_transforms("post",**transform_arguments_val)]
 
         transforms_val = [
-            *get_all_crops_transform,
             *get_transforms("post",**transform_arguments_val)]
         
         transform_all_data = get_transforms("pre",**transform_arguments)
@@ -468,11 +474,14 @@ if __name__ == "__main__":
             SlicesToFirst(["image","mask"]))
         transforms_val.append(
             SlicesToFirst(["image","mask"]))
-        collate_fn = collate_last_slice
+        collate_fn_train = collate_last_slice
+        collate_fn_val = collate_last_slice
     elif args.random_crop_size is not None:
-        collate_fn = safe_collate_crops
+        collate_fn_train = safe_collate_crops
+        collate_fn_val = safe_collate
     else:
-        collate_fn = safe_collate
+        collate_fn_train = safe_collate
+        collate_fn_val = safe_collate
 
     if args.folds is None:
         if args.n_folds > 1:
@@ -581,9 +590,7 @@ if __name__ == "__main__":
         else:
             all_feature_params = None
             
-        # include some constant label images
-        n_samples = int(
-            len(train_dataset) * args.dataset_iterations_per_epoch)
+        n_samples = int(len(train_dataset) * args.dataset_iterations_per_epoch)
         sampler = torch.utils.data.RandomSampler(
             ["element" for _ in train_idxs],
             num_samples=n_samples,
@@ -593,6 +600,7 @@ if __name__ == "__main__":
             ad = "adaptive" in args.class_weights[0]
         else:
             ad = False
+        # include some constant label images
         if args.constant_ratio is not None or ad:
             cl = []
             pos_pixel_sum = 0
@@ -652,18 +660,18 @@ if __name__ == "__main__":
             return monai.data.ThreadDataLoader(
                 train_dataset,batch_size=batch_size,
                 num_workers=nw,generator=g,sampler=sampler,
-                collate_fn=collate_fn,pin_memory=True,
+                collate_fn=collate_fn_train,pin_memory=True,
                 persistent_workers=True,drop_last=True)
 
         train_loader = train_loader_call(network_config["batch_size"])
         train_val_loader = monai.data.ThreadDataLoader(
             train_dataset_val,batch_size=1,
             shuffle=False,num_workers=nw,
-            collate_fn=collate_fn,persistent_workers=True)
+            collate_fn=collate_fn_train,persistent_workers=True)
         validation_loader = monai.data.ThreadDataLoader(
             validation_dataset,batch_size=1,
             shuffle=False,num_workers=args.n_workers,
-            collate_fn=collate_fn,persistent_workers=True)
+            collate_fn=collate_fn_val,persistent_workers=True)
 
         if args.res_config_file is not None:
             if args.unet_model in ["unetr","swin"]:
