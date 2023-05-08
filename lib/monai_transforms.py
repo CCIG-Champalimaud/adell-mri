@@ -100,7 +100,7 @@ def get_transforms_unet(x,
         transforms = [
             monai.transforms.LoadImaged(
                 all_keys,ensure_channel_first=True,
-                allow_missing_keys=fill_missing,image_only=True)]
+                allow_missing_keys=fill_missing)]
         # "creates" empty images/masks if necessary
         if fill_missing is True:
             transforms.append(CreateImageAndWeightsd(
