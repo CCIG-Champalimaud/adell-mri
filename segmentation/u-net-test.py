@@ -383,31 +383,37 @@ if __name__ == "__main__":
     n_ckpt = len(args.checkpoints)
     n_data = len(args.test_ids)
     all_metrics = []
-    for checkpoint_idx,test_idx in zip(range(n_ckpt),range(n_data)):
+    for checkpoint_idx,test_idx in ckpt_to_data_map(range(n_ckpt),range(n_data)):
         checkpoint = args.checkpoints[checkpoint_idx]
         test_ids = [k for k in args.test_ids[test_idx].split(",")
                     if k in data_dict]
         curr_dict = {k:data_dict[k] for k in data_dict
                      if k in test_ids}
         data_list = [curr_dict[k] for k in curr_dict]
-        dataset = monai.data.Dataset(
+        dataset = monai.data.CacheDataset(
             data_list,
-            monai.transforms.Compose(transforms))
+            monai.transforms.Compose(transforms),
+            num_workers=args.n_workers)
 
         state_dict = torch.load(checkpoint)["state_dict"]
         state_dict = {k:state_dict[k] for k in state_dict
                       if "deep_supervision_ops" not in k}
         unet.load_state_dict(state_dict)
+        unet = unet.to(args.dev)
         trainer = Trainer(accelerator=dev,devices=devices)
         
-        metrics = get_metric_dict(n_classes,False,prefix="T_")
-        metrics_global = get_metric_dict(n_classes,False,prefix="T_")
+        metrics = get_metric_dict(n_classes,False,prefix="T_",
+                                  dev=args.dev)
+        metrics_global = get_metric_dict(n_classes,False,prefix="T_",
+                                         dev=args.dev)
         metrics_dict = {"global_metrics":{},
                         "checkpoint":checkpoint}
         if args.per_sample is True:
             metrics_dict["metrics"] = {}
         for i in trange(len(dataset)):
             data_element = dataset[i]
+            data_element = {k:data_element[k].to(args.dev)
+                            for k in data_element}
             test_id = test_ids[i]
             pred = unet.predict_step(data_element,0,not_batched=True)[0][0]
             pred = pred.round().long()
