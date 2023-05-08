@@ -174,6 +174,8 @@ def get_transforms_unet(x,
                     feature_keys,feature_key_net)])
         if label_keys is not None:
             mask_key = ["mask"]
+        else:
+            mask_key = []
         if brunet is False:
             keys.append("image")
             transforms.append(monai.transforms.ToTensord(["image"] + mask_key,
