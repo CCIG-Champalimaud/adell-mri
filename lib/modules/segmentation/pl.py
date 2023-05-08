@@ -85,7 +85,8 @@ def update_metrics(cls:pl.LightningModule,
 def get_metric_dict(nc:int,
                     bottleneck_classification:bool,
                     metric_keys:List[str]=None,
-                    prefix:str="")->Dict[str,torchmetrics.Metric]:
+                    prefix:str="",
+                    dev:str=None)->Dict[str,torchmetrics.Metric]:
     metric_dict = torch.nn.ModuleDict({})
     if nc == 2:
         md = {
@@ -106,6 +107,8 @@ def get_metric_dict(nc:int,
     for k in metric_keys:
         if k in md:
             metric_dict[prefix+k] = md[k]()
+    if dev is not None:
+        metric_dict = {k:metric_dict[k].to(dev) for k in metric_dict}
     return metric_dict
 
 class UNetBasePL(pl.LightningModule,ABC):
