@@ -137,11 +137,15 @@ def get_transforms_unet(x,
         if crop_size is not None:
             transforms.append(
                 monai.transforms.CenterSpatialCropd(all_keys,crop_size))
-        transforms.extend([monai.transforms.EnsureTyped(all_keys,dtype=torch.float32),
-                           CombineBinaryLabelsd(label_keys,"any","mask"),
-                           LabelOperatorSegmentationd(
-                               ["mask"],possible_labels,
-                               mode=label_mode,positive_labels=positive_labels)])
+        transforms.append(
+            monai.transforms.EnsureTyped(all_keys,dtype=torch.float32))
+        if label_keys is not None:
+            transforms.extend([
+                CombineBinaryLabelsd(label_keys,"any","mask"),
+                LabelOperatorSegmentationd(
+                    ["mask"],possible_labels,
+                    mode=label_mode,positive_labels=positive_labels)
+            ])
         # sets indices for random crop op
         if random_crop_size is not None:
             transforms.append(monai.transforms.FgBgToIndicesd("mask"))
