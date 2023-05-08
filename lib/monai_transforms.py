@@ -15,7 +15,7 @@ from .utils import (
     MaskToAdjustedAnchorsd,
     RandRotateWithBoxesd,
     SampleChannelDimd)
-from lib.modules.augmentations import (
+from .modules.augmentations import (
     generic_augments,mri_specific_augments,spatial_augments,
     AugmentationWorkhorsed)
 
@@ -81,9 +81,9 @@ def get_transforms_unet(x,
                         target_spacing: List[float],
                         intp: List[str],
                         intp_resampling_augmentations: List[str],
-                        possible_labels: List[str],
-                        positive_labels: List[str],
-                        adc_factor: float,
+                        possible_labels: List[str]=[0,1],
+                        positive_labels: List[str]=[1],
+                        adc_factor: float=1.0,
                         all_aux_keys: List[str]=[],
                         resize_keys: List[str]=[],
                         feature_keys: List[str]=[],
@@ -172,15 +172,17 @@ def get_transforms_unet(x,
                     func=lambda x:np.reshape(x,[1])),
                 monai.transforms.ConcatItemsd(
                     feature_keys,feature_key_net)])
+        if label_keys is not None:
+            mask_key = ["mask"]
         if brunet is False:
             keys.append("image")
-            transforms.append(monai.transforms.ToTensord(["image","mask"],
+            transforms.append(monai.transforms.ToTensord(["image"] + mask_key,
                                                          track_meta=False))
         else:
             keys.extend(image_keys)
-            transforms.append(monai.transforms.ToTensord(image_keys + ["mask"],
+            transforms.append(monai.transforms.ToTensord(image_keys + mask_key,
                                                          track_meta=False))
-        transforms.append(monai.transforms.SelectItemsd(keys + ["mask"]))
+        transforms.append(monai.transforms.SelectItemsd(keys + mask_key))
         return transforms
 
 def get_transforms_detection(keys,
