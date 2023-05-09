@@ -168,6 +168,8 @@ class UNet(torch.nn.Module):
             self.init_final_layer()
             if self.bottleneck_classification is True:
                 self.init_bottleneck_classifier()
+            if self.feature_conditioning == 0:
+                self.feature_conditioning = None
             if self.feature_conditioning is not None:
                 self.init_feature_conditioning_operations()
 
