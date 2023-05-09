@@ -195,6 +195,7 @@ def get_transforms_detection_pre(keys:List[str],
                                  shape_key:str,
                                  box_key:str,
                                  mask_key:str,
+                                 mask_mode:str="mask_is_labels",
                                  target_spacing:List[float]=None):
     intp_resampling = ["area" for _ in keys]
     non_adc_keys = [k for k in keys if k not in adc_keys]
@@ -230,7 +231,8 @@ def get_transforms_detection_pre(keys:List[str],
             MasksToBBd(keys=[mask_key],
                        bounding_box_key=box_key,
                        classes_key=box_class_key,
-                       shape_key=shape_key))
+                       shape_key=shape_key,
+                       mask_mode=mask_mode))
     return transforms
 
 def get_transforms_detection_post(keys:List[str],
