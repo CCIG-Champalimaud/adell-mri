@@ -21,7 +21,7 @@ def anchors_from_nested_list(nested_list:List[Dict[str,TensorOrNDarray]],
     all_sizes = all_bb[:,ndim:] - all_bb[:,:ndim] + 1
     all_bb = np.concatenate([-all_sizes/2,all_sizes/2],1)
     all_areas = np.prod(all_sizes,1)
-        
+            
     up = tqdm()
     cont = True
     i = 2
