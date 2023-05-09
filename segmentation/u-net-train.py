@@ -30,6 +30,9 @@ from lib.monai_transforms import get_augmentations_unet as get_augmentations
 from lib.modules.layers import ResNet
 from lib.utils.network_factories import get_segmentation_network
 from lib.modules.config_parsing import parse_config_unet,parse_config_ssl
+from lib.utils.parser import parse_ids
+from lib.utils.sitk_utils import (
+    spacing_values_from_dataset_json,get_spacing_quantile)
 
 torch.backends.cudnn.benchmark = True
 
@@ -71,7 +74,7 @@ if __name__ == "__main__":
         default=1,type=int,help="Number of random crops.")
     parser.add_argument(
         '--target_spacing',dest='target_spacing',action="store",default=None,
-        help="Resamples all images to target spacing",nargs='+',type=float)
+        help="Resamples all images to target spacing",nargs='+',type=str)
     parser.add_argument(
         '--image_keys',dest='image_keys',type=str,nargs='+',
         help="Image keys in the dataset JSON. First key is used as template",
@@ -193,10 +196,6 @@ if __name__ == "__main__":
     parser.add_argument(
         '--augment',dest='augment',action="store",nargs="+",
         help="Sets data augmentation.",default=[])
-    parser.add_argument(
-        '--pre_load',dest='pre_load',action="store_true",
-        help="Load and process data to memory at the beginning of training",
-        default=False)
     parser.add_argument(
         '--loss_gamma',dest="loss_gamma",
         help="Gamma for focal loss",default=2.0,type=float)
@@ -350,6 +349,8 @@ if __name__ == "__main__":
 
     data_dict = json.load(open(args.dataset_json,'r'))
     if args.excluded_ids is not None:
+        args.excluded_ids = parse_ids(args.excluded_ids,
+                                      output_format="list")
         data_dict = {k:data_dict[k] for k in data_dict
                      if k not in args.excluded_ids}
     if args.missing_to_empty is None:
@@ -379,6 +380,10 @@ if __name__ == "__main__":
         ss = np.random.choice(
             sorted(list(data_dict.keys())),args.subsample_size,replace=False)
         data_dict = {k:data_dict[k] for k in ss}
+        
+    if args.target_spacing[0] == "infer":
+        target_spacing_dict = spacing_values_from_dataset_json(
+            data_dict,key=keys[0],n_workers=args.n_workers)
 
     all_pids = [k for k in data_dict]
 
@@ -389,47 +394,92 @@ if __name__ == "__main__":
     if args.batch_size is not None:
         network_config["batch_size"] = args.batch_size
     
-    transform_arguments = {
-        "all_keys": all_keys,
-        "image_keys": keys,
-        "label_keys": label_keys,
-        "non_adc_keys": non_adc_keys,
-        "adc_keys": adc_keys,
-        "target_spacing": args.target_spacing,
-        "intp": intp,
-        "intp_resampling_augmentations": intp_resampling_augmentations,
-        "possible_labels": args.possible_labels,
-        "positive_labels": args.positive_labels,
-        "adc_factor": args.adc_factor,
-        "all_aux_keys": all_aux_keys,
-        "resize_keys": resize_keys,
-        "feature_keys": feature_keys,
-        "aux_key_net": aux_key_net,
-        "feature_key_net": feature_key_net,
-        "resize_size": args.resize_size,
-        "pad_size": args.pad_size,
-        "crop_size": args.crop_size,
-        "random_crop_size": args.random_crop_size,
-        "label_mode": label_mode,
-        "fill_missing": args.missing_to_empty is not None,
-        "brunet": args.unet_model == "brunet"}
-    transform_arguments_val = {k:transform_arguments[k]
-                               for k in transform_arguments}
-    transform_arguments_val["random_crop_size"] = None
-    transform_arguments_val["crop_size"] = None
-    augment_arguments = {
-        "augment":args.augment,
-        "all_keys":all_keys,
-        "image_keys":keys,
-        "t2_keys":t2_keys,
-        "random_crop_size":args.random_crop_size,
-        "n_crops":args.n_crops}
-    if args.random_crop_size:
-        get_all_crops_transform = [GetAllCropsd(
-            args.image_keys + ["mask"],args.random_crop_size)]
+    if args.folds is None:
+        if args.n_folds > 1:
+            fold_generator = KFold(
+                args.n_folds,shuffle=True,random_state=args.seed).split(all_pids)
+        else:
+            fold_generator = iter(
+                [train_test_split(range(len(all_pids)),test_size=0.2)])
     else:
-        get_all_crops_transform = []
-    if args.pre_load == False:
+        args.folds = parse_ids(args.folds)
+        folds = []
+        for fold_idx,val_ids in enumerate(args.folds):
+            train_idxs = [i for i,x in enumerate(all_pids) if x not in val_ids]
+            val_idxs = [i for i,x in enumerate(all_pids) if x in val_ids]
+            if len(train_idxs) == 0:
+                print("No train samples in fold {}".format(fold_idx))
+                continue
+            if len(val_idxs) == 0:
+                print("No val samples in fold {}".format(fold_idx))
+                continue
+            folds.append([train_idxs,val_idxs])
+        args.n_folds = len(folds)
+        fold_generator = iter(folds)
+    
+    output_file = open(args.metric_path,'w')
+    for val_fold in range(args.n_folds):
+        print("="*80)
+        print("Starting fold={}".format(val_fold))
+        
+        train_idxs,val_idxs = next(fold_generator)
+        if args.use_val_as_train_val == False:
+            train_idxs,train_val_idxs = train_test_split(train_idxs,test_size=0.15)
+        else:
+            train_val_idxs = val_idxs
+        train_pids = [all_pids[i] for i in train_idxs]
+        train_val_pids = [all_pids[i] for i in train_val_idxs]
+        val_pids = [all_pids[i] for i in val_idxs]
+        train_list = [data_dict[pid] for pid in train_pids]
+        train_val_list = [data_dict[pid] for pid in train_val_pids]
+        val_list = [data_dict[pid] for pid in val_pids]
+
+        if args.target_spacing[0] == "infer":
+            target_spacing = get_spacing_quantile(
+                {k:target_spacing_dict[k] for k in train_pids})
+        else:
+            target_spacing = [float(x) for x in args.target_spacing]
+
+        transform_arguments = {
+            "all_keys": all_keys,
+            "image_keys": keys,
+            "label_keys": label_keys,
+            "non_adc_keys": non_adc_keys,
+            "adc_keys": adc_keys,
+            "target_spacing": target_spacing,
+            "intp": intp,
+            "intp_resampling_augmentations": intp_resampling_augmentations,
+            "possible_labels": args.possible_labels,
+            "positive_labels": args.positive_labels,
+            "adc_factor": args.adc_factor,
+            "all_aux_keys": all_aux_keys,
+            "resize_keys": resize_keys,
+            "feature_keys": feature_keys,
+            "aux_key_net": aux_key_net,
+            "feature_key_net": feature_key_net,
+            "resize_size": args.resize_size,
+            "pad_size": args.pad_size,
+            "crop_size": args.crop_size,
+            "random_crop_size": args.random_crop_size,
+            "label_mode": label_mode,
+            "fill_missing": args.missing_to_empty is not None,
+            "brunet": args.unet_model == "brunet"}
+        transform_arguments_val = {k:transform_arguments[k]
+                                for k in transform_arguments}
+        transform_arguments_val["random_crop_size"] = None
+        transform_arguments_val["crop_size"] = None
+        augment_arguments = {
+            "augment":args.augment,
+            "all_keys":all_keys,
+            "image_keys":keys,
+            "t2_keys":t2_keys,
+            "random_crop_size":args.random_crop_size,
+            "n_crops":args.n_crops}
+        if args.random_crop_size:
+            get_all_crops_transform = [GetAllCropsd(
+                args.image_keys + ["mask"],args.random_crop_size)]
+        else:
+            get_all_crops_transform = []
         transforms_train = [
             *get_transforms("pre",**transform_arguments),
             get_augmentations(**augment_arguments),
@@ -443,81 +493,24 @@ if __name__ == "__main__":
         transforms_val = [
             *get_transforms("pre",**transform_arguments_val),
             *get_transforms("post",**transform_arguments_val)]
-    else:
-        transforms_train = [
-            get_augmentations(**augment_arguments),
-            *get_transforms("post",**transform_arguments_val)]
 
-        transforms_train_val = [
-            *get_all_crops_transform,
-            *get_transforms("post",**transform_arguments_val)]
-
-        transforms_val = [
-            *get_transforms("post",**transform_arguments_val)]
-        
-        transform_all_data = get_transforms("pre",**transform_arguments)
-
-        path_list = [data_dict[k] for k in all_pids]
-        # load using cache dataset because it handles parallel processing
-        # and then convert to list
-        dataset_full = monai.data.CacheDataset(
-            path_list,
-            monai.transforms.Compose(transform_all_data),
-            num_workers=args.n_workers)
-        dataset_full = [{k:x[k] for k in x if "transforms" not in k} 
-                         for x in dataset_full]
-
-    if network_config["spatial_dimensions"] == 2:
-        transforms_train.append(
-            RandomSlices(["image","mask"],"mask",n=8,base=0.05))
-        transforms_train_val.append(
-            SlicesToFirst(["image","mask"]))
-        transforms_val.append(
-            SlicesToFirst(["image","mask"]))
-        collate_fn_train = collate_last_slice
-        collate_fn_val = collate_last_slice
-    elif args.random_crop_size is not None:
-        collate_fn_train = safe_collate_crops
-        collate_fn_val = safe_collate
-    else:
-        collate_fn_train = safe_collate
-        collate_fn_val = safe_collate
-
-    if args.folds is None:
-        if args.n_folds > 1:
-            fold_generator = KFold(
-                args.n_folds,shuffle=True,random_state=args.seed).split(all_pids)
+        if network_config["spatial_dimensions"] == 2:
+            transforms_train.append(
+                RandomSlices(["image","mask"],"mask",n=8,base=0.05))
+            transforms_train_val.append(
+                SlicesToFirst(["image","mask"]))
+            transforms_val.append(
+                SlicesToFirst(["image","mask"]))
+            collate_fn_train = collate_last_slice
+            collate_fn_val = collate_last_slice
+        elif args.random_crop_size is not None:
+            collate_fn_train = safe_collate_crops
+            collate_fn_val = safe_collate
         else:
-            fold_generator = iter(
-                [train_test_split(range(len(all_pids)),test_size=0.2)])
-    else:
-        if os.path.exists(args.folds[0]) and len(args.folds) == 1:
-            args.folds = args.folds[0]
-            with open(args.folds) as o:
-                args.folds = [x.strip() for x in o.readlines()]
-        folds = []
-        for fold_idx,val_ids in enumerate(args.folds):
-            val_ids = val_ids.split(',')
-            train_idxs = [i for i,x in enumerate(all_pids) if x not in val_ids]
-            val_idxs = [i for i,x in enumerate(all_pids) if x in val_ids]
-            if len(train_idxs) == 0:
-                print("No train samples in fold {}".format(fold_idx))
-                continue
-            if len(val_idxs) == 0:
-                print("No val samples in fold {}".format(fold_idx))
-                continue
-            folds.append([train_idxs,val_idxs])
-        args.n_folds = len(folds)
-        fold_generator = iter(folds)
-
-    output_file = open(args.metric_path,'w')
-    for val_fold in range(args.n_folds):
-        print("="*80)
-        print("Starting fold={}".format(val_fold))
-        torch.cuda.empty_cache()
-        gc.collect()
+            collate_fn_train = safe_collate
+            collate_fn_val = safe_collate
+            
         callbacks = [RichProgressBar()]
-
         ckpt_path = None
 
         ckpt_callback,ckpt_path,status = get_ckpt_callback(
@@ -538,44 +531,18 @@ if __name__ == "__main__":
             if len(args.from_checkpoint) >= (val_fold+1):
                 ckpt_path = args.from_checkpoint[val_fold]
                 print("Resuming training from checkpoint in {}".format(ckpt_path))
-
-        train_idxs,val_idxs = next(fold_generator)
-        if args.use_val_as_train_val == False:
-            train_idxs,train_val_idxs = train_test_split(train_idxs,test_size=0.15)
-        else:
-            train_val_idxs = val_idxs
-        if args.pre_load == False:
-            train_pids = [all_pids[i] for i in train_idxs]
-            train_val_pids = [all_pids[i] for i in train_val_idxs]
-            val_pids = [all_pids[i] for i in val_idxs]
-            train_list = [data_dict[pid] for pid in train_pids]
-            train_val_list = [data_dict[pid] for pid in train_val_pids]
-            val_list = [data_dict[pid] for pid in val_pids]
-            train_dataset = monai.data.CacheDataset(
-                train_list,
-                monai.transforms.Compose(transforms_train),
-                num_workers=args.n_workers,cache_rate=args.cache_rate)
-            train_dataset_val = monai.data.CacheDataset(
-                train_val_list,
-                monai.transforms.Compose(transforms_train_val),
-                num_workers=args.n_workers)
-            validation_dataset = monai.data.Dataset(
-                val_list,
-                monai.transforms.Compose(transforms_val))
-
-        else:
-            train_list = [dataset_full[i] for i in train_idxs]
-            train_val_list = [dataset_full[i] for i in train_val_idxs]
-            val_list = [dataset_full[i] for i in val_idxs]
-            train_dataset = monai.data.CacheDataset(
-                train_list,
-                monai.transforms.Compose(transforms_train))
-            train_dataset_val = monai.data.CacheDataset(
-                train_val_list,
-                monai.transforms.Compose(transforms_train_val))
-            validation_dataset = monai.data.CacheDataset(
-                val_list,
-                monai.transforms.Compose(transforms_val))
+        
+        train_dataset = monai.data.CacheDataset(
+            train_list,
+            monai.transforms.Compose(transforms_train),
+            num_workers=args.n_workers,cache_rate=args.cache_rate)
+        train_dataset_val = monai.data.CacheDataset(
+            train_val_list,
+            monai.transforms.Compose(transforms_train_val),
+            num_workers=args.n_workers)
+        validation_dataset = monai.data.Dataset(
+            val_list,
+            monai.transforms.Compose(transforms_val))
 
         # calculate the mean/std of tabular features
         if feature_keys is not None:
@@ -703,8 +670,12 @@ if __name__ == "__main__":
             network_config['kernel_sizes'] = [3 for _ in network_config['depth']]
             # the last sum is for the bottleneck layer
             network_config['strides'] = [2]
-            network_config['strides'].extend(network_config_ssl[
-                "backbone_args"]["maxpool_structure"])
+            if "backbone_args" in network_config_ssl:
+                mpl = network_config_ssl[
+                    "backbone_args"]["maxpool_structure"]
+            else:
+                mpl = network_config_ssl["maxpool_structure"]
+            network_config['strides'].extend(mpl)
             res_ops = [[x.input_layer,*x.operations] for x in backbone]
             res_pool_ops = [[x.first_pooling,*x.pooling_operations]
                             for x in backbone]
