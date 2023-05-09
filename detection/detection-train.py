@@ -50,7 +50,14 @@ if __name__ == "__main__":
         help="Shape key in dataset JSON")
     parser.add_argument(
         '--mask_key',dest='mask_key',type=str,default=None,
-        help="Box key in dataset JSON")
+        help="Mask key in dataset JSON")
+    parser.add_argument(
+        '--mask_mode',dest='mask_mode',type=str,default="mask_is_labels",
+        choices=["mask_is_labels","infer_labels","single_object"],
+        help="If using mask_key, defines how boxes are inferred. mask_is_labels\
+            uses the mask as labels; infer_labels infers connected components \
+            using skimage.measure.label; single_object assumes the mask represents\
+            a single, not necessarily connected, object.")
     parser.add_argument(
         '--target_spacing',dest='target_spacing',type=str,nargs="+",
         help="Target spacing (if 'infer' then this is inferred from the training\
@@ -240,7 +247,8 @@ if __name__ == "__main__":
             "box_class_key":box_class_key,
             "shape_key":shape_key,
             "box_key":box_key,
-            "mask_key":mask_key}
+            "mask_key":mask_key,
+            "mask_mode":args.mask_mode}
 
         transforms_train = get_transforms_detection_pre(
             **transform_arguments_pre)
@@ -345,7 +353,9 @@ if __name__ == "__main__":
             max_epochs=args.max_epochs,
             resume_from_last=args.resume_from_last,
             val_fold=val_fold,
-            monitor=args.monitor)
+            monitor=args.monitor,
+            metadata={"transform_arguments_pre":transform_arguments_pre,
+                      "transform_arguments_post":transform_arguments_post})
         ckpt = ckpt_callback is not None
         if status == "finished":
             continue
