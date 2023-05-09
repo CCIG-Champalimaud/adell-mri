@@ -15,12 +15,16 @@ sys.path.append(r"..")
 from lib.utils import (
     safe_collate,
     load_anchors)
-from lib.monai_transforms import get_transforms_detection
+from lib.monai_transforms import (
+    get_transforms_detection_pre,
+    get_transforms_detection_post)
 from lib.modules.object_detection import YOLONet3d
 from lib.utils.pl_utils import get_ckpt_callback,get_devices,get_logger
 from lib.utils.dataset_filters import (
     filter_dictionary_with_filters,
     filter_dictionary_with_presence)
+from lib.utils.sitk_utils import spacing_from_dataset_json
+from lib.utils.detection import anchors_from_nested_list
 from lib.utils.network_factories import get_detection_network
 
 torch.backends.cudnn.benchmark = True
@@ -34,22 +38,35 @@ if __name__ == "__main__":
         help="JSON containing dataset information",required=True)
     parser.add_argument(
         '--image_keys',dest='image_keys',type=str,nargs="+",
-        help="Image keys in dataset JSON",required=True,)
+        help="Image keys in dataset JSON",required=True)
     parser.add_argument(
-        '--box_key',dest='box_key',type=str,
-        help="Box key in dataset JSON",required=True)
+        '--box_key',dest='box_key',type=str,default="boxes",
+        help="Box key in dataset JSON")
     parser.add_argument(
-        '--box_class_key',dest='box_class_key',type=str,
-        help="Box class key in dataset JSON",required=True)
+        '--box_class_key',dest='box_class_key',type=str,default="box_classes",
+        help="Box class key in dataset JSON")
     parser.add_argument(
-        '--shape_key',dest='shape_key',type=str,
-        help="Shape key in dataset JSON",required=True)
+        '--shape_key',dest='shape_key',type=str,default="shape",
+        help="Shape key in dataset JSON")
+    parser.add_argument(
+        '--mask_key',dest='mask_key',type=str,default=None,
+        help="Box key in dataset JSON")
+    parser.add_argument(
+        '--target_spacing',dest='target_spacing',type=str,nargs="+",
+        help="Target spacing (if 'infer' then this is inferred from the training\
+            set)")
     parser.add_argument(
         '--input_size',dest='input_size',type=float,nargs='+',
-        help="Input size for network (for resize options",required=True)
+        help="Input size for network (for padding and cropping)",required=True)
+    parser.add_argument(
+        '--n_classes',dest='n_classes',type=int,default=2,
+        help="Number of classes")
     parser.add_argument(
         '--anchor_csv',dest='anchor_csv',type=str,
         help="Path to CSV file containing anchors",required=True)
+    parser.add_argument(
+        '--min_anchor_area',dest='min_anchor_area',type=float,
+        help="Minimum anchor area (filters anchors)",default=None)
     parser.add_argument(
         '--filter_on_keys',dest='filter_on_keys',type=str,default=[],nargs="+",
         help="Filters the dataset based on a set of specific key:value pairs.")
@@ -148,16 +165,23 @@ if __name__ == "__main__":
     g = torch.Generator()
     g.manual_seed(args.seed)
     
+    if args.mask_key is not None:
+        mode = "mask"
+    else:
+        mode = "boxes"
+    
     accelerator,devices,strategy = get_devices(args.dev)
 
     output_file = open(args.metric_path,'w')
 
-    anchor_array = load_anchors(args.anchor_csv)
-    n_anchors = anchor_array.shape[0]
     with open(args.dataset_json,"r") as o:
         data_dict = json.load(o)
-    data_dict = filter_dictionary_with_presence(
-        data_dict,args.image_keys + [args.box_key,args.box_class_key])
+    if mode == "boxes":
+        data_dict = filter_dictionary_with_presence(
+            data_dict,args.image_keys + [args.box_key,args.box_class_key])
+    else:
+        data_dict = filter_dictionary_with_presence(
+            data_dict,args.image_keys + [args.mask_key])        
     if len(args.filter_on_keys) > 0:
         data_dict = filter_dictionary_with_filters(
             data_dict,args.filter_on_keys)
@@ -174,34 +198,12 @@ if __name__ == "__main__":
     t2_keys = args.t2_keys if args.t2_keys else []
     box_key = args.box_key
     box_class_key = args.box_class_key
+    shape_key = args.shape_key
+    mask_key = args.mask_key
+    target_spacing = args.target_spacing
 
     with open(args.config_file,'r') as o:
         network_config = yaml.safe_load(o)
-
-    output_example = YOLONet3d(
-        n_channels=1,n_c=2,adn_fn=torch.nn.Identity,
-        anchor_sizes=anchor_array,dev=args.dev)(
-            torch.ones([1,1,*input_size]))
-    output_size = output_example[0].shape[2:]
-
-    print("Setting up transforms...")
-    transform_arguments = {
-        "keys":keys,
-        "adc_keys":adc_keys,
-        "t2_keys":t2_keys,
-        "anchor_array":anchor_array,
-        "input_size":args.input_size,
-        "output_size":output_size,
-        "iou_threshold":args.iou_threshold,
-        "box_class_key":args.box_class_key,
-        "shape_key":args.shape_key,
-        "box_key":args.box_key}
-    transforms_train = get_transforms_detection(
-        **transform_arguments,augments=args.augment)
-    transforms_train_val = get_transforms_detection(
-        **transform_arguments,augments=[])
-    transforms_val = get_transforms_detection(
-        **transform_arguments,augments=[])
 
     all_pids = [k for k in data_dict]
     if args.n_folds > 1:
@@ -221,21 +223,81 @@ if __name__ == "__main__":
         path_list_train_val = [data_dict[pid] for pid in train_val_pids]
         path_list_val = [data_dict[pid] for pid in val_pids]
 
+        if target_spacing[0] == "infer":
+            target_spacing = spacing_from_dataset_json(
+                dataset_dict={k:data_dict[k] for k in train_pids},
+                key=keys[0],
+                quantile=0.5,
+                n_workers=args.n_workers)
+        else:
+            target_spacing = [float(x) for x in target_spacing]
+
+        transform_arguments_pre = {
+            "keys":keys,
+            "adc_keys":adc_keys,
+            "input_size":input_size,
+            "target_spacing":target_spacing,
+            "box_class_key":box_class_key,
+            "shape_key":shape_key,
+            "box_key":box_key,
+            "mask_key":mask_key}
+
+        transforms_train = get_transforms_detection_pre(
+            **transform_arguments_pre)
+
         train_dataset = monai.data.CacheDataset(
             path_list_train,
             monai.transforms.Compose(transforms_train))
+
+        if args.anchor_csv == "infer":
+            anchor_array = anchors_from_nested_list(
+                train_dataset,box_key,shape_key,
+                args.iou_threshold)
+        else:
+            anchor_array = load_anchors(args.anchor_csv)
+        if args.min_anchor_area is not None:
+            print("Filtering anchor area (minimum area: {})".format(
+                args.min_anchor_area))
+            anchor_array = anchor_array[
+                np.prod(anchor_array,1) > args.min_anchor_area]
+            
+        output_example = YOLONet3d(
+            n_channels=1,n_classes=args.n_classes,adn_fn=torch.nn.Identity,
+            anchor_sizes=anchor_array,dev=args.dev)(
+                torch.ones([1,1,*input_size]))
+        output_size = output_example[0].shape[2:]
+            
+        transform_arguments_post = {
+            "keys":keys,
+            "t2_keys":t2_keys,
+            "anchor_array":anchor_array,
+            "input_size":input_size,
+            "output_size":output_size,
+            "iou_threshold":args.iou_threshold,
+            "box_class_key":box_class_key,
+            "shape_key":shape_key,
+            "box_key":box_key}
+                
+        transforms_train_val = [
+            *get_transforms_detection_pre(**transform_arguments_pre),
+            *get_transforms_detection_post(**transform_arguments_post,
+                                           augments=[])]
+        transforms_val = [
+            *get_transforms_detection_pre(**transform_arguments_pre),
+            *get_transforms_detection_post(**transform_arguments_post,
+                                           augments=[])]
+        
+        train_dataset = monai.data.CacheDataset(
+            [x for x in train_dataset],
+            monai.transforms.Compose(
+                get_transforms_detection_post(
+                    **transform_arguments_post,augments=args.augment)))
         train_dataset_val = monai.data.CacheDataset(
             path_list_train_val,
             monai.transforms.Compose(transforms_train_val))
         validation_dataset = monai.data.CacheDataset(
             path_list_val,
             monai.transforms.Compose(transforms_val))
-
-        print("Calculating weights...")
-        positive = np.sum([len(data_dict[k]['labels']) for k in data_dict])
-        total = len(data_dict) * np.prod(output_size)
-        object_weights = 1-positive/total
-        object_weights = torch.as_tensor(object_weights)
         
         class_weights = torch.as_tensor(args.class_weights)
         class_weights = class_weights.to(args.dev)
@@ -271,6 +333,9 @@ if __name__ == "__main__":
             anchor_array=anchor_array,
             n_epochs=args.max_epochs,
             warmup_steps=args.warmup_steps,
+            boxes_key=box_key,
+            box_class_key=box_class_key,
+            n_classes=args.n_classes,
             dev=devices)
         
         callbacks = [RichProgressBar()]
