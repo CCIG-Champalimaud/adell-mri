@@ -259,7 +259,8 @@ class YOLONet3d(torch.nn.Module):
                 bb_object_pred[b],class_pred[b],nms=nms,
                 correction_factor=correction_factor)
             # corrects labels shape
-            if len(o[2].shape) < 2:
+            
+            if o[0].shape[0] == 1 and len(o[2].shape) == 1:
                 o = o[0],o[1],o[2].unsqueeze(0)
             if to_dict is True:
                 o = convert_to_dict(o)
