@@ -511,8 +511,20 @@ class BBToAdjustedAnchorsd(monai.transforms.MapTransform):
 
 class MasksToBB(monai.transforms.Transform):
     """
-    Uses the connected components in a mask to calculate the bounding boxes.
+    Calculates bounding boxes from masks.
     """    
+    
+    def __init__(self,mask_mode:str="mask_is_label"):
+        """
+        Args:
+            mask_mode (str, optional): how objects in the mask are treated. 
+                mask_is_labels uses the mask as label maps; infer_labels infers 
+                connected components using skimage.measure.label; single_object assumes
+                the mask represents a single, not necessarily connected, object. 
+                Defaults to "mask_is_label".
+        """
+        self.mask_mode = mask_mode
+    
     def __call__(self,X:TensorOrNDarray)->Tuple[List[np.ndarray],
                                                 List[int],
                                                 Size2dOr3d]:
@@ -534,7 +546,13 @@ class MasksToBB(monai.transforms.Transform):
         X = X[0]
         if isinstance(X,torch.Tensor):
             X = X.cpu().numpy()
-        labels = measure.label(X,background=0)
+        if self.mask_mode == "infer_labels":
+            labels = measure.label(X,background=0)
+        elif self.mask_mode == "mask_is_labels":
+            labels = X
+        elif self.mask_mode == "single_object":
+            X = np.float32(X > 0)
+            labels = X
         unique_labels = np.unique(labels)
         unique_labels = unique_labels[unique_labels != 0]
         bounding_boxes = []
@@ -558,6 +576,7 @@ class MasksToBBd(monai.transforms.Transform):
                  bounding_box_key:str="bounding_boxes",
                  classes_key:str="classes",
                  shape_key:str="shape",
+                 mask_mode:str="mask_is_labels",
                  replace:bool=True):
         """
         Args:
@@ -573,9 +592,10 @@ class MasksToBBd(monai.transforms.Transform):
         self.bounding_box_key = bounding_box_key
         self.classes_key = classes_key
         self.shape_key = shape_key
+        self.mask_mode = mask_mode
         self.replace = replace
         
-        self.tr = MasksToBB()
+        self.tr = MasksToBB(mask_mode=mask_mode)
         
     def __call__(self,data):
         for k in list(data.keys()):
