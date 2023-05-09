@@ -526,7 +526,8 @@ if __name__ == "__main__":
             max_epochs=args.max_epochs,
             resume_from_last=args.resume_from_last,
             val_fold=val_fold,
-            monitor=args.monitor)
+            monitor=args.monitor,
+            metadata={"transform_arguments":transform_arguments})
         ckpt = ckpt_callback is not None
         if status == "finished":
             continue
