@@ -101,6 +101,8 @@ class mAP(torchmetrics.metric.Metric):
             # step 5 - update the precision recall curve 
             target_classes = tc[hit].int()
             pred_classes_proba = pcp[best_pred][hit]
+            if len(target_classes.shape) < len(pred_classes_proba.shape):
+                target_classes = target_classes.unsqueeze(0)
             if hit.sum() > 0:
                 self.average_precision.update(
                     pred_classes_proba,target_classes)
