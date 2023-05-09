@@ -1,6 +1,6 @@
 import numpy as np
 import torch
-import torch.functional as F
+import torch.nn.functional as F
 from ..modules.layers.adn_fn import get_adn_fn
 # classification
 from ..utils.batch_preprocessing import BatchPreprocessing
@@ -129,9 +129,12 @@ def get_detection_network(net_type:str,
                           class_weights:torch.Tensor,
                           train_loader_call:Callable,
                           iou_threshold:float,
+                          n_classes:int,
                           anchor_array:np.ndarray,
                           n_epochs:int,
                           warmup_steps:int,
+                          boxes_key:str,
+                          box_class_key:str,
                           dev:str)->torch.nn.Module:
     if "activation_fn" in network_config:
         act_fn = network_config["activation_fn"]
@@ -139,12 +142,14 @@ def get_detection_network(net_type:str,
         act_fn = "swish"
 
     if "classification_loss_fn" in network_config:
-        class_loss_key = network_config["classification_loss_fn"]
-        k = "binary"
+        k = "binary" if n_classes == 2 else "categorical"
         classification_loss_fn = loss_factory[k][
             network_config["classification_loss_fn"]]
     else:
-        classification_loss_fn = F.binary_cross_entropy
+        if n_classes == 2:
+            classification_loss_fn = F.binary_cross_entropy
+        else:
+            classification_loss_fn = F.cross_entropy
     
     if "object_loss_fn" in network_config:
         object_loss_key = network_config["object_loss_fn"]
@@ -161,23 +166,21 @@ def get_detection_network(net_type:str,
     if "batch_size" not in net_cfg:
         net_cfg["batch_size"] = 1
         
+    classification_loss_params = {}
     if (loss_gamma is None) or (loss_comb is None) or (class_weights is None):
         object_loss_params = {}
-        classification_loss_params = {}
     else:
         object_loss_params = get_loss_param_dict(
             1.0,loss_gamma,loss_comb,0.5)[object_loss_key]
-        classification_loss_params = get_loss_param_dict(
-            class_weights,loss_gamma,loss_comb,0.5)[class_loss_key]
 
     adn_fn = get_adn_fn(
         3,norm_fn="batch",
         act_fn=act_fn,dropout_param=dropout_param)
     network = YOLONet3dPL(
         training_dataloader_call=train_loader_call,
-        image_key="image",label_key="bb_map",boxes_key="boxes",
-        box_label_key="labels",
-        anchor_sizes=anchor_array,n_c=2,adn_fn=adn_fn,
+        image_key="image",label_key="bb_map",boxes_key=boxes_key,
+        box_label_key=box_class_key,
+        anchor_sizes=anchor_array,adn_fn=adn_fn,
         iou_threshold=iou_threshold,
         classification_loss_fn=classification_loss_fn,
         object_loss_fn=object_loss_fn,
@@ -185,6 +188,7 @@ def get_detection_network(net_type:str,
         object_loss_params=object_loss_params,
         classification_loss_params=classification_loss_params,
         n_epochs=n_epochs,warmup_steps=warmup_steps,
+        n_classes=n_classes,
         **net_cfg)
 
     return network
