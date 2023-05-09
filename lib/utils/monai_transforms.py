@@ -5,11 +5,13 @@ import torch.functional as F
 import einops
 import monai
 from skimage.morphology import convex_hull_image
+from skimage import measure
 from copy import deepcopy
 from itertools import product
 from typing import List,Iterable,Tuple,Dict,Union,Any,Optional
 from sklearn.cluster import DBSCAN
-from ..custom_types import TensorDict,TensorOrNDarray,NDArrayOrTensorDict
+from ..custom_types import (
+    TensorDict,TensorOrNDarray,NDArrayOrTensorDict,Size2dOr3d)
 
 def normalize_along_slice(X:torch.Tensor,
                           min_value:float=0.0,
@@ -287,9 +289,9 @@ class Index(monai.transforms.Transform):
                 X[k] = np.take(X[k],self.idxs,self.axis)
         return X
 
-class MaskToAdjustedAnchors(monai.transforms.Transform):
+class BBToAdjustedAnchors(monai.transforms.Transform):
     """
-    Maps bounding boxes in corner format (x1y1z1x2y2z2) into their anchor
+    Maps bounding boxes in corner format (x1y1z1x2y2z2) to their anchor
     representation.
     """
     def __init__(self,
@@ -340,7 +342,9 @@ class MaskToAdjustedAnchors(monai.transforms.Transform):
             self.long_anchors.append(
                 np.stack(long_anchor_rel,axis=-1))
 
-    def __call__(self,bb_vertices:Iterable,classes:Iterable,
+    def __call__(self,
+                 bb_vertices:Iterable,
+                 classes:Iterable,
                  shape:np.ndarray=None)->np.ndarray:
         """Converts a set of bounding box vertices into their anchor 
         representation.
@@ -360,8 +364,14 @@ class MaskToAdjustedAnchors(monai.transforms.Transform):
             size adjustments (3) to the anchor.
         """
         bb_vertices = np.array(bb_vertices)
+        if len(bb_vertices.shape) < 2:
+            bb_vertices = bb_vertices[np.newaxis,:]
         bb_vertices = np.stack([bb_vertices[:,:3],bb_vertices[:,3:]],axis=-1)
         # bb_vertices[:,:,1]-bb_vertices[:,:,0]
+        output = np.zeros([1+7*len(self.long_anchors),*self.output_sh])
+        # no vertices present
+        if bb_vertices.shape[1] == 0:
+            return output
         if shape is None:
             shape = self.input_sh
             rel_sh = self.rel_sh
@@ -369,7 +379,6 @@ class MaskToAdjustedAnchors(monai.transforms.Transform):
         else:
             rel_sh = shape/self.output_sh
             rel_bb_vert = bb_vertices/rel_sh[np.newaxis,:,np.newaxis]
-        output = np.zeros([1+7*len(self.long_anchors),*self.output_sh])
         for i in range(rel_bb_vert.shape[0]):
             hits = 0
             all_iou = []
@@ -450,9 +459,9 @@ class MaskToAdjustedAnchors(monai.transforms.Transform):
             bottom_right_output.append(bottom_right)
         return top_left_output,bottom_right_output
 
-class MaskToAdjustedAnchorsd(monai.transforms.MapTransform):
+class BBToAdjustedAnchorsd(monai.transforms.MapTransform):
     """
-    Dictionary transform of the MaskToAdjustedAnchors transforrm.
+    Dictionary transform of the BBToAdjustedAnchors transforrm.
     """
     def __init__(self,anchor_sizes:torch.Tensor,
                  input_sh:Tuple[int],output_sh:Tuple[int],iou_thresh:float,
@@ -482,7 +491,7 @@ class MaskToAdjustedAnchorsd(monai.transforms.MapTransform):
         self.input_sh = input_sh
         self.output_sh = output_sh
         self.iou_thresh = iou_thresh
-        self.mask_to_anchors = MaskToAdjustedAnchors(
+        self.mask_to_anchors = BBToAdjustedAnchors(
             self.anchor_sizes,self.input_sh,self.output_sh,self.iou_thresh)
         self.bb_key = bb_key
         self.class_key = class_key
@@ -498,6 +507,89 @@ class MaskToAdjustedAnchorsd(monai.transforms.MapTransform):
             data[self.bb_key],
             data[self.class_key],
             data[self.shape_key])
+        return data
+
+class MasksToBB(monai.transforms.Transform):
+    """
+    Uses the connected components in a mask to calculate the bounding boxes.
+    """    
+    def __call__(self,X:TensorOrNDarray)->Tuple[List[np.ndarray],
+                                                List[int],
+                                                Size2dOr3d]:
+        """
+        Converts a binary mask with a channel (first) dimension into a set of
+        bounding boxes, classes and shape. The bounding boxes are obtained as the
+        upper and lower corners of the connected components and the classes are 
+        obtained as the median value of the pixels/voxels in those connected 
+        components. The shape is the shape of the input X.
+
+        Args:
+            X (TensorOrNDarray): an array with shape [1,H,W] or [1,H,W,D].
+
+        Returns:
+            Tuple[List[np.ndarray], List[int], Size2dOr3d]: a list with bounding
+                boxes (each with size 4 or 6 depending on the number of input
+                dimensions), a list of classes and the shape of the input X.
+        """
+        X = X[0]
+        if isinstance(X,torch.Tensor):
+            X = X.cpu().numpy()
+        labels = measure.label(X,background=0)
+        unique_labels = np.unique(labels)
+        unique_labels = unique_labels[unique_labels != 0]
+        bounding_boxes = []
+        classes = []
+        for u in unique_labels:
+            coords = np.where(labels == u)
+            cl = np.median(X[coords]).round()
+            upper_corner = [x.min() for x in coords]
+            lower_corner = [x.max() for x in coords]
+            bounding_boxes.append(
+                np.concatenate([upper_corner,lower_corner]))
+            classes.append(cl)
+        return bounding_boxes,classes,X.shape
+    
+class MasksToBBd(monai.transforms.Transform):
+    """
+    Dictionary version of MaskstoBB.
+    """
+    def __init__(self,
+                 keys:List[str],
+                 bounding_box_key:str="bounding_boxes",
+                 classes_key:str="classes",
+                 shape_key:str="shape",
+                 replace:bool=True):
+        """
+        Args:
+            keys (List[str]): list of keys.
+            bounding_box_key (str): name of output bounding boxes key.
+            classes_key (str): name of output classes key.
+            shape_keys (str): name of shape key.
+            replace (bool, optional): replaces the values in bounding_box_key,
+                classes_key and shape_keys if these are already present in the
+                data dictionary. Defaults to True.
+        """
+        self.keys = keys
+        self.bounding_box_key = bounding_box_key
+        self.classes_key = classes_key
+        self.shape_key = shape_key
+        self.replace = replace
+        
+        self.tr = MasksToBB()
+        
+    def __call__(self,data):
+        for k in list(data.keys()):
+            if k in self.keys:
+                if self.bounding_box_key not in data or self.replace:
+                    bb,cl,sh = self.tr(data[k])
+                    data[self.bounding_box_key] = bb
+                    data[self.classes_key] = cl
+                    data[self.shape_key] = sh
+                elif self.bounding_box_key in data and self.replace == False:
+                        bb,cl,sh = self.tr(data[k])
+                        data[self.bounding_box_key].extend(bb)
+                        data[self.classes_key].extend(cl)
+                        data[self.shape_key] = sh
         return data
 
 class RandomFlipWithBoxes(monai.transforms.Transform):
