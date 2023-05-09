@@ -22,7 +22,9 @@ def calculate_iou(bb1:torch.Tensor,bb2:torch.Tensor,ndim:int=3)->torch.Tensor:
         bb1[:,ndim:],bb2[:,ndim:])
     inter_volume = torch.prod(inter_br - inter_tl + 1,axis=1)
     union_volume = bb_volume(bb1,ndim)+bb_volume(bb2,ndim)-inter_volume
-    return inter_volume/union_volume
+    return torch.where(union_volume > 0.0,
+                       inter_volume/union_volume,
+                       torch.zeros_like(union_volume))
 
 def nms_nd(bb:torch.Tensor,scores:torch.Tensor,
            score_threshold:float,iou_threshold:float=0.5)->torch.Tensor:
