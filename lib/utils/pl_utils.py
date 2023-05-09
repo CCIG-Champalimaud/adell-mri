@@ -9,12 +9,25 @@ import wandb
 from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.callbacks.model_checkpoint import ModelCheckpoint
 
-from typing import List,Union,Tuple
+from typing import List,Union,Tuple,Any,Dict
+
+class ModelCheckpointWithMetadata(ModelCheckpoint):
+    def __init__(self,
+                 metadata=Dict[str,Any],
+                 *args,
+                 **kwargs):
+        super().__init__(*args,**kwargs)
+        self.metadata = metadata
+    
+    def state_dict(self) -> Dict[str, Any]:
+        sd = super().state_dict()
+        sd["metadata"] = self.metadata
+        return sd
 
 def get_ckpt_callback(checkpoint_dir:str,checkpoint_name:str,
                       max_epochs:int,resume_from_last:bool,
                       val_fold:int=None,monitor="val_loss",
-                      n_best_ckpts:int=1)->ModelCheckpoint:
+                      n_best_ckpts:int=1,metadata:dict={})->ModelCheckpoint:
     """Gets a checkpoint callback for PyTorch Lightning. The format for 
     for the last and 2 best checkpoints, respectively is:
     1. "{name}_fold{fold}_last.ckpt"
@@ -52,10 +65,11 @@ def get_ckpt_callback(checkpoint_dir:str,checkpoint_name:str,
             mode = "min"
         else:
             mode = "max"
-        ckpt_callback = ModelCheckpoint(
+        ckpt_callback = ModelCheckpointWithMetadata(
             dirpath=checkpoint_dir,
             filename=ckpt_name,monitor=monitor,
-            save_last=True,save_top_k=n_best_ckpts,mode=mode)
+            save_last=True,save_top_k=n_best_ckpts,mode=mode,
+            metadata=metadata)
         
         ckpt_last = ckpt_last + "_last"
         ckpt_callback.CHECKPOINT_NAME_LAST = ckpt_last
