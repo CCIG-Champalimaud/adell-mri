@@ -137,14 +137,6 @@ class YOLONet3dPL(YOLONet3d,pl.LightningModule):
         y_corners = torch.cat([tl_y,br_y],1)
         iou,cpd,ar = self.reg_loss_fn(pred_corners,y_corners,
                                       centers_pred,centers_y)
-        b_c,h_c,w_c,d_c = torch.split(
-            torch.unique(torch.stack([b,h,w,d],1),dim=0),1,dim=1)
-        pred_class_for_loss = bb_cl[b_c,:,h_c,w_c,d_c].squeeze(1)
-        y_class_for_loss = y_class[b_c,h_c,w_c,d_c].squeeze().long()
-        cla_loss = self.classification_loss_fn(
-            pred_class_for_loss,y_class_for_loss,
-            **self.classification_loss_params)
-
         y_object = torch.zeros_like(bb_object,device=iou.device)
         y_object[b,:,h,w,d,a] = torch.unsqueeze(iou,1)
 
@@ -156,6 +148,14 @@ class YOLONet3dPL(YOLONet3d,pl.LightningModule):
         output = obj_loss.mean() * obj_weight
         output = output + ((1-iou).mean() + cpd.mean() + ar.mean()) * box_weight
         if self.n_classes > 2:
+            b_c,h_c,w_c,d_c = torch.split(
+                torch.unique(torch.stack([b,h,w,d],1),dim=0),1,dim=1)
+            pred_class_for_loss = bb_cl[b_c,:,h_c,w_c,d_c].squeeze(1)
+            y_class_for_loss = y_class[b_c,h_c,w_c,d_c].squeeze()
+            y_class_for_loss = y_class_for_loss.long()
+            cla_loss = self.classification_loss_fn(
+                pred_class_for_loss,y_class_for_loss,
+                **self.classification_loss_params)
             output = output + cla_loss.mean()
         return output.mean()
     
