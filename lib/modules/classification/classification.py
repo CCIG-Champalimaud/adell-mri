@@ -7,7 +7,7 @@ import einops
 from ...custom_types import TensorList
 from ..layers.adn_fn import ActDropNorm,get_adn_fn
 from ..layers.batch_ensemble import BatchEnsembleWrapper
-from ..layers.standard_blocks import GlobalPooling
+from ..layers.standard_blocks import GlobalPooling, simple_convolutional_block
 from ..layers.res_net import ResNet,ResNetBackboneAlt,ProjectionHead
 from ..layers.self_attention import (
     ConcurrentSqueezeAndExcite2d,ConcurrentSqueezeAndExcite3d)
@@ -63,6 +63,52 @@ def ordinal_prediction_to_class(x:torch.Tensor)->torch.Tensor:
     output[x_thresholded.sum(dim=1)>0] = 0
     return output
 
+class VGG(torch.nn.Module):
+    """
+    Very simple and naive VGG net for standard categorical classification.
+    """
+    def __init__(self, spatial_dimensions: int=3,
+                 n_channels: int=1,
+                 n_classes: int=2,
+                 ):
+        """
+        Args:
+            spatial_dimensions (int, optional): number of spatial dimensions. 
+                Defaults to 3.
+            n_channels (int, optional): number of input channels. Defaults to 
+                1.
+            n_classes (int, optional): number of classes. Defaults to 2.
+        """
+        super().__init__()
+        self.in_channels = n_channels
+        self.n_classes = n_classes
+
+        self.conv1 = simple_convolutional_block(self.in_channels, 64)
+        self.conv2 = simple_convolutional_block(128, 128)
+        self.conv3 = simple_convolutional_block(256, 256)
+
+        final_n = 1
+        self.last_act = torch.nn.Sigmoid()
+
+        self.classification_layer = torch.nn.Sequential(
+            GlobalPooling(),
+            MLP(512,final_n,[512 for _ in range(3)],
+                adn_fn=get_adn_fn(1,"batch","gelu")))
+    
+    def forward(self, X):
+        """Forward method.
+
+        Args:
+            X (torch.Tensor): input tensor
+
+        Returns:
+            torch.Tensor: output (classification)
+        """
+        X =self.conv1(X)
+        X = self.conv2(X)
+        X = self.conv3(X)
+        return self.classification_layer(X)
+
 class CatNet(torch.nn.Module):
     """
     Case class for standard categorical classification. Defaults to 
@@ -80,7 +126,7 @@ class CatNet(torch.nn.Module):
                  batch_ensemble: bool=False):
         """
         Args:
-            spatial_dimensions (int, optional): number of spatial dimenssions. 
+            spatial_dimensions (int, optional): number of spatial dimensions. 
                 Defaults to 3.
             n_channels (int, optional): number of input channels. Defaults to 
                 1.

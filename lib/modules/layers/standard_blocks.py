@@ -318,3 +318,38 @@ class DenseBlock(torch.nn.Module):
             return outputs
         else:
             return outputs[-1]
+        
+class simple_convolutional_block(torch.nn.Module):
+    def __init__(self,input_channels,first_depth):
+        """Implementation of simple vgg-style convolutional blocks.
+
+        Args:
+            input_channels (List[int]): list of input channels for convolutions.
+            first_depth (int): number of output channels for the first convolution.
+        """
+                 
+        super().__init__()
+        self.input_channels = input_channels
+        self.first_depth = first_depth
+
+
+        self.c1 = torch.nn.Conv3d(input_channels,first_depth,3, padding=1)
+        self.act1 = torch.nn.GELU()
+        self.n1 = torch.nn.BatchNorm3d(first_depth)
+        self.c2 = torch.nn.Conv3d(first_depth,first_depth*2,3, padding=1)
+        self.act2 = torch.nn.GELU()
+        self.n2 = torch.nn.BatchNorm3d(first_depth*2)
+        self.m = torch.nn.MaxPool3d(2,2)
+
+    def forward(self, x):
+        """
+        Args:
+            X (torch.Tensor): input tensor.
+        Returns:
+            torch.Tensor or TensorList
+        """
+        x = self.c1(x)
+        x = self.act1(x)
+        x = self.n1(x)
+        x = self.n2(self.act2(self.c2(x)))
+        return self.m(x)
