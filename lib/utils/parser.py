@@ -139,20 +139,28 @@ def parse_ids(id_list:List[str],
                 or JSON files")
         if id_set is None:
             id_set = list(out.keys())
-        return [out[k] for k in id_set]
+        return {k:out[k] for k in id_set}
     
-    def merge_list(nested_list:List[list]):
+    def merge_dictionary(nested_list:Dict[str,list]):
         output_list = []
-        for l in nested_list:
+        for l in nested_list.values():
             output_list.extend(l)
         return output_list
     
-    output = []
+    output = {}
     for element in id_list:
         if os.path.exists(element.split(":")[0]) is True:
-            output.extend(parse_id_file(element))
+            tmp = parse_id_file(element)
+            for k in tmp:
+                if k not in output:
+                    output[k] = []
+                output[k].extend(tmp[k])
         else:
-            output.extend([element.split(",")])
+            if "cli" not in output:
+                output["cli"] = []
+            output["cli"].extend([element.split(",")])
     if output_format == "list":
-        output = merge_list(output)
+        output = merge_dictionary(output)
+    else:
+        output = [output[k] for k in output]
     return output

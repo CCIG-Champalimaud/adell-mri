@@ -349,14 +349,9 @@ if __name__ == "__main__":
 
     data_dict = {}
     for dataset_json in args.dataset_json:
-        cur_dataset_dict = json.load(open(args.dataset_json,'r'))
+        cur_dataset_dict = json.load(open(dataset_json,'r'))
         for k in cur_dataset_dict:
             data_dict[k] = cur_dataset_dict[k]
-    if args.excluded_ids is not None:
-        args.excluded_ids = parse_ids(args.excluded_ids,
-                                      output_format="list")
-        data_dict = {k:data_dict[k] for k in data_dict
-                     if k not in args.excluded_ids}
     if args.missing_to_empty is None:
         data_dict = {
             k:data_dict[k] for k in data_dict
@@ -384,7 +379,16 @@ if __name__ == "__main__":
         ss = np.random.choice(
             sorted(list(data_dict.keys())),args.subsample_size,replace=False)
         data_dict = {k:data_dict[k] for k in ss}
-        
+
+    if args.excluded_ids is not None:
+        args.excluded_ids = parse_ids(args.excluded_ids,
+                                      output_format="list")
+        print("Removing IDs specified in --excluded_ids")
+        prev_len = len(data_dict)
+        data_dict = {k:data_dict[k] for k in data_dict
+                     if k not in args.excluded_ids}
+        print("\tRemoved {} IDs".format(prev_len - len(data_dict)))
+
     if args.target_spacing[0] == "infer":
         target_spacing_dict = spacing_values_from_dataset_json(
             data_dict,key=keys[0],n_workers=args.n_workers)
