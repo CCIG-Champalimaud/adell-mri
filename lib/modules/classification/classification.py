@@ -70,6 +70,12 @@ class VGG(torch.nn.Module):
     def __init__(self, spatial_dimensions: int=3,
                  n_channels: int=1,
                  n_classes: int=2,
+                 feature_extraction: torch.nn.Module=None,
+                 resnet_structure: List[Tuple[int,int,int,int]]=resnet_default,
+                 maxpool_structure: List[Tuple[int,int,int]]=maxpool_default,
+                 adn_fn: torch.nn.Module=None,
+                 res_type: str="resnet",
+                 batch_ensemble: bool=False,
                  ):
         """
         Args:
