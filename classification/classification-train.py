@@ -101,7 +101,7 @@ if __name__ == "__main__":
     parser.add_argument(
         '--net_type',dest='net_type',
         help="Classification type.",
-        choices=["cat","ord","unet","vit","factorized_vit"],default="cat")
+        choices=["cat","ord","unet","vit","factorized_vit", "vgg"],default="cat")
     
     # training
     parser.add_argument(

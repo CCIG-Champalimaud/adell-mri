@@ -9,7 +9,7 @@ from abc import ABC
 from .classification import (
     CatNet,OrdNet,ordinal_prediction_to_class,SegCatNet,
     UNetEncoder,GenericEnsemble,ViTClassifier,FactorizedViTClassifier,
-    TransformableTransformer,HybridClassifier)
+    TransformableTransformer,HybridClassifier, VGG)
 from ..learning_rate import CosineAnnealingWithWarmupLR
 
 try:
@@ -292,9 +292,11 @@ class ClassNetPL(ClassPLABC):
             self.network = CatNet(*self.args,**self.kwargs)
         elif self.net_type == "ord":
             self.network = OrdNet(*self.args,**self.kwargs)
+        elif self.net_type == "vgg":
+            self.network = VGG(*self.args,**self.kwargs)
         else:
             raise Exception("net_type '{}' not valid, has to be one of \
-                ['ord','cat']".format(self.net_type))
+                ['ord','cat', 'vgg']".format(self.net_type))
         self.forward = self.network.forward
         self.n_classes = self.network.n_classes
 
