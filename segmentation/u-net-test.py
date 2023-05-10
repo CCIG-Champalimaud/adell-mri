@@ -369,8 +369,6 @@ if __name__ == "__main__":
         pad_size=args.pad_size,
         resize_size=args.resize_size)
     
-    out_file = open(args.metric_path,"w")
-    
     ckpt_to_data_map = zip if args.paired is True else product
     if os.path.exists(args.test_ids[0]) and args.set_ids is not None:
         selected_test_ids = []
@@ -387,8 +385,7 @@ if __name__ == "__main__":
         checkpoint = args.checkpoints[checkpoint_idx]
         test_ids = [k for k in args.test_ids[test_idx].split(",")
                     if k in data_dict]
-        curr_dict = {k:data_dict[k] for k in data_dict
-                     if k in test_ids}
+        curr_dict = {k:data_dict[k] for k in test_ids}
         data_list = [curr_dict[k] for k in curr_dict]
         dataset = monai.data.CacheDataset(
             data_list,
@@ -398,7 +395,8 @@ if __name__ == "__main__":
         state_dict = torch.load(checkpoint)["state_dict"]
         state_dict = {k:state_dict[k] for k in state_dict
                       if "deep_supervision_ops" not in k}
-        unet.load_state_dict(state_dict)
+        unet.load_state_dict(state_dict,strict=False)
+        unet = unet.eval()
         unet = unet.to(args.dev)
         trainer = Trainer(accelerator=dev,devices=devices)
         
@@ -432,6 +430,7 @@ if __name__ == "__main__":
             v = metrics_global[k].compute().cpu().numpy().tolist()
             metrics_dict["global_metrics"][k] = v
         all_metrics.append(metrics_dict)
-        metrics_json = json.dumps(all_metrics,indent=2)
+    metrics_json = json.dumps(all_metrics,indent=2)
+    with open(args.metric_path,"w") as out_file:
         out_file.write(metrics_json)
-        gc.collect()
+    gc.collect()
