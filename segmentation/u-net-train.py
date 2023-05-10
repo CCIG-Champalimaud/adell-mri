@@ -49,7 +49,7 @@ if __name__ == "__main__":
 
     # data
     parser.add_argument(
-        '--dataset_json',dest='dataset_json',type=str,
+        '--dataset_json',dest='dataset_json',type=str,nargs="+",
         help="JSON containing dataset information",required=True)
     parser.add_argument(
         '--resize_size',dest='resize_size',type=float,nargs='+',default=None,
@@ -347,7 +347,11 @@ if __name__ == "__main__":
         args.random_crop_size = [round(x) for x in args.random_crop_size]
     label_mode = "binary" if n_classes == 2 else "cat"
 
-    data_dict = json.load(open(args.dataset_json,'r'))
+    data_dict = {}
+    for dataset_json in args.dataset_json:
+        cur_dataset_dict = json.load(open(args.dataset_json,'r'))
+        for k in cur_dataset_dict:
+            data_dict[k] = cur_dataset_dict[k]
     if args.excluded_ids is not None:
         args.excluded_ids = parse_ids(args.excluded_ids,
                                       output_format="list")
