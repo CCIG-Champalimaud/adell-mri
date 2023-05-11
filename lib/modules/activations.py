@@ -1,8 +1,7 @@
 import numpy as np
 import torch
-import torch.nn.functional as F
 
-from ..custom_types import *
+from typing import Callable
 
 activation_factory = {
     "identity": torch.nn.Identity,

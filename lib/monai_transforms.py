@@ -12,10 +12,11 @@ from .utils import (
     CopyEntryd,
     ExposeTransformKeyMetad,
     Offsetd,
-    MaskToAdjustedAnchorsd,
+    BBToAdjustedAnchorsd,
+    MasksToBBd,
     RandRotateWithBoxesd,
     SampleChannelDimd)
-from lib.modules.augmentations import (
+from .modules.augmentations import (
     generic_augments,mri_specific_augments,spatial_augments,
     AugmentationWorkhorsed)
 
@@ -81,9 +82,9 @@ def get_transforms_unet(x,
                         target_spacing: List[float],
                         intp: List[str],
                         intp_resampling_augmentations: List[str],
-                        possible_labels: List[str],
-                        positive_labels: List[str],
-                        adc_factor: float,
+                        possible_labels: List[str]=[0,1],
+                        positive_labels: List[str]=[1],
+                        adc_factor: float=1.0,
                         all_aux_keys: List[str]=[],
                         resize_keys: List[str]=[],
                         feature_keys: List[str]=[],
@@ -100,7 +101,7 @@ def get_transforms_unet(x,
         transforms = [
             monai.transforms.LoadImaged(
                 all_keys,ensure_channel_first=True,
-                allow_missing_keys=fill_missing,image_only=True)]
+                allow_missing_keys=fill_missing)]
         # "creates" empty images/masks if necessary
         if fill_missing is True:
             transforms.append(CreateImageAndWeightsd(
@@ -116,7 +117,7 @@ def get_transforms_unet(x,
         # sets intensity transforms for ADC and other sequence types
         if len(non_adc_keys) > 0:
             transforms.append(
-                monai.transforms.ScaleIntensityd(non_adc_keys,0,1))
+                monai.transforms.NormalizeIntensityd(non_adc_keys,0,1))
         if len(adc_keys) > 0:
             transforms.append(
                 ConditionalRescalingd(adc_keys,500,0.001))
@@ -137,11 +138,15 @@ def get_transforms_unet(x,
         if crop_size is not None:
             transforms.append(
                 monai.transforms.CenterSpatialCropd(all_keys,crop_size))
-        transforms.extend([monai.transforms.EnsureTyped(all_keys,dtype=torch.float32),
-                           CombineBinaryLabelsd(label_keys,"any","mask"),
-                           LabelOperatorSegmentationd(
-                               ["mask"],possible_labels,
-                               mode=label_mode,positive_labels=positive_labels)])
+        transforms.append(
+            monai.transforms.EnsureTyped(all_keys,dtype=torch.float32))
+        if label_keys is not None:
+            transforms.extend([
+                CombineBinaryLabelsd(label_keys,"any","mask"),
+                LabelOperatorSegmentationd(
+                    ["mask"],possible_labels,
+                    mode=label_mode,positive_labels=positive_labels)
+            ])
         # sets indices for random crop op
         if random_crop_size is not None:
             transforms.append(monai.transforms.FgBgToIndicesd("mask"))
@@ -168,35 +173,46 @@ def get_transforms_unet(x,
                     func=lambda x:np.reshape(x,[1])),
                 monai.transforms.ConcatItemsd(
                     feature_keys,feature_key_net)])
+        if label_keys is not None:
+            mask_key = ["mask"]
+        else:
+            mask_key = []
         if brunet is False:
             keys.append("image")
-            transforms.append(monai.transforms.ToTensord(["image","mask"],
+            transforms.append(monai.transforms.ToTensord(["image"] + mask_key,
                                                          track_meta=False))
         else:
             keys.extend(image_keys)
-            transforms.append(monai.transforms.ToTensord(image_keys + ["mask"],
+            transforms.append(monai.transforms.ToTensord(image_keys + mask_key,
                                                          track_meta=False))
-        transforms.append(monai.transforms.SelectItemsd(keys + ["mask"]))
+        transforms.append(monai.transforms.SelectItemsd(keys + mask_key))
         return transforms
 
-def get_transforms_detection(keys,
-                             adc_keys,
-                             t2_keys,
-                             anchor_array,
-                             input_size,
-                             output_size,
-                             iou_threshold,
-                             box_class_key,
-                             shape_key,
-                             box_key,
-                             augments,
-                             predict=False):
-    input_size = [int(x) for x in input_size]
+def get_transforms_detection_pre(keys:List[str],
+                                 adc_keys:List[str],
+                                 input_size:List[int],
+                                 box_class_key:str,
+                                 shape_key:str,
+                                 box_key:str,
+                                 mask_key:str,
+                                 mask_mode:str="mask_is_labels",
+                                 target_spacing:List[float]=None):
     intp_resampling = ["area" for _ in keys]
     non_adc_keys = [k for k in keys if k not in adc_keys]
+    if mask_key is not None:
+        image_keys = keys + [mask_key]
+        spacing_mode = ["bilinear" if k != mask_key else "nearest"
+                        for k in image_keys]
+    else:
+        image_keys = keys
+        spacing_mode = ["bilinear" for k in image_keys]
     transforms = [
-        monai.transforms.LoadImaged(keys,ensure_channel_first=True),
-        monai.transforms.Orientationd(keys,"RAS")]
+        monai.transforms.LoadImaged(image_keys,ensure_channel_first=True),
+        monai.transforms.Orientationd(image_keys,"RAS")]
+    if target_spacing is not None:
+        transforms.append(
+            monai.transforms.Spacingd(image_keys,target_spacing,
+                                      mode=spacing_mode))
     if len(non_adc_keys) > 0:
         transforms.append(
             monai.transforms.ScaleIntensityd(non_adc_keys,0,1))
@@ -208,13 +224,35 @@ def get_transforms_detection(keys,
         transforms.append(
             monai.transforms.ScaleIntensityd(adc_keys,None,None,-2/3))
     transforms.extend([
-        monai.transforms.Resized(keys,tuple(input_size),
-                                 mode=intp_resampling)])
+        monai.transforms.SpatialPadd(keys,input_size),
+        monai.transforms.CenterSpatialCropd(keys,input_size)])
+    if mask_key is not None:
+        transforms.append(
+            MasksToBBd(keys=[mask_key],
+                       bounding_box_key=box_key,
+                       classes_key=box_class_key,
+                       shape_key=shape_key,
+                       mask_mode=mask_mode))
+    return transforms
+
+def get_transforms_detection_post(keys:List[str],
+                                  t2_keys:List[str],
+                                  anchor_array,
+                                  input_size:List[int],
+                                  output_size:List[int],
+                                  iou_threshold:float,
+                                  box_class_key:str,
+                                  shape_key:str,
+                                  box_key:str,
+                                  augments:bool,
+                                  predict=False):
+    intp_resampling = ["area" for _ in keys]
+    transforms = []
     transforms.append(
         get_augmentations_detection(augments,keys,[box_key],
                                     t2_keys,intp_resampling))
     if predict == False:
-        transforms.append(MaskToAdjustedAnchorsd(
+        transforms.append(BBToAdjustedAnchorsd(
             anchor_sizes=anchor_array,input_sh=input_size,
             output_sh=output_size,iou_thresh=iou_threshold,
             bb_key=box_key,class_key=box_class_key,shape_key=shape_key,
@@ -373,7 +411,7 @@ def get_augmentations_unet(augment,
                 "augment can only contain {}".format(valid_arg_list))
     augments = []
     
-    prob = 0.1
+    prob = 0.2
     if "trivial" in augment:
         augments.append(monai.transforms.Identityd(image_keys))
         prob = 1.0

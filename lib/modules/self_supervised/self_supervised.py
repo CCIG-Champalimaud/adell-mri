@@ -2,7 +2,7 @@ import torch
 import torch.nn.functional as F
 from math import sqrt
 from copy import deepcopy
-from ...custom_types import *
+from ...custom_types import (Tuple)
 
 def cos_sim(x:torch.Tensor,y:torch.Tensor)->torch.Tensor:
     """Calculates the cosine similarity between x and y (wraps the functional

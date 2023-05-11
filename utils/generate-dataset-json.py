@@ -103,7 +103,8 @@ if __name__ == "__main__":
             for alt_path in paths:
                 if image_id in alt_path:
                     alt_file_paths.append(alt_path)
-        mask_path = [p for p in mask_paths if image_id in p]
+        mask_path = [p for p in mask_paths 
+                     if image_id in p.replace(args.mask_path,"")]
         if len(mask_path) == 0 and args.strict == True:
             continue
         

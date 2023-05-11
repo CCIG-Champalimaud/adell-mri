@@ -29,7 +29,8 @@ def get_relative_position_indices(window_size:Size2dOr3d)->torch.Tensor:
         torch.meshgrid(
             [torch.arange(ws) for ws in window_size]))  # n, Wh, Ww
     coords_flatten = torch.flatten(coords, 1)  # n, Wh*Ww
-    relative_coords = coords_flatten[:, :, None] - coords_flatten[:, None, :]  # n, Wh*Ww, Wh*Ww
+    relative_coords = torch.subtract(
+        coords_flatten[:, :, None],coords_flatten[:, None, :]) # n, Wh*Ww, Wh*Ww
     relative_coords = relative_coords.permute(1, 2, 0).contiguous()  # Wh*Ww, Wh*Ww, n
     for i in range(n):
         # shift to start from 0

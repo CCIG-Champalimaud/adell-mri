@@ -23,7 +23,7 @@ class mAP(torchmetrics.metric.Metric):
         # will do most of the AP heavylifting
         nc = None if n_classes==2 else n_classes
         self.average_precision = torchmetrics.AveragePrecision(
-            task="binary",num_classes=2)
+            task="binary" if nc is None else "multiclass",num_classes=nc)
         
         self.pred_list = []
         self.target_list = []
@@ -87,7 +87,7 @@ class mAP(torchmetrics.metric.Metric):
             if overlap.sum() > 0:
                 cur_pbb = pbb[overlap]
                 iou = calculate_iou(cur_bb,cur_pbb,self.ndim)
-                iou_array[i,overlap] = iou
+                iou_array[i,overlap] = iou.float()
                 any_hit = True
         
         if any_hit is True:
@@ -99,8 +99,10 @@ class mAP(torchmetrics.metric.Metric):
             hit = true_ious > self.iou_threshold
 
             # step 5 - update the precision recall curve 
-            target_classes = tc[hit]
+            target_classes = tc[hit].int()
             pred_classes_proba = pcp[best_pred][hit]
+            if len(target_classes.shape) < len(pred_classes_proba.shape):
+                target_classes = target_classes.unsqueeze(0)
             if hit.sum() > 0:
                 self.average_precision.update(
                     pred_classes_proba,target_classes)

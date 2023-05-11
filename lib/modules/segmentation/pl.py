@@ -56,8 +56,10 @@ def update_metrics(cls:pl.LightningModule,
         pred_class (torch.Tensor): class probability.
         y_class (torch.Tensor): class ground truths.
     """
-    try: y = torch.round(y).int()
-    except: pass
+    try: 
+        y = torch.round(y).int()
+    except: 
+        pass
     y = y.long()
     pred = pred.squeeze(1)
     y = y.squeeze(1)
@@ -83,7 +85,8 @@ def update_metrics(cls:pl.LightningModule,
 def get_metric_dict(nc:int,
                     bottleneck_classification:bool,
                     metric_keys:List[str]=None,
-                    prefix:str="")->Dict[str,torchmetrics.Metric]:
+                    prefix:str="",
+                    dev:str=None)->Dict[str,torchmetrics.Metric]:
     metric_dict = torch.nn.ModuleDict({})
     if nc == 2:
         md = {
@@ -94,9 +97,9 @@ def get_metric_dict(nc:int,
                 num_classes=1,multiclass=False)}
     else:
         md = {"IoU":lambda: torchmetrics.JaccardIndex(nc,average="macro"),
-                "Pr":lambda: torchmetrics.Precision(nc,average="macro"),
-                "F1":lambda: torchmetrics.FBetaScore(nc,average="macro"),
-                "Dice":lambda: torchmetrics.Dice(nc,average="macro")}
+              "Pr":lambda: torchmetrics.Precision(nc,average="macro"),
+              "F1":lambda: torchmetrics.FBetaScore(nc,average="macro"),
+              "Dice":lambda: torchmetrics.Dice(nc,average="macro")}
     if bottleneck_classification is True:
         md["AUC_bn"] = torchmetrics.AUROC
     if metric_keys is None:
@@ -104,6 +107,8 @@ def get_metric_dict(nc:int,
     for k in metric_keys:
         if k in md:
             metric_dict[prefix+k] = md[k]()
+    if dev is not None:
+        metric_dict = {k:metric_dict[k].to(dev) for k in metric_dict}
     return metric_dict
 
 class UNetBasePL(pl.LightningModule,ABC):
@@ -175,7 +180,7 @@ class UNetBasePL(pl.LightningModule,ABC):
 
         return prediction,pred_class,loss,class_loss,output_loss
 
-    def training_step(self,batch,batch_idx):
+    def unpack_batch(self,batch):
         x, y = batch[self.image_key],batch[self.label_key]
         if self.skip_conditioning_key is not None:
             x_cond = batch[self.skip_conditioning_key]
@@ -189,6 +194,32 @@ class UNetBasePL(pl.LightningModule,ABC):
             x_fc = batch[self.feature_conditioning_key]
         else:
             x_fc = None
+        return x,x_cond,x_fc,y,y_class
+    
+    def unpack_batch_prediction(self,batch):
+        x = batch[self.image_key]
+        if self.skip_conditioning_key is not None:
+            x_cond = batch[self.skip_conditioning_key]
+        else:
+            x_cond = None
+        if self.feature_conditioning_key is not None:
+            x_fc = batch[self.feature_conditioning_key]
+        else:
+            x_fc = None
+        return x,x_cond,x_fc
+
+    def predict_step(self,batch,batch_idx=0,not_batched=False):
+        x,x_cond,x_fc = self.unpack_batch_prediction(batch)
+        if not_batched is True:
+            x = x.unsqueeze(0)
+            x_cond = x_cond.unsqueeze(0) if x_cond is not None else None
+            x_fc = x_fc.unsqueeze(0) if x_fc is not None else None
+        output = self.forward(
+            X=x,X_skip_layer=x_cond,X_feature_conditioning=x_fc)
+        return output
+
+    def training_step(self,batch,batch_idx):
+        x,x_cond,x_fc,y,y_class = self.unpack_batch(batch)
 
         pred_final,pred_class,loss,class_loss,output_loss = self.step(
             x,y,y_class,x_cond,x_fc)
@@ -210,19 +241,7 @@ class UNetBasePL(pl.LightningModule,ABC):
         return output_loss
     
     def validation_step(self,batch,batch_idx):
-        x, y = batch[self.image_key],batch[self.label_key]
-        if self.skip_conditioning_key is not None:
-            x_cond = batch[self.skip_conditioning_key]
-        else:
-            x_cond = None
-        if self.bottleneck_classification is True:
-            y_class = y.flatten(start_dim=1).max(1).values
-        else:
-            y_class = None
-        if self.feature_conditioning_key is not None:
-            x_fc = batch[self.feature_conditioning_key]
-        else:
-            x_fc = None
+        x,x_cond,x_fc,y,y_class = self.unpack_batch(batch)
 
         bs = x.shape[0]
         if self.train_batch_size is None:
@@ -254,19 +273,7 @@ class UNetBasePL(pl.LightningModule,ABC):
                 on_epoch=True,prog_bar=True)
 
     def test_step(self,batch,batch_idx):
-        x, y = batch[self.image_key],batch[self.label_key]
-        if self.skip_conditioning_key is not None:
-            x_cond = batch[self.skip_conditioning_key]
-        else:
-            x_cond = None
-        if self.bottleneck_classification is True:
-            y_class = y.flatten(start_dim=1).max(1).values
-        else:
-            y_class = None
-        if self.feature_conditioning_key is not None:
-            x_fc = batch[self.feature_conditioning_key]
-        else:
-            x_fc = None
+        x,x_cond,x_fc,y,y_class = self.unpack_batch(batch)
 
         bs = x.shape[0]
         if self.train_batch_size is None:
@@ -312,11 +319,9 @@ class UNetBasePL(pl.LightningModule,ABC):
             parameters = [
                 {'params': encoder_params,'lr':lr_encoder},
                 {'params': rest_of_params}]
-        if self.precision != 32: eps = 1e-4
-        else: eps = 1e-8
-        optimizer = torch.optim.AdamW(
-            parameters,lr=self.learning_rate,
-            weight_decay=self.weight_decay,eps=eps)
+        optimizer = torch.optim.SGD(
+            parameters,lr=self.learning_rate,momentum=0.99,
+            weight_decay=self.weight_decay)
         
         if self.cosine_decay == True:
             lr_schedulers = CosineAnnealingWithWarmupLR(

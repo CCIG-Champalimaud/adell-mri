@@ -27,7 +27,8 @@ class PolynomialLRDecay(_LRScheduler):
     Args:
         optimizer (Optimizer): Wrapped optimizer.
         max_decay_steps: after this step, we stop decreasing learning rate
-        end_learning_rate: scheduler stoping learning rate decay, value of learning rate must be this value
+        end_learning_rate: scheduler stoping learning rate decay, value of learning rate
+            must be this value
         power: The power of the polynomial.
 
     From: https://github.com/cmpark0126/pytorch-polynomial-lr-decay/blob/master/torch_poly_lr_decay/torch_poly_lr_decay.py
@@ -54,9 +55,10 @@ class PolynomialLRDecay(_LRScheduler):
         if step is None:
             step = self.last_step + 1
         self.last_step = step if step != 0 else 1
+        pow = self.power
         if self.last_step <= self.max_decay_steps:
             decay_lrs = [(base_lr - self.end_learning_rate) * 
-                         ((1 - self.last_step / self.max_decay_steps) ** (self.power)) + 
+                         ((1 - self.last_step / self.max_decay_steps) ** (pow)) + 
                          self.end_learning_rate for base_lr in self.base_lrs]
             self._last_lr = []
             for param_group, lr in zip(self.optimizer.param_groups, decay_lrs):
@@ -87,7 +89,8 @@ class CosineAnnealingWithWarmupLR(_LRScheduler):
         self.start_decay = float_to_epochs(self.start_decay,self.T_max)
         
         self.last_lr = None
-        super(CosineAnnealingWithWarmupLR, self).__init__(optimizer, last_epoch, verbose)
+        super(CosineAnnealingWithWarmupLR, self).__init__(
+            optimizer, last_epoch, verbose)
 
     def get_lr(self):
         return self._get_closed_form_lr()

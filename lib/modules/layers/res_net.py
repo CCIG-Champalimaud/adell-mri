@@ -352,7 +352,7 @@ class ProjectionHead(torch.nn.Module):
 class ResNet(torch.nn.Module):
     def __init__(self,
                  backbone_args:dict,
-                 projection_head_args:dict,
+                 projection_head_args:dict=None,
                  prediction_head_args:dict=None):
         """Quick way of creating a ResNet.
 
@@ -376,15 +376,16 @@ class ResNet(torch.nn.Module):
             **self.backbone_args)
     
     def init_projection_head(self):
-        try:
-            d = self.projection_head_args["structure"][-1]
-            norm_fn = self.projection_head_args["adn_fn"](d).norm_fn
-        except:
-            norm_fn = torch.nn.LayerNorm
-        self.projection_head = torch.nn.Sequential(
-            ProjectionHead(
-                **self.projection_head_args),
-            norm_fn(d))
+        if self.prediction_head_args is not None:
+            try:
+                d = self.projection_head_args["structure"][-1]
+                norm_fn = self.projection_head_args["adn_fn"](d).norm_fn
+            except:
+                norm_fn = torch.nn.LayerNorm
+            self.projection_head = torch.nn.Sequential(
+                ProjectionHead(
+                    **self.projection_head_args),
+                norm_fn(d))
 
     def init_prediction_head(self):
         if self.prediction_head_args is not None:

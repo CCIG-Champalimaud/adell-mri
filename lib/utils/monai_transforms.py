@@ -5,10 +5,13 @@ import torch.functional as F
 import einops
 import monai
 from skimage.morphology import convex_hull_image
+from skimage import measure
 from copy import deepcopy
 from itertools import product
 from typing import List,Iterable,Tuple,Dict,Union,Any,Optional
-from ..custom_types import TensorDict,TensorOrNDarray,NDArrayOrTensorDict
+from sklearn.cluster import DBSCAN
+from ..custom_types import (
+    TensorDict,TensorOrNDarray,NDArrayOrTensorDict,Size2dOr3d)
 
 def normalize_along_slice(X:torch.Tensor,
                           min_value:float=0.0,
@@ -104,7 +107,8 @@ class ConvertToOneHot(monai.transforms.Transform):
         return X
 
 class PrintShaped(monai.transforms.Transform):
-    """Convenience MONAI transform that prints the shape of elements in a 
+    """
+    Convenience MONAI transform that prints the shape of elements in a 
     dictionary of tensors. Used for debugging.
     """
     def __init__(self,prefix=""):
@@ -112,12 +116,15 @@ class PrintShaped(monai.transforms.Transform):
 
     def __call__(self,X):
         for k in X:
-            try: print(self.prefix,k,X[k].shape)
-            except: pass
+            try: 
+                print(self.prefix,k,X[k].shape)
+            except Exception: 
+                pass
         return X
 
 class PrintSumd(monai.transforms.Transform):
-    """Convenience MONAI transform that prints the sum of elements in a 
+    """
+    Convenience MONAI transform that prints the sum of elements in a 
     dictionary of tensors. Used for debugging.
     """
     def __init__(self,prefix=""):
@@ -125,12 +132,15 @@ class PrintSumd(monai.transforms.Transform):
 
     def __call__(self,X):
         for k in X:
-            try: print(self.prefix,k,X[k].sum())
-            except: pass
+            try: 
+                print(self.prefix,k,X[k].sum())
+            except Exception: 
+                pass
         return X
     
 class PrintRanged(monai.transforms.Transform):
-    """Convenience MONAI transform that prints the sum of elements in a 
+    """
+    Convenience MONAI transform that prints the sum of elements in a 
     dictionary of tensors. Used for debugging.
     """
     def __init__(self,prefix=""):
@@ -138,12 +148,15 @@ class PrintRanged(monai.transforms.Transform):
 
     def __call__(self,X):
         for k in X:
-            try: print(self.prefix,k,X[k].min(),X[k].max())
-            except: pass
+            try: 
+                print(self.prefix,k,X[k].min(),X[k].max())
+            except Exception: 
+                pass
         return X
 
 class PrintTyped(monai.transforms.Transform):
-    """Convenience MONAI transform that prints the type of elements in a 
+    """
+    Convenience MONAI transform that prints the type of elements in a 
     dictionary of tensors. Used for debugging.
     """
     def __init__(self,prefix=""):
@@ -155,7 +168,8 @@ class PrintTyped(monai.transforms.Transform):
         return X
 
 class Printd(monai.transforms.Transform):
-    """Convenience MONAI transform that prints elements. Used for debugging.
+    """
+    Convenience MONAI transform that prints elements. Used for debugging.
     """
     def __init__(self,prefix="",keys=None):
         self.prefix = prefix
@@ -171,14 +185,16 @@ class Printd(monai.transforms.Transform):
         return X
 
 class RandomSlices(monai.transforms.RandomizableTransform):
+    """
+    Randomly samples slices from a volume (assumes the slice dimension
+    is the last dimension). A segmentation map (corresponding to 
+    `label_key`) is used to calculate the number of positive elements
+    for each slice and these are used as sampling weights for the slice
+    extraction.
+    """
     def __init__(self,keys:List[str],label_key:List[str],
                  n:int=1,base:float=0.001,seed=None):
-        """Randomly samples slices from a volume (assumes the slice dimension
-        is the last dimension). A segmentation map (corresponding to 
-        `label_key`) is used to calculate the number of positive elements
-        for each slice and these are used as sampling weights for the slice
-        extraction.
-
+        """
         Args:
             keys (List[str]): keys for which slices will be retrieved.
             label_key (List[str]): segmentation map that will be used to 
@@ -234,9 +250,11 @@ class RandomSlices(monai.transforms.RandomizableTransform):
         return X
 
 class SlicesToFirst(monai.transforms.Transform):
+    """
+    Returns the slices as the first spatial dimension.
+    """
     def __init__(self,keys:List[str]):
-        """Returns the slices as the first spatial dimension.
-
+        """
         Args:
             keys (List[str]): keys for which slices will be retrieved.
         """
@@ -248,12 +266,14 @@ class SlicesToFirst(monai.transforms.Transform):
         return X
 
 class Index(monai.transforms.Transform):
+    """
+    Indexes tensors in a dictionary at a given dimension `axis`.
+    Useful for datasets such as the MONAI Medical Decathlon, where 
+    arrays are composed of more than one modality and we only care about
+    a specific modality.
+    """
     def __init__(self,keys:List[str],idxs:List[int],axis:int):
-        """Indexes tensors in a dictionary at a given dimension `axis`.
-        Useful for datasets such as the MONAI Medical Decathlon, where 
-        arrays are composed of more than one modality and we only care about
-        a specific modality.
-
+        """
         Args:
             keys (List[str]): list of keys to tensors which will be indexed.
             idxs (List[int]): indices that will be retrieved.
@@ -269,15 +289,17 @@ class Index(monai.transforms.Transform):
                 X[k] = np.take(X[k],self.idxs,self.axis)
         return X
 
-class MaskToAdjustedAnchors(monai.transforms.Transform):
+class BBToAdjustedAnchors(monai.transforms.Transform):
+    """
+    Maps bounding boxes in corner format (x1y1z1x2y2z2) to their anchor
+    representation.
+    """
     def __init__(self,
                  anchor_sizes:Union[np.ndarray,List[List]],
                  input_sh:Iterable,
                  output_sh:Iterable,
                  iou_thresh:float):
-        """Maps bounding boxes in corner format (x1y1z1x2y2z2) into their 
-        anchor representation.
-
+        """
         Args:
             anchor_sizes (Union[np.ndarray,List[List]]): a two dimensional
             array or list of lists containing anchors in corner format.
@@ -320,7 +342,9 @@ class MaskToAdjustedAnchors(monai.transforms.Transform):
             self.long_anchors.append(
                 np.stack(long_anchor_rel,axis=-1))
 
-    def __call__(self,bb_vertices:Iterable,classes:Iterable,
+    def __call__(self,
+                 bb_vertices:Iterable,
+                 classes:Iterable,
                  shape:np.ndarray=None)->np.ndarray:
         """Converts a set of bounding box vertices into their anchor 
         representation.
@@ -340,8 +364,14 @@ class MaskToAdjustedAnchors(monai.transforms.Transform):
             size adjustments (3) to the anchor.
         """
         bb_vertices = np.array(bb_vertices)
+        if len(bb_vertices.shape) < 2:
+            bb_vertices = bb_vertices[np.newaxis,:]
         bb_vertices = np.stack([bb_vertices[:,:3],bb_vertices[:,3:]],axis=-1)
         # bb_vertices[:,:,1]-bb_vertices[:,:,0]
+        output = np.zeros([1+7*len(self.long_anchors),*self.output_sh])
+        # no vertices present
+        if bb_vertices.shape[1] == 0:
+            return output
         if shape is None:
             shape = self.input_sh
             rel_sh = self.rel_sh
@@ -349,7 +379,6 @@ class MaskToAdjustedAnchors(monai.transforms.Transform):
         else:
             rel_sh = shape/self.output_sh
             rel_bb_vert = bb_vertices/rel_sh[np.newaxis,:,np.newaxis]
-        output = np.zeros([1+7*len(self.long_anchors),*self.output_sh])
         for i in range(rel_bb_vert.shape[0]):
             hits = 0
             all_iou = []
@@ -430,13 +459,15 @@ class MaskToAdjustedAnchors(monai.transforms.Transform):
             bottom_right_output.append(bottom_right)
         return top_left_output,bottom_right_output
 
-class MaskToAdjustedAnchorsd(monai.transforms.MapTransform):
+class BBToAdjustedAnchorsd(monai.transforms.MapTransform):
+    """
+    Dictionary transform of the BBToAdjustedAnchors transforrm.
+    """
     def __init__(self,anchor_sizes:torch.Tensor,
                  input_sh:Tuple[int],output_sh:Tuple[int],iou_thresh:float,
                  bb_key:str="bb",class_key:str="class",shape_key:str="shape",
                  output_key:Dict[str,str]={}):
-        """Dictionary transform of the MaskToAdjustedAnchors transforrm.
-
+        """
         Args:
             anchor_sizes (Union[np.ndarray,List[List]]): a two dimensional
                 array or list of lists containing anchors in corner format.
@@ -460,7 +491,7 @@ class MaskToAdjustedAnchorsd(monai.transforms.MapTransform):
         self.input_sh = input_sh
         self.output_sh = output_sh
         self.iou_thresh = iou_thresh
-        self.mask_to_anchors = MaskToAdjustedAnchors(
+        self.mask_to_anchors = BBToAdjustedAnchors(
             self.anchor_sizes,self.input_sh,self.output_sh,self.iou_thresh)
         self.bb_key = bb_key
         self.class_key = class_key
@@ -468,18 +499,125 @@ class MaskToAdjustedAnchorsd(monai.transforms.MapTransform):
         self.output_key = output_key
     
     def __call__(self,data:dict)->dict:
-        if self.output_key is not None: out_k = self.output_key
-        else: out_k = self.bb_key
+        if self.output_key is not None: 
+            out_k = self.output_key
+        else: 
+            out_k = self.bb_key
         data[out_k] = self.mask_to_anchors(
             data[self.bb_key],
             data[self.class_key],
             data[self.shape_key])
         return data
 
-class RandomFlipWithBoxes(monai.transforms.Transform):
-    def __init__(self,axes=[0,1,2],prob=0.5):
-        """Randomly augmentatat images and bounding boxes by flipping axes.
+class MasksToBB(monai.transforms.Transform):
+    """
+    Calculates bounding boxes from masks.
+    """    
+    
+    def __init__(self,mask_mode:str="mask_is_label"):
+        """
+        Args:
+            mask_mode (str, optional): how objects in the mask are treated. 
+                mask_is_labels uses the mask as label maps; infer_labels infers 
+                connected components using skimage.measure.label; single_object assumes
+                the mask represents a single, not necessarily connected, object. 
+                Defaults to "mask_is_label".
+        """
+        self.mask_mode = mask_mode
+    
+    def __call__(self,X:TensorOrNDarray)->Tuple[List[np.ndarray],
+                                                List[int],
+                                                Size2dOr3d]:
+        """
+        Converts a binary mask with a channel (first) dimension into a set of
+        bounding boxes, classes and shape. The bounding boxes are obtained as the
+        upper and lower corners of the connected components and the classes are 
+        obtained as the median value of the pixels/voxels in those connected 
+        components. The shape is the shape of the input X.
 
+        Args:
+            X (TensorOrNDarray): an array with shape [1,H,W] or [1,H,W,D].
+
+        Returns:
+            Tuple[List[np.ndarray], List[int], Size2dOr3d]: a list with bounding
+                boxes (each with size 4 or 6 depending on the number of input
+                dimensions), a list of classes and the shape of the input X.
+        """
+        X = X[0]
+        if isinstance(X,torch.Tensor):
+            X = X.cpu().numpy()
+        if self.mask_mode == "infer_labels":
+            labels = measure.label(X,background=0)
+        elif self.mask_mode == "mask_is_labels":
+            labels = X
+        elif self.mask_mode == "single_object":
+            X = np.float32(X > 0)
+            labels = X
+        unique_labels = np.unique(labels)
+        unique_labels = unique_labels[unique_labels != 0]
+        bounding_boxes = []
+        classes = []
+        for u in unique_labels:
+            coords = np.where(labels == u)
+            cl = np.median(X[coords]).round()
+            upper_corner = [x.min() for x in coords]
+            lower_corner = [x.max() for x in coords]
+            bounding_boxes.append(
+                np.concatenate([upper_corner,lower_corner]))
+            classes.append(cl)
+        return bounding_boxes,classes,X.shape
+    
+class MasksToBBd(monai.transforms.Transform):
+    """
+    Dictionary version of MaskstoBB.
+    """
+    def __init__(self,
+                 keys:List[str],
+                 bounding_box_key:str="bounding_boxes",
+                 classes_key:str="classes",
+                 shape_key:str="shape",
+                 mask_mode:str="mask_is_labels",
+                 replace:bool=True):
+        """
+        Args:
+            keys (List[str]): list of keys.
+            bounding_box_key (str): name of output bounding boxes key.
+            classes_key (str): name of output classes key.
+            shape_keys (str): name of shape key.
+            replace (bool, optional): replaces the values in bounding_box_key,
+                classes_key and shape_keys if these are already present in the
+                data dictionary. Defaults to True.
+        """
+        self.keys = keys
+        self.bounding_box_key = bounding_box_key
+        self.classes_key = classes_key
+        self.shape_key = shape_key
+        self.mask_mode = mask_mode
+        self.replace = replace
+        
+        self.tr = MasksToBB(mask_mode=mask_mode)
+        
+    def __call__(self,data):
+        for k in list(data.keys()):
+            if k in self.keys:
+                if self.bounding_box_key not in data or self.replace:
+                    bb,cl,sh = self.tr(data[k])
+                    data[self.bounding_box_key] = bb
+                    data[self.classes_key] = cl
+                    data[self.shape_key] = sh
+                elif self.bounding_box_key in data and self.replace == False:
+                        bb,cl,sh = self.tr(data[k])
+                        data[self.bounding_box_key].extend(bb)
+                        data[self.classes_key].extend(cl)
+                        data[self.shape_key] = sh
+        return data
+
+class RandomFlipWithBoxes(monai.transforms.Transform):
+    """
+    Randomly augmentatat images and bounding boxes by flipping axes.
+    """
+    def __init__(self,axes=[0,1,2],prob=0.5):
+        """
         Args:
             axes (list, optional): list of axes to flip. Defaults to [0,1,2].
             prob (float, optional): rotation probability. Defaults to 0.5.
@@ -509,14 +647,16 @@ class RandomFlipWithBoxes(monai.transforms.Transform):
         return images,boxes
 
 class RandomFlipWithBoxesd(monai.transforms.MapTransform):
+    """
+    Dictionary transform for RandomFlipWithBoxes.
+    """
     def __init__(
         self,
         image_keys:List[str],
         box_key:str,
         box_key_nest:str=None,
         axes:List[int]=[0,1,2],prob:float=0.5):
-        """Dictionary transform for RandomFlipWithBoxes.
-
+        """
         Args:
             image_keys (List[str]): keys for images that will be flipped.
             box_key (str): keys for bounding boxes that will be flipped.
@@ -552,6 +692,11 @@ class RandomFlipWithBoxesd(monai.transforms.MapTransform):
         return data
 
 class RandomAffined(monai.transforms.RandomizableTransform):
+    """
+    Reimplementation of the RandAffined transform in MONAI but works 
+    with differently sized inputs without forcing all inputs to the same
+    shape.
+    """
     def __init__(
         self,
         keys:List[str],
@@ -564,10 +709,7 @@ class RandomAffined(monai.transforms.RandomizableTransform):
         scale_range:Union[Tuple[int,int,int],Tuple[int,int]]=[0,0,0],
         device:"str"="cpu",
         copy:bool=False):
-        """Reimplementation of the RandAffined transform in MONAI but works 
-        with differently sized inputs without forcing all inputs to the same
-        shape.
-
+        """
         Args:
             keys (List[str]): list of keys that will be randomly transformed.
             spatial_sizes (List[Union[Tuple[int,int,int],Tuple[int,int]]]): dimension
@@ -652,6 +794,12 @@ class RandomAffined(monai.transforms.RandomizableTransform):
         return data
 
 class LabelOperatord(monai.transforms.Transform):
+    """
+    Label operator
+
+    Args:
+        monai (_type_): _description_
+    """
     def __init__(self,keys:str,possible_labels:List[int],
                  mode:str="cat",positive_labels:List[int]=[1],
                  output_keys:Dict[str,str]={}):
@@ -663,7 +811,7 @@ class LabelOperatord(monai.transforms.Transform):
 
         self.possible_labels = self.possible_labels
         self.possible_labels_match = {
-            l:i for i,l in enumerate(self.possible_labels)}
+            label:i for i,label in enumerate(self.possible_labels)}
 
     def binary(self,x):
         if isinstance(x,list) or isinstance(x,tuple):
@@ -705,7 +853,7 @@ class LabelOperatorSegmentationd(monai.transforms.Transform):
 
         self.possible_labels = self.possible_labels
         self.possible_labels_match = {
-            l:i for i,l in enumerate(self.possible_labels)}
+            labels:i for i,labels in enumerate(self.possible_labels)}
 
     def binary(self,x):
         return np.isin(x,self.positive_labels).astype(np.float32)
@@ -760,6 +908,10 @@ class CombineBinaryLabelsd(monai.transforms.Transform):
         return X
 
 class ConditionalRescaling(monai.transforms.Transform):
+    """
+    Rescales an array using scale if any value in the array is larger than 
+    max_value.
+    """
     def __init__(self,max_value,scale):
         self.max_value = max_value
         self.scale = scale
@@ -770,6 +922,9 @@ class ConditionalRescaling(monai.transforms.Transform):
         return X
 
 class ConditionalRescalingd(monai.transforms.Transform):
+    """
+    Dictionary version of ConditionalRescaling.
+    """
     def __init__(self,keys,max_value,scale):
         self.keys = keys
         self.max_value = max_value
@@ -786,7 +941,11 @@ class ConditionalRescalingd(monai.transforms.Transform):
         return data
 
 class Offset(monai.transforms.Transform):
-    def __init__(self,offset=None):
+    """
+    Offsets an array using an offset value (array = array - offset). If no 
+    value is provided, the minimum value for the array is used.
+    """
+    def __init__(self,offset: float=None):
         self.offset = offset
     
     def __call__(self,data):
@@ -794,7 +953,12 @@ class Offset(monai.transforms.Transform):
         return data - offset
     
 class Offsetd(monai.transforms.MapTransform):
-    def __init__(self,keys,offset=None):
+    """
+    Dictionary version of Offset.
+    """
+    def __init__(self,
+                 keys: List[str],
+                 offset: float=None):
         self.keys = keys
         self.offset = offset
         self.tr = {k:Offset(offset) for k in self.keys}
@@ -805,6 +969,9 @@ class Offsetd(monai.transforms.MapTransform):
         return data
 
 class CopyEntryd(monai.transforms.Transform):
+    """
+    Transform that copies an entry in a dictionary with a new key.
+    """
     def __init__(self,keys,out_keys):
         self.keys = keys
         self.out_keys = out_keys
@@ -815,40 +982,6 @@ class CopyEntryd(monai.transforms.Transform):
                 if k in self.out_keys:
                     data[self.out_keys[k]] = deepcopy(data[k])
         return data
-
-class PartiallyRandomSampler(torch.utils.data.Sampler):
-    def __init__(self, classes: Iterable, 
-                 keep_classes: List[int]=[1], non_keep_ratio: float=1.0,
-                 seed:int=None) -> None:
-        self.classes = classes
-        self.keep_classes = keep_classes
-        self.non_keep_ratio = non_keep_ratio
-        self.seed = seed
-        
-        self.keep_list = []
-        self.non_keep_list = []
-
-        for x,c in enumerate(self.classes):
-            if c in self.keep_classes:
-                self.keep_list.append(x)
-            else:
-                self.non_keep_list.append(x)
-        self.n_keep = len(self.keep_list)
-        self.n = len(self.keep_list) + int(self.n_keep*(self.non_keep_ratio))
-
-        if self.seed is None:
-            self.seed = np.random.randint(1e6)
-        self.rng = np.random.default_rng(self.seed)
-
-    def __iter__(self):
-        rand_list = [
-            *self.keep_list,*self.rng.choice(
-                self.non_keep_list,int(self.n_keep*(self.non_keep_ratio)))]
-        self.rng.shuffle(rand_list)
-        yield from iter(rand_list)
-
-    def __len__(self) -> int:
-        return self.n
 
 class FastResample(monai.transforms.Transform):
     def __init__(self,target:List[float],keys=List[str],mode=List[str]):
@@ -893,6 +1026,10 @@ class FastResample(monai.transforms.Transform):
         return X
 
 class ExposeTransformKeyd(monai.transforms.Transform):
+    """
+    Exposes metadata keys for a given input dictionary. Deprecated since MONAI
+    moved to MetaTensors.
+    """
     def __init__(self,
                  transform_key: str,
                  transform_class: str,
@@ -915,6 +1052,9 @@ class ExposeTransformKeyd(monai.transforms.Transform):
         return X
     
 class ExposeTransformKeyMetad(monai.transforms.Transform):
+    """
+    Exposes metadata transform values for a given input dictionary.
+    """
     def __init__(self,
                  key: str,
                  transform_class: str,
@@ -939,13 +1079,16 @@ class ExposeTransformKeyMetad(monai.transforms.Transform):
         return X
 
 class Dropout(monai.transforms.Transform):
+    """
+    Drops specific channels from a tensor.
+    """
     def __init__(self,
                  channel:int,
                  dim:int=0):
         self.channel = channel
         self.dim = dim
 
-    def __call__(self,X):
+    def __call__(self,X:torch.Tensor):
         keep_idx = torch.ones(X.shape[self.dim]).to(X.device)
         keep_idx[self.channel] = 0.
         reshape_sh = torch.ones(len(X.shape))
@@ -954,6 +1097,9 @@ class Dropout(monai.transforms.Transform):
         return X * keep_idx
     
 class Dropoutd(monai.transforms.Transform):
+    """
+    Dictionary version of Dropout.
+    """
     def __init__(self,
                  keys:Union[str,List[str]],
                  channel:Union[int,List[int]],
@@ -978,6 +1124,9 @@ class Dropoutd(monai.transforms.Transform):
         return X
     
 class RandomDropout(monai.transforms.RandomizableTransform):
+    """
+    Randomly drops channels.
+    """
     def __init__(self,
                  dim:int=0,
                  prob:float=0.1):
@@ -999,7 +1148,11 @@ class RandomDropout(monai.transforms.RandomizableTransform):
         return Dropout(int(self.channel*img.shape[self.dim]),
                        self.dim)(img)
         
-class RandomDropoutd(monai.transforms.RandomizableTransform):
+class RandomDropoutd(monai.transforms.RandomizableTransform,
+                     monai.transforms.MapTransform):
+    """
+    Dictionary version of RandomDropout.
+    """
     def __init__(self,
                  keys:Union[str,List[str]],
                  dim:Union[int,List[int]]=0,
@@ -1022,6 +1175,10 @@ class RandomDropoutd(monai.transforms.RandomizableTransform):
         return X
     
 class CreateImageAndWeightsd(monai.transforms.Transform):
+    """
+    Replaces missing keys in the dictionary with empty tensors and creates
+    weight variables (0 if the key is absent and 1 if it is present).
+    """
     def __init__(self,keys,shape):
         self.keys = keys
         self.shape = shape
@@ -1037,7 +1194,14 @@ class CreateImageAndWeightsd(monai.transforms.Transform):
         return X
     
 class BiasFieldCorrection(monai.transforms.Transform):
-    def __init__(self,n_fitting_levels,n_iter,shrink_factor):
+    """
+    MONAI transform that automatically performs bias field correction using
+    SITK.
+    """
+    def __init__(self,
+                 n_fitting_levels:int,
+                 n_iter:int,
+                 shrink_factor:float):
         self.n_fitting_levels = n_fitting_levels
         self.n_iter = n_iter
         self.shrink_factor = shrink_factor
@@ -1074,8 +1238,15 @@ class BiasFieldCorrection(monai.transforms.Transform):
     def __call__(self,X):
         return self.correct_bias_field_from_array(X)
 
-class BiasFieldCorrectiond(monai.transforms.Transform):
-    def __init__(self,keys,n_fitting_levels,n_iter,shrink_factor):
+class BiasFieldCorrectiond(monai.transforms.MapTransform):
+    """
+    Dictionary version of BiasFieldCorrection
+    """
+    def __init__(self,
+                 keys:List[str],
+                 n_fitting_levels:int,
+                 n_iter:int,
+                 shrink_factor:int):
         self.keys = keys
         self.n_fitting_levels = n_fitting_levels
         self.n_iter = n_iter
@@ -1092,6 +1263,9 @@ class BiasFieldCorrectiond(monai.transforms.Transform):
         return X
 
 class ConvexHull(monai.transforms.Transform):
+    """
+    Calculates the convex hull of a segmentation mask.
+    """
     backend = [monai.utils.TransformBackends.NUMPY]
 
     def __init__(self) -> None:
@@ -1108,6 +1282,9 @@ class ConvexHull(monai.transforms.Transform):
         return out
 
 class ConvexHulld(monai.transforms.MapTransform):
+    """
+    Dictionary version of ConvexHull.
+    """
     backend = [monai.utils.TransformBackends.NUMPY]
 
     def __init__(self,keys:List[str]) -> None:
@@ -1359,6 +1536,9 @@ class RandRotateWithBoxesd(monai.transforms.RandomizableTransform):
         return X
     
 class SampleChannelDim(monai.transforms.Transform):
+    """
+    Randomly selects n_channels channels from a multi-channel dim.
+    """
     def __init__(self,n_channels:int,channel_dim:int=0):
         self.n_channels = n_channels
         self.channel_dim = channel_dim
@@ -1388,31 +1568,51 @@ class SampleChannelDimd(monai.transforms.MapTransform):
 class GetAllCrops(monai.transforms.Transform):
     """
     Works similarly to RandCropByPosNegLabeld but returns all the crops in 
-    a volume or image.
+    a volume or image. Pads the image such that most of the volume is contained
+    in the crops (this skips padding dimensions where the padding is greater
+    than half of the crop size).
     """
     def __init__(self,
                  size:Union[Tuple[int,int],Tuple[int,int,int]]):
         self.size = size
         self.ndim = len(size)
 
+    def get_pad_size(self,sh):
+        remainder = [(y - (x % y)) if x > y else 0 for x,y in zip(sh,self.size)]
+        remainder = [x if x < (y//2) else 0 
+                     for x,y in zip(remainder,self.size)]
+        remainder = [(x//2,x-x//2) for x in remainder]
+        pad_size = [(0,0),*remainder]
+        return pad_size
+
+    def pad(self,X):
+        # pad
+        pad_size = self.get_pad_size(X.shape)
+        X = np.pad(X,pad_size,"constant",constant_values=0)
+        return X
+
     def get_all_crops_2d(self,X:torch.Tensor)->torch.Tensor:
         sh = X.shape[1:]
+        X = self.pad(X)
         for i_1 in range(0,sh[0],self.size[0]):
             for j_1 in range(0,sh[1],self.size[1]):
                 i_2 = i_1 + self.size[0]
                 j_2 = j_1 + self.size[1]
-                if (i_2 < sh[0]+1) and (j_2 < sh[1]+1):
+                if all([i_2 < (sh[0] + 1),j_2 < (sh[1] + 1)]):
                     yield X[:,i_1:i_2,j_1:j_2]
 
     def get_all_crops_3d(self,X:torch.Tensor)->torch.Tensor:
         sh = [x for x in X.shape[1:]]
+        X = self.pad(X)        
         for i_1 in range(0,sh[0],self.size[0]):
             for j_1 in range(0,sh[1],self.size[1]):
                 for k_1 in range(0,sh[2],self.size[2]):
                     i_2 = i_1 + self.size[0]
                     j_2 = j_1 + self.size[1]
                     k_2 = k_1 + self.size[2]
-                    if (i_2 < (sh[0]+1)) and (j_2 < (sh[1]+1)) and (k_2 < (sh[2]+1)):
+                    if all([i_2 < (sh[0] + 1),
+                            j_2 < (sh[1] + 1),
+                            k_2 < (sh[2] + 1)]):
                         yield X[:,i_1:i_2,j_1:j_2,k_1:k_2]
 
     def get_all_crops(self,X:torch.Tensor)->torch.Tensor:
@@ -1452,3 +1652,79 @@ class GetAllCropsd(monai.transforms.MapTransform):
                     output[k] = X[k]
             outputs.append(output)
         return outputs
+    
+class DbscanAssistedSegmentSelection(monai.transforms.MapTransform):
+    """
+    A segment ("connected" component) selection module. It uses DBSCAN under the
+    hood to get rid of spurious, small and noisy activations while maintaining 
+    loosely connected components as specified using min_dist. If nothing else is
+    specified, then the this will just get rid of small noise specs; if 
+    filter_by_size==True it will filter by size and return the largest keep_n 
+    segments. If filter_by_dist_to_centre==True, this will return only the segment
+    which is closest to the centre. If more than one channel is provided, it performs
+    this separately for each channel.
+    """
+    def __init__(self,
+                 min_dist:int=1,
+                 filter_by_size:bool=False,
+                 filter_by_dist_to_centre:bool=False,
+                 keep_n:int=1):
+        self.min_dist = min_dist
+        self.filter_by_size = filter_by_size
+        self.filter_by_dist_to_centre = filter_by_dist_to_centre
+        self.keep_n = keep_n
+    
+    def __call__(self, X: Union[torch.Tensor,np.ndarray]):
+        sh = np.array(X.shape[1:])
+        image_centre = sh / 2
+        if isinstance(X,torch.Tensor):
+            X = X.detach().cpu().numpy()
+            is_tensor = True
+        else:
+            is_tensor = False
+        output = []
+        for i in range(X.shape[0]):
+            dbscan = DBSCAN(self.min_dist)
+            coords = np.stack(np.where(X[i] > 0.5),1)
+            labels = dbscan.fit(coords).labels_
+            unique_labels = np.unique(labels)
+            unique_labels = unique_labels[unique_labels > 0]
+            
+            output[i] = np.zeros(*sh)
+            
+            dist_to_centre = {}
+            sizes = {}
+            for label in unique_labels:
+                idxs = labels == label
+                dist_to_centre[label] = np.square(
+                    np.mean(coords[idxs]) - image_centre)
+                sizes[label] = np.sum(idxs)
+            
+            labels_to_keep = []
+            if self.filter_by_size == True:
+                sorted_labels = sorted(sizes.keys(),key=lambda k: -sizes[k])
+                if len(sorted_labels) > self.keep_n:
+                    sorted_labels = sorted_labels[:self.keep_n]
+                labels_to_keep.extend(sorted_labels)
+            
+            if self.filter_by_dist_to_centre == True:
+                sorted_labels = sorted(dist_to_centre.keys(),
+                                       key=lambda k: sizes[k])
+                label_to_keep = None
+                idx = 0
+                while label_to_keep is None:
+                    curr_label = sorted_labels[idx]
+                    if self.filter_by_size == True:
+                        if curr_label in labels_to_keep == True:
+                            label_to_keep = curr_label
+                    else:
+                        label_to_keep = curr_label
+                    idx += 1
+                labels_to_keep = [label_to_keep]
+            for label in labels_to_keep:
+                output[i][coords[labels == label]] = 1.0
+        
+        output = np.stack(output)
+        if is_tensor:
+            output = torch.as_tensor(output)
+        return output

@@ -12,7 +12,7 @@ from ...custom_types import List,Tuple
 class YOLONet3d(torch.nn.Module):
     def __init__(self,
                  backbone_str:str="resnet",
-                 n_channels:int=1,n_c:int=2,
+                 n_channels:int=1,n_classes:int=2,
                  anchor_sizes:List=np.ones([1,6]),dev:str="cuda",
                  resnet_structure:List[Tuple[int,int,int,int]]=resnet_default,
                  maxpool_structure:List[Tuple[int,int,int]]=maxpool_default,
@@ -24,7 +24,7 @@ class YOLONet3d(torch.nn.Module):
         Args:
             n_channels (int, optional): number of input channels. Defaults to 
                 1.
-            n_c (int, optional): number of classes. Defaults to 2.
+            n_classes (int, optional): number of classes. Defaults to 2.
             anchor_sizes (List, optional): anchor sizes. Defaults to 
                 np.ones([1,6]).
             dev (str, optional): device for memory allocation. Defaults to 
@@ -45,7 +45,7 @@ class YOLONet3d(torch.nn.Module):
         super().__init__()
         self.backbone_str = backbone_str
         self.in_channels = n_channels
-        self.n_c = n_c
+        self.n_classes = n_classes
         self.anchor_sizes = anchor_sizes
         self.resnet_structure = resnet_structure
         self.maxpool_structure = maxpool_structure
@@ -59,10 +59,12 @@ class YOLONet3d(torch.nn.Module):
 
     def init_anchor_tensors(self):
         self.anchor_tensor = [
-            torch.reshape(torch.Tensor(anchor_size),[3,1,1,1])
+            torch.reshape(torch.as_tensor(anchor_size),[3,1,1,1])
             for anchor_size in self.anchor_sizes]
         self.anchor_tensor = torch.cat(
             self.anchor_tensor,dim=0).to(self.dev)
+        self.anchor_tensor = torch.nn.Parameter(
+            self.anchor_tensor,requires_grad=False)
 
     def init_layers(self):
         if self.backbone_str == "resnet":
@@ -105,7 +107,7 @@ class YOLONet3d(torch.nn.Module):
             self.adn_fn(last_size),
             torch.nn.Conv3d(last_size,self.n_b,1),
             torch.nn.Sigmoid())
-        if self.n_c == 2:
+        if self.n_classes == 2:
             self.classifiation_layer = torch.nn.Sequential(
                 torch.nn.Conv3d(last_size,last_size,1),
                 self.adn_fn(last_size),
@@ -115,7 +117,7 @@ class YOLONet3d(torch.nn.Module):
             self.classifiation_layer = torch.nn.Sequential(
                 torch.nn.Conv3d(last_size,last_size,1),
                 self.adn_fn(last_size),
-                torch.nn.Conv3d(last_size,self.n_c,1),
+                torch.nn.Conv3d(last_size,self.n_classes,1),
                 torch.nn.Softmax(dim=1))
     
     def forward(self,X:torch.Tensor)->torch.Tensor:
@@ -189,7 +191,7 @@ class YOLONet3d(torch.nn.Module):
         long_centers = bb_center_pred[:,x,y,z,a].swapaxes(0,1)
         if correction_factor is not None:
             long_centers = long_centers * correction_factor.unsqueeze(0)
-        if self.n_c > 2:
+        if self.n_classes > 2:
             long_classes = class_pred[:,x,y,z].swapaxes(0,-1)
         else:
             long_classes = bb_object_pred[:,x,y,z,a].swapaxes(0,1)
@@ -256,6 +258,10 @@ class YOLONet3d(torch.nn.Module):
                 bb_size_pred[b],bb_center_pred[b],
                 bb_object_pred[b],class_pred[b],nms=nms,
                 correction_factor=correction_factor)
+            # corrects labels shape
+            
+            if o[0].shape[0] == 1 and len(o[2].shape) == 1:
+                o = o[0],o[1],o[2].unsqueeze(0)
             if to_dict is True:
                 o = convert_to_dict(o)
             output.append(o)

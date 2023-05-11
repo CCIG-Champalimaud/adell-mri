@@ -89,6 +89,10 @@ if __name__ == "__main__":
         help="Subsamples data to a given size",
         default=None)
     parser.add_argument(
+        '--subsample_training_data',dest='subsample_training_data',type=float,
+        help="Subsamples training data by this fraction (for learning curves)",
+        default=None)
+    parser.add_argument(
         '--val_from_train',dest='val_from_train',default=None,type=float,
         help="Uses this fraction of training data as a validation set \
             during training")
@@ -101,7 +105,7 @@ if __name__ == "__main__":
     parser.add_argument(
         '--net_type',dest='net_type',
         help="Classification type.",
-        choices=["cat","ord","unet","vit","factorized_vit"],default="cat")
+        choices=["cat","ord","unet","vit","factorized_vit", "vgg"],default="cat")
     
     # training
     parser.add_argument(
@@ -355,6 +359,11 @@ if __name__ == "__main__":
     for val_fold in range(args.n_folds):
         train_idxs,val_idxs = next(fold_generator)
         train_pids = [all_pids[i] for i in train_idxs]
+        if args.subsample_training_data is not None:
+            train_pids = rng.choice(
+                train_pids,
+                size=len(train_pids)*args.subsample_training_data,
+                replace=False)
         val_pids = [all_pids[i] for i in val_idxs]
         if args.val_from_train is not None:
             n_train_val = int(len(train_pids)*args.val_from_train)
@@ -391,7 +400,9 @@ if __name__ == "__main__":
             max_epochs=args.max_epochs,
             resume_from_last=args.resume_from_last,
             val_fold=val_fold,
-            monitor=args.monitor)
+            monitor=args.monitor,
+            metadata={"train_pids":train_pids,
+                      "transform_arguments":transform_arguments})
         ckpt = ckpt_callback is not None
         if status == "finished":
             continue

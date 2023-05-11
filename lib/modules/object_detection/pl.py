@@ -137,10 +137,6 @@ class YOLONet3dPL(YOLONet3d,pl.LightningModule):
         y_corners = torch.cat([tl_y,br_y],1)
         iou,cpd,ar = self.reg_loss_fn(pred_corners,y_corners,
                                       centers_pred,centers_y)
-        cla_loss = self.classification_loss_fn(
-            bb_cl[b,:,h,w,d],y_class[b,h,w,d],
-            **self.classification_loss_params)
-
         y_object = torch.zeros_like(bb_object,device=iou.device)
         y_object[b,:,h,w,d,a] = torch.unsqueeze(iou,1)
 
@@ -151,7 +147,15 @@ class YOLONet3dPL(YOLONet3d,pl.LightningModule):
         box_weight = 0.1
         output = obj_loss.mean() * obj_weight
         output = output + ((1-iou).mean() + cpd.mean() + ar.mean()) * box_weight
-        if self.n_c > 2:
+        if self.n_classes > 2:
+            b_c,h_c,w_c,d_c = torch.split(
+                torch.unique(torch.stack([b,h,w,d],1),dim=0),1,dim=1)
+            pred_class_for_loss = bb_cl[b_c,:,h_c,w_c,d_c].squeeze(1)
+            y_class_for_loss = y_class[b_c,h_c,w_c,d_c].squeeze()
+            y_class_for_loss = y_class_for_loss.long()
+            cla_loss = self.classification_loss_fn(
+                pred_class_for_loss,y_class_for_loss,
+                **self.classification_loss_params)
             output = output + cla_loss.mean()
         return output.mean()
     
@@ -182,8 +186,8 @@ class YOLONet3dPL(YOLONet3d,pl.LightningModule):
     def calculate_correction_factor(self,
                                     x:torch.Tensor,
                                     y:torch.Tensor)->torch.Tensor:
-        corr_fac = torch.Tensor(np.array(x.shape[2:]))
-        corr_fac = corr_fac / torch.Tensor(np.array(y.shape[2:]))
+        corr_fac = torch.as_tensor(np.array(x.shape[2:]))
+        corr_fac = corr_fac / torch.as_tensor(np.array(y.shape[2:]))
         corr_fac = corr_fac.to(x.device)
         return corr_fac
 
@@ -216,7 +220,7 @@ class YOLONet3dPL(YOLONet3d,pl.LightningModule):
                 cur_target = [
                     {'boxes':batch[self.boxes_key][i],
                      'labels':batch[self.box_label_key][i]}
-                     for i in range(batch[self.boxes_key].shape[0])]
+                     for i in range(len(batch[self.boxes_key]))]
                 for t in cur_target:
                     if len(t['boxes'].shape) == 2:
                         t['boxes'] = torch.concat(
@@ -276,10 +280,10 @@ class YOLONet3dPL(YOLONet3d,pl.LightningModule):
         self.log("lr",last_lr)
 
     def setup_metrics(self):
-        if self.n_c == 2:
+        if self.n_classes == 2:
             C,A,M = None,None,"micro"
         else:
-            C,A,M = self.n_c,"samplewise","macro"
+            C,A,M = self.n_classes,"samplewise","macro"
         self.train_metrics = torch.nn.ModuleDict({
             "cMSE_center":torchmetrics.MeanSquaredError(),
             "sMSE_size":torchmetrics.MeanSquaredError(),
@@ -292,7 +296,8 @@ class YOLONet3dPL(YOLONet3d,pl.LightningModule):
             "v:sMSE_size":torchmetrics.MeanSquaredError(),
             "v:objF1_obj":torchmetrics.FBetaScore(
                 task="binary",threshold=self.iou_threshold),
-            "v:mAP_mAP":mAP(iou_threshold=self.iou_threshold)})
+            "v:mAP_mAP":mAP(iou_threshold=self.iou_threshold,
+                            n_classes=self.n_classes)})
         self.test_metrics = torch.nn.ModuleDict({
             "t:cMSE_center":torchmetrics.MeanSquaredError(),
             "t:sMSE_size":torchmetrics.MeanSquaredError(),
@@ -304,14 +309,14 @@ class YOLONet3dPL(YOLONet3d,pl.LightningModule):
                 task="binary",threshold=self.iou_threshold),
             "t:mAP_mAP":mAP(iou_threshold=self.iou_threshold)})
 
-        if self.n_c > 2:
+        if self.n_classes > 2:
             # no point in including this in the two class scenario
             self.train_metrics["clF1_class"] = torchmetrics.FBetaScore(
-                C,mdmc_average=A,average=M)
+                task="multiclass",num_classes=C,mdmc_average=A,average=M)
             self.val_metrics["v:clF1_class"] = torchmetrics.FBetaScore(
-                C,mdmc_average=A,average=M)
+                task="multiclass",num_classes=C,mdmc_average=A,average=M)
             self.test_metrics["t:clF1_class"] = torchmetrics.FBetaScore(
-                C,mdmc_average=A,average=M)
+                task="multiclass",num_classes=C,mdmc_average=A,average=M)
 
 class CoarseDetector3dPL(CoarseDetector3d,pl.LightningModule):
     def __init__(

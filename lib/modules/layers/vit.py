@@ -8,7 +8,10 @@ from .linear_blocks import MultiHeadSelfAttention
 from .linear_blocks import MLP
 from .regularization import ChannelDropout
 from .adn_fn import get_adn_fn
-from ...custom_types import *
+from ...custom_types import (
+    List,Dict,Tuple,Union,Callable,Size2dOr3d,TensorList)
+
+from typing import Sequence
 
 def cyclic_shift_batch(X:torch.Tensor,shift:List[int]):
     """Applies what the authors from SWIN call a "cyclic shift".
@@ -115,7 +118,8 @@ def generate_mask(image_size:Size2dOr3d,
                 img_mask[:, x[0], x[1], x[2], :] = cnt
             cnt += 1
 
-        mask_windows = window_partition(img_mask, window_size)  # nW, window_size, window_size, 1
+        mask_windows = window_partition(
+            img_mask, window_size)  # nW, window_size, window_size, 1
         mask_windows = mask_windows.view(-1,int(np.prod(window_size)))
         attn_mask = mask_windows.unsqueeze(1) - mask_windows.unsqueeze(2)
         attn_mask = attn_mask.masked_fill(

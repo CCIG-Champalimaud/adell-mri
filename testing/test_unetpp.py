@@ -31,7 +31,7 @@ def test_unetpp_base(D,sd,conv_type):
         sd,depth=D,upscale_type="transpose",padding=1,
         strides=S,kernel_sizes=K,conv_type=conv_type,
         bottleneck_classification=True)
-    o,o_aux,bb = a(i,return_aux=True)
+    o,bb,o_aux = a(i,return_aux=True)
     assert list(o.shape) == out_shape
     for x in o_aux:
         assert list(x.shape) == out_shape
@@ -58,7 +58,7 @@ def test_unetpp_base_skip(D,sd,conv_type):
         strides=S,kernel_sizes=K,conv_type=conv_type,
         bottleneck_classification=True,
         skip_conditioning=1)
-    o,o_aux,bb = a(i,return_aux=True,X_skip_layer=i_skip)
+    o,bb,o_aux = a(i,return_aux=True,X_skip_layer=i_skip)
     assert list(o.shape) == out_shape
     for x in o_aux:
         assert list(x.shape) == out_shape

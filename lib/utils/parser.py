@@ -4,12 +4,14 @@ essence, these functions replace arguments in a given argparse.Namespace using
 a given YAML configuration file.
 """
 
+import os
 import sys
 import argparse
 import yaml
-import importlib 
+import json
+import importlib
 
-from typing import Dict,Any,List
+from typing import Dict,Any,List,Union
 
 def get_dvc_params(path:str=None)->Dict[str,any]:
     """Retrieves dvc parameters recursively. For example, if the path is
@@ -115,3 +117,42 @@ def merge_args(args:argparse.Namespace,
         else:
             raise KeyError("{} is not an ArgumentParser argument".format(k))
     return args
+
+def parse_ids(id_list:List[str],
+              output_format:str="nested_list"):
+    def parse_id_file(id_file:str):
+        if ":" in id_file:
+            id_file,id_set = id_file.split(":")
+            id_set = id_set.split(",")
+        else:
+            id_set = None
+        term = id_file.split(".")[-1]
+        if term == "csv" or term == "folds":
+            with open(id_file) as o:
+                out = [x.strip().split(",") for x in o.readlines()]
+            out = {x[0]:x[1:] for x in out}
+        elif term == "json":
+            with open(id_file) as o:
+                out = json.load(o)
+        else:
+            raise NotImplemented("only supports CSV (extension .csv or .folds)\
+                or JSON files")
+        if id_set is None:
+            id_set = list(out.keys())
+        return [out[k] for k in id_set]
+    
+    def merge_list(nested_list:List[list]):
+        output_list = []
+        for l in nested_list:
+            output_list.extend(l)
+        return output_list
+    
+    output = []
+    for element in id_list:
+        if os.path.exists(element.split(":")[0]) is True:
+            output.extend(parse_id_file(element))
+        else:
+            output.extend([element.split(",")])
+    if output_format == "list":
+        output = merge_list(output)
+    return output

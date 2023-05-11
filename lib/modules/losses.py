@@ -670,7 +670,9 @@ def complete_iou_loss(
     union_area = torch.subtract(
         torch.prod(a_size,axis=-1) + torch.prod(b_size,axis=-1),
         inter_area)
-    iou = inter_area / union_area
+    iou = torch.where(union_area > 0.,
+                      inter_area / union_area,
+                      torch.zeros_like(union_area))
     # distance between centers and between corners of external bounding box 
     # for distance IoU loss
     center_distance = torch.square(a_center-b_center).sum(-1)
@@ -688,7 +690,7 @@ def complete_iou_loss(
     alpha = v/((1-iou)+v)
     ar_component = v * alpha
 
-    return iou,cpd_component,ar_component
+    return iou.float(),cpd_component,ar_component
 
 def ordinal_sigmoidal_loss(pred:torch.Tensor,
                            target:torch.Tensor,

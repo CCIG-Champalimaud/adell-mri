@@ -3,7 +3,7 @@ import torch
 from .utils import crop_to_size
 from .utils import split_int_into_n
 from .regularization import GRN
-from ...custom_types import *
+from ...custom_types import ModuleList
 
 class ResidualBlock2d(torch.nn.Module):
     def __init__(

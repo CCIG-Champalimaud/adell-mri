@@ -9,13 +9,13 @@ from abc import ABC
 from .classification import (
     CatNet,OrdNet,ordinal_prediction_to_class,SegCatNet,
     UNetEncoder,GenericEnsemble,ViTClassifier,FactorizedViTClassifier,
-    TransformableTransformer,HybridClassifier)
+    TransformableTransformer,HybridClassifier, VGG)
 from ..learning_rate import CosineAnnealingWithWarmupLR
 
 try:
     import monai
     has_monai = True
-except:
+except ModuleNotFoundError:
     has_monai = False
 
 def f1(prediction:torch.Tensor,y:torch.Tensor)->torch.Tensor:
@@ -85,7 +85,7 @@ def get_metric_dict(nc:int,
     return metric_dict
 
 def meta_tensors_to_tensors(batch):
-    if has_monai == True:
+    if has_monai is True:
         for key in batch:
             if isinstance(batch[key],monai.data.MetaTensor):
                 batch[key] = batch[key].as_tensor()
@@ -292,9 +292,11 @@ class ClassNetPL(ClassPLABC):
             self.network = CatNet(*self.args,**self.kwargs)
         elif self.net_type == "ord":
             self.network = OrdNet(*self.args,**self.kwargs)
+        elif self.net_type == "vgg":
+            self.network = VGG(*self.args,**self.kwargs)
         else:
             raise Exception("net_type '{}' not valid, has to be one of \
-                ['ord','cat']".format(self.net_type))
+                ['ord','cat', 'vgg']".format(self.net_type))
         self.forward = self.network.forward
         self.n_classes = self.network.n_classes
 
@@ -404,8 +406,10 @@ class SegCatNetPL(SegCatNet,pl.LightningModule):
             self.log(k,metrics[k],**kwargs)
 
     def loss_wrapper(self,x,y,x_cond,x_fc):
-        try: y = torch.round(y)
-        except: y = torch.round(y.float())
+        try: 
+            y = torch.round(y)
+        except Exception: 
+            y = torch.round(y.float())
         prediction = self.forward(
             x,X_skip_layer=x_cond,X_feature_conditioning=x_fc)
         prediction = torch.squeeze(prediction,1)
@@ -447,8 +451,10 @@ class SegCatNetPL(SegCatNet,pl.LightningModule):
 
         pred_final,loss = self.loss_wrapper(x,y,x_cond,x_fc)
 
-        try: y = torch.round(y).int()
-        except: pass
+        try: 
+            y = torch.round(y).int()
+        except Exception:
+            pass
         self.update_metrics(
             self.val_metrics,pred_final,y,
             on_epoch=True,prog_bar=True)
@@ -467,8 +473,10 @@ class SegCatNetPL(SegCatNet,pl.LightningModule):
 
         pred_final,loss = self.loss_wrapper(x,y,x_cond,x_fc)
 
-        try: y = torch.round(y).int()
-        except: pass
+        try: 
+            y = torch.round(y).int()
+        except: 
+            pass
         self.update_metrics(
             self.test_metrics,pred_final,y,
             on_epoch=True,on_step=False,prog_bar=True)

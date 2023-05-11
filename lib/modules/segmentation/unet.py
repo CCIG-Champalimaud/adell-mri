@@ -1,3 +1,4 @@
+import numpy as np
 import torch
 import torch.nn.functional as F
 
@@ -12,9 +13,9 @@ from ..layers.multi_resolution import (
 from ..layers.adn_fn import (
     get_adn_fn,ActDropNorm)
 from ..layers.utils import crop_to_size
-from ...custom_types import *
+from ...custom_types import ModuleList
 
-from typing import List
+from typing import List,Dict
 
 class UNet(torch.nn.Module):
     """Standard U-Net [1] implementation. Features some useful additions 
@@ -167,6 +168,8 @@ class UNet(torch.nn.Module):
             self.init_final_layer()
             if self.bottleneck_classification is True:
                 self.init_bottleneck_classifier()
+            if self.feature_conditioning == 0:
+                self.feature_conditioning = None
             if self.feature_conditioning is not None:
                 self.init_feature_conditioning_operations()
 
@@ -339,7 +342,7 @@ class UNet(torch.nn.Module):
                 if self.spatial_dimensions == 3:
                     upscale_ops.append(
                         torch.nn.ConvTranspose3d(d1,d2,s,stride=s,padding=p))
-            self.upscale_ops = torch.nn.ModuleList(upscale_ops)
+        self.upscale_ops = torch.nn.ModuleList(upscale_ops)
     
     def init_link_ops(self):
         """Initializes linking (skip) operations.
@@ -494,13 +497,16 @@ class UNet(torch.nn.Module):
             op = torch.nn.Conv3d
         if self.n_classes > 2:
             return torch.nn.Sequential(
-                op(d,d,1),self.adn_fn(d),
+                op(d,d,1),
+                self.adn_fn(d),
                 op(d,self.n_classes,1),
                 torch.nn.Softmax(dim=1))
         else:
             # coherces to a binary classification problem rather than
             # to a multiclass problem with two classes
             return torch.nn.Sequential(
+                op(d,d,1),
+                self.adn_fn(d),
                 op(d,1,1),
                 torch.nn.Sigmoid())
 
