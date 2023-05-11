@@ -13,6 +13,7 @@ from .self_supervised import (
     byol_loss, simsiam_loss, VICRegLoss,NTXentLoss)
 from ..segmentation.unet import UNet
 from ..learning_rate import CosineAnnealingWithWarmupLR
+from ...optim import LARS
 
 class BarlowTwinsPL(ResNet,pl.LightningModule):
     def __init__(
@@ -171,13 +172,16 @@ class SelfSLBasePL(pl.LightningModule,ABC):
                 params_no_decay.append(p)
             else:
                 params_decay.append(p)
-        optimizer = torch.optim.SGD(
-            params_decay + params_no_decay,
-            lr=self.learning_rate,weight_decay=self.weight_decay,
-            momentum=0.9)
         if self.lars == True:
-            from torchlars import LARS
-            optimizer = LARS(optimizer,eps=1e-8,trust_coef=0.001)
+            optimizer = LARS(
+                params_decay + params_no_decay,
+                 lr=self.learning_rate,weight_decay=self.weight_decay,
+                 momentum=0.9)
+        else:
+            optimizer = torch.optim.SGD(
+                params_decay + params_no_decay,
+                lr=self.learning_rate,weight_decay=self.weight_decay,
+                momentum=0.9)
         lr_schedulers = lr_schedulers = CosineAnnealingWithWarmupLR(
             optimizer,T_max=self.n_epochs,start_decay=self.start_decay,
             n_warmup_steps=self.warmup_steps,eta_min=1e-5)

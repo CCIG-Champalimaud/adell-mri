@@ -42,6 +42,22 @@ def filter_dicom_dict_on_presence(data_dict,all_keys):
                 if check_intersection(element.keys(),all_keys)]
     return data_dict
 
+def filter_dicom_dict_by_size(data_dict,max_size):
+    print("Filtering by size (max={})".format(
+        max_size,len(data_dict)))
+    output_dict = {}
+    removed_series = 0
+    for k in data_dict:
+        for kk in data_dict[k]:
+            if len(data_dict[k][kk]) < max_size:
+                if k not in output_dict:
+                    output_dict[k] = {}
+                output_dict[k][kk] = data_dict[k][kk]
+            else:
+                removed_series += 1
+    print("Removed={}".format(removed_series))
+    return output_dict
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
@@ -106,6 +122,9 @@ if __name__ == "__main__":
     parser.add_argument(
         '--batch_size',dest='batch_size',type=int,default=None,
         help="Overrides batch size in config file")
+    parser.add_argument(
+        '--max_slices',dest='max_slices',type=int,default=None,
+        help="Excludes studies with over max_slices")
 
     # network + training
     parser.add_argument(
@@ -219,6 +238,8 @@ if __name__ == "__main__":
     data_dict = json.load(open(args.dataset_json,'r'))
     #data_dict = filter_orientations(data_dict)
     data_dict = filter_dicom_dict_on_presence(data_dict,all_keys)
+    if args.max_slices is not None:
+        data_dict = filter_dicom_dict_by_size(data_dict,args.max_slices)
 
     if args.subsample_size is not None:
         ss = np.random.choice(
