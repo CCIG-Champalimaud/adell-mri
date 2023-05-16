@@ -101,7 +101,8 @@ class VGG(torch.nn.Module):
             MLP(512,final_n,[512 for _ in range(3)],
                 adn_fn=get_adn_fn(1,"batch","gelu")))
     
-    def forward(self, X):
+    def forward(self,X: torch.Tensor,
+                return_features:bool=False)->torch.Tensor:
         """Forward method.
 
         Args:
@@ -113,6 +114,8 @@ class VGG(torch.nn.Module):
         X =self.conv1(X)
         X = self.conv2(X)
         X = self.conv3(X)
+        if return_features == True:
+            return X
         return self.classification_layer(X)
 
 class CatNet(torch.nn.Module):
