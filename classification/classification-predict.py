@@ -4,17 +4,17 @@ import json
 import numpy as np
 import torch
 import monai
+from tqdm import tqdm
 
 import sys
 sys.path.append(r"..")
-from lib.utils.pl_utils import get_devices
 from lib.monai_transforms import get_transforms_classification as get_transforms
 from lib.modules.losses import OrdinalSigmoidalLoss
 from lib.modules.config_parsing import parse_config_unet,parse_config_cat
 from lib.utils.dataset_filters import (
-    filter_dictionary_with_filters,filter_dictionary_with_possible_labels,
-    filter_dictionary_with_presence)
+    filter_dictionary_with_filters,filter_dictionary_with_existence)
 from lib.utils.network_factories import get_classification_network
+from lib.utils.parser import parse_ids
 from lib.utils.parser import get_params,merge_args
 
 if __name__ == "__main__":
@@ -42,19 +42,11 @@ if __name__ == "__main__":
         '--adc_keys',dest='adc_keys',type=str,nargs='+',
         help="Image keys corresponding to ADC.",default=None)
     parser.add_argument(
-        '--label_keys',dest='label_keys',type=str,default="image_labels",
-        help="Label keys in the dataset JSON.")
-    parser.add_argument(
         '--filter_on_keys',dest='filter_on_keys',type=str,default=[],nargs="+",
         help="Filters the dataset based on a set of specific key:value pairs.")
     parser.add_argument(
-        '--possible_labels',dest='possible_labels',type=str,nargs='+',
-        help="All the possible labels in the data.",
-        required=True)
-    parser.add_argument(
-        '--positive_labels',dest='positive_labels',type=str,nargs='+',
-        help="Labels that should be considered positive (binarizes labels)",
-        default=None)
+        '--n_classes',dest='n_classes',type=int,
+        help="Number of classes.",required=True)
     parser.add_argument(
         '--target_spacing',dest='target_spacing',action="store",default=None,
         help="Resamples all images to target spacing",nargs='+',type=float)
@@ -84,7 +76,7 @@ if __name__ == "__main__":
     parser.add_argument(
         '--net_type',dest='net_type',
         help="Classification type. Can be categorical (cat) or ordinal (ord)",
-        choices=["cat","ord","unet","vit","factorized_vit"],default="cat")
+        choices=["cat","ord","unet","vit","factorized_vit","vgg"],default="cat")
     
     # prediction
     parser.add_argument(
@@ -126,25 +118,21 @@ if __name__ == "__main__":
     g.manual_seed(args.seed)
     rng = np.random.default_rng(args.seed)
 
-    accelerator,devices,strategy = get_devices(args.dev)
-
     if args.clinical_feature_keys is None:
         clinical_feature_keys = []
     else:
         clinical_feature_keys = args.clinical_feature_keys
 
     data_dict = json.load(open(args.dataset_json,'r'))
-    data_dict = filter_dictionary_with_possible_labels(
-        data_dict,args.possible_labels,args.label_keys)
     if len(args.filter_on_keys) > 0:
         data_dict = filter_dictionary_with_filters(
             data_dict,args.filter_on_keys)
-    data_dict = filter_dictionary_with_presence(
-        data_dict,args.image_keys + [args.label_keys])
+    data_dict = filter_dictionary_with_existence(
+        data_dict,args.image_keys)
     if args.subsample_size is not None:
         strata = {}
         for k in data_dict:
-            label = data_dict[k][args.label_keys]
+            label = None
             if label not in strata:
                 strata[label] = []
             strata[label].append(k)
@@ -154,24 +142,13 @@ if __name__ == "__main__":
         for k,s in zip(strata,split):
             ss.extend(rng.choice(strata[k],size=s,replace=False,shuffle=False))
         data_dict = {k:data_dict[k] for k in ss}
-    all_classes = []
-    for k in data_dict:
-        C = data_dict[k][args.label_keys]
-        if isinstance(C,list):
-            C = max(C)
-        all_classes.append(str(C))
-    if args.positive_labels is None:
-        n_classes = len(args.possible_labels)
-    else:
-        n_classes = 2
 
     if len(data_dict) == 0:
         raise Exception(
-            "No data available for testing \
-                (dataset={}; keys={}; labels={})".format(
+            "No data available for prediction \
+                (dataset={}; keys={})".format(
                     args.dataset_json,
-                    args.image_keys,
-                    args.label_keys()))
+                    args.image_keys))
     
     keys = args.image_keys
     adc_keys = args.adc_keys if args.adc_keys is not None else []
@@ -179,7 +156,7 @@ if __name__ == "__main__":
 
     if args.net_type == "unet":
         network_config,_ = parse_config_unet(args.config_file,
-                                             len(keys),n_classes)
+                                             len(keys),args.n_classes)
     else:
         network_config = parse_config_cat(args.config_file)
     
@@ -191,19 +168,14 @@ if __name__ == "__main__":
     
     all_pids = [k for k in data_dict]
 
-    print("Setting up transforms...")
-    label_mode = "binary" if n_classes == 2 else "cat"
+    label_mode = "binary" if args.n_classes == 2 else "cat"
     transform_arguments = {
         "keys":keys,
         "clinical_feature_keys":clinical_feature_keys,
         "adc_keys":adc_keys,
         "target_spacing":args.target_spacing,
         "crop_size":args.crop_size,
-        "pad_size":args.pad_size,
-        "possible_labels":args.possible_labels,
-        "positive_labels":args.positive_labels,
-        "label_key":args.label_keys,
-        "label_mode":label_mode}
+        "pad_size":args.pad_size}
 
     transforms_val = monai.transforms.Compose([
         *get_transforms("pre",**transform_arguments),
@@ -214,11 +186,12 @@ if __name__ == "__main__":
         extra_args = {}
     else:
         extra_args = {"return_features":True}
-        
-    for iteration in range(len(args.prediction_ids)):
-        prediction_ids = args.prediction_ids[iteration].split(",")
-        prediction_list = [data_dict[pid] for pid in prediction_ids
-                     if pid in data_dict]
+    
+    prediction_ids = parse_ids(args.prediction_ids)
+    for iteration in range(len(prediction_ids)):
+        curr_prediction_ids = [pid for pid in prediction_ids[iteration]
+                               if pid in data_dict]
+        prediction_list = [data_dict[pid] for pid in curr_prediction_ids]
         
         prediction_dataset = monai.data.CacheDataset(
             prediction_list,transforms_val,num_workers=args.n_workers)
@@ -226,15 +199,14 @@ if __name__ == "__main__":
         # PL sometimes needs a little hint to detect GPUs.
         torch.ones([1]).to("cuda" if "cuda" in args.dev else "cpu")
         
-        if n_classes == 2:
+        if args.n_classes == 2:
             network_config["loss_fn"] = torch.nn.BCEWithLogitsLoss()
         elif args.net_type == "ord":
             network_config["loss_fn"] = OrdinalSigmoidalLoss(
-                n_classes=n_classes)
+                n_classes=args.n_classes)
         else:
             network_config["loss_fn"] = torch.nn.CrossEntropy()
 
-        print("Setting up testing...")
         if args.net_type == "unet":
             act_fn = network_config["activation_fn"]
         else:
@@ -251,7 +223,7 @@ if __name__ == "__main__":
                 network_config=network_config,
                 dropout_param=0,
                 seed=None,
-                n_classes=n_classes,
+                n_classes=args.n_classes,
                 keys=keys,
                 clinical_feature_keys=clinical_feature_keys,
                 train_loader_call=None,
@@ -269,18 +241,31 @@ if __name__ == "__main__":
             state_dict = {k:state_dict[k] for k in state_dict
                           if "loss_fn.weight" not in k}
             network.load_state_dict(state_dict)
+            network = network.eval().to(args.dev)
             
-            output = {
+            output_dict = {
                 "iteration":iteration,
-                "prediction_ids":prediction_ids,
-                "checkpoint":checkpoint
+                "prediction_ids":curr_prediction_ids,
+                "checkpoint":checkpoint,
+                "predictions":{}
             }
-            for identifier,element in zip(prediction_ids,prediction_dataset):
-                output = network.forward(
-                    element.unsqueeze(0),**extra_args).detach().cpu()
-                output = output.numpy()[0].tolist()
-                output[identifier] = output
-            global_output.append(output)
+            batch = []
+            batch_ids = []
+            with tqdm(total=len(curr_prediction_ids)) as pbar:
+                for identifier,element in zip(curr_prediction_ids,
+                                              prediction_dataset):
+                    pbar.set_description("Predicting {}".format(identifier))
+                    output = network.forward(
+                        element["image"].unsqueeze(0).to(args.dev),
+                        **extra_args).detach()
+                    if args.type == "features":
+                        output = output.flatten(start_dim=2).max(-1).values.cpu()
+                    else:
+                        output = output.cpu()
+                    output = output.numpy()[0].tolist()
+                    output_dict["predictions"][identifier] = output
+                    pbar.update()
+            global_output.append(output_dict)
     
     with open(args.output_path,"w") as o:
         o.write(json.dumps(global_output))
