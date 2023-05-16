@@ -369,7 +369,6 @@ if __name__ == "__main__":
         pad_size=args.pad_size,
         resize_size=args.resize_size)
     
-    ckpt_to_data_map = zip if args.paired is True else product
     if os.path.exists(args.test_ids[0]) and args.set_ids is not None:
         selected_test_ids = []
         with open(args.test_ids[0]) as o:
@@ -381,8 +380,7 @@ if __name__ == "__main__":
     n_ckpt = len(args.checkpoints)
     n_data = len(args.test_ids)
     all_metrics = []
-    for checkpoint_idx,test_idx in ckpt_to_data_map(range(n_ckpt),range(n_data)):
-        checkpoint = args.checkpoints[checkpoint_idx]
+    for test_idx in range(n_data):
         test_ids = [k for k in args.test_ids[test_idx].split(",")
                     if k in data_dict]
         curr_dict = {k:data_dict[k] for k in test_ids}
@@ -392,44 +390,50 @@ if __name__ == "__main__":
             monai.transforms.Compose(transforms),
             num_workers=args.n_workers)
 
-        state_dict = torch.load(checkpoint)["state_dict"]
-        state_dict = {k:state_dict[k] for k in state_dict
-                      if "deep_supervision_ops" not in k}
-        unet.load_state_dict(state_dict,strict=False)
-        unet = unet.eval()
-        unet = unet.to(args.dev)
-        trainer = Trainer(accelerator=dev,devices=devices)
+        if args.paired == True:
+            checkpoint_list = [args.checkpoints[test_idx]]
+        else:
+            checkpoint_list = args.checkpoints
         
-        metrics = get_metric_dict(n_classes,False,prefix="T_",
-                                  dev=args.dev)
-        metrics_global = get_metric_dict(n_classes,False,prefix="T_",
-                                         dev=args.dev)
-        metrics_dict = {"global_metrics":{},
-                        "checkpoint":checkpoint}
-        if args.per_sample is True:
-            metrics_dict["metrics"] = {}
-        for i in trange(len(dataset)):
-            data_element = dataset[i]
-            data_element = {k:data_element[k].to(args.dev)
-                            for k in data_element}
-            test_id = test_ids[i]
-            pred = unet.predict_step(data_element,0,not_batched=True)[0][0]
-            pred = pred.round().long()
-            y = data_element["mask"].round().int()
+        for checkpoint in checkpoint_list:
+            state_dict = torch.load(checkpoint)["state_dict"]
+            state_dict = {k:state_dict[k] for k in state_dict
+                        if "deep_supervision_ops" not in k}
+            unet.load_state_dict(state_dict,strict=False)
+            unet = unet.eval()
+            unet = unet.to(args.dev)
+            trainer = Trainer(accelerator=dev,devices=devices)
+            
+            metrics = get_metric_dict(n_classes,False,prefix="T_",
+                                    dev=args.dev)
+            metrics_global = get_metric_dict(n_classes,False,prefix="T_",
+                                            dev=args.dev)
+            metrics_dict = {"global_metrics":{},
+                            "checkpoint":checkpoint}
             if args.per_sample is True:
-                metrics_dict["metrics"][test_id] = {}
-                for k in metrics:
-                    metrics[k].update(pred,y)
-                    v = metrics[k].compute().cpu().numpy().tolist()
-                    metrics_dict["metrics"][test_id][k] = v
-                    metrics[k].reset()
+                metrics_dict["metrics"] = {}
+            for i in trange(len(dataset)):
+                data_element = dataset[i]
+                data_element = {k:data_element[k].to(args.dev)
+                                for k in data_element}
+                test_id = test_ids[i]
+                pred = unet.predict_step(data_element,0,not_batched=True)[0][0]
+                pred = pred.round().long()
+                y = data_element["mask"].round().int()
+                if args.per_sample is True:
+                    metrics_dict["metrics"][test_id] = {}
+                    for k in metrics:
+                        metrics[k].update(pred,y)
+                        v = metrics[k].compute().cpu().numpy().tolist()
+                        metrics_dict["metrics"][test_id][k] = v
+                        metrics[k].reset()
+                        metrics_global[k].update(pred,y)
+                for k in metrics_global:
                     metrics_global[k].update(pred,y)
             for k in metrics_global:
-                metrics_global[k].update(pred,y)
-        for k in metrics_global:
-            v = metrics_global[k].compute().cpu().numpy().tolist()
-            metrics_dict["global_metrics"][k] = v
-        all_metrics.append(metrics_dict)
+                v = metrics_global[k].compute().cpu().numpy().tolist()
+                metrics_dict["global_metrics"][k] = v
+            all_metrics.append(metrics_dict)
     metrics_json = json.dumps(all_metrics,indent=2)
     with open(args.metric_path,"w") as out_file:
         out_file.write(metrics_json)
