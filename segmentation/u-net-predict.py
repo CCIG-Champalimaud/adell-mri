@@ -1,13 +1,14 @@
 import argparse
 import json
 import sys
+import gc
 import os
 import numpy as np
 import torch
+import SimpleITK as sitk
 import monai
-import gc
-from itertools import product
-from pytorch_lightning import Trainer
+from pathlib import Path
+from tqdm import trange
 
 sys.path.append(os.path.join(os.path.realpath(os.path.dirname(__file__)),".."))
 from lib.utils import (
@@ -36,14 +37,14 @@ if __name__ == "__main__":
         '--dataset_json',dest='dataset_json',type=str,
         help="JSON containing dataset information",required=True)
     parser.add_argument(
-        '--test_ids',dest='test_ids',type=str,nargs="+",required=True,
+        '--pred_ids',dest='pred_ids',type=str,nargs="+",required=True,
         help="Comma-separated identifiers used in testing (more than one set \
             of test ids can be specified). Can also be one CSV if set_ids is \
             specified; in that case, each line is a fold/set and the first value\
             should be the fold/set identifier.")
     parser.add_argument(
         '--set_ids',dest='set_ids',type=str,nargs="+",default=None,
-        help="Specifies substrings to select sets in test_ids")
+        help="Specifies substrings to select sets in pred_ids")
     parser.add_argument(
         '--excluded_ids',dest="excluded_ids",nargs="+",default=None,
         help="Excludes these IDs from training and testing")
@@ -61,13 +62,6 @@ if __name__ == "__main__":
         '--crop_size',dest='crop_size',action="store",
         default=None,type=float,nargs='+',
         help="Crop size after padding.")
-    parser.add_argument(
-        '--random_crop_size',dest='random_crop_size',action="store",
-        default=None,type=float,nargs='+',
-        help="Size of random crop (last step of the preprocessing pipeline).")
-    parser.add_argument(
-        '--n_crops',dest='n_crops',action="store",
-        default=1,type=int,help="Number of random crops.")
     parser.add_argument(
         '--target_spacing',dest='target_spacing',action="store",default=None,
         help="Resamples all images to target spacing",nargs='+',type=float)
@@ -139,7 +133,7 @@ if __name__ == "__main__":
     parser.add_argument(
         '--paired',dest='paired',
         action="store_true",
-        help="Test checkpoints only on the corresponding test_ids.")
+        help="Test checkpoints only on the corresponding pred_ids.")
     parser.add_argument(
         '--per_sample',dest='per_sample',
         action="store_true",
@@ -159,8 +153,8 @@ if __name__ == "__main__":
         '--picai_eval',dest='picai_eval',action="store_true",
         help="Validates model using PI-CAI metrics.")
     parser.add_argument(
-        '--metric_path',dest='metric_path',type=str,default="metrics.csv",
-        help='Path to file with CV metrics + information.')
+        '--output_path',dest='output_path',type=str,required=True,
+        help='Path to output masks.')
 
     args = parser.parse_args()
 
@@ -361,24 +355,21 @@ if __name__ == "__main__":
     
     out_file = open(args.metric_path,"w")
     
-    ckpt_to_data_map = zip if args.paired is True else product
-    if os.path.exists(args.test_ids[0]) and args.set_ids is not None:
-        selected_test_ids = []
-        with open(args.test_ids[0]) as o:
+    if os.path.exists(args.pred_ids[0]) and args.set_ids is not None:
+        selected_pred_ids = []
+        with open(args.pred_ids[0]) as o:
             for line in o:
                 for set_id in args.set_ids:
                     if set_id in line:
-                        selected_test_ids.append(line)
-        args.test_ids = selected_test_ids
+                        selected_pred_ids.append(line)
+        args.pred_ids = selected_pred_ids
     n_ckpt = len(args.checkpoints)
-    n_data = len(args.test_ids)
+    n_data = len(args.pred_ids)
     all_metrics = []
-    for checkpoint_idx,test_idx in ckpt_to_data_map(range(n_ckpt),range(n_data)):
-        checkpoint = args.checkpoints[checkpoint_idx]
-        test_ids = [k for k in args.test_ids[test_idx].split(",")
+    for pred_idx in range(n_data):
+        pred_ids = [k for k in args.pred_ids[pred_idx].split(",")
                     if k in data_dict]
-        curr_dict = {k:data_dict[k] for k in data_dict
-                     if k in test_ids}
+        curr_dict = {k:data_dict[k] for k in pred_ids}
         data_list = [curr_dict[k] for k in curr_dict]
         
         transform_input = transforms[0]
@@ -386,11 +377,39 @@ if __name__ == "__main__":
         transforms_postprocess = monai.transforms.Invertd(
             "image",transforms_preprocess)
 
-        state_dict = torch.load(checkpoint)["state_dict"]
-        state_dict = {k:state_dict[k] for k in state_dict
-                      if "deep_supervision_ops" not in k}
-        unet.load_state_dict(state_dict)
-        unet = unet.to(args.dev)
-        unet.eval()
+        dataset = monai.data.CacheDataset(
+            data_list,
+            monai.transforms.Compose(transforms),
+            num_workers=args.n_workers)
+
+        if args.paired == True:
+            checkpoint_list = [args.checkpoints[pred_idx]]
+        else:
+            checkpoint_list = args.checkpoints
         
-        gc.collect()
+        for checkpoint in checkpoint_list:
+            state_dict = torch.load(checkpoint)["state_dict"]
+            state_dict = {k:state_dict[k] for k in state_dict
+                        if "deep_supervision_ops" not in k}
+            unet.load_state_dict(state_dict)
+            unet = unet.to(args.dev)
+            unet.eval()
+            
+            for i in trange(len(dataset)):
+                data_element = dataset[i]
+                data_element = {k:data_element[k].to(args.dev)
+                                for k in data_element}
+                pred_id = pred_ids[i]
+                pred = unet.predict_step(data_element,0,not_batched=True)[0][0]
+                pred = pred.round().long()
+                pred = transforms_postprocess({"image":pred})["image"]
+
+                pred_image = sitk.GetImageFromArray(pred)
+                pred_image.CopyInformation(
+                    sitk.ReadImage(curr_dict[pred_id]["image"]))
+                pred_image = sitk.Cast(pred_image,sitk.sitkInt16)
+                output_path = Path(
+                    os.path.join(args.output_path,pred_id + ".nii.gz"))
+                output_path.parent.mkdir(parents=True,exist_ok=True)
+                sitk.WriteImage(pred_image,str(output_path))
+            gc.collect()
