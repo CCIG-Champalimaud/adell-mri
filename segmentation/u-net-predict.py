@@ -1,348 +1,396 @@
-import re
-import os
 import argparse
-import random
 import json
+import sys
+import os
 import numpy as np
 import torch
 import monai
-import SimpleITK as sitk
-from skimage import filters
-from tqdm import tqdm
+import gc
+from itertools import product
+from pytorch_lightning import Trainer
 
-import sys
-sys.path.append(r"..")
+sys.path.append(os.path.join(os.path.realpath(os.path.dirname(__file__)),".."))
 from lib.utils import (
-    ConditionalRescalingd,resample_image)
+    collate_last_slice,
+    SlicesToFirst,
+    safe_collate)
+from lib.monai_transforms import get_transforms_unet as get_transforms
 from lib.modules.layers import ResNet
-from lib.modules.segmentation import UNet
-from lib.modules.segmentation.unetpp import UNetPlusPlus
+from lib.utils.network_factories import get_segmentation_network
 from lib.modules.config_parsing import parse_config_unet,parse_config_ssl
+torch.backends.cudnn.benchmark = True
+
+def if_none_else(x,obj):
+    if x is None:
+        return obj
+    return x
+
+def inter_size(a,b):
+    return len(set.intersection(set(a),set(b)))
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     # data
     parser.add_argument(
-        '--image_paths',dest='image_paths',type=str,nargs="+",
-        help="Paths to input images (if more than one input sequence, these \
-            should be comma-separated)",required=True)
+        '--dataset_json',dest='dataset_json',type=str,
+        help="JSON containing dataset information",required=True)
     parser.add_argument(
-        '--resize_keys',dest='resize_keys',type=int,nargs='+',default=None,
+        '--test_ids',dest='test_ids',type=str,nargs="+",required=True,
+        help="Comma-separated identifiers used in testing (more than one set \
+            of test ids can be specified). Can also be one CSV if set_ids is \
+            specified; in that case, each line is a fold/set and the first value\
+            should be the fold/set identifier.")
+    parser.add_argument(
+        '--set_ids',dest='set_ids',type=str,nargs="+",default=None,
+        help="Specifies substrings to select sets in test_ids")
+    parser.add_argument(
+        '--excluded_ids',dest="excluded_ids",nargs="+",default=None,
+        help="Excludes these IDs from training and testing")
+    parser.add_argument(
+        '--resize_size',dest='resize_size',type=float,nargs='+',default=None,
+        help="Input size for network")
+    parser.add_argument(
+        '--resize_keys',dest='resize_keys',type=str,nargs='+',default=None,
         help="Keys that will be resized to input size")
+    parser.add_argument(
+        '--pad_size',dest='pad_size',action="store",
+        default=None,type=float,nargs='+',
+        help="Padding size after resizing.")
+    parser.add_argument(
+        '--crop_size',dest='crop_size',action="store",
+        default=None,type=float,nargs='+',
+        help="Crop size after padding.")
+    parser.add_argument(
+        '--random_crop_size',dest='random_crop_size',action="store",
+        default=None,type=float,nargs='+',
+        help="Size of random crop (last step of the preprocessing pipeline).")
+    parser.add_argument(
+        '--n_crops',dest='n_crops',action="store",
+        default=1,type=int,help="Number of random crops.")
     parser.add_argument(
         '--target_spacing',dest='target_spacing',action="store",default=None,
         help="Resamples all images to target spacing",nargs='+',type=float)
     parser.add_argument(
-        '--input_idx',dest='input_idx',type=int,nargs='+',
-        help="Indices for images which will be input",
+        '--image_keys',dest='image_keys',type=str,nargs='+',
+        help="Image keys in the dataset JSON. First key is used as template",
         required=True)
     parser.add_argument(
-        '--skip_idx',dest='skip_idx',type=int,default=None,
+        '--skip_key',dest='skip_key',type=str,default=None,
         nargs='+',
-        help="Indices for images used for skip connection conditioning.")
+        help="Key for image in the dataset JSON that is concatenated to the \
+            skip connections.")
     parser.add_argument(
-        '--mask_idx',dest='mask_idx',type=int,nargs='+',
-        help="Indices for images which are masks (changes interpolation)",
+        '--skip_mask_key',dest='skip_mask_key',type=str,
+        nargs='+',default=None,
+        help="Key for mask in the dataset JSON that is appended to the skip \
+            connections (can be useful for including prior mask as feature).")
+    parser.add_argument(
+        '--mask_image_keys',dest='mask_image_keys',type=str,nargs='+',
+        help="Keys corresponding to input images which are segmentation masks",
         default=None)
     parser.add_argument(
-        '--adc_idx',dest='adc_idx',type=int,nargs='+',
-        help="Indices for ADC images (normalized differently)",
+        '--adc_keys',dest='adc_keys',type=str,nargs='+',
+        help="Keys corresponding to input images which are ADC maps \
+            (normalized differently)",
         default=None)
     parser.add_argument(
-        '--features',dest='features',type=str,nargs='+',
-        help="Comma-separated features used in conditioning",
+        '--feature_keys',dest='feature_keys',type=str,nargs='+',
+        help="Keys corresponding to tabular features in the JSON dataset",
         default=None)
-    parser.add_argument(
-        '--input_size',dest='input_size',type=float,nargs='+',default=None,
-        help="Input size for network")
-    parser.add_argument(
-        '--crop_size',dest='crop_size',action="store",
-        default=None,type=float,nargs='+',
-        help="Size of central crop after resizing (if none is specified then\
-            no cropping is performed).")
     parser.add_argument(
         '--adc_factor',dest='adc_factor',type=float,default=1/3,
         help="Multiplies ADC images by this factor.")
-
-    # network
+    parser.add_argument(
+        '--bottleneck_classification',dest='bottleneck_classification',
+        action="store_true",
+        help="Predicts the maximum class in the output using the bottleneck \
+            features.")
+    parser.add_argument(
+        '--possible_labels',dest='possible_labels',type=int,nargs='+',
+        help="All the possible labels in the data.",
+        required=True)
+    parser.add_argument(
+        '--positive_labels',dest='positive_labels',type=int,nargs='+',
+        help="Labels that should be considered positive (binarizes labels)",
+        default=None)
+    parser.add_argument(
+        '--missing_to_empty',dest='missing_to_empty',
+        type=str,nargs="+",choices=["image","mask"],
+        help="If some images or masks are missing, assume they are empty \
+            tensors.")
+    
+    # network + inference
     parser.add_argument(
         '--config_file',dest="config_file",
         help="Path to network configuration file (yaml)",
         required=True)
     parser.add_argument(
-        '--unet_pp',dest='unet_pp',action="store_true",
-        help="Uses U-Net++ rather than U-Net")
-    parser.add_argument(
-        '--n_classes',dest='n_classes',type=int,
-        help='Number of classes')
+        '--unet_model',dest='unet_model',action="store",
+        choices=["unet","unetpp","brunet","unetr","swin"],
+        default="unet",help="Specifies which UNet model is used")
     parser.add_argument(
         '--res_config_file',dest='res_config_file',action="store",default=None,
         help="Uses a ResNet as a backbone (depths are inferred from this). \
             This config file is then used to parameterise the ResNet.")
     parser.add_argument(
-        '--checkpoints',dest='checkpoints',action="store",nargs="+",
-        help="Checkpoint for network")
+        '--checkpoints',dest='checkpoints',action="store",required=True,
+        help="Paths to checkpoints.",nargs="+")
+    parser.add_argument(
+        '--paired',dest='paired',
+        action="store_true",
+        help="Test checkpoints only on the corresponding test_ids.")
+    parser.add_argument(
+        '--per_sample',dest='per_sample',
+        action="store_true",
+        help="Also calculates metrics on a per sample basis.")
     
-    # inference
+    # network, pipeline
     parser.add_argument(
         '--dev',dest='dev',type=str,
-        help="Device for PyTorch training",
-        choices=["cuda","cuda:0","cuda:1","cpu"])
+        help="Device for PyTorch training")
     parser.add_argument(
         '--n_workers',dest='n_workers',
         help="Number of workers",default=1,type=int)
     parser.add_argument(
-        '--tta',dest='tta',action="store_true",
-        help="Use test-time augmentations",default=False)
+        '--n_devices',dest='n_devices',
+        help="Number of devices",default=1,type=int)
     parser.add_argument(
-        '--output_dir',dest='output_dir',
-        help='Output directory for predictions')
+        '--picai_eval',dest='picai_eval',action="store_true",
+        help="Validates model using PI-CAI metrics.")
     parser.add_argument(
-        '--output_regex',dest='output_regex',
-        help='Regex used on images to get an ID which will be used as the \
-            file name',default='[0-9]+_[0-9]+')
+        '--metric_path',dest='metric_path',type=str,default="metrics.csv",
+        help='Path to file with CV metrics + information.')
 
     args = parser.parse_args()
 
-    n_classes = args.n_classes
+    if args.possible_labels == 2 or args.positive_labels is not None:
+        n_classes = 2
+    else:
+        n_classes = args.possible_labels
 
-    if args.features is None:
-        args.features = ["" for _ in args.image_paths]
-    if args.mask_idx is None:
-        args.mask_idx = []
-    if args.skip_idx is None:
-        args.skip_idx = []
-    if args.adc_idx is None:
-        args.adc_idx = []
-
-    data_dict = {}
-    keys = []
-    feature_keys = []
-    interpolation = []
-    interpolation_resample = []
-    for image_set,feature_set in zip(args.image_paths,args.features):
-        image_set = image_set.split(',')
-        identifier = re.search(args.output_regex,image_set[0]).group()
-        data_dict[identifier] = {}
-        for i,im in enumerate(image_set):
-            k = "image_{}".format(i)
-            data_dict[identifier][k] = im
-            if k not in keys:
-                keys.append(k)
-                if i in args.mask_idx:
-                    interpolation_resample.append("nearest")
-                else:
-                    interpolation_resample.append("bilinear")
-        for i,im in enumerate(feature_set.split(",")):
-            k = "feature_{}".format(i)
-            if k not in feature_keys:
-                feature_keys.append(k)
-            data_dict[identifier][k] = float(im)
-
-    input_keys = [x for i,x in enumerate(keys) if i in args.input_idx]
-    aux_keys = [x for i,x in enumerate(keys) if i in args.skip_idx]
-
-    if len(aux_keys) > 0:
+    keys = args.image_keys
+    
+    mask_image_keys = if_none_else(args.mask_image_keys,[])
+    adc_keys = if_none_else(args.adc_keys,[])
+    aux_keys = if_none_else(args.skip_key,[])
+    aux_mask_keys = if_none_else(args.skip_mask_key,[])
+    resize_keys = if_none_else(args.resize_keys,[])
+    feature_keys = if_none_else(args.feature_keys,[])
+    
+    all_aux_keys = aux_keys + aux_mask_keys
+    if len(all_aux_keys) > 0:
         aux_key_net = "aux_key"
     else:
         aux_key_net = None
-    adc_input_keys = [x for i,x in enumerate(keys) if i in args.adc_idx]
-    non_adc_keys = [x for i,x in enumerate(keys) if i not in args.adc_idx]
+    if len(feature_keys) > 0:
+        feature_key_net = "tabular_features"
+    else:
+        feature_key_net = None
 
-    if args.input_size is not None:
-        args.input_size = [round(x) for x in args.input_size]
+    adc_keys = [k for k in adc_keys if k in keys]
+    intp = []
+    intp_resampling_augmentations = []
+    for k in keys:
+        if k in mask_image_keys:
+            intp.append("nearest")
+            intp_resampling_augmentations.append("nearest")
+        else:
+            intp.append("area")
+            intp_resampling_augmentations.append("bilinear")
+    non_adc_keys = [k for k in keys if k not in adc_keys]
+    intp.extend(["area"]*len(aux_keys))
+    intp.extend(["nearest"]*len(aux_mask_keys))
+    intp_resampling_augmentations.extend(["bilinear"]*len(aux_keys))
+    intp_resampling_augmentations.extend(["nearest"]*len(aux_mask_keys))
+    all_keys = [*keys,*aux_keys,*aux_mask_keys]
+    all_keys_t = [*all_keys,*feature_keys]
+    if args.resize_size is not None:
+        args.resize_size = [round(x) for x in args.resize_size]
 
+    data_dict = json.load(open(args.dataset_json,'r'))
+    if args.excluded_ids is not None:
+        data_dict = {k:data_dict[k] for k in data_dict
+                     if k not in args.excluded_ids}
+
+    if args.missing_to_empty is None:
+        data_dict = {
+            k:data_dict[k] for k in data_dict
+            if inter_size(data_dict[k],set(all_keys_t)) == len(all_keys_t)}
+    else:
+        if "image" in args.missing_to_empty:
+            obl_keys = [*aux_keys,*aux_mask_keys,*feature_keys]
+            opt_keys = keys
+            data_dict = {
+                k:data_dict[k] for k in data_dict
+                if inter_size(data_dict[k],obl_keys) == len(obl_keys)}
+            data_dict = {
+                k:data_dict[k] for k in data_dict
+                if inter_size(data_dict[k],opt_keys) > 0}
+        if "mask" in args.missing_to_empty:
+            data_dict = {
+                k:data_dict[k] for k in data_dict
+                if inter_size(data_dict[k],set(mask_image_keys)) >= 0}
+
+    for kk in feature_keys:
+        data_dict = {
+            k:data_dict[k] for k in data_dict
+            if np.isnan(data_dict[k][kk]) == False}
+    
     network_config,loss_key = parse_config_unet(
-        args.config_file,len(input_keys),n_classes)
+        args.config_file,len(keys),n_classes)
+    
+    label_mode = "binary" if n_classes == 2 else "cat"
+    transform_arguments = {
+        "all_keys": all_keys,
+        "image_keys": keys,
+        "label_keys": None,
+        "non_adc_keys": non_adc_keys,
+        "adc_keys": adc_keys,
+        "target_spacing": args.target_spacing,
+        "intp": intp,
+        "intp_resampling_augmentations": intp_resampling_augmentations,
+        "possible_labels": args.possible_labels,
+        "positive_labels": args.positive_labels,
+        "adc_factor": args.adc_factor,
+        "all_aux_keys": all_aux_keys,
+        "resize_keys": resize_keys,
+        "feature_keys": feature_keys,
+        "aux_key_net": aux_key_net,
+        "feature_key_net": feature_key_net,
+        "resize_size": args.resize_size,
+        "crop_size": args.crop_size,
+        "label_mode": label_mode,
+        "fill_missing": args.missing_to_empty is not None,
+        "brunet": args.unet_model == "brunet"}
 
-    def get_transforms():
-        if args.target_spacing is not None:
-            rs = [
-                monai.transforms.Spacingd(
-                    keys=keys,pixdim=args.target_spacing,
-                    mode=interpolation_resample)]
-        else:
-            rs = []
-        scaling_ops = []
-        if len(non_adc_keys) > 0:
-            scaling_ops.append(
-                monai.transforms.ScaleIntensityd(non_adc_keys,0,1))
-        if len(adc_input_keys) > 0:
-            scaling_ops.append(
-                ConditionalRescalingd(adc_input_keys,1000,0.001))
-            scaling_ops.append(
-                monai.transforms.ScaleIntensityd(
-                    adc_input_keys,None,None,1-args.adc_factor))
-        if args.crop_size is not None:
-            crop_op = [
-                monai.transforms.CenterSpatialCropd(
-                    keys,[int(j) for j in args.crop_size]),
-                monai.transforms.SpatialPadd(
-                    keys,[int(j) for j in args.crop_size])]
-        else:
-            crop_op = []
+    transforms = [
+        *get_transforms("pre",**transform_arguments),
+        *get_transforms("post",**transform_arguments)]
 
-        if len(aux_keys) > 0:
-            aux_concat = [monai.transforms.ConcatItemsd(aux_keys,aux_key_net)]
-        else:
-            aux_concat = []
+    if network_config["spatial_dimensions"] == 2:
+        transforms.append(
+            SlicesToFirst(["image"]))
+        collate_fn = collate_last_slice
+    else:
+        collate_fn = safe_collate
 
-        if len(feature_keys) > 0:
-            feature_concat = [
-                monai.transforms.EnsureTyped(
-                    feature_keys,dtype=np.float32),
-                monai.transforms.Lambdad(
-                    feature_keys,
-                    func=lambda x:np.reshape(x,[1])),
-                monai.transforms.ConcatItemsd(
-                    feature_keys,"tabular_features")]
-        else:
-            feature_concat = []
-        return [
-                monai.transforms.LoadImaged(keys),
-                monai.transforms.AddChanneld(keys),
-                monai.transforms.Orientationd(keys,"RAS"),
-                *rs,
-                *crop_op,
-                *scaling_ops,
-                monai.transforms.ConcatItemsd(input_keys,"image"),
-                *aux_concat,
-                *feature_concat,
-                monai.transforms.ToTensord(
-                    ["image",aux_key_net,"tabular_features"],
-                    allow_missing_keys=True),
-                monai.transforms.EnsureTyped(
-                    ["image",aux_key_net,"tabular_features"],
-                    device=args.dev,allow_missing_keys=True),]
+    torch.cuda.empty_cache()
 
-    all_pids = [k for k in data_dict]
+    # correctly assign devices
+    if ":" in args.dev:
+        devices = args.dev.split(":")[-1].split(",")
+        devices = [int(i) for i in devices]
+        dev = args.dev.split(":")[0]
+    else:
+        devices = args.n_devices
+        dev = args.dev
 
-    print("Setting up networks...")
-    for k in ['weight_decay','learning_rate','batch_size','loss_fn']:
-        if k in network_config:
-            del network_config[k]
+    # calculate the mean/std of tabular features
+    if feature_keys is not None:
+        all_feature_params = {}
+        all_feature_params["mean"] = torch.zeros(
+            len(feature_keys),dtype=torch.float32,device=dev)
+        all_feature_params["std"] = torch.ones(
+            len(feature_keys),dtype=torch.float32,device=dev)
+    else:
+        all_feature_params = None
 
     if args.res_config_file is not None:
         _,network_config_ssl = parse_config_ssl(
-            args.res_config_file,0.,len(input_keys),1)
+            args.res_config_file,0.,len(keys),network_config["batch_size"])
         for k in ['weight_decay','learning_rate','batch_size']:
             if k in network_config_ssl:
                 del network_config_ssl[k]
-        res_net = ResNet(**network_config_ssl)
-        backbone = res_net.backbone
-        network_config['depth'] = [
-            backbone.structure[0][0],
-            *[x[0] for x in backbone.structure]]
-        network_config['kernel_sizes'] = [3 for _ in network_config['depth']]
-        network_config['strides'] = [2 for _ in network_config['depth']]
-        res_ops = [backbone.input_layer,*backbone.operations]
-        res_pool_ops = [backbone.first_pooling,*backbone.pooling_operations]
-        encoding_operations = torch.nn.ModuleList(
-            [torch.nn.ModuleList([a,b]) 
-                for a,b in zip(res_ops,res_pool_ops)])
-    else:
-        encoding_operations = None
-    
-    if len(feature_keys) > 0:
-        all_params = {
-            "mean":torch.zeros([len(feature_keys)]),
-            "std":torch.ones([len(feature_keys)])}
-    else:
-        all_params = None
-
-    if args.unet_pp == True:
-        unet = UNetPlusPlus(
-            encoding_operations=encoding_operations,
-            n_classes=n_classes,
-            bottleneck_classification=False,
-            skip_conditioning=len(aux_keys),
-            feature_conditioning=len(feature_keys),
-            feature_conditioning_params=all_params,
-            **network_config).to(args.dev)
-    else:
-        unet = UNet(
-            encoding_operations=encoding_operations,
-            n_classes=n_classes,
-            bottleneck_classification=False,
-            skip_conditioning=len(aux_keys),
-            feature_conditioning=len(feature_keys),
-            feature_conditioning_params=all_params,
-            **network_config).to(args.dev)
-        unet.eval()
-    
-    print("Setting up data...")
-    transforms = monai.transforms.Compose(get_transforms())
-
-    checkpoint_outputs = {}
-    for checkpoint in args.checkpoints:     
-        state_dict = torch.load(
-            checkpoint,map_location=args.dev)['state_dict']
-        inc = unet.load_state_dict(state_dict)
-        print(inc)
-        for k in tqdm(data_dict):
-            d = transforms(data_dict[k])
-
-            X = torch.unsqueeze(d["image"],0)
-            x_cond = None
-            x_fc = None
-            if len(aux_keys) > 0:
-                x_cond = torch.unsqueeze(d[aux_key_net],0)
-            if len(feature_keys) > 0:
-                x_fc = torch.unsqueeze(d["tabular_features"],0)
-                
-            if args.tta == True:
-                output,_ = unet.forward(
-                    X,X_skip_layer=x_cond,
-                    X_feature_conditioning=x_fc)
-                outputs = [output[0].cpu().detach().numpy()]
-                for d in [(2,),(3,),(4,)]:
-                    flipped_X = torch.flip(X,d)
-                    if x_cond is not None:
-                        flipped_X_cond = torch.flip(x_cond,d) 
-                    else:
-                        flipped_X_cond = None
-                    output,_ = unet.forward(
-                        flipped_X,X_skip_layer=flipped_X_cond,
-                        X_feature_conditioning=x_fc)
-                    output = torch.flip(output,d)[0].cpu().detach().numpy()
-                    outputs.append(output)
-
-                output = sum(outputs)/len(outputs)
-            else:
-                output,_ = unet.forward(
-                        X,X_skip_layer=x_cond,X_feature_conditioning=x_fc)
-                output = output[0].cpu().detach().numpy()
-
-            if k not in checkpoint_outputs:
-                checkpoint_outputs[k] = []
-            checkpoint_outputs[k].append(output)
-
-    for k in checkpoint_outputs:
-        outputs = checkpoint_outputs[k]
-        output = sum(outputs)/len(outputs)
-        if n_classes == 2:
-            output = filters.apply_hysteresis_threshold(
-                output, 0.5, 0.5)[0].astype(np.int16)
+        if args.unet_model == "brunet":
+            n = len(keys)
+            nc = network_config_ssl["backbone_args"]["in_channels"]
+            network_config_ssl["backbone_args"]["in_channels"] = nc // n
+            res_net = [ResNet(**network_config_ssl) for _ in keys]
         else:
-            output = np.argmax(output,axis=0)
-                    
-        target_image = sitk.ReadImage(data_dict[k]["image_0"])
-        target_spacing = target_image.GetSpacing()
-        target_size = target_image.GetSize()
-        padding_size = np.multiply(
-            target_size,
-            np.array(target_spacing)/np.array(args.target_spacing)).astype(np.uint32)
-        output = monai.transforms.SpatialPad(padding_size)(output[np.newaxis])[0]
-        output = sitk.GetImageFromArray(output.swapaxes(0,2)[:,::-1,::-1])
-        output.SetSpacing(args.target_spacing)
-        output.SetDirection(target_image.GetDirection())
-        output.SetOrigin(target_image.GetOrigin())
-        output = resample_image(
-            output,target_image.GetSpacing(),target_image.GetSize(),True)
-        output.CopyInformation(target_image)
-        output = sitk.Cast(output,sitk.sitkInt16)
-        os.makedirs(args.output_dir,exist_ok=True)
-        sitk.WriteImage(
-            output,
-            os.path.join(args.output_dir,"{}.nii.gz".format(k)))
+            res_net = [ResNet(**network_config_ssl)]
+        backbone = [x.backbone for x in res_net]
+        network_config['depth'] = [
+            backbone[0].structure[0][0],
+            *[x[0] for x in backbone[0].structure]]
+        network_config['kernel_sizes'] = [3 for _ in network_config['depth']]
+        # the last sum is for the bottleneck layer
+        network_config['strides'] = [2]
+        network_config['strides'].extend(network_config_ssl[
+            "backbone_args"]["maxpool_structure"])
+        res_ops = [[x.input_layer,*x.operations] for x in backbone]
+        res_pool_ops = [[x.first_pooling,*x.pooling_operations]
+                        for x in backbone]
+        
+        encoding_operations = [torch.nn.ModuleList([]) for _ in res_ops]
+        for i in range(len(res_ops)):
+            A = res_ops[i]
+            B = res_pool_ops[i]
+            for a,b in zip(A,B):
+                encoding_operations[i].append(
+                    torch.nn.ModuleList([a,b]))
+        encoding_operations = torch.nn.ModuleList(encoding_operations)
+    else:
+        encoding_operations = [None]
+
+    unet = get_segmentation_network(
+        net_type=args.unet_model,
+        encoding_operations=encoding_operations,
+        network_config=network_config,
+        loss_params={},
+        bottleneck_classification=args.bottleneck_classification,
+        clinical_feature_keys=feature_keys,
+        all_aux_keys=aux_keys,
+        clinical_feature_params=all_feature_params,
+        clinical_feature_key_net=feature_key_net,
+        aux_key_net=aux_key_net,
+        max_epochs=100,
+        picai_eval=args.picai_eval,
+        lr_encoder=None,
+        cosine_decay=False,
+        encoder_checkpoint=args.bottleneck_classification,
+        res_config_file=args.res_config_file,
+        deep_supervision=False,
+        n_classes=n_classes,
+        keys=keys,
+        train_loader_call=None,
+        random_crop_size=None,
+        crop_size=args.crop_size,
+        pad_size=args.pad_size,
+        resize_size=args.resize_size)
+    
+    out_file = open(args.metric_path,"w")
+    
+    ckpt_to_data_map = zip if args.paired is True else product
+    if os.path.exists(args.test_ids[0]) and args.set_ids is not None:
+        selected_test_ids = []
+        with open(args.test_ids[0]) as o:
+            for line in o:
+                for set_id in args.set_ids:
+                    if set_id in line:
+                        selected_test_ids.append(line)
+        args.test_ids = selected_test_ids
+    n_ckpt = len(args.checkpoints)
+    n_data = len(args.test_ids)
+    all_metrics = []
+    for checkpoint_idx,test_idx in ckpt_to_data_map(range(n_ckpt),range(n_data)):
+        checkpoint = args.checkpoints[checkpoint_idx]
+        test_ids = [k for k in args.test_ids[test_idx].split(",")
+                    if k in data_dict]
+        curr_dict = {k:data_dict[k] for k in data_dict
+                     if k in test_ids}
+        data_list = [curr_dict[k] for k in curr_dict]
+        
+        transform_input = transforms[0]
+        transforms_preprocess = transforms[1:]
+        transforms_postprocess = monai.transforms.Invertd(
+            "image",transforms_preprocess)
+
+        state_dict = torch.load(checkpoint)["state_dict"]
+        state_dict = {k:state_dict[k] for k in state_dict
+                      if "deep_supervision_ops" not in k}
+        unet.load_state_dict(state_dict)
+        unet = unet.to(args.dev)
+        unet.eval()
+        
+        gc.collect()
