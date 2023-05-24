@@ -440,8 +440,7 @@ def get_augmentations_unet(augment,
         
     if "flip" in augment:
         augments.append(
-            monai.transforms.RandFlipd(
-                all_keys,prob=prob,spatial_axis=0))
+            monai.transforms.RandFlipd(all_keys,prob=prob))
 
     if "rbf" in augment and len(t2_keys) > 0:
         augments.append(
