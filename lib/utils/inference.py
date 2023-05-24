@@ -1,5 +1,6 @@
 import numpy as np
 import torch
+from copy import deepcopy
 from typing import List,Callable,Union,Dict,Sequence,Tuple
 
 TensorOrArray = Union[np.ndarray,torch.Tensor]
@@ -8,6 +9,196 @@ MultiFormatInput = Union[TensorOrArray,
                          Sequence[TensorOrArray]]
 Coords = Union[Sequence[Tuple[int,int]],Sequence[Tuple[int,int,int]]]
 Shape = Union[Tuple[int,int],Tuple[int,int,int]]
+
+def get_shape(X:MultiFormatInput)->Shape:
+    """
+    Gets the shape from a possibly 1-level nested structure of tensors or numpy
+    arrays. Assumes that, if nested, all tensors have the same shape.
+
+    Args:
+        X (MultiFormatInput): a tensor, an array or a dictionary/list/tuple of
+            tensors and arrays.
+
+    Raises:
+        NotImplementedError: error if input is not tensor, array, dict, 
+            tuple or list.
+
+    Returns:
+        Shape: tensor/array shape.
+    """
+    if isinstance(X,(np.ndarray,torch.Tensor)):
+        return X.shape
+    elif isinstance(X,dict):
+        k = list(X.keys())[0]
+        return X[k].shape
+    elif isinstance(X,(tuple,list)):
+        return X[0].shape
+    else:
+        raise NotImplementedError(
+            "Supported inputs are np.ndarray, tensor, dict, tuple, list")
+
+def cat_array(X:List[TensorOrArray],*args,**kwargs)->TensorOrArray:
+    if isinstance(X[0],np.ndarray):
+        return np.concatenate(X,*args,**kwargs)
+    elif isinstance(X[0],torch.Tensor):
+        return torch.cat(X,*args,**kwargs)
+
+def stack_array(X:List[TensorOrArray],*args,**kwargs)->TensorOrArray:
+    if isinstance(X[0],np.ndarray):
+        return np.stack(X,*args,**kwargs)
+    elif isinstance(X[0],torch.Tensor):
+        return torch.stack(X,*args,**kwargs)
+
+def multi_format_cat(X:List[MultiFormatInput],
+                     *args,**kwargs)->MultiFormatInput:
+    if isinstance(X[0],(np.ndarray,torch.Tensor)):
+        return cat_array(X,*args,**kwargs)
+    elif isinstance(X[0],dict):
+        output = {k:[] for k in X[0]}
+        for x in X:
+            for k in x:
+                output[k].append(x[k])
+        return {k:cat_array(output[k]) for k in output}
+    elif isinstance(X[0],(tuple,list)):
+        output = [[] for _ in X[0]]
+        for x in X:
+            for i in range(len(x)):
+                output[i].append(x[i])
+        return [cat_array(o) for o in output]
+    else:
+        raise NotImplementedError(
+            "Supported inputs are np.ndarray, dict, tuple, list")
+
+def multi_format_stack(X:List[MultiFormatInput],
+                       *args,**kwargs)->MultiFormatInput:
+    if isinstance(X[0],(np.ndarray,torch.Tensor)):
+        return stack_array(X,*args,**kwargs)
+    elif isinstance(X[0],dict):
+        output = {k:[] for k in X[0]}
+        for x in X:
+            for k in x:
+                output[k].append(x[k])
+        return {k:stack_array(output[k]) for k in output}
+    elif isinstance(X[0],(tuple,list)):
+        output = [[] for _ in X[0]]
+        for x in X:
+            for i in range(len(x)):
+                output[i].append(x[i])
+        return [stack_array(o) for o in output]
+    else:
+        raise NotImplementedError(
+            "Supported inputs are np.ndarray, dict, tuple, list")
+
+def multi_format_stack_or_cat(X:List[MultiFormatInput],
+                              ndim:int,
+                              *args,**kwargs)->MultiFormatInput:
+    sh = get_shape(X[0])
+    if len(sh) == ndim + 2:
+        return multi_format_cat(X,*args,**kwargs)
+    elif len(sh) == ndim + 1:
+        return multi_format_stack(X,*args,**kwargs)
+
+class FlippedInference:
+    """
+    """
+    def __init__(self,
+                 inference_function:Callable,
+                 flips:List[List[int]],
+                 flip_idx:List[int]=None,
+                 flip_keys:List[str]=None,
+                 ndim:int=3,
+                 inference_batch_size:int=1):
+        self.inference_function = inference_function
+        self.flips = flips
+        self.flip_idx = flip_idx
+        self.flip_keys = flip_keys
+        self.ndim = ndim
+        self.inference_batch_size = inference_batch_size
+    
+    def flip_array(self,X:TensorOrArray,axis:Tuple[int])->TensorOrArray:
+        if isinstance(X[0],np.ndarray):
+            return np.flip(X,axis)
+        elif isinstance(X[0],torch.Tensor):
+            return torch.flip(X,axis)
+    
+    def flip(self,X:MultiFormatInput,axis:List[int])->Shape:
+        """
+        Flips tensors in a possibly 1-level nested structure of tensors or numpy
+        arrays. Assumes that, if nested, all tensors have the same shape.
+
+        Args:
+            X (MultiFormatInput): a tensor, an array or a dictionary/list/tuple of
+                tensors and arrays.
+            axis (List[int]): list of flip dimensions.
+
+        Raises:
+            NotImplementedError: error if input is not tensor, array, dict, 
+                tuple or list.
+
+        Returns:
+            MultiFormatInput: input with flipped tensors.
+        """
+        axis = tuple(axis)
+        if isinstance(X,(np.ndarray,torch.Tensor)):
+            return self.flip_array(deepcopy(X),axis)
+        elif isinstance(X,dict):
+            X_out = deepcopy(X)
+            for k in X:
+                if self.flip_keys is not None:
+                    if k in self.flip_keys:
+                        X_out[k] = self.flip_array(X_out[k],axis)
+                else:
+                    X_out[k] = self.flip_array(X_out[k],axis)
+            return X_out
+        elif isinstance(X,(tuple,list)):
+            X_out = deepcopy(X)
+            for k in X:
+                if self.flip_keys is not None:
+                    if k in self.flip_keys:
+                        X_out[k] = self.flip_array(X_out[k],axis)
+                else:
+                    X_out[k] = self.flip_array(X_out[k],axis)
+            return X_out
+        else:
+            raise NotImplementedError(
+                "Supported inputs are np.ndarray, dict, tuple, list")
+    
+    def __call__(self,
+                 X:MultiFormatInput,
+                 *args,**kwargs)->TensorOrArray:
+        batch = []
+        batch_flips = []
+        output = None
+        original_batch_size = get_shape(X)[0]
+        for flip in self.flips:
+            flipped_X = self.flip(X,flip)
+            batch.append(flipped_X)
+            batch_flips.append(flip)
+            if len(batch) == self.inference_batch_size:
+                batch = multi_format_stack_or_cat(batch,self.ndim)
+                result = self.inference_function(batch,*args,**kwargs)
+                result = [self.flip(x,f) for x,f in zip(
+                    torch.split(result,original_batch_size),batch_flips)]
+                result = torch.stack(result,-1).sum(-1)
+                # lazy output
+                if output is None:
+                    output = torch.zeros_like(result)
+                output = output + result
+                batch = []
+                batch_flips = []
+        if len(batch) > 0:
+            batch = multi_format_stack_or_cat(batch,self.ndim)
+            with torch.no_grad():
+                result = self.inference_function(batch,*args,**kwargs)
+            result = [self.flip(x,f) for x,f in zip(X,batch_flips)]
+            result = torch.stack(result,-1).sum(-1)
+            # lazy output
+            if output is None:
+                output = torch.zeros_like(result)
+            output = output + result
+            batch = []
+            batch_flips = []
+        return output / len(self.flips)
 
 class SlidingWindowSegmentation:
     """
@@ -68,9 +259,9 @@ class SlidingWindowSegmentation:
             x1,x2 = M-a,M
         return x1,x2
 
-    def get_shape(self,X:MultiFormatInput)->Shape:
+    def get_device(self,X:MultiFormatInput)->str:
         """
-        Gets the shape from a possibly 1-level nested structure of tensors or numpy
+        Gets the device from a possibly 1-level nested structure of tensors or numpy
         arrays. Assumes that, if nested, all tensors have the same shape.
 
         Args:
@@ -82,15 +273,15 @@ class SlidingWindowSegmentation:
                 tuple or list.
 
         Returns:
-            Shape: tensor/array shape.
+            str: device.
         """
         if isinstance(X,(np.ndarray,torch.Tensor)):
-            return X.shape
+            return X.device
         elif isinstance(X,dict):
             k = list(X.keys())[0]
-            return X[k].shape
+            return X[k].device
         elif isinstance(X,(tuple,list)):
-            return X[0].shape
+            return X[0].device
         else:
             raise NotImplementedError(
                 "Supported inputs are np.ndarray, dict, tuple, list")
@@ -181,14 +372,10 @@ class SlidingWindowSegmentation:
         """
         if self.ndim == 2:
             (x1,x2),(y1,y2) = coords
-            if len(X.shape) != 4:
-                return X
-            return X[:,:,x1:x2,y1:y2]
+            return X[...,x1:x2,y1:y2]
         elif self.ndim == 3:
             (x1,x2),(y1,y2),(z1,z2) = coords
-            if len(X.shape) != 5:
-                return X
-            return X[:,:,x1:x2,y1:y2,z1:z2]
+            return X[...,x1:x2,y1:y2,z1:z2]
 
     def extract_patch(self,X:MultiFormatInput,coords:Coords)->MultiFormatInput:
         """
@@ -235,9 +422,10 @@ class SlidingWindowSegmentation:
             X (MultiFormatInput): a tensor patch, an array patch or a 
                 dictionary/list/tuple of tensor/array patches.
         """
-        sh = self.get_shape(X)[2:]
-        for i_1 in range(0,sh[0],self.stride[0]):
-            for j_1 in range(0,sh[1],self.stride[1]):
+        sh = get_shape(X)[-self.ndim:]
+        for i in range(0,sh[0],self.stride[0]):
+            for j in range(0,sh[1],self.stride[1]):
+                i_1,j_1 = i,j
                 i_2 = i_1 + self.sliding_window_size[0]
                 j_2 = j_1 + self.sliding_window_size[1]
                 i_1,i_2 = self.adjust_if_necessary(
@@ -263,10 +451,11 @@ class SlidingWindowSegmentation:
             X (MultiFormatInput): a tensor patch, an array patch or a 
                 dictionary/list/tuple of tensor/array patches.
         """
-        sh = self.get_shape(X)[2:]
-        for i_1 in range(0,sh[0],self.stride[0]):
-            for j_1 in range(0,sh[1],self.stride[1]):
-                for k_1 in range(0,sh[2],self.stride[2]):
+        sh = get_shape(X)[-self.ndim:]
+        for i in range(0,sh[0],self.stride[0]):
+            for j in range(0,sh[1],self.stride[1]):
+                for k in range(0,sh[2],self.stride[2]):
+                    i_1,j_1,k_1 = i,j,k
                     i_2 = i_1 + self.sliding_window_size[0]
                     j_2 = j_1 + self.sliding_window_size[1]
                     k_2 = k_1 + self.sliding_window_size[2]
@@ -321,44 +510,19 @@ class SlidingWindowSegmentation:
             Tuple[TensorOrArray,TensorOrArray]: updated output_array and
                 output_denominator.
         """
-        tmp_den = self.get_zeros_fn(tmp_out)(tmp_out.shape) + 1
         if self.ndim == 2:
             (x1,x2),(y1,y2) = coords
-            output_array[:,:,x1:x2,y1:y2] += tmp_out
-            output_denominator[:,:,x1:x2,y1:y2] += tmp_den
+            output_array[...,x1:x2,y1:y2] += tmp_out.squeeze(0).squeeze(0)
+            output_denominator[...,x1:x2,y1:y2] += 1.0
         elif self.ndim == 3:
             (x1,x2),(y1,y2),(z1,z2) = coords
-            output_array[:,:,x1:x2,y1:y2,z1:z2] += tmp_out
-            output_denominator[:,:,x1:x2,y1:y2,z1:z2] += tmp_den
+            output_array[...,x1:x2,y1:y2,z1:z2] += tmp_out.squeeze(0).squeeze(0)
+            output_denominator[...,x1:x2,y1:y2,z1:z2] += 1.0
         return output_array,output_denominator
 
-    def cat_array(self,X:List[TensorOrArray],*args,**kwargs)->TensorOrArray:
-        if isinstance(X[0],np.ndarray):
-            return np.concatenate(X,*args,**kwargs)
-        elif isinstance(X[0],torch.Tensor):
-            return torch.cat(X,*args,**kwargs)
-
-    def cat(self,X:List[MultiFormatInput],*args,**kwargs)->MultiFormatInput:
-        if isinstance(X[0],(np.ndarray,torch.Tensor)):
-            return self.cat_array(X,*args,**kwargs)
-        elif isinstance(X[0],dict):
-            output = {k:[] for k in X[0]}
-            for x in X:
-                for k in x:
-                    output[k].append(x[k])
-            return {k:self.cat_array(output[k]) for k in output}
-        elif isinstance(X[0],(tuple,list)):
-            output = [[] for _ in X[0]]
-            for x in X:
-                for i in range(len(x)):
-                    output[i].append(x[i])
-            return [self.cat_array(o) for o in output]
-        else:
-            raise NotImplementedError(
-                "Supported inputs are np.ndarray, dict, tuple, list")
-
     def __call__(self,
-                 X:MultiFormatInput)->TensorOrArray:
+                 X:MultiFormatInput,
+                 *args,**kwargs)->TensorOrArray:
         """
         Extracts patches for a given input tensor/array X, predicts the 
         segmentation outputs for all cases and aggregates all outputs. If a 
@@ -368,16 +532,24 @@ class SlidingWindowSegmentation:
         Args:
             X (MultiFormatInput): a tensor, an array or a dictionary/list/tuple of
                 tensors and arrays.
+            args, kwargs: arguments and keyword arguments for inference_function.
 
         Returns:
             TensorOrArray: output prediction.
         """
-        output_size = list(self.get_shape(X))
+        output_size = list(get_shape(X))
+        device = self.get_device(X)
         zeros_fn = self.get_zeros_fn(X)
         split_fn = self.get_split_fn(X)
-        output_size[1] = self.n_classes
-        output_array = zeros_fn(output_size)
-        output_denominator = zeros_fn(output_size)
+        # this condition checks to see if the input is unbatched
+        if len(output_size) == (self.ndim + 2):
+            output_size[1] = self.n_classes
+        elif len(output_size) < (self.ndim + 2):
+            output_size[0] = self.n_classes
+        else:
+            raise Exception("length of input array shape should be <= self.ndim+2")
+        output_array = zeros_fn(output_size).to(device)
+        output_denominator = zeros_fn(output_size).to(device)
         batch = []
         batch_coords = []
         for cropped_input,coords in self.get_all_crops(X):
@@ -385,13 +557,23 @@ class SlidingWindowSegmentation:
             batch_coords.append(coords)
             if len(batch) == self.inference_batch_size:
                 original_batch_size = output_size[0]
-                batch = self.cat(batch)
-                batch_out = self.inference_function(cropped_input)
+                batch = multi_format_stack_or_cat(batch,self.ndim)
+                with torch.no_grad():
+                   batch_out = self.inference_function(batch,*args,**kwargs)
                 batch_out = split_fn(batch_out,original_batch_size,0)
                 for out,coords in zip(batch_out,batch_coords):
                     output_array,output_denominator = self.update_output(
                         output_array,output_denominator,out,coords)
                 batch = []
                 batch_coords = []
+        if len(batch) > 0:
+            original_batch_size = output_size[0]
+            batch = multi_format_stack_or_cat(batch,self.ndim)
+            with torch.no_grad():
+                batch_out = self.inference_function(batch,*args,**kwargs)
+            batch_out = split_fn(batch_out,original_batch_size,0)
+            for out,coords in zip(batch_out,batch_coords):
+                output_array,output_denominator = self.update_output(
+                    output_array,output_denominator,out,coords)            
         output_array = output_array / output_denominator
         return output_array
