@@ -67,6 +67,9 @@ if __name__ == "__main__":
     parser.add_argument(
         '--batch_size',dest='batch_size',type=int,default=None,
         help="Overrides batch size in config file")
+    parser.add_argument(
+        '--cache_rate',dest='cache_rate',type=float,default=1.0,
+        help="Fraction of data that will be cached using CacheDataset")
 
     # network
     parser.add_argument(
@@ -97,7 +100,7 @@ if __name__ == "__main__":
         '--type',dest='type',action="store",default="probability",
         help="Returns either probability the classification probability or the\
             features in the last layer.",
-        choices=["probability","features"])
+        choices=["probability","logit","features"])
     parser.add_argument(
         '--checkpoints',dest='checkpoints',type=str,default=None,
         nargs="+",help='Test using these checkpoints.')
@@ -182,19 +185,31 @@ if __name__ == "__main__":
         *get_transforms("post",**transform_arguments)])
 
     global_output = []
-    if args.type == "probability":
+    if args.type in ["probability","logit"]:
         extra_args = {}
     else:
         extra_args = {"return_features":True}
+
+    if args.type == "probability":
+        if args.n_classes > 2:
+            post_proc_fn = torch.nn.Softmax(-1)
+        else:
+            post_proc_fn = torch.nn.Sigmoid()
+    else:
+        post_proc_fn = torch.nn.Identity()
     
-    prediction_ids = parse_ids(args.prediction_ids)
+    if args.prediction_ids:
+        prediction_ids = parse_ids(args.prediction_ids)
+    else:
+        prediction_ids = [[k for k in data_dict]]
     for iteration in range(len(prediction_ids)):
         curr_prediction_ids = [pid for pid in prediction_ids[iteration]
                                if pid in data_dict]
         prediction_list = [data_dict[pid] for pid in curr_prediction_ids]
         
         prediction_dataset = monai.data.CacheDataset(
-            prediction_list,transforms_val,num_workers=args.n_workers)
+            prediction_list,transforms_val,num_workers=args.n_workers,
+            cache_rate=args.cache_rate)
         
         # PL sometimes needs a little hint to detect GPUs.
         torch.ones([1]).to("cuda" if "cuda" in args.dev else "cpu")
@@ -262,6 +277,7 @@ if __name__ == "__main__":
                         output = output.flatten(start_dim=2).max(-1).values.cpu()
                     else:
                         output = output.cpu()
+                    output = post_proc_fn(output)
                     output = output.numpy()[0].tolist()
                     output_dict["predictions"][identifier] = output
                     pbar.update()
