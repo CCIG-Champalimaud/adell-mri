@@ -6,21 +6,16 @@ import numpy as np
 import torch
 import monai
 import gc
-from itertools import product
 from tqdm import trange
-from pytorch_lightning import Trainer
 
 sys.path.append(os.path.join(os.path.realpath(os.path.dirname(__file__)),".."))
-from lib.utils import (
-    collate_last_slice,
-    SlicesToFirst,
-    safe_collate)
+from lib.utils import collate_last_slice,SlicesToFirst,safe_collate
 from lib.monai_transforms import get_transforms_unet as get_transforms
 from lib.modules.layers import ResNet
 from lib.utils.network_factories import get_segmentation_network
 from lib.modules.config_parsing import parse_config_unet,parse_config_ssl
 from lib.modules.segmentation.pl import get_metric_dict
-from typing import Callable
+from lib.utils.inference import SlidingWindowSegmentation,FlippedInference
 torch.backends.cudnn.benchmark = True
 
 def if_none_else(x,obj):
@@ -57,20 +52,20 @@ if __name__ == "__main__":
         '--resize_keys',dest='resize_keys',type=str,nargs='+',default=None,
         help="Keys that will be resized to input size")
     parser.add_argument(
-        '--pad_size',dest='pad_size',action="store",
-        default=None,type=float,nargs='+',
-        help="Padding size after resizing.")
-    parser.add_argument(
         '--crop_size',dest='crop_size',action="store",
         default=None,type=float,nargs='+',
         help="Crop size after padding.")
     parser.add_argument(
-        '--random_crop_size',dest='random_crop_size',action="store",
-        default=None,type=float,nargs='+',
-        help="Size of random crop (last step of the preprocessing pipeline).")
+        '--sliding_window_size',dest='sliding_window_size',action="store",
+        default=None,type=int,nargs='+',
+        help="Size of sliding window.")
     parser.add_argument(
-        '--n_crops',dest='n_crops',action="store",
-        default=1,type=int,help="Number of random crops.")
+        '--flip',dest='flip',action="store_true",
+        help="Flips before predicting.")
+    parser.add_argument(
+        '--keep_largest_connected_component',
+        dest='keep_largest_connected_component',action="store_true",
+        help="Keeps only the largest connected component.")
     parser.add_argument(
         '--target_spacing',dest='target_spacing',action="store",default=None,
         help="Resamples all images to target spacing",nargs='+',type=float)
@@ -270,6 +265,7 @@ if __name__ == "__main__":
         "feature_key_net": feature_key_net,
         "resize_size": args.resize_size,
         "crop_size": args.crop_size,
+        "pad_size":args.sliding_window_size,
         "label_mode": label_mode,
         "fill_missing": args.missing_to_empty is not None,
         "brunet": args.unet_model == "brunet"}
@@ -366,10 +362,9 @@ if __name__ == "__main__":
         train_loader_call=None,
         random_crop_size=None,
         crop_size=args.crop_size,
-        pad_size=args.pad_size,
+        pad_size=args.sliding_window_size,
         resize_size=args.resize_size)
     
-    ckpt_to_data_map = zip if args.paired is True else product
     if os.path.exists(args.test_ids[0]) and args.set_ids is not None:
         selected_test_ids = []
         with open(args.test_ids[0]) as o:
@@ -381,8 +376,7 @@ if __name__ == "__main__":
     n_ckpt = len(args.checkpoints)
     n_data = len(args.test_ids)
     all_metrics = []
-    for checkpoint_idx,test_idx in ckpt_to_data_map(range(n_ckpt),range(n_data)):
-        checkpoint = args.checkpoints[checkpoint_idx]
+    for test_idx in range(n_data):
         test_ids = [k for k in args.test_ids[test_idx].split(",")
                     if k in data_dict]
         curr_dict = {k:data_dict[k] for k in test_ids}
@@ -392,44 +386,66 @@ if __name__ == "__main__":
             monai.transforms.Compose(transforms),
             num_workers=args.n_workers)
 
-        state_dict = torch.load(checkpoint)["state_dict"]
-        state_dict = {k:state_dict[k] for k in state_dict
-                      if "deep_supervision_ops" not in k}
-        unet.load_state_dict(state_dict,strict=False)
-        unet = unet.eval()
-        unet = unet.to(args.dev)
-        trainer = Trainer(accelerator=dev,devices=devices)
+        if args.paired == True:
+            checkpoint_list = [args.checkpoints[test_idx]]
+        else:
+            checkpoint_list = args.checkpoints
         
-        metrics = get_metric_dict(n_classes,False,prefix="T_",
-                                  dev=args.dev)
-        metrics_global = get_metric_dict(n_classes,False,prefix="T_",
-                                         dev=args.dev)
-        metrics_dict = {"global_metrics":{},
-                        "checkpoint":checkpoint}
-        if args.per_sample is True:
-            metrics_dict["metrics"] = {}
-        for i in trange(len(dataset)):
-            data_element = dataset[i]
-            data_element = {k:data_element[k].to(args.dev)
-                            for k in data_element}
-            test_id = test_ids[i]
-            pred = unet.predict_step(data_element,0,not_batched=True)[0][0]
-            pred = pred.round().long()
-            y = data_element["mask"].round().int()
+        for checkpoint in checkpoint_list:
+            state_dict = torch.load(checkpoint)["state_dict"]
+            state_dict = {k:state_dict[k] for k in state_dict
+                        if "deep_supervision_ops" not in k}
+            unet.load_state_dict(state_dict,strict=False)
+            unet = unet.eval()
+            unet = unet.to(args.dev)
+            
+            inference_function = unet.predict_step
+            if args.sliding_window_size is not None:
+                inference_function = SlidingWindowSegmentation(
+                    sliding_window_size=args.sliding_window_size,
+                    inference_function=inference_function,
+                    n_classes=n_classes if n_classes > 2 else 1,
+                    stride=[x//2 for x in args.sliding_window_size])
+            if args.flip == True:
+                flips = [(1,),(2,),(3,)]
+                inference_function = FlippedInference(
+                    inference_function=inference_function,
+                    flips=flips,
+                    flip_keys=["image"],
+                    ndim=network_config["spatial_dimensions"],
+                    inference_batch_size=len(flips))
+
+            metrics = get_metric_dict(n_classes,False,prefix="T_",
+                                    dev=args.dev)
+            metrics_global = get_metric_dict(n_classes,False,prefix="T_",
+                                            dev=args.dev)
+            metrics_dict = {"global_metrics":{},
+                            "checkpoint":checkpoint}
             if args.per_sample is True:
-                metrics_dict["metrics"][test_id] = {}
-                for k in metrics:
-                    metrics[k].update(pred,y)
-                    v = metrics[k].compute().cpu().numpy().tolist()
-                    metrics_dict["metrics"][test_id][k] = v
-                    metrics[k].reset()
+                metrics_dict["metrics"] = {}
+            for i in trange(len(dataset)):
+                data_element = dataset[i]
+                data_element = {k:data_element[k].to(args.dev)
+                                for k in data_element}
+                test_id = test_ids[i]
+                pred = inference_function(
+                    data_element,0,return_only_segmentation=True)
+                pred = pred.round().long().squeeze()
+                y = data_element["mask"].round().int().squeeze()
+                if args.per_sample is True:
+                    metrics_dict["metrics"][test_id] = {}
+                    for k in metrics:
+                        metrics[k].update(pred,y)
+                        v = metrics[k].compute().cpu().numpy().tolist()
+                        metrics_dict["metrics"][test_id][k] = v
+                        metrics[k].reset()
+                        metrics_global[k].update(pred,y)
+                for k in metrics_global:
                     metrics_global[k].update(pred,y)
             for k in metrics_global:
-                metrics_global[k].update(pred,y)
-        for k in metrics_global:
-            v = metrics_global[k].compute().cpu().numpy().tolist()
-            metrics_dict["global_metrics"][k] = v
-        all_metrics.append(metrics_dict)
+                v = metrics_global[k].compute().cpu().numpy().tolist()
+                metrics_dict["global_metrics"][k] = v
+            all_metrics.append(metrics_dict)
     metrics_json = json.dumps(all_metrics,indent=2)
     with open(args.metric_path,"w") as out_file:
         out_file.write(metrics_json)

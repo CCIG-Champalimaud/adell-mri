@@ -269,9 +269,9 @@ def get_transforms_classification(x,
                                   target_spacing,
                                   crop_size,
                                   pad_size,
-                                  possible_labels,
-                                  positive_labels,
-                                  label_key,
+                                  possible_labels=None,
+                                  positive_labels=None,
+                                  label_key=None,
                                   target_size=None,
                                   label_mode=None):
     non_adc_keys = [k for k in keys if k not in adc_keys]
@@ -329,11 +329,12 @@ def get_transforms_classification(x,
                      clinical_feature_keys,"tabular")])
         if isinstance(positive_labels,int):
             positive_labels = [positive_labels]
-        transforms.append(
-            LabelOperatord(
-                [label_key],possible_labels,
-                mode=label_mode,positive_labels=positive_labels,
-                output_keys={label_key:"label"}))
+        if label_key is not None:
+            transforms.append(
+                LabelOperatord(
+                    [label_key],possible_labels,
+                    mode=label_mode,positive_labels=positive_labels,
+                    output_keys={label_key:"label"}))
     return transforms
 
 def get_pre_transforms_ssl(all_keys,
@@ -439,8 +440,7 @@ def get_augmentations_unet(augment,
         
     if "flip" in augment:
         augments.append(
-            monai.transforms.RandFlipd(
-                all_keys,prob=prob,spatial_axis=0))
+            monai.transforms.RandFlipd(all_keys,prob=prob))
 
     if "rbf" in augment and len(t2_keys) > 0:
         augments.append(

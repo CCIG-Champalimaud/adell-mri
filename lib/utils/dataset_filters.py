@@ -1,3 +1,4 @@
+import os
 from typing import List
 from ..custom_types import DatasetDict
 
@@ -20,6 +21,32 @@ def filter_dictionary_with_presence(D:DatasetDict,
         check = True
         for k in filters:
             if k not in D[pid]:
+                check = False
+        if check == True:
+            out_dict[pid] = D[pid]
+    print("\tOutput size: {}".format(len(out_dict)))
+    return out_dict
+
+def filter_dictionary_with_existence(D:DatasetDict,
+                                    filters:List[str])->DatasetDict:
+    """Filters a dictionary based on whether files with a given key exist.
+
+    Args:
+        D (DatasetDict): dataset dictionary.
+        filters (List[str]): list of strings.
+
+    Returns:
+        DatasetDict: filtered dataset dictionary.
+    """
+    print("Filtering on: {} existence".format(filters))
+    print("\tInput size: {}".format(len(D)))
+    out_dict = {}
+    for pid in D:
+        check = True
+        for k in filters:
+            if k not in D[pid]:
+                check = False
+            elif os.path.exists(D[pid][k]) == False:
                 check = False
         if check == True:
             out_dict[pid] = D[pid]

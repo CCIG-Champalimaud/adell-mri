@@ -362,7 +362,7 @@ if __name__ == "__main__":
         if args.subsample_training_data is not None:
             train_pids = rng.choice(
                 train_pids,
-                size=len(train_pids)*args.subsample_training_data,
+                size=int(len(train_pids)*args.subsample_training_data),
                 replace=False)
         val_pids = [all_pids[i] for i in val_idxs]
         if args.val_from_train is not None:
