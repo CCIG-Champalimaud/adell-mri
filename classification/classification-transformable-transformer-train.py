@@ -310,7 +310,8 @@ if __name__ == "__main__":
         "t2_keys":t2_keys,
         "all_keys":keys,
         "image_keys":keys,
-        "intp_resampling_augmentations":["bilinear" for _ in keys]}
+        "intp_resampling_augmentations":["bilinear" for _ in keys],
+        "flip_axis":None}
 
     transforms_common = get_transforms("pre",**transform_arguments)
     transforms_train = monai.transforms.Compose([
@@ -319,7 +320,6 @@ if __name__ == "__main__":
         EinopsRearranged("image","c h w d -> 1 h w (d c)"),
         ScaleIntensityAlongDimd("image",dim=-1)])
     transforms_val = monai.transforms.Compose([
-        get_augmentations(**augment_arguments),
         *get_transforms("post",**transform_arguments),
         EinopsRearranged("image","c h w d -> 1 h w (d c)"),
         ScaleIntensityAlongDimd("image",dim=-1)])
