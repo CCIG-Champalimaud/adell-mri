@@ -805,6 +805,7 @@ class TransformableTransformer(torch.nn.Module):
                  n_slices:int=None,
                  dim:int=2,
                  use_class_token:bool=True,
+                 reduce_fn:str="max",
                  *args,**kwargs):
         """
         Args:
@@ -826,6 +827,8 @@ class TransformableTransformer(torch.nn.Module):
                 Defaults to 2.
             use_class_token (bool, optional): whether a classification token
                 should be used. Defaults to True.
+            reduce_fn (str, optional): function used to reduce features coming
+                from feature extraction module.
         """
         
         assert dim in [0,1,2], "dim must be one of [0,1,2]"
@@ -839,6 +842,7 @@ class TransformableTransformer(torch.nn.Module):
         self.n_slices = n_slices
         self.dim = dim
         self.use_class_token = use_class_token
+        self.reduce_fn = reduce_fn
         
         self.vol_to_2d = einops.layers.torch.Rearrange(
             "b c h w s -> (b s) c h w")
@@ -900,7 +904,15 @@ class TransformableTransformer(torch.nn.Module):
             curr_idx = [i if j == dim else slice(0,None) 
                         for j in range(len(X.shape))]
             yield X[tuple(curr_idx)]
-            
+        
+    def extract_features(self,X:torch.Tensor)->torch.Tensor:
+        if len(X.shape) > 2:
+            X = X.flatten(start_dim=2)
+        if self.reduce_fn == "mean":
+            return X.mean(-1)
+        elif self.reduce_fn == "max":
+            return X.max(-1).values
+    
     def v_module_old(self,X:torch.Tensor)->torch.Tensor:
         sh = X.shape
         n_slices = sh[2+self.dim]
@@ -909,14 +921,14 @@ class TransformableTransformer(torch.nn.Module):
             device=X.device)
         for i,X_slice in enumerate(self.iter_over_dim(X)):
             mod_out = self.module(X_slice)
-            mod_out = mod_out.flatten(start_dim=2).mean(-1)
+            mod_out = self.extract_features(mod_out)
             ssl_representation[:,i,:] = mod_out
         return ssl_representation
     
     def v_module(self,X:torch.Tensor)->torch.Tensor:
         X = self.vol_to_2d(X)
         X = self.module(X)
-        X = X.flatten(start_dim=2).mean(-1)
+        X = self.extract_features(X)
         X = self.rep_to_emb(X)
         return X
 
