@@ -112,7 +112,8 @@ if __name__ == "__main__":
     inc = ssl.load_state_dict(state_dict)
     ssl.eval()
     
+    ssl.forward = ssl.forward_representation
     example = torch.rand(1,*args.input_shape).to(args.dev)
-    traced_ssl = torch.jit.trace(ssl,example)
+    traced_ssl = torch.jit.trace(ssl,example_inputs=example)
     
     traced_ssl.save(args.output_model_path)
