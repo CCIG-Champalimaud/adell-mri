@@ -392,6 +392,10 @@ class ResNet(torch.nn.Module):
             self.prediction_head = ProjectionHead(
                 **self.prediction_head_args)
 
+    def forward_representation(self,X):
+        X = self.backbone(X)
+        return X
+
     def forward(self,X,ret="projection"):
         X = self.backbone(X)
         if ret == "representation":
