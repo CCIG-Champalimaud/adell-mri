@@ -491,7 +491,8 @@ def get_augmentations_class(augment,
                             all_keys,
                             image_keys,
                             t2_keys,
-                            intp_resampling_augmentations):
+                            intp_resampling_augmentations,
+                            flip_axis=[0]):
     valid_arg_list = ["intensity","noise","rbf","affine","shear","flip",
                       "trivial"]
     for a in augment:
@@ -521,7 +522,8 @@ def get_augmentations_class(augment,
         
     if "flip" in augment:
         augments.append(
-            monai.transforms.RandFlipd(image_keys,prob=prob,spatial_axis=0))
+            monai.transforms.RandFlipd(image_keys,prob=prob,
+                                       spatial_axis=flip_axis))
 
     if "rbf" in augment and len(t2_keys) > 0:
         augments.append(
