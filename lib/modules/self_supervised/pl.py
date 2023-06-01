@@ -13,7 +13,6 @@ from .self_supervised import (
     byol_loss, simsiam_loss, VICRegLoss,NTXentLoss)
 from ..segmentation.unet import UNet
 from ..learning_rate import CosineAnnealingWithWarmupLR
-from ...optim import LARS
 
 class BarlowTwinsPL(ResNet,pl.LightningModule):
     def __init__(
@@ -172,19 +171,12 @@ class SelfSLBasePL(pl.LightningModule,ABC):
                 params_no_decay.append(p)
             else:
                 params_decay.append(p)
-        if self.lars == True:
-            optimizer = LARS(
-                params_decay + params_no_decay,
-                 lr=self.learning_rate,weight_decay=self.weight_decay,
-                 momentum=0.9)
-        else:
-            optimizer = torch.optim.SGD(
-                params_decay + params_no_decay,
-                lr=self.learning_rate,weight_decay=self.weight_decay,
-                momentum=0.9)
+        optimizer = torch.optim.AdamW(
+            params_decay + params_no_decay,
+            lr=self.learning_rate,weight_decay=self.weight_decay)
         lr_schedulers = lr_schedulers = CosineAnnealingWithWarmupLR(
             optimizer,T_max=self.n_epochs,start_decay=self.start_decay,
-            n_warmup_steps=self.warmup_steps,eta_min=1e-5)
+            n_warmup_steps=self.warmup_steps,eta_min=1e-6)
 
         return {"optimizer":optimizer,
                 "lr_scheduler":lr_schedulers,
@@ -284,7 +276,6 @@ class SelfSLResNetPL(ResNet,SelfSLBasePL):
                 module. Defaults to {} (the default parameters).
             stop_gradient (bool, optional): stops gradients when calculating
                 losses. Useful for VICReg. Defaults to True.
-            lars (bool, optional): uses LARS. Defaults to False.
             channels_to_batch (bool, optional): resizes the input such that 
                 each channel becomes an element of the batch. Defaults to 
                 False.
@@ -495,7 +486,6 @@ class SelfSLUNetPL(UNet,SelfSLBasePL):
                 module. Defaults to {} (the default parameters).
             stop_gradient (bool, optional): stops gradients when calculating
                 losses. Useful for VICReg. Defaults to True.
-            lars (bool, optional): uses LARS. Defaults to False.
             channels_to_batch (bool, optional): resizes the input such that 
                 each channel becomes an element of the batch. Defaults to 
                 False.
@@ -699,7 +689,6 @@ class SelfSLConvNeXtPL(ConvNeXt,SelfSLBasePL):
                 module. Defaults to {} (the default parameters).
             stop_gradient (bool, optional): stops gradients when calculating
                 losses. Useful for VICReg. Defaults to True.
-            lars (bool, optional): uses LARS. Defaults to False.
             channels_to_batch (bool, optional): resizes the input such that 
                 each channel becomes an element of the batch. Defaults to 
                 False.
