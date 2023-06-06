@@ -26,8 +26,9 @@ Then, using some minor JSON manipulation and [`MONAI`](https://monai.io/) I am a
 * YOLO-based network for 3d detection
 * Also implemented a coarse segmentation algorithm, similar to YOLO but outputs only the object probability mask
 
-## Implemented methods for object classification
+## Implemented methods for classification
 
+* Regular, VGG-like networks (just simple concatenations of convolution + activation + normalization)
 * ResNet-based methods mostly (in `lib/modules/res_net.py`), but others can be easily constructed with the building blocks in `lib/modules/layers.py`
 * [**ConvNeXt**](https://arxiv.org/abs/2201.03545) - an upgrade to CNNs that makes them comparable to vision tranformers including SWin (in `lib/modules/conv_next.py`)
 * [**Vision transformer**](https://arxiv.org/abs/2010.11929v2) - A transformer, but for images
