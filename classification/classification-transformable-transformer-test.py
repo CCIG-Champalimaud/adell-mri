@@ -5,22 +5,19 @@ import json
 import numpy as np
 import torch
 import monai
-from sklearn.model_selection import train_test_split,StratifiedKFold
+from pathlib import Path
 
 from pytorch_lightning import Trainer
 import sys
 sys.path.append(r"..")
 from lib.utils import (
-    safe_collate,set_classification_layer_bias,
-    ScaleIntensityAlongDimd,EinopsRearranged)
-from lib.utils.pl_utils import get_ckpt_callback,get_logger,get_devices
-from lib.utils.batch_preprocessing import BatchPreprocessing
+    safe_collate,ScaleIntensityAlongDimd,EinopsRearranged)
+from lib.utils.pl_utils import get_devices
 from lib.utils.dataset_filters import (
     filter_dictionary_with_filters,
     filter_dictionary_with_possible_labels,
     filter_dictionary_with_presence)
 from lib.monai_transforms import get_transforms_classification as get_transforms
-from lib.monai_transforms import get_augmentations_class as get_augmentations
 from lib.modules.classification.pl import TransformableTransformerPL
 from lib.modules.config_parsing import parse_config_2d_classifier_3d
 from lib.utils.parser import parse_ids
@@ -40,8 +37,17 @@ if __name__ == "__main__":
         '--dataset_json',dest='dataset_json',type=str,
         help="JSON containing dataset information",required=True)
     parser.add_argument(
-        '--test_ids',dest='test_ids',type=str,
+        '--metric_path',dest='metric_path',type=str,required=True,
+        help='Path to metrics file.')
+    parser.add_argument(
+        '--test_ids',dest='test_ids',type=str,nargs="+",
         help="List of IDs for testing",required=True)
+    parser.add_argument(
+        '--exclude_ids',dest='exclude_ids',type=str,nargs="+",
+        help="List of IDs to exclude",default=None)
+    parser.add_argument(
+        '--one_to_one',dest="one_to_one",action="store_true",
+        help="Tests the checkpoint only on the corresponding test_ids set")
     parser.add_argument(
         '--image_keys',dest='image_keys',type=str,nargs='+',
         help="Image keys in the dataset JSON.",
@@ -111,7 +117,7 @@ if __name__ == "__main__":
         '--n_workers',dest='n_workers',
         help="No. of workers",default=0,type=int)
     parser.add_argument(
-        '--checkpoint',dest='checkpoint',type=str,default=None,
+        '--checkpoints',dest='checkpoints',type=str,default=None,
         nargs="+",help='List of checkpoints for testing.')
 
     args = parser.parse_args()
@@ -129,8 +135,6 @@ if __name__ == "__main__":
 
     accelerator,devices,strategy = get_devices(args.dev)
     
-    output_file = open(args.metric_path,'w')
-
     data_dict = json.load(open(args.dataset_json,'r'))
     all_test_pids = parse_ids(args.test_ids)
     if args.exclude_ids is not None:
@@ -188,12 +192,17 @@ if __name__ == "__main__":
     t2_keys = [k for k in t2_keys if k in keys]
 
     network_config,_ = parse_config_2d_classifier_3d(
-        args.config_file,args.dropout_param)
+        args.config_file,0.0)
+    
+    if n_classes == 2:
+        network_config["loss_fn"] = torch.nn.BCEWithLogitsLoss(
+            torch.ones([]))
+    else:
+        network_config["loss_fn"] = torch.nn.CrossEntropy(
+            torch.ones([n_classes]))
     
     if args.batch_size is not None:
         network_config["batch_size"] = args.batch_size
-    if args.learning_rate is not None:
-        network_config["learning_rate"] = args.learning_rate
 
     if "batch_size" not in network_config:
         network_config["batch_size"] = 1
@@ -214,28 +223,21 @@ if __name__ == "__main__":
         "label_key":args.label_keys,
         "clinical_feature_keys":[],
         "label_mode":label_mode}
-    augment_arguments = {
-        "augment":args.augment,
-        "t2_keys":t2_keys,
-        "all_keys":keys,
-        "image_keys":keys,
-        "intp_resampling_augmentations":["bilinear" for _ in keys]}
 
     transforms = monai.transforms.Compose([
-        get_transforms("pre",**transform_arguments),
+        *get_transforms("pre",**transform_arguments),
         *get_transforms("post",**transform_arguments),
         EinopsRearranged("image","c h w d -> 1 h w (d c)"),
         ScaleIntensityAlongDimd("image",dim=-1)])
     
-    full_dataset = monai.data.CacheDataset(
-        [data_dict[pid] for pid in data_dict],transforms,
-        cache_rate=args.cache_rate,
-        num_workers=args.n_workers)
-    
+    all_metrics = []
     for iteration,test_pids in enumerate(all_test_pids):
         test_list = [data_dict[pid] for pid in test_pids
                      if pid in data_dict]
-        test_dataset = monai.data.Dataset(test_list,transforms)
+        test_dataset = monai.data.CacheDataset(
+            test_list,transforms,
+            cache_rate=args.cache_rate,
+            num_workers=args.n_workers)
         
         # PL sometimes needs a little hint to detect GPUs.
         torch.ones([1]).to("cuda" if "cuda" in args.dev else "cpu")
@@ -278,23 +280,13 @@ if __name__ == "__main__":
                 **network_config)
 
             state_dict = torch.load(checkpoint)["state_dict"]
-            state_dict = {k:state_dict[k] for k in state_dict
-                          if "loss_fn.weight" not in k}
             network.load_state_dict(state_dict)
             trainer = Trainer(accelerator=accelerator,devices=devices)
             test_metrics = trainer.test(network,test_loader)[0]
-            for k in test_metrics:
-                out = test_metrics[k]
-                if n_classes == 2:
-                    try:
-                        value = float(out.detach().numpy())
-                    except Exception:
-                        value = float(out)
-                    x = "{},{},{},{},{}".format(k,checkpoint,iteration,0,value)
-                    output_file.write(x+'\n')
-                    print(x)
-                else:
-                    for i,v in enumerate(out):
-                        x = "{},{},{},{},{}".format(k,checkpoint,iteration,i,v)
-                        output_file.write(x+'\n')
-                        print(x)
+            test_metrics["checkpoint"] = checkpoint
+            test_metrics["pids"] = test_pids
+            all_metrics.append(test_metrics)
+    
+    Path(args.metric_path).parent.mkdir(exist_ok=True,parents=True)
+    with open(args.metric_path,"w") as o:
+        json.dump(all_metrics,o)
