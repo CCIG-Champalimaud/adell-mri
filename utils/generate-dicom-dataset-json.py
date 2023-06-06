@@ -13,7 +13,10 @@ def process_dicom(dcm):
     if series_uid not in dicom_dict[study_uid]:
         dicom_dict[study_uid][series_uid] = []
     dcm = str(dcm)
-    dcm_file = dcmread(dcm)
+    try:
+        dcm_file = dcmread(dcm)
+    except:
+        return None
     # removes cases of segmentation 
     if dcm_file[0x0008,0x0060].value == "SEG":
         return None
@@ -31,6 +34,10 @@ def process_dicom(dcm):
     else:
         orientation = None
     return dcm,study_uid,series_uid,orientation
+
+def process_dicom_directory(series_dir):
+    return [process_dicom(str(x))
+            for x in Path(series_dir).rglob("*dcm")]
 
 def update_dict(d,study_uid,series_uid,orientation,dcm,excluded_ids=[]):
     if study_uid not in excluded_ids:
@@ -53,7 +60,7 @@ if __name__ == "__main__":
         '--excluded_ids',dest="excluded_ids",default=None,
         help="Study UIDs to be excluded",nargs="+")
     parser.add_argument(
-        '--patterns',dest="patterns",default=["*dcm"],nargs="+",
+        '--patterns',dest="patterns",default=["*/"],nargs="+",
         help="Pattern to match for inputs (assumes each pattern corresponds to\
             a modality).")
     parser.add_argument(
@@ -74,25 +81,32 @@ if __name__ == "__main__":
     
     dicom_dict = {}
     for pattern in args.patterns:
-        all_dicoms = list(path.rglob(pattern))
+        print("Locating all studies/series...")
+        all_dicoms = [str(x) for x in path.glob(pattern)]
+        print("Filtering excluded IDs")
+        all_dicoms = [x for x in all_dicoms
+                      if not any([y in x for y in excluded_ids])]
+        print("Iterating studies/series...")
         with tqdm(all_dicoms) as pbar:
             if args.n_workers in [0,1]:
                 for dcm in all_dicoms:
-                    out = process_dicom(dcm)
-                    if out is not None:
-                        dcm,study_uid,series_uid,orientation = out
-                        update_dict(
-                            dicom_dict,study_uid,series_uid,orientation,dcm,
-                            excluded_ids)
+                    outs = process_dicom_directory(dcm)
+                    for out in outs:
+                        if out is not None:
+                            dcm,study_uid,series_uid,orientation = out
+                            update_dict(
+                                dicom_dict,study_uid,series_uid,orientation,dcm,
+                                excluded_ids)
                     pbar.update()
             else:
                 pool = Pool(args.n_workers)
-                for out in pool.imap(process_dicom,all_dicoms):
-                    if out is not None:
-                        dcm,study_uid,series_uid,orientation = out
-                        update_dict(
-                            dicom_dict,study_uid,series_uid,orientation,dcm,
-                            excluded_ids)
+                for outs in pool.imap(process_dicom_directory,all_dicoms):
+                    for out in outs:
+                        if out is not None:
+                            dcm,study_uid,series_uid,orientation = out
+                            update_dict(
+                                dicom_dict,study_uid,series_uid,orientation,dcm,
+                                excluded_ids)
                     pbar.update()
 
     pretty_dict = json.dumps(dicom_dict,indent=2)
