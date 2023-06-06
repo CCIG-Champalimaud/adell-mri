@@ -1,6 +1,6 @@
 # ADeLL-MRI - a Deep-Learning Library for MRI
 
-Here I implement and develop methods for **classification**, **segmentation**, **self-supervised learning** and **detection** using different MRI modalities, but these are more generically applicable to other problems - I try to follow a modular design and development, such that networks can be deployed to different problems as necessary. I also do some work with self supervised learning methods, and have recently started to implement some building blocks for continuous learning. I prefer to organize data using `json` files so I have developed a number of scripts that allow me to achieve this (i.e. `utils/get-dataset-json.py`) and generate "dataset JSON files". By a dataset JSON file I merely mean a JSON file with the following format:
+Here we implement and develop methods for **classification**, **segmentation**, **self-supervised learning** and **detection** using different MRI modalities, but these are more generically applicable to other problems - we try to follow a modular design and development, such that networks can be deployed to different problems as necessary. we also do some work with self supervised learning methods, and have recently started to implement some building blocks for continuous learning. we prefer to organize data using `json` files so we have developed a number of scripts that allow us to achieve this (i.e. `utils/generate-dataset-json.py`) and generate "dataset JSON files". By a dataset JSON file we merely mean a JSON file with the following format:
 
 ```
 entry_1
@@ -10,11 +10,11 @@ entry_1
 |-class: class_for_entry_1
 ```
 
-Then, using some minor JSON manipulation and [`MONAI`](https://monai.io/) I am able to easily construct data ingestion pipelines for training.
+Then, using some minor JSON manipulation and [`MONAI`](https://monai.io/) we am able to easily construct data ingestion pipelines for training.
 
 ## Implemented methods for segmentation
 
-* [**U-Net**](https://www.nature.com/articles/s41592-018-0261-2) - different versions are required for 2D and 3D, but here I developed a class that is able to coordinate the operations to setup both (this idea was based on the MONAI implementation of the U-Net)
+* [**U-Net**](https://www.nature.com/articles/s41592-018-0261-2) - different versions are required for 2D and 3D, but here we developed a class that is able to coordinate the operations to setup both (this idea was based on the MONAI implementation of the U-Net)
 * [**U-Net++**](https://pubmed.ncbi.nlm.nih.gov/32613207/) - very similar to U-Net but features [DenseNet](https://arxiv.org/abs/1608.06993)-like skip connections and skip connections between different resolutions. Also features deep supervision at the level of intermediate skip connections
 * [**Anysotropic Hybrid network (AHNet)**](https://arxiv.org/abs/1711.08580) - this network is first trained to segment 2D images and some of the (enconding) layers are then transferred to 3D (mostly by either concatenating weights or adding an extra dimension to the layer).
 * **Branched input U-Net (BrUNet)** - a U-Net model that has different encoders for each input channel
@@ -49,16 +49,20 @@ I have placed most of the scripts and implementations under `lib/modules/segment
 
 #### Adaptations to PyTorch Lightning
 
-I use PyTorch Lightning to train my models as it offers a very comprehensive set of tools for optimisation. I.e. in `lib/modules/segmentation/pl.py` I have implemented some classes which inherit from the networks implemented in `lib/modules/segmentation` so that they can be trained using PyTorch Lightning. The same has been done for the self-supervised learning models (in `lib/modules/self_supervised/pl.py`) and for the classification models (in `lib/modules/classification/pl.py`).
+I use PyTorch Lightning to train my models as it offers a very comprehensive set of tools for optimisation. I.e. in `lib/modules/segmentation/pl.py` we have implemented some classes which inherit from the networks implemented in `lib/modules/segmentation` so that they can be trained using PyTorch Lightning. The same has been done for the self-supervised learning models (in `lib/modules/self_supervised/pl.py`) and for the classification models (in `lib/modules/classification/pl.py`).
 
 ### Segmentation loss functions
 
-In `lib/modules/losses.py` I have coded most losses necessary based loosely on a paper by [Yeung *et al.*](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC8785124/) introducing the unified focal loss.
+In `lib/modules/losses.py` we have coded most losses necessary based loosely on a paper by [Yeung *et al.*](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC8785124/) introducing the unified focal loss.
 
 ### Self-supervised loss functions
 
 In `lib/modules/self_supervised/self_supervised.py` you can find all the relevant loss functions.
 
+### Command line interfaces for training, prediction and testing
+
+Simple command line interfaces for classification (`./classification`), object detection (`./detection`), segmentation (`./segmentation`) and self-supervised learning (`./ssl`) are available. They all assume the dataset format produced by `utils/generate-dataset-json.py`, except for `ssl/self-supervised-train-2d.py`, which assumes a dataset obtained using `utils/generate-dicom-dataset-json.py`. All of them use `argparse` for command line argument parsing and have default help menus which can be used with the `--help` flag. 
+
 ### Tests
 
-I have included a few unit tests in `testing`. In them, I confirm that networks and modules are outputing the correct shapes and that they are compiling correctly. They are prepared to run with `pytest`, i.e. `pytest` runs all of the relevant tests.
+I have included a few unit tests in `testing`. In them, we confirm that networks and modules are outputing the correct shapes and that they are compiling correctly. They are prepared to run with `pytest`, i.e. `pytest` runs all of the relevant tests.
