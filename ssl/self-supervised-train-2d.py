@@ -166,9 +166,9 @@ if __name__ == "__main__":
         '--steps_per_epoch',dest="steps_per_epoch",
         help="Number of steps per epoch",default=None,type=int)
     parser.add_argument(
-        '--warmup_steps',dest='warmup_steps',type=float,default=0.0,
-        help="Number of warmup steps (if SWA is triggered it starts after\
-            this number of steps).")
+        '--warmup_epochs',dest='warmup_epochs',type=float,default=0.0,
+        help="Number of warmup epochs (if SWA is triggered it starts after\
+            this number of epochs).")
     parser.add_argument(
         '--accumulate_grad_batches',dest="accumulate_grad_batches",
         help="Number batches to accumulate before backpropgating gradient",
@@ -228,13 +228,13 @@ if __name__ == "__main__":
     if args.steps_per_epoch is not None:
         max_epochs = -1
         max_steps = args.max_epochs * args.steps_per_epoch
-        val_check_interval = args.steps_per_epoch * 5
-        warmup_steps = args.warmup_steps * args.steps_per_epoch
+        warmup_steps = args.warmup_epochs * args.steps_per_epoch
+        val_check_interval = 5 * args.steps_per_epoch
     else:
         max_epochs = args.max_epochs
         max_steps = None
+        warmup_steps = args.warmup_epochs
         val_check_interval = 5.0
-        warmup_steps = args.warmup_steps
     
     accelerator,devices,strategy = get_devices(args.dev)
 
@@ -329,7 +329,9 @@ if __name__ == "__main__":
     train_dataset = DICOMDataset(
         train_list,
         monai.transforms.Compose(transforms))
-    sampler = SliceSampler(train_list,n_iterations=n_iterations)
+    sampler = SliceSampler(train_list,n_iterations=n_iterations,
+                           verbose=True)
+    val_sampler = SliceSampler(train_list,n_iterations=n_iterations)
 
     if args.ema is True:
         bs = network_config_correct["batch_size"]
@@ -358,6 +360,10 @@ if __name__ == "__main__":
 
     train_loader = train_loader_call(
         network_config_correct["batch_size"],False)
+    val_loader = monai.data.ThreadDataLoader(
+        train_dataset,batch_size=network_config_correct["batch_size"],
+        num_workers=n_workers,collate_fn=safe_collate,
+        sampler=val_sampler,drop_last=True)
 
     boilerplate = {
         "training_dataloader_call":train_loader_call,
@@ -429,10 +435,10 @@ if __name__ == "__main__":
     
     torch.cuda.empty_cache()
     force_cudnn_initialization()
-    trainer.fit(ssl,val_dataloaders=train_loader,ckpt_path=ckpt_path)
+    trainer.fit(ssl,val_dataloaders=val_loader,ckpt_path=ckpt_path)
     
     print("Validating...")
-    test_metrics = trainer.test(ssl,train_loader)[0]
+    test_metrics = trainer.test(ssl,val_loader)[0]
     for k in test_metrics:
         out = test_metrics[k]
         try:
