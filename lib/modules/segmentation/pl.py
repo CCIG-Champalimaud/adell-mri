@@ -2,7 +2,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 import torchmetrics
-import pytorch_lightning as pl
+import lightning.pytorch as pl
 import torchmetrics.classification as tmc
 from typing import Callable,Dict,List
 from abc import ABC

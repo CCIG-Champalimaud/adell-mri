@@ -6,8 +6,8 @@ import torch
 import monai
 from sklearn.model_selection import train_test_split,StratifiedKFold
 
-from pytorch_lightning import Trainer
-from pytorch_lightning.callbacks import (
+from lightning.pytorch import Trainer
+from lightning.pytorch.callbacks import (
     EarlyStopping,StochasticWeightAveraging,RichProgressBar)
 
 import sys
@@ -555,14 +555,13 @@ if __name__ == "__main__":
             devices=devices,logger=logger,callbacks=callbacks,
             max_epochs=args.max_epochs,
             enable_checkpointing=ckpt,
-            resume_from_checkpoint=ckpt_path,
             gradient_clip_val=args.gradient_clip_val,
             strategy=strategy,
             accumulate_grad_batches=args.accumulate_grad_batches,
             check_val_every_n_epoch=1,
             deterministic="warn")
 
-        trainer.fit(network,train_loader,train_val_loader)
+        trainer.fit(network,train_loader,train_val_loader,ckpt_path=ckpt_path)
 
         # assessing performance on validation set
         print("Validating...")

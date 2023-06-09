@@ -9,9 +9,9 @@ import gc
 from sklearn.model_selection import KFold,train_test_split
 from tqdm import tqdm
 
-from pytorch_lightning import Trainer
-from pytorch_lightning.callbacks import EarlyStopping
-from pytorch_lightning.callbacks import RichProgressBar
+from lightning.pytorch import Trainer
+from lightning.pytorch.callbacks import EarlyStopping
+from lightning.pytorch.callbacks import RichProgressBar
 
 import sys
 sys.path.append(os.path.join(os.path.realpath(os.path.dirname(__file__)),".."))
@@ -749,13 +749,12 @@ if __name__ == "__main__":
             strategy=strategy,max_epochs=args.max_epochs,
             enable_checkpointing=ckpt,
             accumulate_grad_batches=args.accumulate_grad_batches,
-            resume_from_checkpoint=ckpt_path,
             check_val_every_n_epoch=args.check_val_every_n_epoch,
             log_every_n_steps=10,precision=precision,
             gradient_clip_val=args.gradient_clip_val,
             detect_anomaly=False)
 
-        trainer.fit(unet,train_loader,train_val_loader)
+        trainer.fit(unet,train_loader,train_val_loader,ckpt_path=ckpt_path)
         
         print("Validating...")
         if ckpt is True:

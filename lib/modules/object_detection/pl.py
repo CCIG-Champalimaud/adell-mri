@@ -2,7 +2,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 import torchmetrics
-import pytorch_lightning as pl
+import lightning.pytorch as pl
 from typing import Callable,Tuple,Union
 
 from .nets import YOLONet3d,CoarseDetector3d

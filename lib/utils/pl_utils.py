@@ -6,8 +6,8 @@ Lightning.
 import os
 import torch
 import wandb
-from pytorch_lightning.loggers import WandbLogger
-from pytorch_lightning.callbacks.model_checkpoint import ModelCheckpoint
+from lightning.pytorch.loggers import WandbLogger
+from lightning.pytorch.callbacks.model_checkpoint import ModelCheckpoint
 
 from typing import List,Union,Tuple,Any,Dict
 
@@ -25,8 +25,8 @@ class ModelCheckpointWithMetadata(ModelCheckpoint):
         return sd
 
 def get_ckpt_callback(checkpoint_dir:str,checkpoint_name:str,
-                      max_epochs:int,resume_from_last:bool,
-                      val_fold:int=None,monitor="val_loss",
+                      max_epochs:int,max_steps:int=None,resume_from_last:bool=False,
+                      val_fold:int=None,monitor:str="val_loss",
                       n_best_ckpts:int=1,metadata:dict={})->ModelCheckpoint:
     """Gets a checkpoint callback for PyTorch Lightning. The format for 
     for the last and 2 best checkpoints, respectively is:
@@ -38,8 +38,11 @@ def get_ckpt_callback(checkpoint_dir:str,checkpoint_name:str,
         checkpoint_name (str): root name for checkpoint.
         max_epochs (int): maximum number of training epochs (used to check if
             training has finished when resume_from_last==True).
-        resume_from_last (bool): whether training should be resumed in case a
-            checkpoint is detected.
+        max_steps (int, optional): maximum number of training steps (used to 
+            check if training has finished when resume_from_last==True). 
+            Defaults to None.
+        resume_from_last (bool, optional): whether training should be resumed in 
+            case a checkpoint is detected. Defaults to True.
         val_fold (int, optional): ID for the validation fold. Defaults to None.
         monitor (str, optional): metric which should be monitored when defining
             the best checkpoints. Defaults to "val_loss".
@@ -77,13 +80,19 @@ def get_ckpt_callback(checkpoint_dir:str,checkpoint_name:str,
             checkpoint_dir,ckpt_last+'.ckpt')
         if os.path.exists(ckpt_last_full) and resume_from_last is True:
             ckpt_path = ckpt_last_full
-            epoch = torch.load(ckpt_path)["epoch"]
-            if epoch >= (max_epochs-1):
+            if max_steps is not None:
+                value = max_steps
+                key = "step"
+            else:
+                value = max_epochs
+                key = "epoch"
+            ckpt_value = torch.load(ckpt_path)[key]
+            if ckpt_value >= (value-1):
                 print("Training has finished for this fold, skipping")
                 status = "finished"
             else:
-                print("Resuming training from checkpoint in {} (epoch={})".format(
-                    ckpt_path,epoch))
+                print("Resuming training from checkpoint in {} ({}={})".format(
+                    ckpt_path,key,ckpt_value))
     return ckpt_callback,ckpt_path,status
 
 def get_logger(summary_name:str,summary_dir:str,
@@ -133,7 +142,7 @@ def get_devices(device_str:str)->Tuple[str,Union[List[int],int],str]:
             specified after the ":" in the device_str) and the parallelization
             strategy ("ddp" if len(devices) > 0, None otherwise)
     """
-    strategy = None
+    strategy = "auto"
     if ":" in device_str:
         accelerator = "gpu" if "cuda" in device_str else "cpu"
         devices = [int(i) for i in device_str.split(":")[-1].split(",")]

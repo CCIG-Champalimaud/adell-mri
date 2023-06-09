@@ -7,7 +7,7 @@ import torch
 import monai
 from pathlib import Path
 
-from pytorch_lightning import Trainer
+from lightning.pytorch import Trainer
 import sys
 sys.path.append(r"..")
 from lib.utils import (

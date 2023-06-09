@@ -7,8 +7,8 @@ import monai
 import json
 from sklearn.model_selection import KFold,train_test_split
 
-from pytorch_lightning import Trainer
-from pytorch_lightning.callbacks import RichProgressBar
+from lightning.pytorch import Trainer
+from lightning.pytorch.callbacks import RichProgressBar
 
 import sys
 sys.path.append(r"..")
@@ -372,7 +372,7 @@ if __name__ == "__main__":
             max_epochs=args.max_epochs,check_val_every_n_epoch=1,
             log_every_n_steps=10)
 
-        trainer.fit(yolo, train_loader, train_val_loader)
+        trainer.fit(yolo, train_loader, train_val_loader, ckpt_path=ckpt_path)
 
         # assessing performance on validation set
         print("Validating...")

@@ -1,6 +1,6 @@
 import torch
 import torchmetrics
-import pytorch_lightning as pl
+import lightning.pytorch as pl
 import warnings
 from abc import ABC
 
@@ -164,6 +164,12 @@ class SelfSLBasePL(pl.LightningModule,ABC):
             return sum(X)
 
     def configure_optimizers(self):
+        if self.n_epochs is None or self.n_epochs == -1:
+            interval = "step"
+            n = self.n_steps
+        else:
+            interval = "epoch" 
+            n = self.n_epochs
         params_no_decay = []
         params_decay = []
         for k,p in self.named_parameters():
@@ -175,11 +181,13 @@ class SelfSLBasePL(pl.LightningModule,ABC):
             params_decay + params_no_decay,
             lr=self.learning_rate,weight_decay=self.weight_decay)
         lr_schedulers = lr_schedulers = CosineAnnealingWithWarmupLR(
-            optimizer,T_max=self.n_epochs,start_decay=self.start_decay,
-            n_warmup_steps=self.warmup_steps,eta_min=1e-6)
+            optimizer,T_max=n,start_decay=self.start_decay,
+            n_warmup_steps=self.warmup_steps,eta_min=0)
 
         return {"optimizer":optimizer,
-                "lr_scheduler":lr_schedulers,
+                "lr_scheduler":{"scheduler":lr_schedulers,
+                                "interval":interval,
+                                "frequency":1},
                 "monitor":"val_loss"}
     
     def on_validation_epoch_end(self):
@@ -224,6 +232,7 @@ class SelfSLResNetPL(ResNet,SelfSLBasePL):
         weight_decay: float=0.005,
         training_dataloader_call: Callable=None,
         n_epochs: int=1000,
+        n_steps: int=None,
         warmup_steps: int=0,
         start_decay: int=None,
         ema: torch.nn.Module=None,
@@ -256,6 +265,8 @@ class SelfSLResNetPL(ResNet,SelfSLBasePL):
                 called, returns the training dataloader. Defaults to None.
             n_epochs (int, optional): number of training epochs. Defaults to 
                 1000.
+            n_steps (int, optional): number of steps. Defaults to None. Only 
+                used if n_epochs is None.
             warmup_steps (int, optional): number of warmup steps. Defaults 
                 to 0.
             start_decay (int, optional): number of steps after which decay
@@ -289,6 +300,7 @@ class SelfSLResNetPL(ResNet,SelfSLBasePL):
         self.weight_decay = weight_decay
         self.training_dataloader_call = training_dataloader_call
         self.n_epochs = n_epochs
+        self.n_steps = n_steps
         self.warmup_steps = warmup_steps
         self.start_decay = start_decay
         self.ema = ema
@@ -434,6 +446,7 @@ class SelfSLUNetPL(UNet,SelfSLBasePL):
         weight_decay: float=0.005,
         training_dataloader_call: Callable=None,
         n_epochs: int=1000,
+        n_steps: int=None,
         warmup_steps: int=0,
         start_decay: int=None,
         ema: torch.nn.Module=None,
@@ -466,6 +479,8 @@ class SelfSLUNetPL(UNet,SelfSLBasePL):
                 called, returns the training dataloader. Defaults to None.
             n_epochs (int, optional): number of training epochs. Defaults to 
                 1000.
+            n_steps (int, optional): number of steps. Defaults to None. Only 
+                used if n_epochs is None.
             warmup_steps (int, optional): number of warmup steps. Defaults 
                 to 0.
             start_decay (int, optional): number of steps after which decay
@@ -499,6 +514,7 @@ class SelfSLUNetPL(UNet,SelfSLBasePL):
         self.weight_decay = weight_decay
         self.training_dataloader_call = training_dataloader_call
         self.n_epochs = n_epochs
+        self.n_steps = n_steps
         self.warmup_steps = warmup_steps
         self.start_decay = start_decay
         self.ema = ema
@@ -637,6 +653,7 @@ class SelfSLConvNeXtPL(ConvNeXt,SelfSLBasePL):
         weight_decay: float=0.005,
         training_dataloader_call: Callable=None,
         n_epochs: int=1000,
+        n_steps: int=None,
         warmup_steps: int=0,
         start_decay: int=None,
         ema: torch.nn.Module=None,
@@ -669,6 +686,8 @@ class SelfSLConvNeXtPL(ConvNeXt,SelfSLBasePL):
                 called, returns the training dataloader. Defaults to None.
             n_epochs (int, optional): number of training epochs. Defaults to 
                 1000.
+            n_steps (int, optional): number of steps. Defaults to None. Only 
+                used if n_epochs is None.
             warmup_steps (int, optional): number of warmup steps. Defaults 
                 to 0.
             start_decay (int, optional): number of steps after which decay
@@ -702,6 +721,7 @@ class SelfSLConvNeXtPL(ConvNeXt,SelfSLBasePL):
         self.weight_decay = weight_decay
         self.training_dataloader_call = training_dataloader_call
         self.n_epochs = n_epochs
+        self.n_steps = n_steps
         self.warmup_steps = warmup_steps
         self.start_decay = start_decay
         self.vic_reg = vic_reg

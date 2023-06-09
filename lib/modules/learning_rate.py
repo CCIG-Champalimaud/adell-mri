@@ -112,21 +112,21 @@ class CosineAnnealingWithWarmupLR(_LRScheduler):
                    for base_lr in self.base_lrs]
         return lrs
 
-    def step(self,epoch=None):
+    def step(self,step=None):
         self._step_count += 1
 
         with _enable_get_lr_call(self):
-            if epoch is None:
+            if step is None:
                 self.last_epoch += 1
                 values = self.get_lr()
             else:
-                self.last_epoch = epoch
+                self.last_epoch = step
                 values = self.get_lr()
 
         for i, data in enumerate(zip(self.optimizer.param_groups,values)):
             param_group, lr = data
             param_group['lr'] = lr
-            self.print_lr(self.verbose, i, lr, epoch)
+            self.print_lr(self.verbose, i, lr, step)
 
         self._last_lr = [group['lr'] for group in self.optimizer.param_groups]
 

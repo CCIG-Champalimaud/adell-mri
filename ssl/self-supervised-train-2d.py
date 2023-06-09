@@ -18,8 +18,8 @@ import json
 import numpy as np
 import torch
 import monai
-from pytorch_lightning import Trainer
-from pytorch_lightning.callbacks import RichProgressBar
+from lightning.pytorch import Trainer
+from lightning.pytorch.callbacks import RichProgressBar
 
 torch.backends.cudnn.benchmark = True
 
@@ -163,6 +163,9 @@ if __name__ == "__main__":
         '--max_epochs',dest="max_epochs",
         help="Maximum number of training epochs",default=100,type=int)
     parser.add_argument(
+        '--steps_per_epoch',dest="steps_per_epoch",
+        help="Number of steps per epoch",default=None,type=int)
+    parser.add_argument(
         '--warmup_steps',dest='warmup_steps',type=float,default=0.0,
         help="Number of warmup steps (if SWA is triggered it starts after\
             this number of steps).")
@@ -222,6 +225,16 @@ if __name__ == "__main__":
     g.manual_seed(args.seed)
     
     n_iterations = args.n_series_iterations
+    if args.steps_per_epoch is not None:
+        max_epochs = -1
+        max_steps = args.max_epochs * args.steps_per_epoch
+        val_check_interval = args.steps_per_epoch * 5
+        warmup_steps = args.warmup_steps * args.steps_per_epoch
+    else:
+        max_epochs = args.max_epochs
+        max_steps = None
+        val_check_interval = 5.0
+        warmup_steps = args.warmup_steps
     
     accelerator,devices,strategy = get_devices(args.dev)
 
@@ -236,6 +249,9 @@ if __name__ == "__main__":
     all_keys = [*keys]
 
     data_dict = json.load(open(args.dataset_json,'r'))
+    if len(data_dict) == 0:
+        print("No data in dataset JSON")
+        exit()
     #data_dict = filter_orientations(data_dict)
     data_dict = filter_dicom_dict_on_presence(data_dict,all_keys)
     if args.max_slices is not None:
@@ -261,7 +277,7 @@ if __name__ == "__main__":
         network_config,network_config_correct = parse_config_ssl(
             args.config_file,args.dropout_param,len(keys))
 
-    if (args.batch_size is not None) and (args.batch_size != "tune"):
+    if args.batch_size is not None:
         network_config["batch_size"] = args.batch_size
         network_config_correct["batch_size"] = args.batch_size
 
@@ -317,10 +333,14 @@ if __name__ == "__main__":
 
     if args.ema is True:
         bs = network_config_correct["batch_size"]
+        if max_epochs is not None:
+            n = max_epochs * len(sampler) / bs
+        else:
+            n = max_steps
         ema_params = {
             "decay":0.99,
             "final_decay":1.0,
-            "n_steps":args.max_epochs*len(sampler)/bs}
+            "n_steps":n}
         ema = ExponentialMovingAverage(**ema_params)
     else:
         ema = None
@@ -345,8 +365,9 @@ if __name__ == "__main__":
         "aug_image_key_2":"augmented_image_2",
         "box_key_1":"box_1",
         "box_key_2":"box_2",
-        "n_epochs":args.max_epochs,
-        "warmup_steps":args.warmup_steps,
+        "n_epochs":max_epochs,
+        "n_steps":max_steps,
+        "warmup_steps":warmup_steps,
         "vic_reg":args.vicreg,
         "vic_reg_local":args.vicregl,
         "simclr":args.simclr,
@@ -376,7 +397,7 @@ if __name__ == "__main__":
     ckpt_callback,ckpt_path,status = get_ckpt_callback(
         checkpoint_dir=args.checkpoint_dir,
         checkpoint_name=args.checkpoint_name,
-        max_epochs=args.max_epochs,
+        max_epochs=max_epochs if max_epochs is not None else max_steps,
         resume_from_last=args.resume_from_last,
         val_fold=None,
         monitor="val_loss")
@@ -397,20 +418,18 @@ if __name__ == "__main__":
     trainer = Trainer(
         accelerator=accelerator,
         devices=devices,logger=logger,callbacks=callbacks,
-        strategy=strategy,max_epochs=args.max_epochs,
+        strategy=strategy,max_epochs=max_epochs,max_steps=max_steps,
         sync_batchnorm=True if strategy is not None else False,
-        enable_checkpointing=ckpt,check_val_every_n_epoch=5,
-        precision=precision,resume_from_checkpoint=ckpt_path,
-        auto_scale_batch_size="power" if args.batch_size == "tune" else None,
+        enable_checkpointing=ckpt,
+        val_check_interval=val_check_interval,
+        check_val_every_n_epoch=None,
+        precision=precision,
         accumulate_grad_batches=args.accumulate_grad_batches,
         gradient_clip_val=args.gradient_clip_val)
-    if strategy is None and args.batch_size == "tune":
-        bs = trainer.tune(ssl,scale_batch_size_kwargs={"steps_per_trial":2,
-                                                       "init_val":16})
     
     torch.cuda.empty_cache()
     force_cudnn_initialization()
-    trainer.fit(ssl,val_dataloaders=train_loader)
+    trainer.fit(ssl,val_dataloaders=train_loader,ckpt_path=ckpt_path)
     
     print("Validating...")
     test_metrics = trainer.test(ssl,train_loader)[0]
