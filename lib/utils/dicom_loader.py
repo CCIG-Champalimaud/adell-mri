@@ -137,7 +137,8 @@ class SliceSampler(torch.utils.data.Sampler):
                  dicom_dataset:DICOMDatasetType,
                  n_iterations:int=1,
                  shuffle:bool=True,
-                 seed:int=42):
+                 seed:int=42,
+                 verbose:bool=False):
         """
         Args:
             dicom_dataset (DICOMDatasetType): input data with the same format 
@@ -147,11 +148,13 @@ class SliceSampler(torch.utils.data.Sampler):
             shuffle (bool, optional): whether the indices should be shuffled 
                 before each epoch. Defaults to True.
             seed (int, optional): random seed. Defaults to 42.
+            verbose (bool, optional): minimal verbosity. Defaults to False.
         """
         self.dicom_dataset = dicom_dataset
         self.n_iterations = n_iterations
         self.shuffle = shuffle
         self.seed = seed
+        self.verbose = verbose
         
         self.keys_to_indices()
         self.rng = np.random.default_rng(self.seed)
@@ -185,6 +188,8 @@ class SliceSampler(torch.utils.data.Sampler):
         Yields:
             int: an index used for the __getitem__ method in DICOMDataset.
         """
+        if self.verbose == True: print("Starting iteration")
+        
         corr_idx = []
         for _ in range(self.n_iterations):
             corr_idx.extend([i for i in range(self.N)])
