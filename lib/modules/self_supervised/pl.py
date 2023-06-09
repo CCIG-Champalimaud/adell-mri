@@ -164,7 +164,7 @@ class SelfSLBasePL(pl.LightningModule,ABC):
             return sum(X)
 
     def configure_optimizers(self):
-        if self.n_epochs is None or self.n_epochs == -1:
+        if self.n_steps is not None:
             interval = "step"
             n = self.n_steps
         else:

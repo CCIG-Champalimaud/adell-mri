@@ -95,13 +95,22 @@ class CosineAnnealingWithWarmupLR(_LRScheduler):
     def get_lr(self):
         return self._get_closed_form_lr()
 
+    def _get_linear_growth(self,step,nws):
+        lrs = [(base_lr-self.initial_lr) * ((step+1)/nws) + self.eta_min
+               for base_lr in self.base_lrs]
+        return lrs
+    
+    def _get_exponential_growth(self,step,nws):
+        lrs = [(base_lr-self.initial_lr) * math.exp((step+1) - nws) + self.eta_min
+               for base_lr in self.base_lrs]
+        return lrs
+
     def _get_closed_form_lr(self):
         le = self.last_epoch
         nws = float(self.n_warmup_steps)
         ssd = float(self.start_decay)
         if le < (nws) and nws > 0:
-            lrs = [(base_lr-self.initial_lr) * ((le+1)/nws) + self.eta_min
-                   for base_lr in self.base_lrs]
+            lrs = self._get_linear_growth(le,nws)
         elif le <= ssd:
             lrs = [base_lr for base_lr in self.base_lrs]
         else:
@@ -129,6 +138,7 @@ class CosineAnnealingWithWarmupLR(_LRScheduler):
             self.print_lr(self.verbose, i, lr, step)
 
         self._last_lr = [group['lr'] for group in self.optimizer.param_groups]
+        print(self._last_lr,self.n_warmup_steps,self.last_epoch,self.T_max)
 
 def poly_lr_decay(optimizer:torch.optim.Optimizer,
                         step:int,

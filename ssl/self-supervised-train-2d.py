@@ -225,17 +225,6 @@ if __name__ == "__main__":
     g.manual_seed(args.seed)
     
     n_iterations = args.n_series_iterations
-    if args.steps_per_epoch is not None:
-        max_epochs = -1
-        max_steps = args.max_epochs * args.steps_per_epoch
-        warmup_steps = args.warmup_epochs * args.steps_per_epoch
-        val_check_interval = 5 * args.steps_per_epoch
-    else:
-        max_epochs = args.max_epochs
-        max_steps = None
-        warmup_steps = args.warmup_epochs
-        val_check_interval = 5.0
-    
     accelerator,devices,strategy = get_devices(args.dev)
 
     output_file = open(args.metric_path,'w')
@@ -329,19 +318,42 @@ if __name__ == "__main__":
     train_dataset = DICOMDataset(
         train_list,
         monai.transforms.Compose(transforms))
-    sampler = SliceSampler(train_list,n_iterations=n_iterations)
-    val_sampler = SliceSampler(train_list,n_iterations=n_iterations)
+    if args.steps_per_epoch is not None:
+        n_samples = args.steps_per_epoch * network_config["batch_size"]
+    else:
+        n_samples = None
+    sampler = SliceSampler(
+        train_list,n_iterations=n_iterations,n_samples=n_samples)
+    val_sampler = SliceSampler(
+        train_list,n_iterations=n_iterations,n_samples=n_samples)
+
+    n_devices = len(devices) if isinstance(devices,list) else 1
+    if args.steps_per_epoch is not None:
+        max_epochs = -1
+        max_steps = args.max_epochs * args.steps_per_epoch
+        max_steps_params = max_steps
+        warmup_steps = args.warmup_epochs * args.steps_per_epoch
+        check_val_every_n_epoch = None
+        val_check_interval = 5 * args.steps_per_epoch
+    else:
+        bs = network_config_correct["batch_size"]
+        steps_per_epoch = np.floor(len(sampler) / bs)
+        max_epochs = args.max_epochs
+        max_steps = -1
+        max_steps_params = args.max_epochs * steps_per_epoch
+        warmup_steps = args.warmup_epochs * steps_per_epoch
+        check_val_every_n_epoch = 5
+        val_check_interval = None
+    warmup_steps = warmup_steps // n_devices
+    max_steps_params = max_steps_params // n_devices
+    
+    print(warmup_steps,max_steps_params)
 
     if args.ema is True:
-        bs = network_config_correct["batch_size"]
-        if max_epochs is not None:
-            n = max_epochs * len(sampler) / bs
-        else:
-            n = max_steps
         ema_params = {
             "decay":0.99,
             "final_decay":1.0,
-            "n_steps":n}
+            "n_steps":max_steps_params}
         ema = ExponentialMovingAverage(**ema_params)
     else:
         ema = None
@@ -371,7 +383,7 @@ if __name__ == "__main__":
         "box_key_1":"box_1",
         "box_key_2":"box_2",
         "n_epochs":max_epochs,
-        "n_steps":max_steps,
+        "n_steps":max_steps_params,
         "warmup_steps":warmup_steps,
         "vic_reg":args.vicreg,
         "vic_reg_local":args.vicregl,
@@ -399,10 +411,14 @@ if __name__ == "__main__":
     
     callbacks = [RichProgressBar()]
 
+    if max_epochs is not None:
+        epochs_ckpt = max_epochs
+    else:
+        epochs_ckpt = max_steps / len(sampler) / bs
     ckpt_callback,ckpt_path,status = get_ckpt_callback(
         checkpoint_dir=args.checkpoint_dir,
         checkpoint_name=args.checkpoint_name,
-        max_epochs=max_epochs if max_epochs is not None else max_steps,
+        max_epochs=epochs_ckpt,
         resume_from_last=args.resume_from_last,
         val_fold=None,
         monitor="val_loss")
@@ -427,7 +443,7 @@ if __name__ == "__main__":
         sync_batchnorm=True if strategy is not None else False,
         enable_checkpointing=ckpt,
         val_check_interval=val_check_interval,
-        check_val_every_n_epoch=None,
+        check_val_every_n_epoch=check_val_every_n_epoch,
         precision=precision,
         accumulate_grad_batches=args.accumulate_grad_batches,
         gradient_clip_val=args.gradient_clip_val)

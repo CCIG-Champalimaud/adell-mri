@@ -136,6 +136,7 @@ class SliceSampler(torch.utils.data.Sampler):
     def __init__(self,
                  dicom_dataset:DICOMDatasetType,
                  n_iterations:int=1,
+                 n_samples:int=None,
                  shuffle:bool=True,
                  seed:int=42,
                  verbose:bool=False):
@@ -145,6 +146,8 @@ class SliceSampler(torch.utils.data.Sampler):
                 as specified in DICOMDataset.
             n_iterations (int, optional): number of times a study is accessed 
                 by epoch. Defaults to 1.
+            n_samples (int, optional): number of total iterated samples. Defaults
+                to None (not used).
             shuffle (bool, optional): whether the indices should be shuffled 
                 before each epoch. Defaults to True.
             seed (int, optional): random seed. Defaults to 42.
@@ -152,6 +155,7 @@ class SliceSampler(torch.utils.data.Sampler):
         """
         self.dicom_dataset = dicom_dataset
         self.n_iterations = n_iterations
+        self.n_samples = n_samples
         self.shuffle = shuffle
         self.seed = seed
         self.verbose = verbose
@@ -187,8 +191,9 @@ class SliceSampler(torch.utils.data.Sampler):
 
         Yields:
             int: an index used for the __getitem__ method in DICOMDataset.
-        """
-        if self.verbose == True: print("Starting iteration")
+        """        
+        if self.verbose == True: 
+            print("Starting iteration")
         
         corr_idx = []
         for _ in range(self.n_iterations):
@@ -196,6 +201,9 @@ class SliceSampler(torch.utils.data.Sampler):
             
         if self.shuffle == True:
             self.rng.shuffle(corr_idx)
+        
+        if self.n_samples is not None:
+            corr_idx = corr_idx[:self.n_samples]
         
         for idx in corr_idx:
             element = self.correspondence[idx]
@@ -210,4 +218,6 @@ class SliceSampler(torch.utils.data.Sampler):
         Returns:
             int: number of studies.
         """
+        if self.n_samples is not None:
+            return self.n_samples
         return self.N * self.n_iterations
