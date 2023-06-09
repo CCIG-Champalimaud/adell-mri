@@ -329,8 +329,7 @@ if __name__ == "__main__":
     train_dataset = DICOMDataset(
         train_list,
         monai.transforms.Compose(transforms))
-    sampler = SliceSampler(train_list,n_iterations=n_iterations,
-                           verbose=True)
+    sampler = SliceSampler(train_list,n_iterations=n_iterations)
     val_sampler = SliceSampler(train_list,n_iterations=n_iterations)
 
     if args.ema is True:
