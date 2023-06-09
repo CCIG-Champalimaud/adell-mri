@@ -147,7 +147,7 @@ def get_devices(device_str:str)->Tuple[str,Union[List[int],int],str]:
         accelerator = "gpu" if "cuda" in device_str else "cpu"
         devices = [int(i) for i in device_str.split(":")[-1].split(",")]
         if len(devices) > 1:
-            strategy = "ddp"
+            strategy = "ddp_find_unused_parameters_true"
     else:
         accelerator = "gpu" if "cuda" in device_str else "cpu"
         devices = 1
