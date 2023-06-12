@@ -14,7 +14,11 @@ import sys
 sys.path.append(r"..")
 from lib.utils import (
     safe_collate,set_classification_layer_bias)
-from lib.utils.pl_utils import get_ckpt_callback,get_logger,get_devices
+from lib.utils.pl_utils import (
+    get_ckpt_callback,
+    get_logger,
+    get_devices,
+    delete_checkpoints)
 from lib.utils.dataset_filters import (
     filter_dictionary_with_filters,
     filter_dictionary_with_possible_labels,
@@ -150,6 +154,9 @@ if __name__ == "__main__":
     parser.add_argument(
         '--checkpoint',dest='checkpoint',type=str,default=None,
         nargs="+",help='Resumes training from this checkpoint.')
+    parser.add_argument(
+        '--delete_checkpoints',dest='delete_checkpoints',action="store_true",
+        help='Deletes checkpoints after training (keeps only metrics).')
     parser.add_argument(
         '--monitor',dest='monitor',type=str,default="val_loss",
         help="Metric that is monitored to determine the best checkpoint.")
@@ -594,3 +601,6 @@ if __name__ == "__main__":
                         x = "{},{},{},{},{}".format(k,ckpt_key,val_fold,i,v)
                         output_file.write(x+'\n')
                         print(x)
+        
+        if args.delete_checkpoints == True:
+            delete_checkpoints(trainer)
