@@ -230,6 +230,7 @@ if __name__ == "__main__":
     rng = np.random.default_rng(args.seed)
 
     accelerator,devices,strategy = get_devices(args.dev)
+    n_devices = len(devices) if isinstance(devices,list) else devices
     
     output_file = open(args.metric_path,'w')
 
@@ -484,13 +485,18 @@ if __name__ == "__main__":
         else:
             network_config["loss_fn"] = torch.nn.CrossEntropy(class_weights)
         
-        if isinstance(devices,list):
-            n_workers = args.n_workers // len(devices)
-        else:
-            n_workers = args.n_workers // devices
-        def train_loader_call(): 
+        n_workers = args.n_workers // n_devices
+        bs = network_config["batch_size"]
+        real_bs = bs * n_devices
+        if len(train_dataset) < real_bs:
+            new_bs = len(train_dataset) // n_devices
+            print(
+                f"Batch size changed from {bs} to {new_bs} (dataset too small)")
+            bs = new_bs
+            real_bs = bs * n_devices
+        def train_loader_call():
             return monai.data.ThreadDataLoader(
-                train_dataset,batch_size=network_config["batch_size"],
+                train_dataset,batch_size=bs,
                 shuffle=sampler is None,num_workers=n_workers,generator=g,
                 collate_fn=safe_collate,pin_memory=True,
                 sampler=sampler,persistent_workers=args.n_workers>0,
