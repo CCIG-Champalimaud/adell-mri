@@ -113,8 +113,7 @@ if __name__ == "__main__":
         default=1.0)
     parser.add_argument(
         '--precision',dest='precision',type=str,
-        help="Floating point precision",choices=["16","32","bf16"],
-        default="32")
+        help="Floating point precision",default="32")
     parser.add_argument(
         '--net_type',dest='net_type',
         choices=["resnet","unet_encoder","convnext"],
@@ -328,26 +327,29 @@ if __name__ == "__main__":
         train_list,n_iterations=n_iterations,n_samples=n_samples)
 
     n_devices = len(devices) if isinstance(devices,list) else 1
+    agb = args.accumulate_grad_batches
     if args.steps_per_epoch is not None:
+        steps_per_epoch = int(np.ceil(args.steps_per_epoch / agb))
         max_epochs = -1
-        max_steps = args.max_epochs * args.steps_per_epoch
+        max_steps = args.max_epochs * steps_per_epoch
         max_steps_params = max_steps
-        warmup_steps = args.warmup_epochs * args.steps_per_epoch
+        warmup_steps = args.warmup_epochs * steps_per_epoch
         check_val_every_n_epoch = None
-        val_check_interval = 5 * args.steps_per_epoch
+        val_check_interval = 5 * steps_per_epoch
     else:
         bs = network_config_correct["batch_size"]
-        steps_per_epoch = np.floor(len(sampler) / bs)
+        steps_per_epoch = len(sampler) // (bs * n_devices)
+        steps_per_epoch = int(np.ceil(steps_per_epoch / agb))
         max_epochs = args.max_epochs
         max_steps = -1
         max_steps_params = args.max_epochs * steps_per_epoch
         warmup_steps = args.warmup_epochs * steps_per_epoch
         check_val_every_n_epoch = 5
         val_check_interval = None
-    warmup_steps = warmup_steps // n_devices
-    max_steps_params = max_steps_params // n_devices
+    warmup_steps = int(warmup_steps)
+    max_steps_params = int(max_steps_params)
     
-    print(warmup_steps,max_steps_params)
+    print(steps_per_epoch,warmup_steps,max_steps_params)
 
     if args.ema is True:
         ema_params = {
@@ -411,10 +413,7 @@ if __name__ == "__main__":
     
     callbacks = [RichProgressBar()]
 
-    if max_epochs is not None:
-        epochs_ckpt = max_epochs
-    else:
-        epochs_ckpt = max_steps / len(sampler) / bs
+    epochs_ckpt = max_epochs
     ckpt_callback,ckpt_path,status = get_ckpt_callback(
         checkpoint_dir=args.checkpoint_dir,
         checkpoint_name=args.checkpoint_name,
@@ -435,7 +434,7 @@ if __name__ == "__main__":
                         resume=args.resume,
                         fold=None)
 
-    precision = {"16":16,"32":32,"bf16":"bf16"}[args.precision]
+    precision = args.precision
     trainer = Trainer(
         accelerator=accelerator,
         devices=devices,logger=logger,callbacks=callbacks,
