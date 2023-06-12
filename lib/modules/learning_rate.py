@@ -138,7 +138,6 @@ class CosineAnnealingWithWarmupLR(_LRScheduler):
             self.print_lr(self.verbose, i, lr, step)
 
         self._last_lr = [group['lr'] for group in self.optimizer.param_groups]
-        print(self._last_lr,self.n_warmup_steps,self.last_epoch,self.T_max)
 
 def poly_lr_decay(optimizer:torch.optim.Optimizer,
                         step:int,
