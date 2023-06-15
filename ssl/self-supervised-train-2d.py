@@ -329,11 +329,12 @@ if __name__ == "__main__":
     n_devices = len(devices) if isinstance(devices,list) else 1
     agb = args.accumulate_grad_batches
     if args.steps_per_epoch is not None:
-        steps_per_epoch = int(np.ceil(args.steps_per_epoch / agb))
-        max_epochs = -1
+        steps_per_epoch = args.steps_per_epoch
+        steps_per_epoch_optim = int(np.ceil(args.steps_per_epoch / agb))
         max_steps = args.max_epochs * steps_per_epoch
-        max_steps_params = max_steps
-        warmup_steps = args.warmup_epochs * steps_per_epoch
+        max_epochs = -1
+        max_steps_optim = max_epochs * steps_per_epoch_optim
+        warmup_steps = args.warmup_epochs * steps_per_epoch_optim
         check_val_every_n_epoch = None
         val_check_interval = 5 * steps_per_epoch
     else:
@@ -342,20 +343,20 @@ if __name__ == "__main__":
         steps_per_epoch = int(np.ceil(steps_per_epoch / agb))
         max_epochs = args.max_epochs
         max_steps = -1
-        max_steps_params = args.max_epochs * steps_per_epoch
+        max_steps_optim = args.max_epochs * steps_per_epoch
         warmup_steps = args.warmup_epochs * steps_per_epoch
         check_val_every_n_epoch = 5
         val_check_interval = None
     warmup_steps = int(warmup_steps)
-    max_steps_params = int(max_steps_params)
+    max_steps_optim = int(max_steps_optim)
     
-    print(steps_per_epoch,warmup_steps,max_steps_params)
+    print(steps_per_epoch,warmup_steps,max_steps_optim)
 
     if args.ema is True:
         ema_params = {
             "decay":0.99,
             "final_decay":1.0,
-            "n_steps":max_steps_params}
+            "n_steps":max_steps_optim}
         ema = ExponentialMovingAverage(**ema_params)
     else:
         ema = None
@@ -385,7 +386,7 @@ if __name__ == "__main__":
         "box_key_1":"box_1",
         "box_key_2":"box_2",
         "n_epochs":max_epochs,
-        "n_steps":max_steps_params,
+        "n_steps":max_steps_optim,
         "warmup_steps":warmup_steps,
         "vic_reg":args.vicreg,
         "vic_reg_local":args.vicregl,

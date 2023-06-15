@@ -4,32 +4,34 @@ Lightning.
 """
 
 import os
+import numpy as np
 import torch
 import wandb
 from lightning import Trainer
 from lightning.pytorch.loggers import WandbLogger
 from lightning.pytorch.callbacks.model_checkpoint import ModelCheckpoint
 
-from typing import List,Union,Tuple,Any,Dict
+from typing import List, Union, Tuple, Any, Dict
 
 class ModelCheckpointWithMetadata(ModelCheckpoint):
     """Identifcal to ModelCheckpoint but allows for metadata to be stored.
     """
     def __init__(self,
-                 metadata:Dict[str,Any]={},
+                 metadata:Dict[str,Any]=None,
                  *args,
                  **kwargs):
         """
         Args:
             metadata (Dict[str,Any], optional): dictionary containing all the
-                relevant metadata. Defaults to {}.
+                relevant metadata. Defaults to None.
         """
         super().__init__(*args,**kwargs)
         self.metadata = metadata
     
     def state_dict(self) -> Dict[str, Any]:
         sd = super().state_dict()
-        sd["metadata"] = self.metadata
+        if self.metadata is not None:
+            sd["metadata"] = self.metadata
         return sd
 
 def delete_checkpoints(trainer:Trainer)->None:
@@ -51,10 +53,76 @@ def delete_checkpoints(trainer:Trainer)->None:
             if hasattr(ckpt_callback,"last_model_path"):
                 delete(ckpt_callback.last_model_path)
 
-def get_ckpt_callback(checkpoint_dir:str,checkpoint_name:str,
-                      max_epochs:int,max_steps:int=None,resume_from_last:bool=False,
-                      val_fold:int=None,monitor:str="val_loss",
-                      n_best_ckpts:int=1,metadata:dict={})->ModelCheckpoint:
+def get_step_information(max_epochs:int,
+                         steps_per_epoch:int,
+                         warmup_epochs:int,
+                         accumulate_grad_batches:int,
+                         n_devices:int,
+                         n_images:int,
+                         batch_size:int)->Tuple[int,int,int,int,int]:
+    """Gets step information (maximum number of steps, maximum number of 
+    optimizer steps, number of warmup steps how often validation checks are run
+    and the validation check interval) from the maximum number of epochs, the
+    number of steps per epochs, the number of warmup epochs, for how many batches
+    gradients are accumulated, how many devices the network is being runned on,
+    the total number of images used for training and the batch size. 
+    
+    This does all the heavy work that is necessary for LR schedulers and for the
+    Lightning optimizer.
+
+    If the number of steps per epoch is `None`, then max_steps is -1 as this is
+    what is expected by Lightning.
+
+    Args:
+        max_epochs (int): maximum number of epochs.
+        steps_per_epoch (int): number of steps per epoch.
+        warmup_epochs (int): number of warmup steps.
+        accumulate_grad_batches (int): number of gradient accumulation steps.
+        n_devices (int): number of traing devices.
+        n_images (int): number of images (samples) in dataset.
+        batch_size (int): batch size.
+
+    Returns:
+        max_steps (int) - total number of steps.
+        max_step_params (int) - total number of optimizer steps.
+        warmup_steps (int) - 
+        check_val_every_n_epoch (int)
+        val_check_interval (int)
+    """
+    agb = accumulate_grad_batches
+    if steps_per_epoch is not None:
+        steps_per_epoch = steps_per_epoch
+        steps_per_epoch_optim = int(np.ceil(steps_per_epoch / agb))
+        max_steps = max_epochs * steps_per_epoch
+        max_epochs = -1
+        max_steps_optim = max_epochs * steps_per_epoch_optim
+        warmup_steps = warmup_epochs * steps_per_epoch_optim
+        check_val_every_n_epoch = None
+        val_check_interval = 5 * steps_per_epoch
+    else:
+        bs = batch_size
+        steps_per_epoch = n_images // (bs * n_devices)
+        steps_per_epoch = int(np.ceil(steps_per_epoch / agb))
+        max_steps = -1
+        max_steps_optim = max_epochs * steps_per_epoch
+        warmup_steps = warmup_epochs * steps_per_epoch
+        check_val_every_n_epoch = 5
+        val_check_interval = None
+
+    warmup_steps = int(warmup_steps)
+    max_steps_optim = int(max_steps_optim)
+    return (max_steps, max_steps_optim, warmup_steps,
+            check_val_every_n_epoch, val_check_interval)
+
+def get_ckpt_callback(checkpoint_dir:str,
+                      checkpoint_name:str,
+                      max_epochs:int,
+                      max_steps:int=None,
+                      resume_from_last:bool=False,
+                      val_fold:int=None,
+                      monitor:str="val_loss",
+                      n_best_ckpts:int=1,
+                      metadata:dict=None)->ModelCheckpoint:
     """Gets a checkpoint callback for PyTorch Lightning. The format for 
     for the last and 2 best checkpoints, respectively is:
     1. "{name}_fold{fold}_last.ckpt"
@@ -75,6 +143,8 @@ def get_ckpt_callback(checkpoint_dir:str,checkpoint_name:str,
             the best checkpoints. Defaults to "val_loss".
         n_best_ckpts (int, optional): number of best performing models to be
             saved. Defaults to 1.
+        metadata (dict, optional): metadata to store with checkpoint. Defaults
+            to None.
 
     Returns:
         ModelCheckpoint: PyTorch Lightning checkpoint callback.
@@ -82,7 +152,7 @@ def get_ckpt_callback(checkpoint_dir:str,checkpoint_name:str,
     ckpt_path = None
     ckpt_callback = None
     status = None
-    
+
     if (checkpoint_dir is not None) and (checkpoint_name is not None):
         if val_fold is not None:
             ckpt_name = checkpoint_name + "_fold" + str(val_fold)
@@ -100,7 +170,7 @@ def get_ckpt_callback(checkpoint_dir:str,checkpoint_name:str,
             filename=ckpt_name,monitor=monitor,
             save_last=True,save_top_k=n_best_ckpts,mode=mode,
             metadata=metadata)
-        
+
         ckpt_last = ckpt_last + "_last"
         ckpt_callback.CHECKPOINT_NAME_LAST = ckpt_last
         ckpt_last_full = os.path.join(
@@ -118,8 +188,8 @@ def get_ckpt_callback(checkpoint_dir:str,checkpoint_name:str,
                 print("Training has finished for this fold, skipping")
                 status = "finished"
             else:
-                print("Resuming training from checkpoint in {} ({}={})".format(
-                    ckpt_path,key,ckpt_value))
+                print(
+                    f"Resuming training from checkpoint in {ckpt_path} ({key}={ckpt_value})")
     return ckpt_callback,ckpt_path,status
 
 def get_logger(summary_name:str,summary_dir:str,
@@ -145,7 +215,7 @@ def get_logger(summary_name:str,summary_dir:str,
             wandb_resume = None
         run_name = summary_name.replace(':','_')
         if fold is not None:
-            run_name = run_name + "_fold{}".format(fold)
+            run_name = run_name + f"_fold{fold}"
         logger = WandbLogger(
             save_dir=summary_dir,project=project_name,
             name=run_name,version=run_name,reinit=True,resume=wandb_resume)
