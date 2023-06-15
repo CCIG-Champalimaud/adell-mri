@@ -28,7 +28,7 @@ from lib.monai_transforms import get_augmentations_class as get_augmentations
 from lib.modules.losses import OrdinalSigmoidalLoss
 from lib.modules.config_parsing import parse_config_unet,parse_config_cat
 from lib.utils.network_factories import get_classification_network
-from lib.utils.parser import get_params,merge_args
+from lib.utils.parser import get_params,merge_args,parse_ids
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -143,7 +143,7 @@ if __name__ == "__main__":
         '--folds',dest="folds",type=str,default=None,nargs="+",
         help="Comma-separated IDs to be used in each space-separated fold")
     parser.add_argument(
-        '--exclude_ids',dest='exclude_ids',type=str,default=None,
+        '--excluded_ids',dest='excluded_ids',type=str,default=None,
         help="Comma separated list of IDs to exclude.")
     parser.add_argument(
         '--checkpoint_dir',dest='checkpoint_dir',type=str,default=None,
@@ -248,9 +248,14 @@ if __name__ == "__main__":
     else:
         clinical_feature_keys = args.clinical_feature_keys
     
-    if args.exclude_ids is not None:
+    if args.excluded_ids is not None:
+        args.excluded_ids = parse_ids(args.excluded_ids,
+                                      output_format="list")
+        print("Removing IDs specified in --excluded_ids")
+        prev_len = len(data_dict)
         data_dict = {k:data_dict[k] for k in data_dict
-                     if k not in args.exclude_ids.split(",")}
+                     if k not in args.excluded_ids}
+        print("\tRemoved {} IDs".format(prev_len - len(data_dict)))
     data_dict = filter_dictionary_with_possible_labels(
         data_dict,args.possible_labels,args.label_keys)
     if len(args.filter_on_keys) > 0:
@@ -270,7 +275,7 @@ if __name__ == "__main__":
             strata[label].append(k)
         strata = {k:strata[k] for k in sorted(strata.keys())}
         ps = [len(strata[k]) / len(data_dict) for k in strata]
-        split = [int(p*args.subsample_size) for p in ps]
+        split = [int(p * args.subsample_size) for p in ps]
         ss = []
         for k,s in zip(strata,split):
             ss.extend(rng.choice(strata[k],size=s,replace=False,shuffle=False))
@@ -355,13 +360,19 @@ if __name__ == "__main__":
             fold_generator = iter(
                 [train_test_split(range(len(all_pids)),test_size=0.2)])
     else:
-        args.n_folds = len(args.folds)
+        args.folds = parse_ids(args.folds)
         folds = []
-        for val_ids in args.folds:
-            val_ids = val_ids.split(',')
+        for fold_idx,val_ids in enumerate(args.folds):
             train_idxs = [i for i,x in enumerate(all_pids) if x not in val_ids]
             val_idxs = [i for i,x in enumerate(all_pids) if x in val_ids]
+            if len(train_idxs) == 0:
+                print("No train samples in fold {}".format(fold_idx))
+                continue
+            if len(val_idxs) == 0:
+                print("No val samples in fold {}".format(fold_idx))
+                continue
             folds.append([train_idxs,val_idxs])
+        args.n_folds = len(folds)
         fold_generator = iter(folds)
 
     for val_fold in range(args.n_folds):
