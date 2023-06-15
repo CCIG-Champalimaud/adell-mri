@@ -135,8 +135,8 @@ def parse_ids(id_list:List[str],
             with open(id_file) as o:
                 out = json.load(o)
         else:
-            raise NotImplemented("only supports CSV (extension .csv or .folds)\
-                or JSON files")
+            with open(id_file) as o:
+                out = {"id_set":[x.strip() for x in o.readlines()]}
         if id_set is None:
             id_set = list(out.keys())
         return {k:out[k] for k in id_set}
