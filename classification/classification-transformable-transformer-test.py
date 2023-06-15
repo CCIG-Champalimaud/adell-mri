@@ -43,7 +43,7 @@ if __name__ == "__main__":
         '--test_ids',dest='test_ids',type=str,nargs="+",
         help="List of IDs for testing",required=True)
     parser.add_argument(
-        '--exclude_ids',dest='exclude_ids',type=str,nargs="+",
+        '--excluded_ids',dest='excluded_ids',type=str,nargs="+",
         help="List of IDs to exclude",default=None)
     parser.add_argument(
         '--one_to_one',dest="one_to_one",action="store_true",

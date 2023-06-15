@@ -1,4 +1,3 @@
-import os
 import argparse
 import random
 import json
@@ -26,7 +25,7 @@ from lib.monai_transforms import get_transforms_classification as get_transforms
 from lib.monai_transforms import get_augmentations_class as get_augmentations
 from lib.modules.classification.pl import TransformableTransformerPL
 from lib.modules.config_parsing import parse_config_2d_classifier_3d
-from lib.utils.parser import get_params,merge_args
+from lib.utils.parser import get_params, merge_args, parse_ids
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -135,7 +134,7 @@ if __name__ == "__main__":
         '--folds',dest="folds",type=str,default=None,nargs="+",
         help="Comma-separated IDs to be used in each space-separated fold")
     parser.add_argument(
-        '--exclude_ids',dest='exclude_ids',type=str,default=None,
+        '--excluded_ids',dest='excluded_ids',type=str,default=None,nargs="+",
         help="Comma separated list of IDs to exclude.")
     parser.add_argument(
         '--checkpoint_dir',dest='checkpoint_dir',type=str,default=None,
@@ -224,16 +223,14 @@ if __name__ == "__main__":
     output_file = open(args.metric_path,'w')
 
     data_dict = json.load(open(args.dataset_json,'r'))
-    if args.exclude_ids is not None:
-        if os.path.isfile(args.exclude_ids):
-            with open(args.exclude_ids,"r") as o:
-                exclude_ids = [x.strip() for x in o.readlines()]
-        else:
-            exclude_ids = args.exclude_ids.split(",")
-        a = len(data_dict)
+    if args.excluded_ids is not None:
+        args.excluded_ids = parse_ids(args.excluded_ids,
+                                      output_format="list")
+        print("Removing IDs specified in --excluded_ids")
+        prev_len = len(data_dict)
         data_dict = {k:data_dict[k] for k in data_dict
-                     if k not in exclude_ids}
-        print("Excluded {} cases with --exclude_ids".format(a - len(data_dict)))
+                     if k not in args.excluded_ids}
+        print("\tRemoved {} IDs".format(prev_len - len(data_dict)))
     data_dict = filter_dictionary_with_possible_labels(
         data_dict,args.possible_labels,args.label_keys)
     if len(args.filter_on_keys) > 0:
@@ -334,13 +331,22 @@ if __name__ == "__main__":
             fold_generator = iter(
                 [train_test_split(range(len(all_pids)),test_size=0.2)])
     else:
-        args.n_folds = len(args.folds)
+        args.folds = parse_ids(args.folds)
         folds = []
-        for val_ids in args.folds:
-            val_ids = val_ids.split(',')
+        for fold_idx,val_ids in enumerate(args.folds):
             train_idxs = [i for i,x in enumerate(all_pids) if x not in val_ids]
             val_idxs = [i for i,x in enumerate(all_pids) if x in val_ids]
+            if len(train_idxs) == 0:
+                print("No train samples in fold {}".format(fold_idx))
+                continue
+            if len(val_idxs) == 0:
+                print("No val samples in fold {}".format(fold_idx))
+                continue
+            else:
+                print("Fold {}: {} train samples; {} val samples".format(
+                    fold_idx,len(train_idxs),len(val_idxs)))
             folds.append([train_idxs,val_idxs])
+        args.n_folds = len(folds)
         fold_generator = iter(folds)
 
     full_dataset = monai.data.CacheDataset(
