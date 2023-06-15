@@ -6,16 +6,24 @@ Lightning.
 import os
 import torch
 import wandb
+from lightning import Trainer
 from lightning.pytorch.loggers import WandbLogger
 from lightning.pytorch.callbacks.model_checkpoint import ModelCheckpoint
 
 from typing import List,Union,Tuple,Any,Dict
 
 class ModelCheckpointWithMetadata(ModelCheckpoint):
+    """Identifcal to ModelCheckpoint but allows for metadata to be stored.
+    """
     def __init__(self,
-                 metadata=Dict[str,Any],
+                 metadata:Dict[str,Any]={},
                  *args,
                  **kwargs):
+        """
+        Args:
+            metadata (Dict[str,Any], optional): dictionary containing all the
+                relevant metadata. Defaults to {}.
+        """
         super().__init__(*args,**kwargs)
         self.metadata = metadata
     
@@ -23,6 +31,25 @@ class ModelCheckpointWithMetadata(ModelCheckpoint):
         sd = super().state_dict()
         sd["metadata"] = self.metadata
         return sd
+
+def delete_checkpoints(trainer:Trainer)->None:
+    """Convenience function to delete checkpoints.
+
+    Args:
+        trainer (Trainer): a Lightning Trainer object.
+    """
+    def delete(path:str)->None:
+        os.remove(path)
+    if hasattr(trainer,"checkpoint_callbacks"):
+        for ckpt_callback in trainer.checkpoint_callbacks:
+            if hasattr(ckpt_callback,"best_model_path"):
+                if isinstance(ckpt_callback.best_model_path,(list,tuple)):
+                    for bmp in ckpt_callback.best_model_path:
+                        delete(bmp)
+                else:
+                    delete(ckpt_callback.best_model_path)
+            if hasattr(ckpt_callback,"last_model_path"):
+                delete(ckpt_callback.last_model_path)
 
 def get_ckpt_callback(checkpoint_dir:str,checkpoint_name:str,
                       max_epochs:int,max_steps:int=None,resume_from_last:bool=False,
