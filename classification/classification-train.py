@@ -143,7 +143,7 @@ if __name__ == "__main__":
         '--folds',dest="folds",type=str,default=None,nargs="+",
         help="Comma-separated IDs to be used in each space-separated fold")
     parser.add_argument(
-        '--excluded_ids',dest='excluded_ids',type=str,default=None,
+        '--excluded_ids',dest='excluded_ids',type=str,default=None,nargs="+",
         help="Comma separated list of IDs to exclude.")
     parser.add_argument(
         '--checkpoint_dir',dest='checkpoint_dir',type=str,default=None,
@@ -371,6 +371,7 @@ if __name__ == "__main__":
             if len(val_idxs) == 0:
                 print("No val samples in fold {}".format(fold_idx))
                 continue
+            print(f"Validation fold {fold_idx} has {len(val_idxs)} samples")
             folds.append([train_idxs,val_idxs])
         args.n_folds = len(folds)
         fold_generator = iter(folds)
