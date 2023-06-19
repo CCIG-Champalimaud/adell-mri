@@ -10,7 +10,8 @@ from ..layers.batch_ensemble import BatchEnsembleWrapper
 from ..layers.standard_blocks import GlobalPooling, simple_convolutional_block
 from ..layers.res_net import ResNet,ResNetBackboneAlt,ProjectionHead
 from ..layers.self_attention import (
-    ConcurrentSqueezeAndExcite2d,ConcurrentSqueezeAndExcite3d)
+    ConcurrentSqueezeAndExcite2d,
+    ConcurrentSqueezeAndExcite3d)
 from ..segmentation.unet import UNet
 from ..layers.linear_blocks import MLP,SeqPool
 from ..layers.vit import ViT,FactorizedViT,TransformerBlockStack
