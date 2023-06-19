@@ -6,7 +6,10 @@ from ..modules.layers.adn_fn import get_adn_fn
 from ..utils.batch_preprocessing import BatchPreprocessing
 from ..modules.classification.classification import (TabularClassifier)
 from ..modules.classification.pl import (
-    UNetEncoderPL,FactorizedViTClassifierPL,ViTClassifierPL,ClassNetPL,
+    UNetEncoderPL,
+    ClassNetPL,
+    ViTClassifierPL,
+    FactorizedViTClassifierPL,
     HybridClassifierPL)
 # detection
 from ..modules.losses import complete_iou_loss
