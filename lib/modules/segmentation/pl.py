@@ -209,7 +209,7 @@ class UNetBasePL(pl.LightningModule,ABC):
         return x,x_cond,x_fc
 
     def predict_step(self,batch,batch_idx=0,
-                     return_only_segmentation=False):
+                     return_only_segmentation=False,*args,**kwargs):
         x,x_cond,x_fc = self.unpack_batch_prediction(batch)
         not_batched = False
         if len(x.shape) == self.spatial_dimensions + 1:
@@ -218,7 +218,8 @@ class UNetBasePL(pl.LightningModule,ABC):
             x_fc = x_fc.unsqueeze(0) if x_fc is not None else None
             not_batched = True
         output = self.forward(
-            X=x,X_skip_layer=x_cond,X_feature_conditioning=x_fc)
+            X=x,X_skip_layer=x_cond,X_feature_conditioning=x_fc,
+            *args,**kwargs)
         if return_only_segmentation == True:
             output = output[0]
         if not_batched == True:

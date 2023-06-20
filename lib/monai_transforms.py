@@ -15,7 +15,9 @@ from .utils import (
     BBToAdjustedAnchorsd,
     MasksToBBd,
     RandRotateWithBoxesd,
-    SampleChannelDimd)
+    SampleChannelDimd,
+    PrintShaped,
+    PrintTyped)
 from .modules.augmentations import (
     generic_augments,mri_specific_augments,spatial_augments,
     AugmentationWorkhorsed)
@@ -96,9 +98,11 @@ def get_transforms_unet(x,
                         random_crop_size: List[int]=None,
                         label_mode: str=None,
                         fill_missing: bool=False,
-                        brunet: bool=False):
+                        brunet: bool=False,
+                        track_meta: bool=False,
+                        convert_to_tensor: bool=True):
     if x == "pre":
-        transforms = [
+        transforms = [  
             monai.transforms.LoadImaged(
                 all_keys,ensure_channel_first=True,
                 allow_missing_keys=fill_missing)]
@@ -108,12 +112,13 @@ def get_transforms_unet(x,
                 all_keys,[1] + crop_size))
         # sets orientation
         transforms.append(monai.transforms.Orientationd(all_keys,"RAS"))
-            
+        
         # sets target spacing
         if target_spacing is not None:
             transforms.append(monai.transforms.Spacingd(
                 keys=all_keys,pixdim=target_spacing,
                 mode=intp_resampling_augmentations))
+        
         # sets intensity transforms for ADC and other sequence types
         if len(non_adc_keys) > 0:
             transforms.append(
@@ -177,15 +182,18 @@ def get_transforms_unet(x,
             mask_key = ["mask"]
         else:
             mask_key = []
-        if brunet is False:
-            keys.append("image")
-            transforms.append(monai.transforms.ToTensord(["image"] + mask_key,
-                                                         track_meta=False))
-        else:
-            keys.extend(image_keys)
-            transforms.append(monai.transforms.ToTensord(image_keys + mask_key,
-                                                         track_meta=False))
-        transforms.append(monai.transforms.SelectItemsd(keys + mask_key))
+        if convert_to_tensor == True:
+            if brunet is False:
+                keys.append("image")
+                transforms.append(monai.transforms.ToTensord(
+                    ["image"] + mask_key,track_meta=track_meta))
+            else:
+                keys.extend(image_keys)
+                transforms.append(monai.transforms.ToTensord(
+                    image_keys + mask_key,track_meta=track_meta))
+        if track_meta == False:
+            transforms.append(monai.transforms.SelectItemsd(keys + mask_key))
+
         return transforms
 
 def get_transforms_detection_pre(keys:List[str],

@@ -19,6 +19,7 @@ from lib.monai_transforms import get_transforms_unet as get_transforms
 from lib.modules.layers import ResNet
 from lib.utils.network_factories import get_segmentation_network
 from lib.modules.config_parsing import parse_config_unet,parse_config_ssl
+from lib.utils.parser import parse_ids
 torch.backends.cudnn.benchmark = True
 
 def if_none_else(x,obj):
@@ -37,14 +38,8 @@ if __name__ == "__main__":
         '--dataset_json',dest='dataset_json',type=str,
         help="JSON containing dataset information",required=True)
     parser.add_argument(
-        '--pred_ids',dest='pred_ids',type=str,nargs="+",required=True,
-        help="Comma-separated identifiers used in testing (more than one set \
-            of test ids can be specified). Can also be one CSV if set_ids is \
-            specified; in that case, each line is a fold/set and the first value\
-            should be the fold/set identifier.")
-    parser.add_argument(
-        '--set_ids',dest='set_ids',type=str,nargs="+",default=None,
-        help="Specifies substrings to select sets in pred_ids")
+        '--pred_ids',dest='pred_ids',type=str,nargs="+",default=None,
+        help="IDs used for prediction.")
     parser.add_argument(
         '--excluded_ids',dest="excluded_ids",nargs="+",default=None,
         help="Excludes these IDs from training and testing")
@@ -124,6 +119,9 @@ if __name__ == "__main__":
         choices=["unet","unetpp","brunet","unetr","swin"],
         default="unet",help="Specifies which UNet model is used")
     parser.add_argument(
+        '--mode',dest='mode',action='store',
+        choices=["image","deep_features","bounding_box"],default="image")
+    parser.add_argument(
         '--res_config_file',dest='res_config_file',action="store",default=None,
         help="Uses a ResNet as a backbone (depths are inferred from this). \
             This config file is then used to parameterise the ResNet.")
@@ -138,7 +136,7 @@ if __name__ == "__main__":
         '--per_sample',dest='per_sample',
         action="store_true",
         help="Also calculates metrics on a per sample basis.")
-    
+
     # network, pipeline
     parser.add_argument(
         '--dev',dest='dev',type=str,
@@ -256,8 +254,10 @@ if __name__ == "__main__":
         "crop_size": args.crop_size,
         "label_mode": label_mode,
         "fill_missing": args.missing_to_empty is not None,
-        "brunet": args.unet_model == "brunet"}
-
+        "brunet": args.unet_model == "brunet",
+        "track_meta":True,
+        "convert_to_tensor":False}
+    
     transforms = [
         *get_transforms("pre",**transform_arguments),
         *get_transforms("post",**transform_arguments)]
@@ -352,58 +352,66 @@ if __name__ == "__main__":
         crop_size=args.crop_size,
         pad_size=args.pad_size,
         resize_size=args.resize_size)
-    
-    out_file = open(args.metric_path,"w")
-    
-    if os.path.exists(args.pred_ids[0]) and args.set_ids is not None:
-        selected_pred_ids = []
-        with open(args.pred_ids[0]) as o:
-            for line in o:
-                for set_id in args.set_ids:
-                    if set_id in line:
-                        selected_pred_ids.append(line)
-        args.pred_ids = selected_pred_ids
+        
+    if args.pred_ids is not None:
+        args.pred_ids = parse_ids(args.pred_ids)
+    else:
+        args.pred_ids = [[k for k in data_dict]]
     n_ckpt = len(args.checkpoints)
     n_data = len(args.pred_ids)
-    all_metrics = []
+    output = {}
     for pred_idx in range(n_data):
-        pred_ids = [k for k in args.pred_ids[pred_idx].split(",")
+        pred_ids = [k for k in args.pred_ids[pred_idx]
                     if k in data_dict]
         curr_dict = {k:data_dict[k] for k in pred_ids}
         data_list = [curr_dict[k] for k in curr_dict]
         
         transform_input = transforms[0]
-        transforms_preprocess = transforms[1:]
+        transforms_preprocess = monai.transforms.Compose(transforms[1:])
         transforms_postprocess = monai.transforms.Invertd(
             "image",transforms_preprocess)
-
-        dataset = monai.data.CacheDataset(
-            data_list,
-            monai.transforms.Compose(transforms),
-            num_workers=args.n_workers)
 
         if args.paired == True:
             checkpoint_list = [args.checkpoints[pred_idx]]
         else:
             checkpoint_list = args.checkpoints
         
+        networks = []
         for checkpoint in checkpoint_list:
             state_dict = torch.load(checkpoint)["state_dict"]
             state_dict = {k:state_dict[k] for k in state_dict
-                        if "deep_supervision_ops" not in k}
+                          if "deep_supervision_ops" not in k}
             unet.load_state_dict(state_dict)
             unet = unet.to(args.dev)
             unet.eval()
-            
-            for i in trange(len(dataset)):
-                data_element = dataset[i]
-                data_element = {k:data_element[k].to(args.dev)
-                                for k in data_element}
-                pred_id = pred_ids[i]
-                pred = unet.predict_step(data_element,0,not_batched=True)[0][0]
-                pred = pred.round().long()
-                pred = transforms_postprocess({"image":pred})["image"]
+            networks.append(unet)
 
+        for i in trange(len(data_list)):
+            data_element = data_list[i]
+            data_element = transform_input(data_element)
+            data_element = transforms_preprocess(data_element)
+            for k in all_keys:
+                data_element[k] = data_element[k].to(args.dev).unsqueeze(0)
+            pred_id = pred_ids[i]
+
+            if args.mode == "image" or args.mode == "bounding_box":
+                pred = [
+                    network.predict_step(data_element,0)[0][0]
+                    for network in networks]
+                pred = [transforms_postprocess({"image":p})["image"][0]
+                        for p in pred]
+            elif args.mode == "deep_features":
+                pred = [
+                    network.predict_step(
+                        data_element,0,return_bottleneck=True)[2][0]
+                    for network in networks]
+                pred = [x.flatten(start_dim=1).max(1).values
+                        for x in pred]
+
+            pred = torch.stack(pred).mean(0).detach().cpu()
+            if args.mode == "image":
+                pred = np.int32(np.round(pred))
+                pred = np.transpose(pred,[2,1,0])
                 pred_image = sitk.GetImageFromArray(pred)
                 pred_image.CopyInformation(
                     sitk.ReadImage(curr_dict[pred_id]["image"]))
@@ -412,4 +420,17 @@ if __name__ == "__main__":
                     os.path.join(args.output_path,pred_id + ".nii.gz"))
                 output_path.parent.mkdir(parents=True,exist_ok=True)
                 sitk.WriteImage(pred_image,str(output_path))
+            elif args.mode == "deep_features":
+                pred = pred
+                output[pred_id] = pred.tolist()
+            elif args.mode == "bounding_box":
+                pred = monai.transforms.KeepLargestConnectedComponent()(pred)
+                coords = np.where(pred > 0)
+                bb_min = [x.min() for x in coords]
+                bb_max = [x.max() for x in coords]
+                output[pred_id] = [*bb_min,*bb_max]
             gc.collect()
+
+    if args.mode in ["deep_features","bounding_box"]:
+        with open(args.output_path,"w") as o:
+            json.dump(output,o)
