@@ -137,16 +137,12 @@ if __name__ == "__main__":
     
     data_dict = json.load(open(args.dataset_json,'r'))
     all_test_pids = parse_ids(args.test_ids)
-    if args.exclude_ids is not None:
-        if os.path.isfile(args.exclude_ids):
-            with open(args.exclude_ids,"r") as o:
-                exclude_ids = [x.strip() for x in o.readlines()]
-        else:
-            exclude_ids = args.exclude_ids.split(",")
+    if args.excluded_ids is not None:
+        excluded_ids = parse_ids(args.excluded_ids,output_format="list")
         a = len(data_dict)
         data_dict = {k:data_dict[k] for k in data_dict
-                     if k not in exclude_ids}
-        print("Excluded {} cases with --exclude_ids".format(a - len(data_dict)))
+                     if k not in excluded_ids}
+        print("Excluded {} cases with --excluded_ids".format(a - len(data_dict)))
     data_dict = filter_dictionary_with_possible_labels(
         data_dict,args.possible_labels,args.label_keys)
     if len(args.filter_on_keys) > 0:
