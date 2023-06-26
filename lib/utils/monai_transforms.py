@@ -1667,7 +1667,70 @@ class GetAllCropsd(monai.transforms.MapTransform):
                     output[k] = X[k]
             outputs.append(output)
         return outputs
+
+class AdjustSizesd(monai.transforms.MapTransform):
+    """
+    Pads a dict of tensors such that they all have the size of the largest
+    dimensions. Alternatively, crops to the smallest size.
+    """
+    def __init__(self,
+                 keys:List[str],
+                 ndim:int=3,
+                 mode:str="pad"):
+        self.keys = keys
+        self.ndim = ndim
+        self.mode = mode
     
+    def pad_torch(self,X:torch.Tensor,out_size:List[int])->torch.Tensor:
+        sh = X.shape
+        pad_dim = [i-j for i,j in zip(out_size,sh[-self.ndim:])]
+        a = [x // 2 for x in pad_dim]
+        b = [x-y for x,y in zip(pad_dim,a)]
+        pad_size = []
+        for i,j in zip(reversed(a),reversed(b)):
+            pad_size.extend([i,j])
+        return torch.nn.functional.pad(X,pad_size)
+
+    def pad_numpy(self,X:np.ndarray,out_size:List[int])->np.ndarray:
+        sh = X.shape
+        additional_dims = len(sh) - self.ndim
+        pad_dim = [i-j for i,j in zip(out_size,sh[-self.ndim:])]
+        a = [x // 2 for x in pad_dim]
+        b = [x-y for x,y in zip(pad_dim,a)]
+        pad_size = [*[(0,0) for _ in range(additional_dims)],
+                    *[(i,j) for i,j in zip(a,b)]]
+        return np.pad(X,pad_size)
+    
+    def pad(self,X:TensorOrNDarray,out_size:List[int])->TensorOrNDarray:
+        if isinstance(X,torch.Tensor):
+            return self.pad_torch(X,out_size)
+        else:
+            return self.pad_numpy(X,out_size)
+    
+    def crop(self,X:TensorOrNDarray,out_size:List[int])->TensorOrNDarray:
+        sh = X.shape
+        crop_dim = [i-j for i,j in zip(sh[-self.ndim:],out_size)]
+        a = [x // 2 for x in crop_dim]
+        b = [x+y for x,y in zip(a,out_size)]
+        if self.ndim == 2:
+            return X[...,a[0]:b[0],a[1]:b[1]]
+        if self.ndim == 3:
+            return X[...,a[0]:b[0],a[1]:b[1],a[2]:b[2]]
+
+    def __call__(self,X:Dict[str,torch.Tensor]):
+        if self.mode == "pad":
+            spatial_size = np.max(
+                np.array([X[k].shape[-self.ndim:] for k in self.keys]),0)
+            fn = self.pad
+        else:
+            spatial_size = np.min(
+                np.array([X[k].shape[-self.ndim:] for k in self.keys]),0)
+            fn = self.crop
+        for k in X:
+            if k in self.keys:
+                X[k] = fn(torch.as_tensor(X[k]),spatial_size)
+        return X
+
 class DbscanAssistedSegmentSelection(monai.transforms.MapTransform):
     """
     A segment ("connected" component) selection module. It uses DBSCAN under the
