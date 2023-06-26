@@ -7,11 +7,13 @@ from glob import glob
 from tqdm import tqdm
 from pathlib import Path
 
+from typing import List
+
 desc = """
 Merges two masks keeping pixels which are non-zero in either mask.
 """
 
-def resample_image_to_target(moving,target):
+def resample_image_to_target(moving:sitk.Image,target:sitk.Image)->sitk.Image:
     interpolation = sitk.sitkNearestNeighbor
     output = sitk.Resample(
         moving,target.GetSize(),sitk.Transform(), 
@@ -20,7 +22,7 @@ def resample_image_to_target(moving,target):
         0,moving.GetPixelID())
     return output
 
-def iou(a,b):
+def iou(a:np.ndarray,b:np.ndarray)->float:
     a_unique = np.unique(a)
     b_unique = np.unique(b)
     a_unique = [x for x in a_unique if x != 0]
@@ -33,18 +35,31 @@ def iou(a,b):
         I = np.sum(intersection)
         U = np.sum(a==u) + np.sum(b==u) - I
         result_list.append(I/U)
-    return np.mean(result_list)
+    return float(np.mean(result_list))
+
+def merge_masks(path_list:List[str],argmax:bool)->sitk.Image:
+    images_ = [sitk.ReadImage(x) for x in path_list]
+    images_[1:] = [resample_image_to_target(x,images_[0])
+                    for x in images_[1:]]
+    images = [sitk.GetArrayFromImage(x) for x in images_]
+    image_out = np.stack(images)
+    if argmax == True:
+        image_out = np.argmax(image_out,0)
+    else:
+        image_out = image_out.mean() > 0
+    image_out = sitk.GetImageFromArray(image_out)
+    image_out.CopyInformation(images_[0])
+    return image_out
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=desc)
 
     parser.add_argument(
-        "--input_paths",dest="input_paths",type=str,nargs=2,
+        "--input_paths",dest="input_paths",type=str,
         help="Path to directory containing masks.",required=True)
     parser.add_argument(
         "--patterns",dest="patterns",type=str,
-        default='*',nargs=2,
-        help="Patterns to match masks")
+        default='*',help="Patterns to match masks")
     parser.add_argument(
         "--pattern_id",dest="pattern_id",type=str,
         default='[0-9]+_[0-9]+',
@@ -63,9 +78,19 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     os.makedirs(args.output_path,exist_ok=True)
+    
+    if len(args.input_paths) == len(args.patterns):
+        input_paths = args.input_paths
+        patterns = args.patterns
+    elif len(args.input_paths) == 1:
+        input_paths = [args.input_paths[0] for _ in args.patterns]
+        patterns = args.patterns
+    else:
+        raise Exception(
+            "input_paths should have length 1 or length identical to patterns")
 
     path_dict = {}
-    for input_path,pattern in zip(args.input_paths,args.patterns):
+    for input_path,pattern in zip(input_paths,patterns):
         for path in glob(os.path.join(input_path,pattern)):
             study_id = re.search(args.pattern_id,path).group()
             if study_id not in path_dict:
@@ -74,29 +99,10 @@ if __name__ == "__main__":
 
     iou_list = []
     path_dict_keys = list(path_dict.keys())
+    n = len(args.patterns)
     for patient_id in tqdm(path_dict_keys):
-        image_out = None
-        if len(path_dict[patient_id]) == 2:
-            image_1_ = sitk.ReadImage(path_dict[patient_id][0])
-            image_2_ = sitk.ReadImage(path_dict[patient_id][1])
-            image_2_ = resample_image_to_target(image_2_,image_1_)
-            image_1 = sitk.GetArrayFromImage(image_1_)
-            image_2 = sitk.GetArrayFromImage(image_2_)
-            if args.argmax == True:
-                image_out = np.zeros_like(image_1)
-                image_out[image_1 > 0] = 1
-                image_out[image_2 > 0] = 2
-            else:
-                image_out = np.where((image_1 + image_2) > 0,1,0)
-            image_out = sitk.GetImageFromArray(image_out)
-            image_out.CopyInformation(image_1_)
-        elif args.strict == False:
-            image_1_ = sitk.ReadImage(path_dict[patient_id][0])
-            image_1 = sitk.GetArrayFromImage(image_1_)
-            image_out = np.where((image_1) > 0,1,0)
-            image_out = sitk.GetImageFromArray(image_out)
-            image_out.CopyInformation(image_1_)
-        if image_out is not None:
+        if len(path_dict[patient_id]) == n or args.strict == False:
+            image_out = merge_masks(path_dict[patient_id],args.argmax)
             image_out = sitk.Cast(image_out,sitk.sitkInt16)
             output_path_image = os.path.join(
                 args.output_path,patient_id + ".nii.gz")
