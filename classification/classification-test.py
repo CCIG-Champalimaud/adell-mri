@@ -18,7 +18,7 @@ from lib.utils.dataset_filters import (
     filter_dictionary_with_filters,filter_dictionary_with_possible_labels,
     filter_dictionary_with_presence)
 from lib.utils.network_factories import get_classification_network
-from lib.utils.parser import get_params,merge_args
+from lib.utils.parser import get_params,merge_args,parse_ids
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -210,13 +210,16 @@ if __name__ == "__main__":
         *get_transforms("post",**transform_arguments)])
     transforms_val.set_random_state(args.seed)
 
-    for iteration in range(len(args.test_ids)):
-        test_ids = args.test_ids[iteration].split(",")
-        test_list = [data_dict[pid] for pid in test_ids
-                     if pid in data_dict]
+    all_test_ids = parse_ids(args.test_ids)
+    for iteration in range(len(all_test_ids)):
+        test_ids = all_test_ids[iteration]
+        test_list = [data_dict[pid] for pid in test_ids if pid in data_dict]
+
+        print("Testing fold",iteration)
+        for u,c in zip(*np.unique([x[args.label_keys] for x in test_list],
+                                  return_counts=True)):
+            print(f"\tCases({u}) = {c}")
         
-        #test_dataset = monai.data.CacheDataset(
-        #    test_list,transforms_val,num_workers=args.n_workers)
         test_dataset = monai.data.Dataset(test_list,transforms_val)
         
         # PL sometimes needs a little hint to detect GPUs.
