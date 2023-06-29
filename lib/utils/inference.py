@@ -399,9 +399,11 @@ class SlidingWindowSegmentation:
         if isinstance(X,(np.ndarray,torch.Tensor)):
             return self.extract_patch_from_array(X,coords)
         elif isinstance(X,dict):
-            return {k:self.extract_patch_from_array(X[k],coords) for k in X}
+            return {k:self.extract_patch_from_array(X[k],coords) for k in X
+                    if isinstance(X[k],(np.ndarray,torch.Tensor))}
         elif isinstance(X,(tuple,list)):
-            return [self.extract_patch_from_array(x,coords) for x in X]
+            return [self.extract_patch_from_array(x,coords) for x in X
+                    if isinstance(x,(np.ndarray,torch.Tensor)]
         else:
             st = "Supported inputs are np.ndarray, torch.Tensor, dict, tuple, list"
             raise NotImplementedError(st)
