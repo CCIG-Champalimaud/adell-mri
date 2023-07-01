@@ -16,6 +16,7 @@ from .utils import (
     MasksToBBd,
     RandRotateWithBoxesd,
     SampleChannelDimd,
+    AdjustSizesd,
     PrintShaped,
     PrintTyped)
 from .modules.augmentations import (
@@ -154,6 +155,8 @@ def get_transforms_unet(x,
             ])
         # sets indices for random crop op
         if random_crop_size is not None:
+            transforms.append(AdjustSizesd(
+                [*image_keys,"mask"],mode="crop"))
             transforms.append(monai.transforms.FgBgToIndicesd("mask"))
         return transforms
     
