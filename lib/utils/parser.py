@@ -11,7 +11,7 @@ import yaml
 import json
 import importlib
 
-from typing import Dict,Any,List,Union
+from typing import Dict, Any, List
 
 def get_dvc_params(path:str=None)->Dict[str,any]:
     """Retrieves dvc parameters recursively. For example, if the path is
@@ -143,8 +143,8 @@ def parse_ids(id_list:List[str],
     
     def merge_dictionary(nested_list:Dict[str,list]):
         output_list = []
-        for l in nested_list.values():
-            output_list.extend(l)
+        for list_tmp in nested_list.values():
+            output_list.extend(list_tmp)
         return output_list
     
     output = {}
