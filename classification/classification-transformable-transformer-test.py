@@ -260,13 +260,13 @@ if __name__ == "__main__":
                 "start_decay":0,
                 "n_slices":n_slices}
 
-            network_config["module"] = torch.jit.load(args.module_path)
+            network_config["module"] = torch.jit.load(args.module_path).to(args.dev)
             network_config["module"].requires_grad = False
-            network_config["module"].eval()
+            network_config["module"] = network_config["module"].eval()
             network_config["module"] = torch.jit.freeze(network_config["module"])
             if "module_out_dim" not in network_config:
                 print("2D module output size not specified, inferring...")
-                input_example = torch.rand(1,1,256,256).to(args.dev.split(":")[0])
+                input_example = torch.rand(1,1,256,256).to(args.dev)
                 output = network_config["module"](input_example)
                 network_config["module_out_dim"] = int(output.shape[1])
                 print("2D module output size={}".format(
@@ -277,6 +277,7 @@ if __name__ == "__main__":
 
             state_dict = torch.load(checkpoint)["state_dict"]
             network.load_state_dict(state_dict)
+            network = network.eval().to(args.dev)
             trainer = Trainer(accelerator=accelerator,devices=devices)
             test_metrics = trainer.test(network,test_loader)[0]
             test_metrics["checkpoint"] = checkpoint

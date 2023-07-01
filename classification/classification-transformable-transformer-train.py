@@ -302,6 +302,7 @@ if __name__ == "__main__":
         "label_key":args.label_keys,
         "clinical_feature_keys":[],
         "label_mode":label_mode}
+
     augment_arguments = {
         "augment":args.augment,
         "t2_keys":t2_keys,
