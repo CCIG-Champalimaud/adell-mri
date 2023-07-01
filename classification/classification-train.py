@@ -13,7 +13,7 @@ from lightning.pytorch.callbacks import (
 import sys
 sys.path.append(r"..")
 from lib.utils import (
-    safe_collate,set_classification_layer_bias)
+    safe_collate,set_classification_layer_bias,conditional_parameter_freezing)
 from lib.utils.pl_utils import (
     get_ckpt_callback,
     get_logger,
@@ -154,6 +154,13 @@ if __name__ == "__main__":
     parser.add_argument(
         '--checkpoint',dest='checkpoint',type=str,default=None,
         nargs="+",help='Resumes training from this checkpoint.')
+    parser.add_argument(
+        '--freeze_regex',dest='freeze_regex',type=str,default=None,nargs="+",
+        help='Matches parameter names and freezes them.')
+    parser.add_argument(
+        '--not_freeze_regex',dest='not_freeze_regex',type=str,default=None,
+        nargs="+",help='Matches parameter names and skips freezing them (\
+            overrides --freeze_regex)')
     parser.add_argument(
         '--delete_checkpoints',dest='delete_checkpoints',action="store_true",
         help='Deletes checkpoints after training (keeps only metrics).')
@@ -549,6 +556,19 @@ if __name__ == "__main__":
             label_smoothing=args.label_smoothing,
             mixup_alpha=args.mixup_alpha,
             partial_mixup=args.partial_mixup)
+
+        if args.checkpoint is not None:
+            sd = torch.load(args.checkpoint)
+            # if this is a lightning checkpoint the actual state dict will be
+            # stored as a key
+            if "state_dict" in sd:
+                sd = sd["state_dict"]
+            print(f"Loading checkpoint from {args.checkpoint}")
+            output = network.load_state_dict(sd)
+            print(f"\t{output}")
+
+        conditional_parameter_freezing(
+            network,args.freeze_regex,args.not_freeze_regex)
 
         # instantiate callbacks and loggers
         callbacks = [RichProgressBar()]
