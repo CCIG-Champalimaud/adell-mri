@@ -1,7 +1,57 @@
 import argparse
 import json
 import numpy as np
+import os
 from sklearn.model_selection import StratifiedKFold,KFold,train_test_split
+
+from typing import List, Dict
+
+def parse_ids(id_list:List[str],
+              output_format:str="nested_list"):
+    def parse_id_file(id_file:str):
+        if ":" in id_file:
+            id_file,id_set = id_file.split(":")
+            id_set = id_set.split(",")
+        else:
+            id_set = None
+        term = id_file.split(".")[-1]
+        if term == "csv" or term == "folds":
+            with open(id_file) as o:
+                out = [x.strip().split(",") for x in o.readlines()]
+            out = {x[0]:x[1:] for x in out}
+        elif term == "json":
+            with open(id_file) as o:
+                out = json.load(o)
+        else:
+            with open(id_file) as o:
+                out = {"id_set":[x.strip() for x in o.readlines()]}
+        if id_set is None:
+            id_set = list(out.keys())
+        return {k:out[k] for k in id_set}
+    
+    def merge_dictionary(nested_list:Dict[str,list]):
+        output_list = []
+        for list_tmp in nested_list.values():
+            output_list.extend(list_tmp)
+        return output_list
+    
+    output = {}
+    for element in id_list:
+        if os.path.exists(element.split(":")[0]) is True:
+            tmp = parse_id_file(element)
+            for k in tmp:
+                if k not in output:
+                    output[k] = []
+                output[k].extend(tmp[k])
+        else:
+            if "cli" not in output:
+                output["cli"] = []
+            output["cli"].extend([element.split(",")])
+    if output_format == "list":
+        output = merge_dictionary(output)
+    else:
+        output = [output[k] for k in output]
+    return output
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -26,8 +76,16 @@ if __name__ == "__main__":
     parser.add_argument(
         '--seed',dest="seed",
         help="random seed",default=42,type=int)
+    parser.add_argument(
+        '--excluded_ids',dest='excluded_ids',nargs="+",
+        help='ids that will be excluded',default=None,type=str)
 
     args = parser.parse_args()
+
+    if args.excluded_ids is not None:
+        excluded_ids = parse_ids(args.excluded_ids)
+    else:
+        excluded_ids = []
 
     strata = []
     data_dict = json.load(open(args.dataset_json,'r'))
