@@ -18,7 +18,8 @@ from lib.utils.dataset_filters import (
     filter_dictionary_with_possible_labels,
     filter_dictionary_with_presence)
 from lib.monai_transforms import get_transforms_classification as get_transforms
-from lib.modules.classification.pl import TransformableTransformerPL
+from lib.modules.classification.pl import (
+    TransformableTransformerPL,MultipleInstanceClassifierPL)
 from lib.modules.config_parsing import parse_config_2d_classifier_3d
 from lib.utils.parser import parse_ids
 from lib.utils.parser import get_params,merge_args
@@ -102,6 +103,10 @@ if __name__ == "__main__":
         '--config_file',dest="config_file",
         help="Path to network configuration file (yaml)",
         required=True)
+    parser.add_argument(
+        '--mil_method',dest="mil_method",
+        help="Multiple instance learning method name.",
+        choices=["standard","transformer"],required=True)
     parser.add_argument(
         '--module_path',dest="module_path",
         help="Path to torchscript module",
@@ -271,9 +276,14 @@ if __name__ == "__main__":
                 network_config["module_out_dim"] = int(output.shape[1])
                 print("2D module output size={}".format(
                     network_config["module_out_dim"]))
-            network = TransformableTransformerPL(
-                **boilerplate_args,
-                **network_config)
+            if args.mil_method == "transformer":
+                network = TransformableTransformerPL(
+                    **boilerplate_args,
+                    **network_config)
+            elif args.mil_method == "standard":
+                network = MultipleInstanceClassifierPL(
+                    **boilerplate_args,
+                    **network_config)
 
             state_dict = torch.load(checkpoint)["state_dict"]
             network.load_state_dict(state_dict)
