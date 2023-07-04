@@ -9,7 +9,7 @@ from ...layers.linear_blocks import MLP
 
 class MultipleInstanceClassifier(torch.nn.Module):
     """
-    
+    TODO: test
     """
     def __init__(self,
                  module:torch.nn.Module,
