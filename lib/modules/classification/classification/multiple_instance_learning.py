@@ -1,4 +1,5 @@
 import torch
+import torch.nn.functional as F
 import einops
 
 from ...layers.adn_fn import get_adn_fn
@@ -22,7 +23,6 @@ class MultipleInstanceClassifier(torch.nn.Module):
                  n_slices:int=None,
                  use_positional_embedding:bool=True,
                  dim:int=2,
-                 use_class_token:bool=True,
                  reduce_fn:str="max"):
         """
         Args:
@@ -49,8 +49,6 @@ class MultipleInstanceClassifier(torch.nn.Module):
                 embedding should be used. Defaults to True.
             dim (int, optional): dimension along which the module is applied.
                 Defaults to 2.
-            use_class_token (bool, optional): whether a classification token
-                should be used. Defaults to True.
             reduce_fn (str, optional): function used to reduce features coming
                 from feature extraction module.
         """
@@ -69,7 +67,6 @@ class MultipleInstanceClassifier(torch.nn.Module):
         self.n_slices = n_slices
         self.use_positional_embedding = use_positional_embedding
         self.dim = dim
-        self.use_class_token = use_class_token
         self.reduce_fn = reduce_fn
         
         self.vol_to_2d = einops.layers.torch.Rearrange(
@@ -123,7 +120,15 @@ class MultipleInstanceClassifier(torch.nn.Module):
                 structure=[],adn_fn=torch.nn.Identity)
 
     def get_prediction(self,X:torch.Tensor)->torch.Tensor:
-        return X
+        out = self.classification_module(X)
+        if self.classification_mode == "mean":
+            return out.mean(-2)
+        if self.classification_mode == "max":
+            return out.max(-2).values
+        if self.classification_mode == "vocabulary":
+            out = F.softmax(out)
+            out = out.mean(-2)
+            return self.final_prediction(out)
 
     def forward(self,X:torch.Tensor)->torch.Tensor:
         """Forward pass.
@@ -138,8 +143,7 @@ class MultipleInstanceClassifier(torch.nn.Module):
         ssl_representation = self.v_module(X)
         if self.positional_embedding is not None:
             ssl_representation = ssl_representation + self.positional_embedding
-        output = self.classification_module(ssl_representation)
-        output = output.mean(1)
+        output = self.get_prediction(ssl_representation)
         return output
 
 class TransformableTransformer(torch.nn.Module):
