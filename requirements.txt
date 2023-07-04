@@ -10,8 +10,9 @@ scikit_image==0.19.2
 scikit_learn==1.2.2
 scipy==1.10.1
 SimpleITK==2.2.1
-skimage==0.0
 torch==2.0.1
 torchmetrics==0.11.1
 tqdm==4.64.1
 wandb==0.13.6
+itk-core==5.3.0
+picai_eval
