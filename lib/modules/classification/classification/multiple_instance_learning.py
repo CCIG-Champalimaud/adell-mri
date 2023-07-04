@@ -9,7 +9,20 @@ from ...layers.linear_blocks import MLP
 
 class MultipleInstanceClassifier(torch.nn.Module):
     """
-    TODO: test
+    Multiple instance classifier for volumes. Extracts features from each slice
+    (last dimension) using a pre-specified ``module`` and applies a linear layer
+    to derive classifications from this. Three different 
+    ``classification_modes`` are available to extract features from a stack of
+    instances:
+
+    1. ``mean`` - simply calculate the average prediction across instances 
+        (slices)
+    2. ``max`` - extract the maximum of each feature across all instances
+    3. ``vocabulary`` - soft classify instances into one of 
+        ``vocabulary_size`` proxy classes and calculate the average 
+        proxy class composition.
+
+    The outputs from 1., 2. and 3. are then used in a simple linear classifier.
     """
     def __init__(self,
                  module:torch.nn.Module,
