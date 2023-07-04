@@ -1,6 +1,6 @@
-import sys
-sys.path.append(r"..")
-from lib.utils import safe_collate,ExponentialMovingAverage
+import sys, os
+sys.path.append(os.path.abspath(r".."))
+from lib.utils import safe_collate, ExponentialMovingAverage
 from lib.utils.pl_utils import get_devices,get_ckpt_callback,get_logger
 from lib.modules.self_supervised.pl import (
     SelfSLResNetPL,SelfSLUNetPL,
@@ -161,6 +161,9 @@ if __name__ == "__main__":
     parser.add_argument(
         '--max_epochs',dest="max_epochs",
         help="Maximum number of training epochs",default=100,type=int)
+    parser.add_argument(
+        '--check_val_every_n_epoch',dest="check_val_every_n_epoch",
+        help="Validation check frequency",default=5,type=int)
     parser.add_argument(
         '--steps_per_epoch',dest="steps_per_epoch",
         help="Number of steps per epoch",default=None,type=int)
@@ -336,7 +339,7 @@ if __name__ == "__main__":
         max_steps_optim = max_epochs * steps_per_epoch_optim
         warmup_steps = args.warmup_epochs * steps_per_epoch_optim
         check_val_every_n_epoch = None
-        val_check_interval = 5 * steps_per_epoch
+        val_check_interval = args.check_val_every_n_epoch * steps_per_epoch
     else:
         bs = network_config_correct["batch_size"]
         steps_per_epoch = len(sampler) // (bs * n_devices)
@@ -345,7 +348,7 @@ if __name__ == "__main__":
         max_steps = -1
         max_steps_optim = args.max_epochs * steps_per_epoch
         warmup_steps = args.warmup_epochs * steps_per_epoch
-        check_val_every_n_epoch = 5
+        check_val_every_n_epoch = args.check_val_every_n_epoch
         val_check_interval = None
     warmup_steps = int(warmup_steps)
     max_steps_optim = int(max_steps_optim)
@@ -370,7 +373,7 @@ if __name__ == "__main__":
             train_dataset,batch_size=batch_size,
             num_workers=n_workers,sampler=sampler,
             collate_fn=safe_collate,pin_memory=True,
-            persistent_workers=True,drop_last=True)
+            persistent_workers=n_workers>1,drop_last=True)
 
     train_loader = train_loader_call(
         network_config_correct["batch_size"],False)
