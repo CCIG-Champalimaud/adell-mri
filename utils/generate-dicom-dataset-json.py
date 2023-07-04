@@ -4,6 +4,7 @@ import argparse
 from multiprocessing import Pool
 from pathlib import Path
 from pydicom import dcmread
+from pydicom import errors
 from tqdm import tqdm
 
 def process_dicom(dcm):
@@ -15,7 +16,7 @@ def process_dicom(dcm):
     dcm = str(dcm)
     try:
         dcm_file = dcmread(dcm)
-    except:
+    except errors.InvalidDicomError:
         return None
     # removes cases of segmentation 
     if dcm_file[0x0008,0x0060].value == "SEG":
@@ -39,8 +40,15 @@ def process_dicom_directory(series_dir):
     return [process_dicom(str(x))
             for x in Path(series_dir).rglob("*dcm")]
 
-def update_dict(d,study_uid,series_uid,orientation,dcm,excluded_ids=[]):
-    if study_uid not in excluded_ids:
+def update_dict(d,study_uid,series_uid,orientation,dcm,included_ids=[]):
+    add = False
+    if included_ids is not None:
+        if study_uid in included_ids:
+            add = True
+    else:
+        add = True
+
+    if add == True:
         if study_uid not in d:
             d[study_uid] = {}
         if series_uid not in d[study_uid]:
@@ -57,8 +65,8 @@ if __name__ == "__main__":
         '--input_path',dest="input_path",required=True,
         help="Path to folder containing nibabel compatible files")
     parser.add_argument(
-        '--excluded_ids',dest="excluded_ids",default=None,
-        help="Study UIDs to be excluded",nargs="+")
+        '--included_ids',dest="included_ids",default=None,
+        help="Study UIDs to be excluded")
     parser.add_argument(
         '--patterns',dest="patterns",default=["*/"],nargs="+",
         help="Pattern to match for inputs (assumes each pattern corresponds to\
@@ -74,18 +82,16 @@ if __name__ == "__main__":
 
     path = Path(args.input_path)
     
-    if args.excluded_ids is not None:
-        excluded_ids = args.excluded_ids
+    if args.included_ids is not None:
+        with open(args.included_ids) as o:
+            included_ids = {x.strip():"" for x in o.readlines()}
     else:
-        excluded_ids = []
-    
+        included_ids = None
+        
     dicom_dict = {}
     for pattern in args.patterns:
         print("Locating all studies/series...")
         all_dicoms = [str(x) for x in path.glob(pattern)]
-        print("Filtering excluded IDs")
-        all_dicoms = [x for x in all_dicoms
-                      if not any([y in x for y in excluded_ids])]
         print("Iterating studies/series...")
         with tqdm(all_dicoms) as pbar:
             if args.n_workers in [0,1]:
@@ -96,7 +102,7 @@ if __name__ == "__main__":
                             dcm,study_uid,series_uid,orientation = out
                             update_dict(
                                 dicom_dict,study_uid,series_uid,orientation,dcm,
-                                excluded_ids)
+                                included_ids)
                     pbar.update()
             else:
                 pool = Pool(args.n_workers)
@@ -106,7 +112,7 @@ if __name__ == "__main__":
                             dcm,study_uid,series_uid,orientation = out
                             update_dict(
                                 dicom_dict,study_uid,series_uid,orientation,dcm,
-                                excluded_ids)
+                                included_ids)
                     pbar.update()
 
     pretty_dict = json.dumps(dicom_dict,indent=2)
