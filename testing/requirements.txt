@@ -1,4 +1,4 @@
-torch==1.11.0
+torch==1.13.1
 lightning==2.0.3
 monai==0.9.0
 numpy==1.23.4
