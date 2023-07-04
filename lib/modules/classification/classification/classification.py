@@ -6,7 +6,7 @@ import torch.nn.functional as F
 from ....custom_types import TensorList
 from ...layers.adn_fn import ActDropNorm,get_adn_fn
 from ...layers.batch_ensemble import BatchEnsembleWrapper
-from ...layers.standard_blocks import GlobalPooling, simple_convolutional_block
+from ...layers.standard_blocks import GlobalPooling, VGGConvolution3d
 from ...layers.res_net import ResNet,ResNetBackboneAlt,ProjectionHead
 from ...layers.self_attention import (
     ConcurrentSqueezeAndExcite2d,
@@ -75,8 +75,7 @@ class VGG(torch.nn.Module):
                  maxpool_structure=None,
                  adn_fn=None,
                  res_type=None,
-                 batch_ensemble=None
-                 ):
+                 batch_ensemble:int=0):
         """
         Args:
             spatial_dimensions (int, optional): number of spatial dimensions. 
@@ -84,14 +83,20 @@ class VGG(torch.nn.Module):
             n_channels (int, optional): number of input channels. Defaults to 
                 1.
             n_classes (int, optional): number of classes. Defaults to 2.
+            batch_ensemble (int, optional): number of batch ensemble modules.
+                Defautls to 0.
         """
         super().__init__()
         self.in_channels = n_channels
         self.n_classes = n_classes
+        self.batch_ensemble = batch_ensemble
 
-        self.conv1 = simple_convolutional_block(self.in_channels, 64)
-        self.conv2 = simple_convolutional_block(128, 128)
-        self.conv3 = simple_convolutional_block(256, 256)
+        self.conv1 = VGGConvolution3d(
+            self.in_channels, 64, batch_ensemble=batch_ensemble)
+        self.conv2 = VGGConvolution3d(
+            128, 128, batch_ensemble=batch_ensemble)
+        self.conv3 = VGGConvolution3d(
+            256, 256, batch_ensemble=batch_ensemble)
 
         final_n = 1
         self.last_act = torch.nn.Sigmoid()
@@ -102,20 +107,27 @@ class VGG(torch.nn.Module):
                 adn_fn=get_adn_fn(1,"batch","gelu")))
     
     def forward(self,X: torch.Tensor,
-                return_features:bool=False)->torch.Tensor:
+                return_features: bool=False,
+                batch_idx:int=None)->torch.Tensor:
         """Forward method.
 
         Args:
             X (torch.Tensor): input tensor
+            return_features (bool, optional): returns the features before 
+                applying classification layer. Defaults to False.
+            batch_idx (int, optional): uses a specific batch ensemble 
+                transformation. Defaults to None (usually random).
 
         Returns:
             torch.Tensor: output (classification)
         """
-        X =self.conv1(X)
+        if batch_idx is not None:
+            X = self.conv1(X,batch_idx=batch_idx)
         X = self.conv2(X)
         X = self.conv3(X)
         if return_features == True:
             return X
+
         return self.classification_layer(X)
 
 class CatNet(torch.nn.Module):
@@ -215,18 +227,20 @@ class CatNet(torch.nn.Module):
                 self.classification_layer,self.batch_ensemble,self.last_size,
                 final_n,torch.nn.Identity)
     
-    def forward(self,X:torch.Tensor,return_features:bool=False)->torch.Tensor:
+    def forward(self,X:torch.Tensor,return_features:bool=False,
+                *args,**kwargs)->torch.Tensor:
         """Forward method.
 
         Args:
             X (torch.Tensor): input tensor
             return_features (bool, optional): returns the features rather than
                 the classification_head output. Defaults to False.
+            args, kwargs: features passed to the feature extraction module.
 
         Returns:
             torch.Tensor: output (classification or features)
         """
-        features = self.gp(self.feature_extraction(X))
+        features = self.gp(self.feature_extraction(X,*args,**kwargs))
         if return_features == True:
             return features
         classification = self.classification_layer(features)

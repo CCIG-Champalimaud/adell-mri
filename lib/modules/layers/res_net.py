@@ -299,7 +299,7 @@ class ResNetBackboneAlt(torch.nn.Module):
         return X
 
     def forward(self,X,return_intermediate:bool=False,after_pool:bool=False,
-                batch_idx:bool=None):
+                batch_idx:int=None):
         if return_intermediate is True:
             return self.forward_with_intermediate(X,after_pool=after_pool)
         else:

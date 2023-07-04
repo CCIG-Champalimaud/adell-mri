@@ -2,6 +2,7 @@ import torch
 import torch.nn.functional as F
 from typing import List
 from ...custom_types import TensorList
+from .batch_ensemble import BatchEnsembleWrapper
 
 class GlobalPooling(torch.nn.Module):
     def __init__(self,mode:str="max"):
@@ -319,21 +320,31 @@ class DenseBlock(torch.nn.Module):
         else:
             return outputs[-1]
         
-class simple_convolutional_block(torch.nn.Module):
-    def __init__(self,input_channels,first_depth):
-        """Implementation of simple vgg-style convolutional blocks.
-
+class VGGConvolution3d(torch.nn.Module):
+    """
+    Implementation of simple vgg-style convolutional blocks.
+    """
+    def __init__(self,input_channels:int,first_depth:int,
+                 batch_ensemble:int=0):
+        """
         Args:
             input_channels (List[int]): list of input channels for convolutions.
             first_depth (int): number of output channels for the first convolution.
+            batch_ensemble (int, optional): number of batch ensemble modules.
+                Defautls to 0.
         """
                  
         super().__init__()
         self.input_channels = input_channels
         self.first_depth = first_depth
-
+        self.batch_ensemble = batch_ensemble
 
         self.c1 = torch.nn.Conv3d(input_channels,first_depth,3, padding=1)
+        if self.batch_ensemble > 0:
+            self.c1 = BatchEnsembleWrapper(
+                self.c1,n=self.batch_ensemble,
+                in_channels=input_channels,out_channels=first_depth)
+        print([x for x,_ in self.c1.named_modules()])
         self.act1 = torch.nn.GELU()
         self.n1 = torch.nn.BatchNorm3d(first_depth)
         self.c2 = torch.nn.Conv3d(first_depth,first_depth*2,3, padding=1)
