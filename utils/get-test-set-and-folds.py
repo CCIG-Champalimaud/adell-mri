@@ -83,12 +83,13 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.excluded_ids is not None:
-        excluded_ids = parse_ids(args.excluded_ids)
+        excluded_ids = parse_ids(args.excluded_ids,"list")
     else:
         excluded_ids = []
 
     strata = []
     data_dict = json.load(open(args.dataset_json,'r'))
+    data_dict = {k:data_dict[k] for k in data_dict if k not in excluded_ids}
     if args.all_keys is not None:
         new_dict = {}
         for k in data_dict:
