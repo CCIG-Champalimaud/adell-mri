@@ -97,7 +97,7 @@ class MLP(torch.nn.Module):
             torch.Tensor: tensor with shape [...,self.output_dim]
         """
         return self.op(X)
-    
+
 class Attention(torch.nn.Module):
     """Attention module [1].
     
@@ -155,6 +155,16 @@ class Attention(torch.nn.Module):
         V_tilde = V * S
         return V_tilde
 
+class SeqPool(torch.nn.Module):
+    def __init__(self,n_features):
+        super().__init__()
+        self.n_features = n_features
+        self.g = torch.nn.Linear(self.n_features,1)
+    
+    def forward(self,X:torch.Tensor)->torch.Tensor:
+        attn =  torch.softmax(self.g(X).swapaxes(1,2),-1)
+        return attn @ X
+
 class SelfAttention(torch.nn.Module):
     """Self-attention module. Same as the attention module but the primary and
     context sequences are the same [1].
@@ -210,16 +220,6 @@ class SelfAttention(torch.nn.Module):
         S = self.sm(S / self.reg_const)
         V_tilde = S @ V
         return V_tilde
-
-class SeqPool(torch.nn.Module):
-    def __init__(self,n_features):
-        super().__init__()
-        self.n_features = n_features
-        self.g = torch.nn.Linear(self.n_features,1)
-    
-    def forward(self,X:torch.Tensor)->torch.Tensor:
-        attn =  torch.softmax(self.g(X).swapaxes(1,2),-1)
-        return attn @ X
 
 class MultiHeadSelfAttention(torch.nn.Module):
     """Module composed of several self-attention modules which calculate
