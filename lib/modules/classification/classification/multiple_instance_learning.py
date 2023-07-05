@@ -5,7 +5,34 @@ import einops
 from ...layers.adn_fn import get_adn_fn
 from typing import Callable
 from ...layers.vit import TransformerBlockStack
-from ...layers.linear_blocks import MLP
+from ...layers.linear_blocks import MLP, MultiHeadSelfAttention
+
+class MILAttention(torch.nn.Module):
+    """Attention module for multiple instance learning [1]. The attention is
+    calculated as the softmax of the sigmoid-gated hyperbolic tangent of the
+    input, i.e. 
+        $A = \mathrm{softmax}(\mathrm{tanh}(A * V) * \mathrm{sigmoid}(A * U))$
+
+    [1] https://arxiv.org/pdf/1802.04712.pdf
+    """
+    def __init__(self,n_dim:int,along_dim=-2):
+        super().__init__()
+        
+        self.n_dim = n_dim
+        self.along_dim = along_dim
+        
+        self.initialize_layers()
+
+    def initialize_layers(self):
+        self.V = torch.nn.Linear(self.n_dim,self.n_dim)
+        self.U = torch.nn.Linear(self.n_dim,self.n_dim)
+    
+    def forward(self,X:torch.Tensor)->torch.Tensor:
+        return X * F.softmax(
+            torch.multiply(
+                F.tanh(self.V(X)),
+                F.sigmoid(self.U(X))),
+            self.along_dim)
 
 class MultipleInstanceClassifier(torch.nn.Module):
     """
@@ -36,6 +63,7 @@ class MultipleInstanceClassifier(torch.nn.Module):
                  n_slices:int=None,
                  use_positional_embedding:bool=True,
                  dim:int=2,
+                 attention:bool=False,
                  reduce_fn:str="max"):
         """
         Args:
@@ -62,6 +90,8 @@ class MultipleInstanceClassifier(torch.nn.Module):
                 embedding should be used. Defaults to True.
             dim (int, optional): dimension along which the module is applied.
                 Defaults to 2.
+            attention (bool, optional): uses multi-head self-attention. 
+                Defaults to False.
             reduce_fn (str, optional): function used to reduce features coming
                 from feature extraction module.
         """
@@ -80,6 +110,7 @@ class MultipleInstanceClassifier(torch.nn.Module):
         self.n_slices = n_slices
         self.use_positional_embedding = use_positional_embedding
         self.dim = dim
+        self.attention = attention
         self.reduce_fn = reduce_fn
         
         self.vol_to_2d = einops.layers.torch.Rearrange(
@@ -89,6 +120,13 @@ class MultipleInstanceClassifier(torch.nn.Module):
 
         self.init_classification_module()
         self.init_positional_embedding()
+
+        if self.attention is True:
+            if len(self.classification_structure) > 0:
+                input_dim = self.classification_structure[-1]
+            else:
+                input_dim = self.module_out_dim
+            self.attention_op = MILAttention(input_dim)
 
     def init_positional_embedding(self):
         """
@@ -118,27 +156,33 @@ class MultipleInstanceClassifier(torch.nn.Module):
 
     def init_classification_module(self):
         n_classes_out = 1 if self.n_classes == 2 else self.n_classes
+        self.feature_extraction = MLP(
+            self.module_out_dim,self.classification_structure[-1],
+            structure=self.classification_structure[:-1],
+            adn_fn=self.classification_adn_fn)
         if self.classification_mode in ["mean","max"]:
-            self.classification_module = MLP(
-                self.module_out_dim,n_classes_out,
-                structure=self.classification_structure,
-                adn_fn=self.classification_adn_fn)
+            self.final_prediction = MLP(
+                self.classification_structure[-1],n_classes_out,
+                structure=[],adn_fn=torch.nn.Identity)
         elif self.classification_mode == "vocabulary":
-            self.classification_module = MLP(
-                self.module_out_dim,self.vocabulary_size,
-                structure=self.classification_structure,
+            self.vocaulary_prediction = MLP(
+                self.classification_structure[-1],self.vocabulary_size,
+                structure=[],
                 adn_fn=self.classification_adn_fn)
             self.final_prediction = MLP(
                 self.vocabulary_size,n_classes_out,
                 structure=[],adn_fn=torch.nn.Identity)
 
     def get_prediction(self,X:torch.Tensor)->torch.Tensor:
-        out = self.classification_module(X)
+        out = self.feature_extraction(X)
+        if self.attention is True:
+            out = self.attention_op(out)
         if self.classification_mode == "mean":
-            return out.mean(-2)
+            return self.final_prediction(out).mean(-2)
         if self.classification_mode == "max":
-            return out.max(-2).values
+            return self.final_prediction(out).max(-2).values
         if self.classification_mode == "vocabulary":
+            out = self.vocaulary_prediction(out)
             out = F.softmax(out)
             out = out.mean(-2)
             return self.final_prediction(out)
