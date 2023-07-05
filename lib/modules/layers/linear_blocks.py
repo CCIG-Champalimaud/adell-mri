@@ -97,7 +97,7 @@ class MLP(torch.nn.Module):
             torch.Tensor: tensor with shape [...,self.output_dim]
         """
         return self.op(X)
-
+    
 class Attention(torch.nn.Module):
     """Attention module [1].
     
