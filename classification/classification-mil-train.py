@@ -281,7 +281,7 @@ if __name__ == "__main__":
     t2_keys = [k for k in t2_keys if k in keys]
 
     network_config,_ = parse_config_2d_classifier_3d(
-        args.config_file,args.dropout_param)
+        args.config_file,args.dropout_param,args.mil_method)
     
     if args.batch_size is not None:
         network_config["batch_size"] = args.batch_size
@@ -440,10 +440,13 @@ if __name__ == "__main__":
             network_config["loss_fn"] = torch.nn.CrossEntropy(
                 class_weights)
 
+        n_workers = args.n_workers
+        if network_config["batch_size"] < n_workers:
+            n_workers = network_config["batch_size"]
         if isinstance(devices,list):
-            n_workers = args.n_workers//len(devices)
+            n_workers = n_workers//len(devices)
         else:
-            n_workers = args.n_workers
+            n_workers = n_workers
         def train_loader_call(): 
             return monai.data.ThreadDataLoader(
                 train_dataset,batch_size=network_config["batch_size"],
