@@ -213,7 +213,7 @@ class UNet(torch.nn.Module):
                 self.conv_op_enc = self.res_block_conv_2d
                 self.conv_op_dec = torch.nn.Conv2d
             elif self.conv_type == "sae":
-                self.conv_op_enc = torch.nn.Conv2d
+                self.conv_op_enc = self.sae_2d
                 self.conv_op_dec = self.sae_2d
             elif self.conv_type == "asp":
                 self.conv_op_enc = self.asp_2d
@@ -226,7 +226,7 @@ class UNet(torch.nn.Module):
                 self.conv_op_enc = self.res_block_conv_3d
                 self.conv_op_dec = torch.nn.Conv3d
             elif self.conv_type == "sae":
-                self.conv_op_enc = torch.nn.Conv3d
+                self.conv_op_enc = self.sae_3d
                 self.conv_op_dec = self.sae_3d
             elif self.conv_type == "asp":
                 self.conv_op_enc = self.asp_3d
