@@ -63,7 +63,7 @@ class EfficientClassAttentionBlock(torch.nn.Module):
             self.op = torch.nn.Conv1d(
                 1, 1, kernel_size, padding=kernel_size//2, bias=False)
         elif self.op_type == "linear":
-            self.op = torch.nn.Linear()
+            self.op = torch.nn.Linear(self.input_channels,self.input_channels)
 
     def forward(self, X:torch.Tensor, cls:torch.Tensor)->torch.Tensor:
         n_channels = len(X.shape)
