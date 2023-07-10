@@ -15,7 +15,7 @@ t = torch.Tensor([4])
 param_list = []
 for dim in spatial_dims:
     for D in depths:
-        for conv_type in ["regular","resnet"]:
+        for conv_type in ["regular","resnet","sae"]:
             for strides in ["regular","irregular"]:
                 param_list.append((D,dim,conv_type,strides))
 
