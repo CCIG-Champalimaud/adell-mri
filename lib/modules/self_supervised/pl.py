@@ -11,6 +11,7 @@ from ..layers.conv_next import ConvNeXt
 from .self_supervised import (
     BarlowTwinsLoss, VICRegLocalLoss, 
     byol_loss, simsiam_loss, VICRegLoss,NTXentLoss)
+from .jepa import IJEPA
 from ..segmentation.unet import UNet
 from ..learning_rate import CosineAnnealingWithWarmupLR
 
@@ -137,14 +138,18 @@ class SelfSLBasePL(pl.LightningModule,ABC):
 
     def init_loss(self):
         self.loss = simsiam_loss
-        if self.ema is not None:
-            self.loss = byol_loss
-        if self.vic_reg is True:
-            self.loss = VICRegLoss(**self.vic_reg_loss_params)
-        if self.vic_reg_local is True:
-            self.loss = VICRegLocalLoss(**self.vic_reg_loss_params)
-        if self.simclr is True:
-            self.loss = NTXentLoss(temperature=self.temperature)
+        if hasattr(self,"ema"):
+            if self.ema is not None:
+                self.loss = byol_loss
+        if hasattr(self,"vic_reg"):
+            if self.vic_reg is True:
+                self.loss = VICRegLoss(**self.vic_reg_loss_params)
+        if hasattr(self,"vic_reg_local"):
+            if self.vic_reg_local is True:
+                self.loss = VICRegLocalLoss(**self.vic_reg_loss_params)
+        if hasattr(self,"simclr"):
+            if self.simclr is True:
+                self.loss = NTXentLoss(temperature=self.temperature)
 
     def calculate_loss(self,y1,y2,*args):
         if self.stop_gradient is False:
@@ -242,7 +247,6 @@ class SelfSLResNetPL(ResNet,SelfSLBasePL):
         temperature: float=1.0,
         vic_reg_loss_params: dict={},
         stop_gradient: bool=True,
-        lars: bool=False,
         channels_to_batch: bool=False,
         *args,**kwargs):
         """
@@ -310,7 +314,6 @@ class SelfSLResNetPL(ResNet,SelfSLBasePL):
         self.temperature = temperature
         self.vic_reg_loss_params = vic_reg_loss_params
         self.stop_gradient = stop_gradient
-        self.lars = lars
         self.channels_to_batch = channels_to_batch
         
         if channels_to_batch is True:
@@ -456,7 +459,6 @@ class SelfSLUNetPL(UNet,SelfSLBasePL):
         temperature: float=1.0,
         vic_reg_loss_params: dict={},
         stop_gradient: bool=True,
-        lars: bool=False,
         channels_to_batch: bool=False,
         *args,**kwargs):
         """
@@ -524,7 +526,6 @@ class SelfSLUNetPL(UNet,SelfSLBasePL):
         self.temperature = temperature
         self.vic_reg_loss_params = vic_reg_loss_params
         self.stop_gradient = stop_gradient
-        self.lars = lars
         self.channels_to_batch = channels_to_batch
         
         if channels_to_batch is True:
@@ -663,7 +664,6 @@ class SelfSLConvNeXtPL(ConvNeXt,SelfSLBasePL):
         temperature: float=1.0,
         vic_reg_loss_params: dict={},
         stop_gradient: bool=True,
-        lars: bool=True,
         channels_to_batch: bool=False,
         *args,**kwargs):
         """
@@ -730,7 +730,6 @@ class SelfSLConvNeXtPL(ConvNeXt,SelfSLBasePL):
         self.temperature = temperature
         self.vic_reg_loss_params = vic_reg_loss_params
         self.stop_gradient = stop_gradient
-        self.lars = lars
         self.channels_to_batch = channels_to_batch
         
         if channels_to_batch is True:
@@ -844,3 +843,158 @@ class SelfSLConvNeXtPL(ConvNeXt,SelfSLBasePL):
     def test_step(self,batch,batch_idx):
         loss = self.step(batch,"test_loss",self.test_metrics)
         return loss
+
+class IJEPAPL(IJEPA,SelfSLBasePL):
+    def __init__(
+        self,
+        image_key: str="image",
+        learning_rate: float=0.001,
+        batch_size: int=4,
+        weight_decay: float=0.005,
+        training_dataloader_call: Callable=None,
+        n_epochs: int=1000,
+        n_steps: int=None,
+        warmup_steps: int=0,
+        start_decay: int=None,
+        ema: torch.nn.Module=None,
+        vic_reg: bool=False,
+        vic_reg_local: bool=False,
+        simclr: bool=False,
+        temperature: float=1.0,
+        vic_reg_loss_params: dict={},
+        stop_gradient: bool=True,
+        channels_to_batch: bool=False,
+        *args,**kwargs):
+        """
+        Args:
+            image_key (str, optional): key for image. Defaults to "image".
+            aug_image_key_2 (str, optional): key for augmented image 2. 
+                Defaults to "aug_image_2".
+            box_key_1 (str, optional): key for bounding box mapping 
+                aug_image_key_1 to its original, uncropped image. (used only
+                when vic_reg_local == True)
+            box_key_2 (str, optional): key for bounding box mapping 
+                aug_image_key_2 to its original, uncropped image. (used only
+                when vic_reg_local == True)
+            learning_rate (float, optional): learning rate. Defaults to 0.2.
+            batch_size (int, optional): batch size. Defaults to 4.
+            weight_decay (float, optional): weight decay for optimizer. 
+                Defaults to 0.005.
+            training_dataloader_call (Callable, optional): function that, when
+                called, returns the training dataloader. Defaults to None.
+            n_epochs (int, optional): number of training epochs. Defaults to 
+                1000.
+            n_steps (int, optional): number of steps. Defaults to None. Only 
+                used if n_epochs is None.
+            warmup_steps (int, optional): number of warmup steps. Defaults 
+                to 0.
+            start_decay (int, optional): number of steps after which decay
+                begins. Defaults to None (decay starts after warmup).
+            ema (float, torch.nn.Module): exponential moving decay module 
+                (EMA). Must have an update method that takes model as input 
+                and updates the weights based on this. Defaults to None.
+            vic_reg (bool, optional): uses the VIC (variance, invariance,
+                covariance) regularization method from Bardes et al. (2022).
+                Defaults to False.
+            vic_reg_local (bool, optional): uses the VICRegL method from 
+                Bardes et al. (2022). Overrides vic_reg. Defaults to False.
+            simclr (bool, optional): uses the SimCLR self-SL protocol. Defaults
+                to False.
+            temperature (float, optional): temperature for NTXent (when 
+                simclr == True). Defaults to 1.0.
+            vic_reg_loss_params (dict, optional): parameters for the VICRegLoss
+                module. Defaults to {} (the default parameters).
+            stop_gradient (bool, optional): stops gradients when calculating
+                losses. Useful for VICReg. Defaults to True.
+            channels_to_batch (bool, optional): resizes the input such that 
+                each channel becomes an element of the batch. Defaults to 
+                False.
+        """
+        self.image_key = image_key
+        self.learning_rate = learning_rate
+        self.batch_size = batch_size
+        self.weight_decay = weight_decay
+        self.training_dataloader_call = training_dataloader_call
+        self.n_epochs = n_epochs
+        self.n_steps = n_steps
+        self.warmup_steps = warmup_steps
+        self.start_decay = start_decay
+        self.vic_reg = vic_reg
+        self.vic_reg_local = vic_reg_local
+        self.simclr = simclr
+        self.temperature = temperature
+        self.vic_reg_loss_params = vic_reg_loss_params
+        self.stop_gradient = stop_gradient
+        
+        if channels_to_batch is True:
+            kwargs["backbone_args"]["in_channels"] = 1
+        
+        super().__init__(*args,**kwargs)
+        
+        self.ema = ema
+
+        self.init_loss()
+        if self.ema is not None:
+            self.ema.update(self)
+        else:
+            self.ema = None
+        
+        self.setup_metrics()
+        self.init_loss()
+
+    def init_loss(self):
+        self.loss = torch.nn.MSELoss()
+
+    def calculate_loss(self,y,patches,*args):
+        loss = sum([self.loss(y,patch) for patch in patches]) / len(patches)
+        return loss
+
+    def step(self,batch,loss_str:str,train=False):        
+        x = batch[self.image_key]
+        x,patches = self.forward(x,self.ema)                
+        loss = self.calculate_loss(x,patches)     
+        if self.ema is not None and train is True:
+            self.ema.update(self)
+        self.log(loss_str,loss,batch_size=x.shape[0],
+                 on_epoch=True,on_step=False,prog_bar=True,
+                 sync_dist=True)
+        return loss
+
+    def training_step(self,batch,batch_idx):
+        loss = self.step(batch,"loss",train=True)
+        return loss
+    
+    def validation_step(self,batch,batch_idx):
+        loss = self.step(batch,"val_loss")
+        return loss
+
+    def test_step(self,batch,batch_idx):
+        loss = self.step(batch,"test_loss")
+        return loss
+
+    def configure_optimizers(self):
+        if self.n_steps is not None:
+            interval = "step"
+            n = self.n_steps
+        else:
+            interval = "epoch" 
+            n = self.n_epochs
+        params_no_decay = []
+        params_decay = []
+        for k,p in self.named_parameters():
+            if 'normalization' in k:
+                params_no_decay.append(p)
+            else:
+                params_decay.append(p)
+        optimizer = torch.optim.AdamW(
+            params_decay + params_no_decay,
+            lr=self.learning_rate,weight_decay=self.weight_decay)
+        lr_schedulers = lr_schedulers = CosineAnnealingWithWarmupLR(
+            optimizer,T_max=n,start_decay=self.start_decay,
+            n_warmup_steps=self.warmup_steps,eta_min=1e-6)
+
+        return {"optimizer":optimizer,
+                "lr_scheduler":{"scheduler":lr_schedulers,
+                                "interval":interval,
+                                "frequency":1},
+                "monitor":"val_loss"}

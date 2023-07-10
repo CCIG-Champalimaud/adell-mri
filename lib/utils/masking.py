@@ -67,8 +67,10 @@ class TransformerMasker:
 
     def __call__(self,
                  X:torch.Tensor,
-                 mask_vector:torch.Tensor=None)->Tuple[torch.Tensor,List[torch.Tensor]]:
-        patch_coords = self.sample_patches(self.n_patches)
+                 mask_vector:torch.Tensor=None,
+                 patch_coords:List[Coords]=None)->Tuple[torch.Tensor,List[torch.Tensor]]:
+        if patch_coords is None:
+            patch_coords = self.sample_patches(self.n_patches)
         all_patches = []
         full_coords = []
         for coords in patch_coords:
@@ -78,7 +80,7 @@ class TransformerMasker:
         if mask_vector is not None:
             full_coords = np.unique(np.concatenate(full_coords))
             X[:,full_coords,:] = mask_vector[None,None,:]
-        return X,all_patches
+        return X,all_patches,patch_coords
 
 class ConvolutionalMasker:
     def __init__(self,
@@ -135,8 +137,10 @@ class ConvolutionalMasker:
 
     def __call__(self,
                  X:torch.Tensor,
-                 mask_vector:torch.Tensor=None)->Tuple[torch.Tensor,List[torch.Tensor]]:
-        patch_coords = self.sample_patches(self.n_patches)
+                 mask_vector:torch.Tensor=None,
+                 patch_coords:List[Coords]=None)->Tuple[torch.Tensor,List[torch.Tensor]]:
+        if patch_coords is None:
+            patch_coords = self.sample_patches(self.n_patches)
         all_patches = []
         full_coords = [[] for _ in range(self.n_dim)]
         for coords in patch_coords:
@@ -151,7 +155,7 @@ class ConvolutionalMasker:
                 X[:,:,mask_c[0],mask_c[1]] = mask_vector
             if self.n_dim == 3:
                 X[:,:,mask_c[0],mask_c[1],mask_c[2]] = mask_vector
-        return X,all_patches
+        return X,all_patches,patch_coords
 
 def get_masker(model_type:str,*args,**kwargs):
     if model_type == "transformer":
