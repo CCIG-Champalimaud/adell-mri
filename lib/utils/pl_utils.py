@@ -40,8 +40,11 @@ def delete_checkpoints(trainer:Trainer)->None:
     Args:
         trainer (Trainer): a Lightning Trainer object.
     """
-    def delete(path:str)->None:
-        os.remove(path)
+    def delete(path:str,verbose:bool=False)->None:
+        if os.path.exists(path):
+            os.remove(path)
+        elif verbose is True:
+            print(f"Warning: {path} does not exist and has not been deleted")
     if hasattr(trainer,"checkpoint_callbacks"):
         for ckpt_callback in trainer.checkpoint_callbacks:
             if hasattr(ckpt_callback,"best_model_path"):
