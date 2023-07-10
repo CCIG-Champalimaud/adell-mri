@@ -4,14 +4,16 @@ import math
 
 from typing import Union
 
-class EfficientClassAttentionBlock(torch.nn.Module):
+class EfficientConditioningAttentionBlock(torch.nn.Module):
     """
-    Efficient class attention block [1]. Based on [2]. Works by converting the
-    class into a vector that is used to derive a sigmoid gate for the channels
-    in a given input tensor. [1] suggests a way of automatically calculating a
-    kernel size for the 1D convolutional applied in before the sigmoid gate. 
+    Efficient conditioning attention block. Based on [1,2]. Works by linearly
+    transforming the input vector and using it to derive a sigmoid gate for the 
+    channels in a given input tensor. [1] suggests a way of automatically 
+    calculating a kernel size for the 1D convolutional applied in before the 
+    sigmoid gate. 
+    
     This convolution can be switched (in this implementation) by an additional
-    linear layer.
+    linear layer. 
 
     [1] https://arxiv.org/abs/1910.03151
     [2] https://github.com/gmongaras/Diffusion_models_from_scratch/blob/main/src/blocks/clsAttn.py
@@ -60,10 +62,14 @@ class EfficientClassAttentionBlock(torch.nn.Module):
                 math.log2(
                     self.input_channels)/self.gamma+(self.b/self.gamma))
 
-            self.op = torch.nn.Conv1d(
-                1, 1, kernel_size, padding=kernel_size//2, bias=False)
+            self.op = torch.nn.Sequential(
+                torch.nn.SiLU(),
+                torch.nn.Conv1d(
+                1, 1, kernel_size, padding=kernel_size//2, bias=False))
         elif self.op_type == "linear":
-            self.op = torch.nn.Linear(self.input_channels,self.input_channels)
+            self.op = torch.nn.Sequential(
+                torch.nn.SiLU(),
+                torch.nn.Linear(self.input_channels,self.input_channels))
 
     def forward(self, X:torch.Tensor, cls:torch.Tensor)->torch.Tensor:
         n_channels = len(X.shape)
