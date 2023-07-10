@@ -92,9 +92,8 @@ def parse_config_2d_classifier_3d(config_file:str,
         network_config["classification_adn_fn"] = get_adn_fn(
             1,**network_config["classification_adn_fn"])
     
-    if mil_method == "transformer":
-        network_config["adn_fn"] = get_adn_fn(1,norm_fn=norm_fn,act_fn=act_fn,
-                                              dropout_param=dropout_param)
+    network_config["adn_fn"] = get_adn_fn(1,norm_fn=norm_fn,act_fn=act_fn,
+                                            dropout_param=dropout_param)
 
     network_config_correct = {
         k:network_config[k] for k in network_config
