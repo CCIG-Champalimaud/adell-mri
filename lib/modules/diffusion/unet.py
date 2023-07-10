@@ -1,7 +1,7 @@
 import torch
 import numpy as np
 
-from ..layers.class_attention import EfficientClassAttentionBlock
+from ..layers.class_attention import EfficientConditioningAttentionBlock
 from ..segmentation.unet import UNet,crop_to_size
 
 def sin_cos_encoding(t:int, channels:int, dev:str="cpu"):
@@ -42,7 +42,7 @@ class DiffusionUNet(UNet):
         self.init_eca()
 
     def init_eca(self):
-        eca_op = EfficientClassAttentionBlock
+        eca_op = EfficientConditioningAttentionBlock
         if self.classifier_free_guidance == True:
             # use this to map classes to self.t_dim vectors
             self.embedding = torch.nn.Embedding(
