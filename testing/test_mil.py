@@ -11,6 +11,7 @@ batch_size = 4
 input_dim = 1
 input_dim_mil = 32
 classification_structure = [32,16]
+feat_extraction_structure = [32,16]
 n_slices = 8
 n_classes = 2
 adn_fn = get_adn_fn(1,"identity","gelu",0.1)
@@ -20,6 +21,7 @@ def test_transformer(classification_mode):
     mod = MultipleInstanceClassifier(
         module=torch.nn.Conv2d(input_dim,input_dim_mil,3),
         module_out_dim=input_dim_mil,n_classes=n_classes,
+        feat_extraction_structure=feat_extraction_structure,
         classification_structure=classification_structure,
         classification_mode=classification_mode,
         classification_adn_fn=adn_fn,
