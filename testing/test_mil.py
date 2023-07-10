@@ -17,7 +17,7 @@ n_classes = 2
 adn_fn = get_adn_fn(1,"identity","gelu",0.1)
 
 @pytest.mark.parametrize("classification_mode",["mean","max","vocabulary"])
-def test_transformer(classification_mode):
+def test_mil(classification_mode):
     mod = MultipleInstanceClassifier(
         module=torch.nn.Conv2d(input_dim,input_dim_mil,3),
         module_out_dim=input_dim_mil,n_classes=n_classes,
