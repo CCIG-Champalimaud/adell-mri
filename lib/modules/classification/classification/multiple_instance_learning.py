@@ -28,13 +28,16 @@ class MILAttention(torch.nn.Module):
         self.U = torch.nn.Linear(self.n_dim,self.n_dim)
         self.W = torch.nn.Linear(self.n_dim,1)
     
-    def forward(self,X:torch.Tensor)->torch.Tensor:
-        attention = F.softmax(
+    def calculate_attention(self,X:torch.Tensor)->torch.Tensor:
+        return F.softmax(
             self.W(
                 torch.multiply(
                     F.tanh(self.V(X)),
                     F.sigmoid(self.U(X)))),
             self.along_dim)
+
+    def forward(self,X:torch.Tensor)->torch.Tensor:
+        attention = self.calculate_attention(X)
         X = X * attention
         return X
 
@@ -176,7 +179,7 @@ class MultipleInstanceClassifier(torch.nn.Module):
                 structure=self.classification_structure,
                 adn_fn=self.classification_adn_fn)
         elif self.classification_mode == "vocabulary":
-            self.vocaulary_prediction = MLP(
+            self.vocabulary_prediction = MLP(
                 self.feat_extraction_structure[-1],self.vocabulary_size,
                 structure=self.classification_structure,
                 adn_fn=self.classification_adn_fn)
@@ -185,17 +188,20 @@ class MultipleInstanceClassifier(torch.nn.Module):
                 structure=self.classification_structure,adn_fn=torch.nn.Identity)
 
     def get_prediction(self,X:torch.Tensor)->torch.Tensor:
+        b,c = X.shape[0:2]
         if self.attention is True:
-            X = self.attention_op(X)
+            A = self.attention_op.calculate_attention(X)
+        else:
+            A = torch.ones([b,c,1],device=X.device) / c
         out = self.feature_extraction(X)
         if self.classification_mode == "mean":
-            return self.final_prediction(out.mean(-2))
+            return self.final_prediction(torch.sum(out * A,-2))
         if self.classification_mode == "max":
-            return self.final_prediction(out.max(-2).values)
+            return self.final_prediction(torch.max(out * A,-2).values)
         if self.classification_mode == "vocabulary":
-            out = self.vocaulary_prediction(out)
-            out = F.softmax(out)
-            out = out.mean(-2)
+            out = self.vocabulary_prediction(out)
+            out = F.softmax(out) * A
+            out = out.sum(-2)
             return self.final_prediction(out)
 
     def forward(self,X:torch.Tensor)->torch.Tensor:

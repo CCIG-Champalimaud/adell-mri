@@ -15,7 +15,11 @@ sys.path.append(r"..")
 from lib.utils import (
     safe_collate,set_classification_layer_bias,
     ScaleIntensityAlongDimd,EinopsRearranged)
-from lib.utils.pl_utils import get_ckpt_callback,get_logger,get_devices
+from lib.utils.pl_utils import (
+    get_ckpt_callback,
+    get_logger,
+    get_devices,
+    GPULock)
 from lib.utils.batch_preprocessing import BatchPreprocessing
 from lib.utils.dataset_filters import (
     filter_dictionary_with_filters,
@@ -224,7 +228,14 @@ if __name__ == "__main__":
     rng = np.random.default_rng(args.seed)
 
     accelerator,devices,strategy = get_devices(args.dev)
-    
+    gpu_lock = GPULock()
+    if devices == "auto":
+        is_auto = True
+        gpu_lock.lock_first_available()
+        devices = [int(i) for i in gpu_lock.locked_gpus]
+    else:
+        is_auto = False
+
     output_file = open(args.metric_path,'w')
 
     data_dict = json.load(open(args.dataset_json,'r'))
@@ -492,14 +503,6 @@ if __name__ == "__main__":
             network_config["module_out_dim"] = int(output.shape[1])
             print("2D module output size={}".format(
                 network_config["module_out_dim"]))
-        if args.mil_method == "transformer":
-            network = TransformableTransformerPL(
-                **boilerplate_args,
-                **network_config)
-        elif args.mil_method == "standard":
-            network = MultipleInstanceClassifierPL(
-                **boilerplate_args,
-                **network_config)
                 
         # instantiate callbacks and loggers
         callbacks = [RichProgressBar()]
@@ -528,6 +531,25 @@ if __name__ == "__main__":
                             args.project_name,args.resume,
                             fold=val_fold)
         
+        if is_auto is True:
+            dev = f"cuda:{devices[0]}"
+            # reload to correct device
+            network_config["module"] = torch.jit.load(
+                args.module_path,map_location=f"cuda:{devices[0]}")
+            network_config["module"].requires_grad = False
+            network_config["module"].eval()
+            network_config["module"] = torch.jit.freeze(
+                network_config["module"])
+
+        if args.mil_method == "transformer":
+            network = TransformableTransformerPL(
+                **boilerplate_args,
+                **network_config)
+        elif args.mil_method == "standard":
+            network = MultipleInstanceClassifierPL(
+                **boilerplate_args,
+                **network_config)
+
         if args.correct_classification_bias is True and n_classes == 2:
             pos = len([x for x in classes if x in args.positive_labels])
             neg = len(classes) - pos
@@ -536,8 +558,7 @@ if __name__ == "__main__":
         trainer = Trainer(
             accelerator=accelerator,
             devices=devices,logger=logger,callbacks=callbacks,
-            max_epochs=args.max_epochs,
-            enable_checkpointing=ckpt,
+            max_epochs=args.max_epochs,enable_checkpointing=ckpt,
             gradient_clip_val=args.gradient_clip_val,
             strategy=strategy,
             accumulate_grad_batches=args.accumulate_grad_batches,

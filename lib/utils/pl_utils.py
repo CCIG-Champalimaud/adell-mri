@@ -4,6 +4,7 @@ Lightning.
 """
 
 import os
+import atexit
 import numpy as np
 import torch
 import wandb
@@ -12,6 +13,92 @@ from lightning.pytorch.loggers import WandbLogger
 from lightning.pytorch.callbacks.model_checkpoint import ModelCheckpoint
 
 from typing import List, Union, Tuple, Any, Dict
+
+def allocated_memory_per_gpu()->Dict[int,int]:
+    """
+    Returns a dictionary with the allocated memory per GPU.
+
+    Returns:
+        Dict: dictionary with GPU ids (0,1,2,...) as keys and the amount of
+            allocated memory as values.
+    """
+    output = {}
+    for i in range(torch.cuda.device_count()):
+        output[i] = torch.cuda.memory_allocated(i)
+    return output
+
+def get_emptiest_gpus(n:int=1)->List[int]:
+    """
+    Gets the ids for the n emptiest GPUs.
+
+    Args:
+        n (int, optional): number of ids to retrieve. Defaults to 1.
+
+    Returns:
+        int: 
+    """
+    mem = allocated_memory_per_gpu()
+    least_mem_gpu = sorted(allocated_memory_per_gpu().keys(),
+                           key=lambda i: mem[i])[:n]
+    return least_mem_gpu
+
+class GPULock:
+    def __init__(self,path:str=".gpu_lock"):
+        self.path = path
+
+        self.locked_gpus = []
+        self.available_devices = [
+            str(i) for i in range(torch.cuda.device_count())]
+        atexit.register(self.unlock_all)
+
+    def get_locked_gpus(self):
+        if os.path.exists(self.path):
+            with open(self.path,"r") as o:
+                locked_gpus = [x.strip() for x in o.readlines()
+                               if x.strip() != ""]
+            return locked_gpus
+        else:
+            return []
+
+    def lock(self,i:int):
+        i = str(i)
+        if i not in self.available_devices:
+            raise Exception(
+                f"GPU {i} not in available devices {self.available_devices}")
+        locked_gpus = self.get_locked_gpus()
+        if i not in locked_gpus + self.locked_gpus:
+            locked_gpus.append(i)
+        else:
+            raise Exception(f"GPU {i} is already locked")
+        with open(self.path,"w") as o:
+            o.write("\n".join(locked_gpus))
+        self.locked_gpus.append(i)
+    
+    def unlock(self,i:int):
+        i = str(i)
+        locked_gpus = [x for x in self.get_locked_gpus()
+                       if x != i]
+        with open(self.path,"w") as o:
+            o.write("\n".join(locked_gpus))
+    
+    def lock_first_available(self):
+        locked_gpus = self.get_locked_gpus()
+        gpu_to_lock = None
+        for i in range(torch.cuda.device_count()):
+            i = str(i)
+            if i not in locked_gpus:
+                gpu_to_lock = i
+                break
+        if gpu_to_lock is None:
+            raise Exception(f"No available GPUs to lock")
+        self.lock(gpu_to_lock)
+        return gpu_to_lock
+    
+    def unlock_all(self):
+        print(f"Unlocking GPUs {self.locked_gpus}")
+        locked_gpus = self.get_locked_gpus()
+        for locked_gpu in locked_gpus:
+            self.unlock(locked_gpu)
 
 class ModelCheckpointWithMetadata(ModelCheckpoint):
     """Identifcal to ModelCheckpoint but allows for metadata to be stored.
@@ -245,7 +332,10 @@ def get_devices(device_str:str)->Tuple[str,Union[List[int],int],str]:
     strategy = "auto"
     if ":" in device_str:
         accelerator = "gpu" if "cuda" in device_str else "cpu"
-        devices = [int(i) for i in device_str.split(":")[-1].split(",")]
+        try:
+            devices = [int(i) for i in device_str.split(":")[-1].split(",")]
+        except:
+            devices = "auto"
         if len(devices) > 1:
             strategy = "ddp_find_unused_parameters_true"
     else:
