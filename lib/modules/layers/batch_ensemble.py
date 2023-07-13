@@ -167,22 +167,24 @@ class BatchEnsembleWrapper(torch.nn.Module):
             )})
         self.adn_op = self.adn_fn(self.out_channels)
 
-    def forward(self,X:torch.Tensor,idx:int=None,
+    def forward(self,X:torch.Tensor,idx:int=None,mod:torch.nn.Module=None,
                 *args,**kwargs):
+        if mod is None:
+            mod = self.mod
         b = X.shape[0]
         if idx is not None:
             if isinstance(idx,int):
                 pre = torch.unsqueeze(self.all_weights['pre'][idx],0)
                 post = torch.unsqueeze(self.all_weights['post'][idx],0)
-                X = self.mod(X * unsqueeze_to_target(pre,X),
-                             *args,**kwargs)
+                X = mod(X * unsqueeze_to_target(pre,X),
+                        *args,**kwargs)
                 X = torch.multiply(X,unsqueeze_to_target(post,X))
             elif isinstance(idx,(list,tuple)):
                 assert len(idx) == X.shape[0], "len(idx) must be == X.shape[0]"
                 pre = self.all_weights['pre'][idx]
                 post = self.all_weights['post'][idx]
-                X = self.mod(X * unsqueeze_to_target(pre,X),
-                             *args,**kwargs)
+                X = mod(X * unsqueeze_to_target(pre,X),
+                        *args,**kwargs)
                 X = torch.multiply(X,unsqueeze_to_target(post,X))
             else:
                 raise NotImplementedError("idx has to be int, list or tuple")
@@ -193,7 +195,7 @@ class BatchEnsembleWrapper(torch.nn.Module):
             post = torch.stack(
                 [self.all_weights['post'][idx] for idx in idxs])
             X = unsqueeze_to_target(pre,X) * X
-            X = self.mod(X,*args,**kwargs)
+            X = mod(X,*args,**kwargs)
             X = unsqueeze_to_target(post,X) * X
         else:
             with torch.no_grad():
@@ -202,7 +204,7 @@ class BatchEnsembleWrapper(torch.nn.Module):
                     pre = unsqueeze_to_target(
                         torch.unsqueeze(self.all_weights['pre'][idx],0),X)
                     post = torch.unsqueeze(self.all_weights['post'][idx],0)
-                    o = self.mod(X * pre)
+                    o = mod(X * pre)
                     o = torch.multiply(o,unsqueeze_to_target(post,o))
                     all_outputs.append(o)
                 X = torch.stack(all_outputs).mean(0)

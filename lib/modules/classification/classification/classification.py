@@ -7,7 +7,7 @@ from ....custom_types import TensorList
 from ...layers.adn_fn import ActDropNorm,get_adn_fn
 from ...layers.batch_ensemble import BatchEnsembleWrapper
 from ...layers.standard_blocks import GlobalPooling, VGGConvolution3d
-from ...layers.res_net import ResNet,ResNetBackboneAlt,ProjectionHead
+from ...layers.res_net import ResNet,ResNetBackbone,ProjectionHead
 from ...layers.self_attention import (
     ConcurrentSqueezeAndExcite2d,
     ConcurrentSqueezeAndExcite3d)
@@ -95,8 +95,7 @@ class VGG(torch.nn.Module):
             self.in_channels, 64, batch_ensemble=batch_ensemble)
         self.conv2 = VGGConvolution3d(
             128, 128, batch_ensemble=batch_ensemble)
-        self.conv3 = VGGConvolution3d(
-            256, 256, batch_ensemble=batch_ensemble)
+        self.conv3 = VGGConvolution3d(256, 256)
 
         final_n = 1
         self.last_act = torch.nn.Sigmoid()
@@ -121,9 +120,8 @@ class VGG(torch.nn.Module):
         Returns:
             torch.Tensor: output (classification)
         """
-        if batch_idx is not None:
-            X = self.conv1(X,batch_idx=batch_idx)
-        X = self.conv2(X)
+        X = self.conv1(X,batch_idx=batch_idx)
+        X = self.conv2(X,batch_idx=batch_idx)
         X = self.conv3(X)
         if return_features == True:
             return X
@@ -198,7 +196,7 @@ class CatNet(torch.nn.Module):
 
     def init_layers(self):
         if self.feature_extraction is None:
-            self.res_net = ResNetBackboneAlt(
+            self.res_net = ResNetBackbone(
                 self.spatial_dim,self.in_channels,self.resnet_structure,
                 adn_fn=self.adn_fn,maxpool_structure=self.maxpool_structure,
                 res_type=self.res_type,batch_ensemble=self.batch_ensemble)
@@ -222,10 +220,6 @@ class CatNet(torch.nn.Module):
         self.classification_layer = torch.nn.Sequential(
             MLP(self.last_size,final_n,[self.last_size for _ in range(3)],
                 adn_fn=get_adn_fn(1,"batch","gelu")))
-        if self.batch_ensemble > 0:
-            self.classification_layer = BatchEnsembleWrapper(
-                self.classification_layer,self.batch_ensemble,self.last_size,
-                final_n,torch.nn.Identity)
     
     def forward(self,X:torch.Tensor,return_features:bool=False,
                 *args,**kwargs)->torch.Tensor:

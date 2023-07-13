@@ -341,10 +341,9 @@ class VGGConvolution3d(torch.nn.Module):
 
         self.c1 = torch.nn.Conv3d(input_channels,first_depth,3, padding=1)
         if self.batch_ensemble > 0:
-            self.c1 = BatchEnsembleWrapper(
-                self.c1,n=self.batch_ensemble,
+            self.c1_batch_ensemble = BatchEnsembleWrapper(
+                None,n=self.batch_ensemble,
                 in_channels=input_channels,out_channels=first_depth)
-        print([x for x,_ in self.c1.named_modules()])
         self.act1 = torch.nn.GELU()
         self.n1 = torch.nn.BatchNorm3d(first_depth)
         self.c2 = torch.nn.Conv3d(first_depth,first_depth*2,3, padding=1)
@@ -352,14 +351,20 @@ class VGGConvolution3d(torch.nn.Module):
         self.n2 = torch.nn.BatchNorm3d(first_depth*2)
         self.m = torch.nn.MaxPool3d(2,2)
 
-    def forward(self, x):
+    def forward(self, x:torch.Tensor, batch_idx:int=None)->torch.Tensor:
         """
         Args:
             X (torch.Tensor): input tensor.
+            batch_idx (int, optional): batch index for the batch ensemble 
+                operation (performed only if batch_ensemble > 0).
+                Defaults to None (random batch index).
         Returns:
             torch.Tensor or TensorList
         """
-        x = self.c1(x)
+        if self.batch_ensemble > 0:
+            x = self.c1_batch_ensemble(x,batch_idx,self.c1)
+        else:
+            x = self.c1(x)
         x = self.act1(x)
         x = self.n1(x)
         x = self.n2(self.act2(self.c2(x)))
