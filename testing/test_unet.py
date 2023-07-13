@@ -152,5 +152,4 @@ def test_unet_from_encoder(D,sd,strides):
              upscale_type="transpose",padding=1,
              strides=S,kernel_sizes=K,link_type="identity")
     o,bb = a(i)
-    print(o.shape,output_size)
     assert list(o.shape) == output_size
