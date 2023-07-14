@@ -67,6 +67,10 @@ if __name__ == "__main__":
         help="Labels that should be considered positive (binarizes labels)",
         default=None)
     parser.add_argument(
+        '--label_groups',dest='label_groups',type=str,nargs='+',
+        help="Label groups for classification.",
+        default=None)
+    parser.add_argument(
         '--cache_rate',dest='cache_rate',type=float,
         help="Rate of samples to be cached",
         default=1.0)
@@ -273,7 +277,13 @@ if __name__ == "__main__":
         if isinstance(C,list):
             C = max(C)
         all_classes.append(str(C))
-    if args.positive_labels is None:
+
+    label_groups = None
+    if args.label_groups is not None:
+        n_classes = len(args.label_groups)
+        label_groups = [label_group.split(",")
+                        for label_group in args.label_groups]
+    elif args.positive_labels is None:
         n_classes = len(args.possible_labels)
     else:
         n_classes = 2
@@ -285,7 +295,7 @@ if __name__ == "__main__":
                     args.dataset_json,
                     args.image_keys,
                     args.label_keys()))
-    
+
     keys = args.image_keys
     t2_keys = args.t2_keys if args.t2_keys is not None else []
     adc_keys = []
@@ -305,7 +315,7 @@ if __name__ == "__main__":
     all_pids = [k for k in data_dict]
 
     print("Setting up transforms...")
-    label_mode = "binary" if n_classes == 2 else "cat"
+    label_mode = "binary" if n_classes == 2 and label_groups is None else "cat"
     transform_arguments = {
         "keys":keys,
         "adc_keys":adc_keys,
@@ -315,6 +325,7 @@ if __name__ == "__main__":
         "pad_size":args.pad_size,
         "possible_labels":args.possible_labels,
         "positive_labels":args.positive_labels,
+        "label_groups":label_groups,
         "label_key":args.label_keys,
         "clinical_feature_keys":[],
         "label_mode":label_mode}
