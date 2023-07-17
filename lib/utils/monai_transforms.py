@@ -811,34 +811,47 @@ class RandomAffined(monai.transforms.RandomizableTransform):
 class LabelOperatord(monai.transforms.Transform):
     """
     Label operator
-
-    Args:
-        monai (_type_): _description_
     """
     def __init__(self,keys:str,possible_labels:List[int],
-                 mode:str="cat",positive_labels:List[int]=[1],
+                 mode:str="cat",
+                 positive_labels:List[int]=[1],
+                 label_groups:List[List[int]]=None,
                  output_keys:Dict[str,str]={}):
         self.keys = keys
         self.possible_labels = [str(x) for x in possible_labels]
         self.mode = mode
         self.positive_labels = positive_labels
+        self.label_groups = label_groups
         self.output_keys = output_keys
 
-        self.possible_labels = self.possible_labels
-        self.possible_labels_match = {
-            label:i for i,label in enumerate(self.possible_labels)}
+        self.get_label_correspondence()
 
-    def binary(self,x):
-        if isinstance(x,list) or isinstance(x,tuple):
-            x = max(x)
-        if str(x) in self.positive_labels:
-            x = 1
+    def get_label_correspondence(self):
+        if self.label_groups is not None:
+            self.label_groups = [
+                [str(x) for x in label_group] 
+                for label_group in self.label_groups
+            ]
+            self.possible_labels_match = {}
+            for i,label_group in enumerate(self.label_groups):
+                for label in label_group:
+                    self.possible_labels_match[str(label)] = i
+        elif self.positive_labels is not None:
+            self.positive_labels = [str(x) for x in self.positive_labels]
+            self.possible_labels_match = {}
+            for label in self.possible_labels:
+                if label in self.positive_labels:
+                    self.possible_labels_match[label] = 1
+                else:
+                    self.possible_labels_match[label] = 0
         else:
-            x = 0
-        return x
+            self.possible_labels_match = {
+                str(label):i for i,label in enumerate(self.possible_labels)}
 
-    def categorical(self,x):
-        return self.possible_labels_match[max(x)]
+    def convert(self,x):
+        if isinstance(x,(tuple,list)):
+            x = max(x)
+        return self.possible_labels_match[str(x)]
 
     def __call__(self,data):
         for key in self.keys:
@@ -846,12 +859,7 @@ class LabelOperatord(monai.transforms.Transform):
                 out_key = self.output_keys[key]
             else:
                 out_key = key
-            if self.mode == "cat":
-                data[out_key] = self.categorical(data[key])
-            elif self.mode == "binary":
-                data[out_key] = self.binary(data[key])
-            else:
-                data[out_key] = data[key]
+            data[out_key] = self.convert(data[key])
         return data
 
 class LabelOperatorSegmentationd(monai.transforms.Transform):

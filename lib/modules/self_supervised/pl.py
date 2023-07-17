@@ -141,15 +141,12 @@ class SelfSLBasePL(pl.LightningModule,ABC):
         if hasattr(self,"ema"):
             if self.ema is not None:
                 self.loss = byol_loss
-        if hasattr(self,"vic_reg"):
-            if self.vic_reg is True:
-                self.loss = VICRegLoss(**self.vic_reg_loss_params)
-        if hasattr(self,"vic_reg_local"):
-            if self.vic_reg_local is True:
-                self.loss = VICRegLocalLoss(**self.vic_reg_loss_params)
-        if hasattr(self,"simclr"):
-            if self.simclr is True:
-                self.loss = NTXentLoss(temperature=self.temperature)
+        if self.ssl_method == "vicreg":
+            self.loss = VICRegLoss(**self.vic_reg_loss_params)
+        if self.ssl_method == "vicregl":
+            self.loss = VICRegLocalLoss(**self.vic_reg_loss_params)
+        if self.ssl_method == "simclr":
+            self.loss = NTXentLoss(temperature=self.temperature)
 
     def calculate_loss(self,y1,y2,*args):
         if self.stop_gradient is False:
@@ -241,9 +238,7 @@ class SelfSLResNetPL(ResNet,SelfSLBasePL):
         warmup_steps: int=0,
         start_decay: int=None,
         ema: torch.nn.Module=None,
-        vic_reg: bool=False,
-        vic_reg_local: bool=False,
-        simclr: bool=False,
+        ssl_method: str="simclr",
         temperature: float=1.0,
         vic_reg_loss_params: dict={},
         stop_gradient: bool=True,
@@ -278,13 +273,8 @@ class SelfSLResNetPL(ResNet,SelfSLBasePL):
             ema (float, torch.nn.Module): exponential moving decay module 
                 (EMA). Must have an update method that takes model as input 
                 and updates the weights based on this. Defaults to None.
-            vic_reg (bool, optional): uses the VIC (variance, invariance,
-                covariance) regularization method from Bardes et al. (2022).
-                Defaults to False.
-            vic_reg_local (bool, optional): uses the VICRegL method from 
-                Bardes et al. (2022). Overrides vic_reg. Defaults to False.
-            simclr (bool, optional): uses the SimCLR self-SL protocol. Defaults
-                to False.
+            ssl_method (str, optional): sets the SSL method. Defaults to 
+                "simclr".
             temperature (float, optional): temperature for NTXent (when 
                 simclr == True). Defaults to 1.0.
             vic_reg_loss_params (dict, optional): parameters for the VICRegLoss
@@ -308,9 +298,7 @@ class SelfSLResNetPL(ResNet,SelfSLBasePL):
         self.warmup_steps = warmup_steps
         self.start_decay = start_decay
         self.ema = ema
-        self.vic_reg = vic_reg
-        self.vic_reg_local = vic_reg_local
-        self.simclr = simclr
+        self.ssl_method = ssl_method
         self.temperature = temperature
         self.vic_reg_loss_params = vic_reg_loss_params
         self.stop_gradient = stop_gradient
@@ -321,11 +309,8 @@ class SelfSLResNetPL(ResNet,SelfSLBasePL):
         
         super().__init__(*args,**kwargs)
 
-        if all([
-            self.stop_gradient is False,
-            self.vic_reg is False,
-            self.vic_reg_local is False,
-            self.simclr is False]):
+        if all([self.ssl_method not in ["vicreg","vicregl","simclr"],
+                self.stop_gradient is False]):
             warnings.warn("stop_gradient=False should not (in theory) be used\
             with vic_reg=False, vic_reg_local=False or simclr=False")
 
@@ -355,11 +340,11 @@ class SelfSLResNetPL(ResNet,SelfSLBasePL):
             return op(x,ret)
 
     def step(self,batch,loss_str:str,metrics:dict,train=False):
-        if self.simclr is True:
+        if self.ssl_method == "simclr":
             ret_string_1 = "projection"
             ret_string_2 = "projection"
             other_args = []
-        elif self.vic_reg_local is False:
+        elif self.ssl_method == "vicregl":
             ret_string_1 = "prediction"
             ret_string_2 = "projection"
             other_args = []
@@ -373,7 +358,7 @@ class SelfSLResNetPL(ResNet,SelfSLBasePL):
         x1,x2 = batch[self.aug_image_key_1],batch[self.aug_image_key_2]
         if self.channels_to_batch is True:
             x1 = x1.reshape(-1,1,*x1.shape[2:])
-            x2 = x2.reshape(-1,1,*x1.shape[2:])
+            x2 = x2.reshape(-1,1,*x2.shape[2:])
         y1 = self.forward(x1,ret=ret_string_1)
         y2 = self.forward_ema_stop_grad(x2,ret=ret_string_2)
                     
@@ -381,9 +366,7 @@ class SelfSLResNetPL(ResNet,SelfSLBasePL):
         self.update_metrics(y1,y2,metrics)
         
         # loss is already symmetrised for VICReg, VICRegL and SimCLR
-        if all([self.vic_reg is False,
-                self.vic_reg_local is False,
-                self.simclr is False]):
+        if self.ssl_method not in ["vicreg","vicregl","simclr"]:
             y1_ = self.forward_ema_stop_grad(x1,ret=ret_string_1)
             y2_ = self.forward(x2,ret=ret_string_2)
             losses = losses + self.calculate_loss(y2_,y1_,*other_args)
@@ -397,9 +380,9 @@ class SelfSLResNetPL(ResNet,SelfSLBasePL):
                  on_epoch=True,on_step=False,prog_bar=True,
                  sync_dist=True)
         
-        if self.vic_reg_local is True:
+        if self.ssl_method == "vicregl":
             loss_str_list = self.loss_str_dict["vicregl"]
-        elif self.vic_reg is True:
+        elif self.ssl_method == "vicreg":
             loss_str_list = self.loss_str_dict["vicreg"]
         else:
             return loss
@@ -453,9 +436,7 @@ class SelfSLUNetPL(UNet,SelfSLBasePL):
         warmup_steps: int=0,
         start_decay: int=None,
         ema: torch.nn.Module=None,
-        vic_reg: bool=False,
-        vic_reg_local: bool=False,
-        simclr: bool=False,
+        ssl_method: str="simclr",
         temperature: float=1.0,
         vic_reg_loss_params: dict={},
         stop_gradient: bool=True,
@@ -490,13 +471,8 @@ class SelfSLUNetPL(UNet,SelfSLBasePL):
             ema (float, torch.nn.Module): exponential moving decay module 
                 (EMA). Must have an update method that takes model as input 
                 and updates the weights based on this. Defaults to None.
-            vic_reg (bool, optional): uses the VIC (variance, invariance,
-                covariance) regularization method from Bardes et al. (2022).
-                Defaults to False.
-            vic_reg_local (bool, optional): uses the VICRegL method from 
-                Bardes et al. (2022). Overrides vic_reg. Defaults to False.
-            simclr (bool, optional): uses the SimCLR self-SL protocol. Defaults
-                to False.
+            ssl_method (str, optional): sets the SSL method. Defaults to 
+                "simclr".
             temperature (float, optional): temperature for NTXent (when 
                 simclr == True). Defaults to 1.0.
             vic_reg_loss_params (dict, optional): parameters for the VICRegLoss
@@ -520,9 +496,7 @@ class SelfSLUNetPL(UNet,SelfSLBasePL):
         self.warmup_steps = warmup_steps
         self.start_decay = start_decay
         self.ema = ema
-        self.vic_reg = vic_reg
-        self.vic_reg_local = vic_reg_local
-        self.simclr = simclr
+        self.ssl_method = ssl_method
         self.temperature = temperature
         self.vic_reg_loss_params = vic_reg_loss_params
         self.stop_gradient = stop_gradient
@@ -534,11 +508,8 @@ class SelfSLUNetPL(UNet,SelfSLBasePL):
         kwargs["encoder_only"] = True
         super().__init__(*args,**kwargs)
 
-        if all([
-            self.stop_gradient is False,
-            self.vic_reg is False,
-            self.vic_reg_local is False,
-            self.simclr is False]):
+        if all([self.ssl_method not in ["vicreg","vicregl","simclr"],
+                self.stop_gradient is False]):
             warnings.warn("stop_gradient=False should not (in theory) be used\
             with vic_reg=False, vic_reg_local=False or simclr=False")
 
@@ -568,7 +539,7 @@ class SelfSLUNetPL(UNet,SelfSLBasePL):
             return op(x)
 
     def step(self,batch,loss_str:str,metrics:dict,train=False):
-        if self.vic_reg_local is False:
+        if self.ssl_method == "vicregl":
             other_args = []
         else:
             box_1 = batch[self.box_key_1]
@@ -578,7 +549,7 @@ class SelfSLUNetPL(UNet,SelfSLBasePL):
         x1,x2 = batch[self.aug_image_key_1],batch[self.aug_image_key_2]
         if self.channels_to_batch is True:
             x1 = x1.reshape(-1,1,*x1.shape[2:])
-            x2 = x2.reshape(-1,1,*x1.shape[2:])
+            x2 = x2.reshape(-1,1,*x2.shape[2:])
         y1 = self.forward(x1)
         y2 = self.forward_ema_stop_grad(x2)
 
@@ -586,7 +557,7 @@ class SelfSLUNetPL(UNet,SelfSLBasePL):
         self.update_metrics(y1,y2,metrics)
         
         # loss is already symmetrised for VICReg and VICRegL
-        if self.vic_reg is False and self.vic_reg_local is False:
+        if self.ssl_method not in ["vicreg","vicregl","simclr"]:
             y1_ = self.forward_ema_stop_grad(x1)
             y2_ = self.forward(x2)
             losses = losses + self.calculate_loss(y2_,y1_,*other_args)
@@ -600,9 +571,9 @@ class SelfSLUNetPL(UNet,SelfSLBasePL):
                  on_epoch=True,on_step=False,prog_bar=True,
                  sync_dist=True)
         
-        if self.vic_reg_local is True:
+        if self.ssl_method == "vicregl":
             loss_str_list = self.loss_str_dict["vicregl"]
-        elif self.vic_reg is True:
+        if self.ssl_method == "vicreg":
             loss_str_list = self.loss_str_dict["vicreg"]
         else:
             return loss
@@ -658,9 +629,7 @@ class SelfSLConvNeXtPL(ConvNeXt,SelfSLBasePL):
         warmup_steps: int=0,
         start_decay: int=None,
         ema: torch.nn.Module=None,
-        vic_reg: bool=False,
-        vic_reg_local: bool=False,
-        simclr: bool=False,
+        ssl_method: str="simclr",
         temperature: float=1.0,
         vic_reg_loss_params: dict={},
         stop_gradient: bool=True,
@@ -695,13 +664,8 @@ class SelfSLConvNeXtPL(ConvNeXt,SelfSLBasePL):
             ema (float, torch.nn.Module): exponential moving decay module 
                 (EMA). Must have an update method that takes model as input 
                 and updates the weights based on this. Defaults to None.
-            vic_reg (bool, optional): uses the VIC (variance, invariance,
-                covariance) regularization method from Bardes et al. (2022).
-                Defaults to False.
-            vic_reg_local (bool, optional): uses the VICRegL method from 
-                Bardes et al. (2022). Overrides vic_reg. Defaults to False.
-            simclr (bool, optional): uses the SimCLR self-SL protocol. Defaults
-                to False.
+            ssl_method (str, optional): sets the SSL method. Defaults to 
+                "simclr".
             temperature (float, optional): temperature for NTXent (when 
                 simclr == True). Defaults to 1.0.
             vic_reg_loss_params (dict, optional): parameters for the VICRegLoss
@@ -724,9 +688,7 @@ class SelfSLConvNeXtPL(ConvNeXt,SelfSLBasePL):
         self.n_steps = n_steps
         self.warmup_steps = warmup_steps
         self.start_decay = start_decay
-        self.vic_reg = vic_reg
-        self.vic_reg_local = vic_reg_local
-        self.simclr = simclr
+        self.ssl_method = ssl_method
         self.temperature = temperature
         self.vic_reg_loss_params = vic_reg_loss_params
         self.stop_gradient = stop_gradient
@@ -739,11 +701,8 @@ class SelfSLConvNeXtPL(ConvNeXt,SelfSLBasePL):
         
         self.ema = ema
 
-        if all([
-            self.stop_gradient is False,
-            self.vic_reg is False,
-            self.vic_reg_local is False,
-            self.simclr is False]):
+        if all([self.ssl_method not in ["vicreg","vicregl","simclr"],
+                self.stop_gradient is False]):
             warnings.warn("stop_gradient=False should not (in theory) be used\
             with vic_reg=False, vic_reg_local=False or simclr=False")
 
@@ -773,11 +732,11 @@ class SelfSLConvNeXtPL(ConvNeXt,SelfSLBasePL):
             return op(x,ret)
 
     def step(self,batch,loss_str:str,metrics:dict,train=False):
-        if self.simclr is True:
+        if self.ssl_method == "simclr":
             ret_string_1 = "projection"
             ret_string_2 = "projection"
             other_args = []
-        elif self.vic_reg_local is False:
+        elif self.ssl_method == "vicregl":
             ret_string_1 = "prediction"
             ret_string_2 = "projection"
             other_args = []
@@ -792,7 +751,7 @@ class SelfSLConvNeXtPL(ConvNeXt,SelfSLBasePL):
         
         if self.channels_to_batch is True:
             x1 = x1.reshape(-1,1,*x1.shape[2:])
-            x2 = x2.reshape(-1,1,*x1.shape[2:])
+            x2 = x2.reshape(-1,1,*x2.shape[2:])
         y1 = self.forward(x1,ret=ret_string_1)
         y2 = self.forward_ema_stop_grad(x2,ret=ret_string_2)
                             
@@ -800,9 +759,7 @@ class SelfSLConvNeXtPL(ConvNeXt,SelfSLBasePL):
         self.update_metrics(y1,y2,metrics)
         
         # loss is already symmetrised for VICReg, VICRegL and SimCLR
-        if all([self.vic_reg is False,
-                self.vic_reg_local is False,
-                self.simclr is False]):
+        if self.ssl_method not in ["vicreg","vicregl","simclr"]:
             y1_ = self.forward_ema_stop_grad(x1,ret=ret_string_1)
             y2_ = self.forward(x2,ret=ret_string_2)
             losses = losses + self.calculate_loss(y2_,y1_,*other_args)
@@ -816,9 +773,9 @@ class SelfSLConvNeXtPL(ConvNeXt,SelfSLBasePL):
                  on_epoch=True,on_step=False,prog_bar=True,
                  sync_dist=True)
         
-        if self.vic_reg_local is True:
+        if self.ssl_method == "vicregl":
             loss_str_list = self.loss_str_dict["vicregl"]
-        elif self.vic_reg is True:
+        elif self.ssl_method == "vicreg":
             loss_str_list = self.loss_str_dict["vicreg"]
         else:
             return loss
@@ -857,9 +814,7 @@ class IJEPAPL(IJEPA,SelfSLBasePL):
         warmup_steps: int=0,
         start_decay: int=None,
         ema: torch.nn.Module=None,
-        vic_reg: bool=False,
-        vic_reg_local: bool=False,
-        simclr: bool=False,
+        ssl_method: str="simclr",
         temperature: float=1.0,
         vic_reg_loss_params: dict={},
         stop_gradient: bool=True,
@@ -893,13 +848,8 @@ class IJEPAPL(IJEPA,SelfSLBasePL):
             ema (float, torch.nn.Module): exponential moving decay module 
                 (EMA). Must have an update method that takes model as input 
                 and updates the weights based on this. Defaults to None.
-            vic_reg (bool, optional): uses the VIC (variance, invariance,
-                covariance) regularization method from Bardes et al. (2022).
-                Defaults to False.
-            vic_reg_local (bool, optional): uses the VICRegL method from 
-                Bardes et al. (2022). Overrides vic_reg. Defaults to False.
-            simclr (bool, optional): uses the SimCLR self-SL protocol. Defaults
-                to False.
+            ssl_method (str, optional): sets the SSL method. Defaults to 
+                "simclr".
             temperature (float, optional): temperature for NTXent (when 
                 simclr == True). Defaults to 1.0.
             vic_reg_loss_params (dict, optional): parameters for the VICRegLoss
@@ -919,9 +869,7 @@ class IJEPAPL(IJEPA,SelfSLBasePL):
         self.n_steps = n_steps
         self.warmup_steps = warmup_steps
         self.start_decay = start_decay
-        self.vic_reg = vic_reg
-        self.vic_reg_local = vic_reg_local
-        self.simclr = simclr
+        self.ssl_method = ssl_method
         self.temperature = temperature
         self.vic_reg_loss_params = vic_reg_loss_params
         self.stop_gradient = stop_gradient
@@ -951,6 +899,8 @@ class IJEPAPL(IJEPA,SelfSLBasePL):
 
     def step(self,batch,loss_str:str,train=False):        
         x = batch[self.image_key]
+        if self.channels_to_batch is True:
+            x = x.reshape(-1,1,*x.shape[2:])
         x,patches = self.forward(x,self.ema)                
         loss = self.calculate_loss(x,patches)     
         if self.ema is not None and train is True:

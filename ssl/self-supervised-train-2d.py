@@ -2,12 +2,10 @@ import sys, os
 sys.path.append(os.path.abspath(r".."))
 from lib.utils import safe_collate, ExponentialMovingAverage
 from lib.utils.pl_utils import get_devices,get_ckpt_callback,get_logger
-from lib.modules.self_supervised.pl import (
-    SelfSLResNetPL,SelfSLUNetPL,
-    SelfSLConvNeXtPL)
 from lib.modules.config_parsing import parse_config_ssl,parse_config_unet
 from lib.utils.dicom_loader import (
     DICOMDataset, SliceSampler)
+from lib.utils.network_factories import get_ssl_network
 from lib.monai_transforms import (
     get_pre_transforms_ssl,get_post_transforms_ssl,get_augmentations_ssl)
 
@@ -134,6 +132,9 @@ if __name__ == "__main__":
         '--ema',dest="ema",action="store_true",
         help="Includes exponential moving average teacher (like BYOL)")
     parser.add_argument(
+        '--stop_gradient',dest="stop_gradient",action="store_true",
+        help="Stops gradient")
+    parser.add_argument(
         '--lars',dest="lars",action="store_true",
         help="Wraps optimizer with LARS")
     parser.add_argument(
@@ -205,6 +206,9 @@ if __name__ == "__main__":
     parser.add_argument(
         '--dropout_param',dest='dropout_param',type=float,
         help="Parameter for dropout.",default=0.0)
+    parser.add_argument(
+        "--ssl_method",dest="ssl_method",type=str,
+        help="SSL method",choices=["simsiam","byol","simclr","vicreg","vicregl"])
     parser.add_argument(
         '--vicreg',dest='vicreg',action="store_true",
         help="Use VICReg loss")
@@ -279,6 +283,7 @@ if __name__ == "__main__":
 
     all_pids = [k for k in data_dict]
     
+    is_ijepa = args.ssl_method == "ijepa"
     pre_transform_args = {
         "all_keys":all_keys,
         "copied_keys":copied_keys,
@@ -288,20 +293,23 @@ if __name__ == "__main__":
         "crop_size":args.crop_size,
         "pad_size":args.pad_size,
         "n_channels":1,
-        "n_dim":2}
+        "n_dim":2,
+        "skip_augmentations":is_ijepa}
     
     post_transform_args = {
         "all_keys":all_keys,
-        "copied_keys":copied_keys}
+        "copied_keys":copied_keys,
+        "skip_augmentations":is_ijepa}
     
     augmentation_args = {
         "all_keys":all_keys,
         "copied_keys":copied_keys,
         "scaled_crop_size":args.scaled_crop_size,
         "roi_size":roi_size,
-        "vicregl":args.vicregl,
+        "vicregl":args.ssl_method == "vicregl",
         "n_transforms":args.n_transforms,
-        "n_dim":2
+        "n_dim":2,
+        "skip_augmentations":is_ijepa
     }
 
     transforms = [
@@ -356,10 +364,16 @@ if __name__ == "__main__":
     print(steps_per_epoch,warmup_steps,max_steps_optim)
 
     if args.ema is True:
-        ema_params = {
-            "decay":0.99,
-            "final_decay":1.0,
-            "n_steps":max_steps_optim}
+        if is_ijepa is True:
+            ema_params = {
+                "decay":0.99,
+                "final_decay":1.0,
+                "n_steps":max_steps_optim}
+        else:
+            ema_params = {
+                "decay":0.996,
+                "final_decay":1.0,
+                "n_steps":max_steps_optim}
         ema = ExponentialMovingAverage(**ema_params)
     else:
         ema = None
@@ -382,33 +396,15 @@ if __name__ == "__main__":
         num_workers=n_workers,collate_fn=safe_collate,
         sampler=val_sampler,drop_last=True)
 
-    boilerplate = {
-        "training_dataloader_call":train_loader_call,
-        "aug_image_key_1":"augmented_image_1",
-        "aug_image_key_2":"augmented_image_2",
-        "box_key_1":"box_1",
-        "box_key_2":"box_2",
-        "n_epochs":max_epochs,
-        "n_steps":max_steps_optim,
-        "warmup_steps":warmup_steps,
-        "vic_reg":args.vicreg,
-        "vic_reg_local":args.vicregl,
-        "simclr":args.simclr,
-        "ema":ema,
-        "stop_gradient":args.simclr is False,
-        "temperature":0.1,
-        "lars":args.lars}
-
-    if args.net_type == "unet_encoder":
-        ssl = SelfSLUNetPL(**boilerplate,**network_config_correct)
-    elif args.net_type == "convnext":
-        network_config_correct["backbone_args"] = {
-            k:network_config_correct["backbone_args"][k] 
-            for k in network_config_correct["backbone_args"]
-            if k not in ["res_type"]}
-        ssl = SelfSLConvNeXtPL(**boilerplate,**network_config_correct)
-    else:
-        ssl = SelfSLResNetPL(**boilerplate,**network_config_correct)
+    ssl = get_ssl_network(train_loader_call=train_loader_call,
+                          max_epochs=max_epochs,
+                          max_steps_optim=max_steps_optim,
+                          warmup_steps=warmup_steps,
+                          ssl_method=args.ssl_method,
+                          ema=ema,
+                          net_type=args.net_type,
+                          network_config_correct=network_config_correct,
+                          stop_gradient=args.stop_gradient)
 
     if args.from_checkpoint is not None:
         state_dict = torch.load(

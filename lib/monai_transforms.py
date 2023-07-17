@@ -282,6 +282,7 @@ def get_transforms_classification(x,
                                   pad_size,
                                   possible_labels=None,
                                   positive_labels=None,
+                                  label_groups=None,
                                   label_key=None,
                                   target_size=None,
                                   label_mode=None):
@@ -345,18 +346,20 @@ def get_transforms_classification(x,
                 LabelOperatord(
                     [label_key],possible_labels,
                     mode=label_mode,positive_labels=positive_labels,
+                    label_groups=label_groups,
                     output_keys={label_key:"label"}))
     return transforms
 
-def get_pre_transforms_ssl(all_keys,
-                           copied_keys,
-                           adc_keys,
-                           non_adc_keys,
-                           target_spacing,
-                           crop_size,
-                           pad_size,
-                           n_channels=1,
-                           n_dim=3):
+def get_pre_transforms_ssl(all_keys:List[str],
+                           copied_keys:List[str],
+                           adc_keys:List[str],
+                           non_adc_keys:List[str],
+                           target_spacing:List[float],
+                           crop_size:List[int],
+                           pad_size:List[int],
+                           n_channels:int=1,
+                           n_dim:int=3,
+                           skip_augmentations:bool=False):
     intp = []
     intp_resampling_augmentations = []
     key_correspondence = {k:kk for k,kk in zip(all_keys,copied_keys)}
@@ -395,17 +398,27 @@ def get_pre_transforms_ssl(all_keys,
             monai.transforms.SpatialPadd(
                 all_keys,[int(j) for j in pad_size]))
     transforms.append(monai.transforms.EnsureTyped(all_keys))
-    transforms.append(CopyEntryd(all_keys,key_correspondence))
+    if skip_augmentations == False:
+        transforms.append(CopyEntryd(all_keys,key_correspondence))
     return transforms
 
-def get_post_transforms_ssl(all_keys,
-                            copied_keys):
-    return [
-        monai.transforms.ConcatItemsd(all_keys,"augmented_image_1"),
-        monai.transforms.ConcatItemsd(copied_keys,"augmented_image_2"),
-        monai.transforms.ToTensord(
-            ["augmented_image_1","augmented_image_2"],
-            track_meta=False)]
+def get_post_transforms_ssl(all_keys:List[str],
+                            copied_keys:List[str],
+                            skip_augmentations:bool=False):
+    if skip_augmentations == False:
+        return [
+            monai.transforms.ConcatItemsd(all_keys,"augmented_image_1"),
+            monai.transforms.ConcatItemsd(copied_keys,"augmented_image_2"),
+            monai.transforms.ToTensord(
+                ["augmented_image_1","augmented_image_2"],
+                track_meta=False)]
+    else:
+        return [
+            monai.transforms.ConcatItemsd(all_keys,"image"),
+            monai.transforms.ToTensord(
+                ["image"],
+                track_meta=False)
+        ]
 
 def get_augmentations_unet(augment,
                            all_keys,
@@ -624,7 +637,11 @@ def get_augmentations_ssl(all_keys:List[str],
                           roi_size:List[int],
                           vicregl:bool,
                           n_transforms=3,
-                          n_dim:int=3):
+                          n_dim:int=3,
+                          skip_augmentations:bool=False):
+    if skip_augmentations == True:
+        return []
+
     def flatten_box(box):
         box1 = np.array(box[::2])
         box2 = np.array(roi_size) - np.array(box[1::2])
@@ -682,7 +699,7 @@ def get_augmentations_ssl(all_keys:List[str],
             monai.transforms.RandSpatialCropd(
                 all_keys+copied_keys,roi_size=roi_size,random_size=False))
     dropout_size = tuple([x // 10 for x in roi_size])
-    return [
+    transforms = [
         *cropping_strategy,
         AugmentationWorkhorsed(
             augmentations=aug_list,keys=all_keys,
@@ -693,3 +710,4 @@ def get_augmentations_ssl(all_keys:List[str],
             mask_keys=[],max_mult=0.5,N=n_transforms,
             dropout_size=dropout_size),
         ]
+    return transforms

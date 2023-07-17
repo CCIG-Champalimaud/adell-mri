@@ -23,6 +23,10 @@ from lib.modules.segmentation.pl import (
     UNETRPL,
     SWINUNetPL
     )
+# self-supervised learning
+from lib.modules.self_supervised.pl import (
+    SelfSLResNetPL,SelfSLUNetPL,
+    SelfSLConvNeXtPL,IJEPAPL)
 
 from typing import Dict,Any,List,Callable
 
@@ -299,3 +303,53 @@ def get_segmentation_network(net_type:str,
             **network_config)
 
     return unet
+
+def get_ssl_network(train_loader_call:Callable,
+                    max_epochs:int,
+                    max_steps_optim:int,
+                    warmup_steps:int,
+                    ssl_method:str,
+                    ema:torch.nn.Module,
+                    net_type:str,
+                    network_config_correct:Dict[str,Any],
+                    stop_gradient:bool):
+    if ssl_method == "ijepa":
+        boilerplate = {
+            "training_dataloader_call":train_loader_call,
+            "image_key":"image",
+            "n_epochs":max_epochs,
+            "n_steps":max_steps_optim,
+            "warmup_steps":warmup_steps,
+            "ssl_method":ssl_method, # redundant but helpful for compatibility
+            "ema":ema,
+            "stop_gradient":stop_gradient,
+            "temperature":0.1
+        }
+        ssl = IJEPAPL(**boilerplate,**network_config_correct)
+
+    else:
+        boilerplate = {
+            "training_dataloader_call":train_loader_call,
+            "aug_image_key_1":"augmented_image_1",
+            "aug_image_key_2":"augmented_image_2",
+            "box_key_1":"box_1",
+            "box_key_2":"box_2",
+            "n_epochs":max_epochs,
+            "n_steps":max_steps_optim,
+            "warmup_steps":warmup_steps,
+            "ssl_method":ssl_method,
+            "ema":ema,
+            "stop_gradient":stop_gradient,
+            "temperature":0.1}
+        if net_type == "unet_encoder":
+            ssl = SelfSLUNetPL(**boilerplate,**network_config_correct)
+        elif net_type == "convnext":
+            network_config_correct["backbone_args"] = {
+                k:network_config_correct["backbone_args"][k] 
+                for k in network_config_correct["backbone_args"]
+                if k not in ["res_type"]}
+            ssl = SelfSLConvNeXtPL(**boilerplate,**network_config_correct)
+        else:
+            ssl = SelfSLResNetPL(**boilerplate,**network_config_correct)
+
+    return ssl
