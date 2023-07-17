@@ -5,7 +5,6 @@ import torch.nn.functional as F
 
 from ....custom_types import TensorList
 from ...layers.adn_fn import ActDropNorm,get_adn_fn
-from ...layers.batch_ensemble import BatchEnsembleWrapper
 from ...layers.standard_blocks import GlobalPooling, VGGConvolution3d
 from ...layers.res_net import ResNet,ResNetBackbone,ProjectionHead
 from ...layers.self_attention import (
