@@ -639,9 +639,6 @@ def get_augmentations_ssl(all_keys:List[str],
                           n_transforms=3,
                           n_dim:int=3,
                           skip_augmentations:bool=False):
-    if skip_augmentations == True:
-        return []
-
     def flatten_box(box):
         box1 = np.array(box[::2])
         box2 = np.array(roi_size) - np.array(box[1::2])
@@ -677,6 +674,9 @@ def get_augmentations_ssl(all_keys:List[str],
                 random_size=True),
             monai.transforms.Resized(all_keys+copied_keys,
                                      scaled_crop_size)])
+
+    if skip_augmentations == True:
+        return cropping_strategy
 
     if vicregl == True:
         cropping_strategy.extend([
