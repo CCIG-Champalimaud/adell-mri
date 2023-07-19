@@ -308,7 +308,8 @@ def get_logger(summary_name:str,summary_dir:str,
             run_name = run_name + f"_fold{fold}"
         logger = WandbLogger(
             save_dir=summary_dir,project=project_name,
-            name=run_name,version=run_name,reinit=True,resume=wandb_resume)
+            name=run_name,version=run_name,reinit=True,resume=wandb_resume,
+            dir=summary_dir)
     else:
         logger = None
     return logger

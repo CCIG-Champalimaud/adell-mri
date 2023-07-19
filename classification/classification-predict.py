@@ -233,6 +233,7 @@ if __name__ == "__main__":
         else:
             checkpoint_list = args.checkpoints
         for checkpoint in checkpoint_list:
+            print(f"Predicting for {checkpoint}")
             network = get_classification_network(
                 net_type=args.net_type,
                 network_config=network_config,
