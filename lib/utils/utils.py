@@ -417,9 +417,9 @@ def conditional_parameter_freezing(network:torch.nn.Module,
             freeze = True
         if any([dnfr.search(key) is not None 
                 for dnfr in do_not_freeze_regex_list]):
-            freeze = False        
+            freeze = False
         if freeze is True:
-            param.requires_grad = True
+            param.requires_grad = False
             if state_dict is not None:
                 if key in state_dict:
                     keys_to_load.append(key)

@@ -558,14 +558,20 @@ if __name__ == "__main__":
             partial_mixup=args.partial_mixup)
 
         if args.checkpoint is not None:
-            sd = torch.load(args.checkpoint)
+            if len(args.checkpoint) > 1:
+                checkpoint = args.checkpoint[val_fold]
+            else:
+                checkpoint = args.checkpoint
+            sd = torch.load(checkpoint)
             # if this is a lightning checkpoint the actual state dict will be
             # stored as a key
             if "state_dict" in sd:
                 sd = sd["state_dict"]
-            print(f"Loading checkpoint from {args.checkpoint}")
-            output = network.load_state_dict(sd)
-            print(f"\t{output}")
+            print(f"Loading checkpoint from {checkpoint}")
+            output = network.load_state_dict(sd,strict=False)
+            if len(output.unexpected_keys) > 0:
+                raise Exception("Dictionary contains more keys than it should!")
+            print(f"\t{output.missing_keys}")
 
         conditional_parameter_freezing(
             network,args.freeze_regex,args.not_freeze_regex)
