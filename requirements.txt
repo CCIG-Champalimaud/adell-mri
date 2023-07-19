@@ -1,6 +1,6 @@
 dvc==2.45.1
 einops==0.6.1
-itk==5.2.1.post1
+itk==5.3.0
 lightning==2.0.3
 monai==1.1.0
 multiprocess==0.70.13
