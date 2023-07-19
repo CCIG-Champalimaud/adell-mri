@@ -245,7 +245,8 @@ if __name__ == "__main__":
 
     accelerator,devices,strategy = get_devices(args.dev)
     n_devices = len(devices) if isinstance(devices,list) else devices
-    
+    n_devices = 1 if isinstance(devices,str) else n_devices
+
     output_file = open(args.metric_path,'w')
 
     data_dict = json.load(open(args.dataset_json,'r'))
