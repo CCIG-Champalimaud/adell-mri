@@ -91,10 +91,11 @@ class VGG(torch.nn.Module):
         self.batch_ensemble = batch_ensemble
 
         self.conv1 = VGGConvolution3d(
-            self.in_channels, 64, batch_ensemble=batch_ensemble)
+            self.in_channels, 64)
         self.conv2 = VGGConvolution3d(
-            128, 128, batch_ensemble=batch_ensemble)
-        self.conv3 = VGGConvolution3d(256, 256)
+            128, 128)
+        self.conv3 = VGGConvolution3d(
+            256, 256, batch_ensemble=batch_ensemble)
 
         final_n = 1
         self.last_act = torch.nn.Sigmoid()
@@ -119,9 +120,9 @@ class VGG(torch.nn.Module):
         Returns:
             torch.Tensor: output (classification)
         """
-        X = self.conv1(X,batch_idx=batch_idx)
-        X = self.conv2(X,batch_idx=batch_idx)
-        X = self.conv3(X)
+        X = self.conv1(X)
+        X = self.conv2(X)
+        X = self.conv3(X,batch_idx=batch_idx)
         if return_features == True:
             return X
 
