@@ -9,17 +9,22 @@ from lib.utils.network_factories import get_ssl_network
 from lib.monai_transforms import (
     get_pre_transforms_ssl,get_post_transforms_ssl,get_augmentations_ssl)
 
-from copy import deepcopy
 import argparse
 import random
 import json
 import numpy as np
 import torch
 import monai
+from copy import deepcopy
 from lightning.pytorch import Trainer
 from lightning.pytorch.callbacks import RichProgressBar
 
 torch.backends.cudnn.benchmark = True
+
+def keep_first_not_none(*args):
+    for arg in args:
+        if arg is not None:
+            return arg
 
 def force_cudnn_initialization():
     """Convenience function to initialise CuDNN (and avoid the lazy loading
@@ -114,7 +119,7 @@ if __name__ == "__main__":
         help="Floating point precision",default="32")
     parser.add_argument(
         '--net_type',dest='net_type',
-        choices=["resnet","unet_encoder","convnext"],
+        choices=["resnet","unet_encoder","convnext","vit"],
         help="Which network should be trained.")
     parser.add_argument(
         '--batch_size',dest='batch_size',type=int,default=None,
@@ -208,16 +213,8 @@ if __name__ == "__main__":
         help="Parameter for dropout.",default=0.0)
     parser.add_argument(
         "--ssl_method",dest="ssl_method",type=str,
-        help="SSL method",choices=["simsiam","byol","simclr","vicreg","vicregl"])
-    parser.add_argument(
-        '--vicreg',dest='vicreg',action="store_true",
-        help="Use VICReg loss")
-    parser.add_argument(
-        '--vicregl',dest='vicregl',action="store_true",
-        help="Use VICRegL loss")
-    parser.add_argument(
-        '--simclr',dest='simclr',action="store_true",
-        help="Use SimCLR loss")
+        help="SSL method",choices=["simsiam","byol","simclr",
+                                   "vicreg","vicregl","ijepa"])
     parser.add_argument(
         '--resume_from_last',dest='resume_from_last',action="store_true",
         help="Resumes training from last checkpoint.")
@@ -270,7 +267,8 @@ if __name__ == "__main__":
                 del network_config_correct[k]
     else:
         network_config,network_config_correct = parse_config_ssl(
-            args.config_file,args.dropout_param,len(keys))
+            args.config_file,args.dropout_param,len(keys),
+            args.ssl_method=="ijepa")
 
     if args.batch_size is not None:
         network_config["batch_size"] = args.batch_size
@@ -303,14 +301,21 @@ if __name__ == "__main__":
     
     augmentation_args = {
         "all_keys":all_keys,
-        "copied_keys":copied_keys,
+        "copied_keys":copied_keys if is_ijepa is False else [],
         "scaled_crop_size":args.scaled_crop_size,
         "roi_size":roi_size,
         "vicregl":args.ssl_method == "vicregl",
         "n_transforms":args.n_transforms,
         "n_dim":2,
-        "skip_augmentations":is_ijepa
-    }
+        "skip_augmentations":is_ijepa}
+    
+    if is_ijepa is True:
+        image_size = keep_first_not_none(
+            args.scaled_crop_size,args.crop_size)
+        patch_size = network_config_correct["backbone_args"]["patch_size"]
+        feature_map_size = [i//pi for i,pi in zip(image_size,patch_size)]
+        network_config_correct["backbone_args"]["image_size"] = image_size
+        network_config_correct["feature_map_dimensions"] = feature_map_size
 
     transforms = [
         *get_pre_transforms_ssl(**pre_transform_args),
@@ -361,8 +366,6 @@ if __name__ == "__main__":
     warmup_steps = int(warmup_steps)
     max_steps_optim = int(max_steps_optim)
     
-    print(steps_per_epoch,warmup_steps,max_steps_optim)
-
     if args.ema is True:
         if is_ijepa is True:
             ema_params = {

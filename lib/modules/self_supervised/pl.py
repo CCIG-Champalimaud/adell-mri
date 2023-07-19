@@ -873,6 +873,7 @@ class IJEPAPL(IJEPA,SelfSLBasePL):
         self.temperature = temperature
         self.vic_reg_loss_params = vic_reg_loss_params
         self.stop_gradient = stop_gradient
+        self.channels_to_batch = channels_to_batch
         
         if channels_to_batch is True:
             kwargs["backbone_args"]["in_channels"] = 1
@@ -901,11 +902,13 @@ class IJEPAPL(IJEPA,SelfSLBasePL):
         x = batch[self.image_key]
         if self.channels_to_batch is True:
             x = x.reshape(-1,1,*x.shape[2:])
-        x,patches = self.forward(x,self.ema)                
+        x,patches = self.forward_training(x,self.ema)                
         loss = self.calculate_loss(x,patches)     
         if self.ema is not None and train is True:
             self.ema.update(self)
-        self.log(loss_str,loss,batch_size=x.shape[0],
+        # loss is rescaled for logging because values are typically too small 
+        # to be easily tracked from progress bar.
+        self.log(loss_str,loss*1e3,batch_size=x.shape[0],
                  on_epoch=True,on_step=False,prog_bar=True,
                  sync_dist=True)
         return loss

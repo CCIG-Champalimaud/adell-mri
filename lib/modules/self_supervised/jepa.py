@@ -2,6 +2,7 @@ import torch
 from ..layers.res_net import ResNet
 from ..layers.conv_next import ConvNeXt
 from ..layers.vit import ViT
+from ..layers.vit import TransformerBlockStack
 from ...utils.masking import get_masker
 
 from typing import List, Dict, Any, Tuple
@@ -14,14 +15,14 @@ encoder_architectures = {
     "resnet":ResNet,
     "convnext":ConvNeXt}
 predictor_architectures = {
-    "vit":ViT,
+    "vit":TransformerBlockStack,
     "resnet":ResNet,
     "convnext":ConvNeXt}
 
 class IJEPA(torch.nn.Module):
     def __init__(self,
-                 encoder_parameters:Dict[str,Any],
-                 predictor_parameters:Dict[str,Any],
+                 backbone_args:Dict[str,Any],
+                 projection_head_args:Dict[str,Any],
                  feature_map_dimensions:List[int],
                  n_encoder_features:int,
                  min_patch_size:List[int],
@@ -30,9 +31,11 @@ class IJEPA(torch.nn.Module):
                  n_masked_patches:int=1,
                  encoder_architecture:str="vit",
                  predictor_architecture:str="vit",
+                 reduce_fn:str="mean",
                  seed:int=42):
-        self.encoder_parameters = encoder_parameters
-        self.predictor_parameters = predictor_parameters
+        super().__init__()
+        self.backbone_args = backbone_args
+        self.projection_head_args = projection_head_args
         self.feature_map_dimensions = feature_map_dimensions
         self.n_encoder_features = n_encoder_features
         self.min_patch_size = min_patch_size
@@ -41,6 +44,7 @@ class IJEPA(torch.nn.Module):
         self.n_masked_patches = n_masked_patches
         self.encoder_architecture = encoder_architecture
         self.predictor_architecture = predictor_architecture
+        self.reduce_fn = reduce_fn
         self.seed = seed
 
         assert self.encoder_architecture in encoder_architectures, \
@@ -51,7 +55,7 @@ class IJEPA(torch.nn.Module):
         self.initialize_masker()
         self.initialize_encoder()
         self.initialize_predictor()
-
+        self.initialize_mask_token()
 
     def initialize_masker(self):
         if self.encoder_architecture in ["vit"]:
@@ -76,11 +80,11 @@ class IJEPA(torch.nn.Module):
 
     def initialize_encoder(self):
         self.encoder_ = encoder_architectures[self.encoder_architecture](
-            **self.encoder_parameters)
+            **self.backbone_args)
 
     def initialize_predictor(self):
         self.predictor_ = predictor_architectures[self.predictor_architecture](
-            **self.predictor_parameters)
+            **self.projection_head_args)
         
     def initialize_mask_token(self):
         self.mask_token_ = torch.nn.Parameter(
@@ -102,9 +106,9 @@ class IJEPA(torch.nn.Module):
         if teacher_model is None:
             teacher_model = self
         # encode full image
-        encoded_X = self.encoder_(X)
+        encoded_X,_ = self.encoder_(X)
         # encode target with teacher module
-        encoded_X_target = teacher_model.encoder_(X)
+        encoded_X_target,_ = teacher_model.encoder_(X)
         # mask image with mask_token
         encoded_X,_,patch_coords = self.patch_masker_(
             encoded_X,self.mask_token_)
@@ -112,10 +116,10 @@ class IJEPA(torch.nn.Module):
         _,patches,_ = self.patch_masker_(
             encoded_X_target,None,patch_coords)
         # mask additional parts of the image with mask token
-        encoded_X,_ = self.masker_(encoded_X,self.mask_token_)
+        encoded_X,_,_ = self.masker_(encoded_X,self.mask_token_)
         # get predictions for both encoded_X and patches + reduce
-        predicted_X = self.reduce(self.predictor_(encoded_X))
-        predicted_patches = [self.reduce(self.predictor_(patch)) 
+        predicted_X = self.reduce(self.predictor_(encoded_X)[0])
+        predicted_patches = [self.reduce(self.predictor_(patch)[0]) 
                              for patch in patches]
         return predicted_X,predicted_patches
 
