@@ -189,7 +189,10 @@ class BatchEnsembleWrapper(torch.nn.Module):
             else:
                 raise NotImplementedError("idx has to be int, list or tuple")
         elif self.training is True:
-            idxs = np.random.randint(self.n,size=b)
+            if self.n == 1:
+                idxs = [0]
+            else:
+                idxs = np.random.randint(self.n,size=b)
             pre = torch.stack(
                 [self.all_weights['pre'][idx] for idx in idxs])
             post = torch.stack(
