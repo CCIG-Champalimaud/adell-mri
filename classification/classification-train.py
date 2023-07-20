@@ -4,6 +4,7 @@ import json
 import numpy as np
 import torch
 import monai
+import re
 from sklearn.model_selection import train_test_split,StratifiedKFold
 
 from lightning.pytorch import Trainer
@@ -161,6 +162,10 @@ if __name__ == "__main__":
         '--not_freeze_regex',dest='not_freeze_regex',type=str,default=None,
         nargs="+",help='Matches parameter names and skips freezing them (\
             overrides --freeze_regex)')
+    parser.add_argument(
+        '--exclude_from_state_dict',dest='exclude_from_state_dict',type=str,
+        default=None,nargs="+",
+            help='Regex to exclude parameters from state dict in --checkpoint')
     parser.add_argument(
         '--delete_checkpoints',dest='delete_checkpoints',action="store_true",
         help='Deletes checkpoints after training (keeps only metrics).')
@@ -569,6 +574,10 @@ if __name__ == "__main__":
             if "state_dict" in sd:
                 sd = sd["state_dict"]
             print(f"Loading checkpoint from {checkpoint}")
+            if args.exclude_from_state_dict is not None:
+                for pattern in args.exclude_from_state_dict:
+                    sd = {k:sd[k] for k in sd
+                          if re.search(pattern,k) is None}
             output = network.load_state_dict(sd,strict=False)
             if len(output.unexpected_keys) > 0:
                 raise Exception("Dictionary contains more keys than it should!")
