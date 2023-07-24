@@ -26,7 +26,8 @@ from lib.modules.segmentation.pl import (
 # self-supervised learning
 from lib.modules.self_supervised.pl import (
     SelfSLResNetPL,SelfSLUNetPL,
-    SelfSLConvNeXtPL,IJEPAPL)
+    SelfSLConvNeXtPL,IJEPAPL,
+    ConvNeXt,ResNet,UNet,IJEPA)
 
 from typing import Dict,Any,List,Callable
 
@@ -351,5 +352,25 @@ def get_ssl_network(train_loader_call:Callable,
             ssl = SelfSLConvNeXtPL(**boilerplate,**network_config_correct)
         else:
             ssl = SelfSLResNetPL(**boilerplate,**network_config_correct)
+
+    return ssl
+
+def get_ssl_network_no_pl(ssl_method:str,
+                          net_type:str,
+                          network_config_correct:Dict[str,Any]):
+    if ssl_method == "ijepa":
+        ssl = IJEPA(**network_config_correct)
+
+    else:
+        if net_type == "unet_encoder":
+            ssl = UNet(**network_config_correct)
+        elif net_type == "convnext":
+            network_config_correct["backbone_args"] = {
+                k:network_config_correct["backbone_args"][k] 
+                for k in network_config_correct["backbone_args"]
+                if k not in ["res_type"]}
+            ssl = ConvNeXt(**network_config_correct)
+        else:
+            ssl = ResNet(**network_config_correct)
 
     return ssl
