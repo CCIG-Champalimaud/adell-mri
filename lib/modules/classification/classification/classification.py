@@ -74,6 +74,7 @@ class VGG(torch.nn.Module):
                  maxpool_structure=None,
                  adn_fn=None,
                  res_type=None,
+                 classification_structure:List[int]=[512,512,512],
                  batch_ensemble:int=0):
         """
         Args:
@@ -82,6 +83,8 @@ class VGG(torch.nn.Module):
             n_channels (int, optional): number of input channels. Defaults to 
                 1.
             n_classes (int, optional): number of classes. Defaults to 2.
+            classification_structure (List[int], optional): structure of the
+                classifier. Defaults to [512,512,512].
             batch_ensemble (int, optional): number of batch ensemble modules.
                 Defautls to 0.
         """
@@ -89,6 +92,7 @@ class VGG(torch.nn.Module):
         self.in_channels = n_channels
         self.n_classes = n_classes
         self.batch_ensemble = batch_ensemble
+        self.classification_structure = classification_structure
 
         self.conv1 = VGGConvolution3d(
             self.in_channels, 64)
@@ -102,7 +106,7 @@ class VGG(torch.nn.Module):
 
         self.classification_layer = torch.nn.Sequential(
             GlobalPooling(),
-            MLP(512,final_n,[512 for _ in range(3)],
+            MLP(512,final_n,classification_structure,
                 adn_fn=get_adn_fn(1,"batch","gelu")))
     
     def forward(self,X: torch.Tensor,

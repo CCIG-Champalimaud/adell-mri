@@ -171,7 +171,7 @@ if __name__ == "__main__":
                 (dataset={}; keys={}; labels={})".format(
                     args.dataset_json,
                     args.image_keys,
-                    args.label_keys()))
+                    args.label_keys))
     
     keys = args.image_keys
     adc_keys = args.adc_keys if args.adc_keys is not None else []
