@@ -68,14 +68,7 @@ class IJEPA(torch.nn.Module):
             min_patch_size=self.min_patch_size,
             max_patch_size=self.max_patch_size,
             n_patches=self.n_patches,
-            seed=self.seed)
-
-        self.masker_ = get_masker(
-            model_type=self.model_type_,
-            image_dimensions=self.feature_map_dimensions,
-            min_patch_size=self.min_patch_size,
-            max_patch_size=self.max_patch_size,
-            n_patches=self.n_masked_patches,
+            n_features=self.n_encoder_features,
             seed=self.seed)
 
     def initialize_encoder(self):
@@ -83,8 +76,10 @@ class IJEPA(torch.nn.Module):
             **self.backbone_args)
 
     def initialize_predictor(self):
-        self.predictor_ = predictor_architectures[self.predictor_architecture](
-            **self.projection_head_args)
+        if len(self.projection_head_args) > 0:
+            arch = predictor_architectures[self.predictor_architecture]
+            self.predictor_ = arch(
+                **self.projection_head_args)
         
     def initialize_mask_token(self):
         self.mask_token_ = torch.nn.Parameter(
@@ -111,12 +106,14 @@ class IJEPA(torch.nn.Module):
         encoded_X_target,_ = teacher_model.encoder_(X)
         # mask image with mask_token
         encoded_X,_,patch_coords = self.patch_masker_(
-            encoded_X,self.mask_token_)
+            encoded_X,mask_vector=self.mask_token_)
         # retrieve patches using same coordinates
         _,patches,_ = self.patch_masker_(
-            encoded_X_target,None,patch_coords)
+            encoded_X_target,None,patch_coords=patch_coords)
         # mask additional parts of the image with mask token
-        encoded_X,_,_ = self.masker_(encoded_X,self.mask_token_)
+        encoded_X,_,_ = self.patch_masker_(
+            encoded_X,mask_vector=self.mask_token_,
+            n_patches=self.n_masked_patches)
         # get predictions for both encoded_X and patches + reduce
         predicted_X = self.reduce(self.predictor_(encoded_X)[0])
         predicted_patches = [self.reduce(self.predictor_(patch)[0]) 
@@ -125,5 +122,7 @@ class IJEPA(torch.nn.Module):
 
     def forward(self,X:torch.Tensor)->IJEPAOut:
         # encode full image and return
-        encoded_X = self.encoder_(X)
-        return encoded_X
+        return self.forward_representation(X)
+
+    def forward_representation(self,X:torch.Tensor)->torch.Tensor:
+        return self.encoder_(X)[0].permute(0,2,1)
