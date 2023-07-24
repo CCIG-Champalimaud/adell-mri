@@ -95,9 +95,9 @@ class VGG(torch.nn.Module):
         self.classification_structure = classification_structure
 
         self.conv1 = VGGConvolution3d(
-            self.in_channels, 64)
+            self.in_channels, 64, batch_ensemble=batch_ensemble)
         self.conv2 = VGGConvolution3d(
-            128, 128)
+            128, 128, batch_ensemble=batch_ensemble)
         self.conv3 = VGGConvolution3d(
             256, 256, batch_ensemble=batch_ensemble)
 
