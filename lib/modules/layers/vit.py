@@ -287,6 +287,7 @@ class LinearEmbedding(torch.nn.Module):
                  window_size:Size2dOr3d=None,
                  dropout_rate:float=0.0,
                  embed_method:str="linear",
+                 use_pos_embed:bool=True,
                  use_class_token:bool=False,
                  learnable_embedding:bool=True,
                  channel_to_token:bool=False):
@@ -303,6 +304,8 @@ class LinearEmbedding(torch.nn.Module):
                 embeddings with the positional embeddings. Defaults to 0.0.
             embed_method (str, optional): embedding method. Defaults to 
                 "linear".
+            use_pos_embed (bool, optional): includes positional embedding. 
+                Defaults to True.
             use_class_token (bool, optional): whether a class token should be
                 used. Defaults to False.
             learnable_embedding (bool, optional): if embedding is 
@@ -320,6 +323,7 @@ class LinearEmbedding(torch.nn.Module):
         self.window_size = window_size
         self.dropout_rate = dropout_rate
         self.embed_method = embed_method
+        self.use_pos_embed = use_pos_embed
         self.use_class_token = use_class_token
         self.learnable_embedding = learnable_embedding
         self.channel_to_token = channel_to_token
@@ -423,17 +427,18 @@ class LinearEmbedding(torch.nn.Module):
         """Initilizes the positional embedding with a truncated normal 
         distribution.
         """
-        if self.learnable_embedding is True:
-            self.positional_embedding = torch.nn.Parameter(
-                torch.rand(1,self.n_patches,self.true_n_features))
-            torch.nn.init.trunc_normal_(
-                self.positional_embedding,mean=0.0,std=0.02,a=-2.0,b=2.0)
-        else:
-            sin_embed = sinusoidal_positional_encoding(
-                    self.n_patches,self.true_n_features)[np.newaxis,:,:]
-            self.positional_embedding = torch.nn.Parameter(
-                torch.as_tensor(sin_embed,dtype=torch.float32),
-                requires_grad=False)
+        if self.use_pos_embed is True:
+            if self.learnable_embedding is True:
+                self.positional_embedding = torch.nn.Parameter(
+                    torch.rand(1,self.n_patches,self.true_n_features))
+                torch.nn.init.trunc_normal_(
+                    self.positional_embedding,mean=0.0,std=0.02,a=-2.0,b=2.0)
+            else:
+                sin_embed = sinusoidal_positional_encoding(
+                        self.n_patches,self.true_n_features)[np.newaxis,:,:]
+                self.positional_embedding = torch.nn.Parameter(
+                    torch.as_tensor(sin_embed,dtype=torch.float32),
+                    requires_grad=False)
 
     def einops_tuple(self,l):
         if isinstance(l,list):
@@ -523,6 +528,11 @@ class LinearEmbedding(torch.nn.Module):
             self.einop_dict = self.einop_dict_c
             self.einop_str = self.einop_str_c
             self.einop_inv_str = self.einop_inv_str_c
+        
+        self.einop_rearrange = einops.layers.torch.Rearrange(
+            self.einop_str,**self.einop_dict)
+        self.einop_rearrange_inv = einops.layers.torch.Rearrange(
+            self.einop_inv_str,**self.einop_dict)
                     
     def rearrange(self,X:torch.Tensor)->torch.Tensor:
         """Applies einops.rearrange given the parameters inferred in 
@@ -535,10 +545,10 @@ class LinearEmbedding(torch.nn.Module):
             torch.Tensor: a tensor of size (b,h*x,w*y,(d*z))
         """
         if self.embed_method == "linear":
-            X = einops.rearrange(X,self.einop_str,**self.einop_dict)
+            X = self.einop_rearrange(X)
             X = self.map_to_out(X)
         elif self.embed_method == "convolutional":
-            X = einops.rearrange(X,self.einop_str,**self.einop_dict)
+            X = self.einop_rearrange(X)
         return X
 
     def rearrange_inverse_basic(self,X:torch.Tensor)->torch.Tensor:
@@ -553,12 +563,11 @@ class LinearEmbedding(torch.nn.Module):
         Returns:
             x torch.Tensor: a tensor of size (b,c,h,w,(d))
         """
-        einop_dict = deepcopy(self.einop_dict)
         if self.embed_method == "linear":
             X = self.map_to_in(X)
-            X = einops.rearrange(X,self.einop_inv_str,**einop_dict)
+            X = self.einop_rearrange_inv(X)
         elif self.embed_method == "convolutional":
-            X = einops.rearrange(X,self.einop_inv_str,**einop_dict)
+            X = self.einop_rearrange_inv(X)
         return X
 
     def rearrange_inverse(self,X:torch.Tensor,**kwargs)->torch.Tensor:
@@ -623,7 +632,7 @@ class LinearEmbedding(torch.nn.Module):
         if self.embed_method == "convolutional":
             X = self.conv(X)
         X = self.rearrange(X)
-        if no_pos_embed is False:
+        if (no_pos_embed is False) and (self.use_pos_embed is True):
             X = X + self.positional_embedding
         if self.use_class_token is True:
             class_token = einops.repeat(self.class_token,'() n e -> b n e',
@@ -1225,6 +1234,7 @@ class ViT(torch.nn.Module):
                  window_size:Size2dOr3d=None,
                  n_heads:int=4,
                  dropout_rate:float=0.0,
+                 use_pos_embed:bool=True,
                  embed_method:str="linear",
                  mlp_structure:Union[List[int],float]=[128],
                  adn_fn=get_adn_fn(1,"identity","gelu"),
@@ -1246,6 +1256,8 @@ class ViT(torch.nn.Module):
                 None (same as inferred output dimension).
             dropout_rate (float, optional): dropout rate of the dropout 
                 operations applied throughout this module. Defaults to 0.0.
+            use_pos_embed (bool, optional): includes positional embedding. 
+                Defaults to True.
             embed_method (str, optional): image embedding method. Defaults to
                 "linear".
             window_size (Size2dOr3d, optional): window size for windowed MSA.
@@ -1282,6 +1294,7 @@ class ViT(torch.nn.Module):
         self.window_size = window_size
         self.n_heads = n_heads
         self.dropout_rate = dropout_rate
+        self.use_pos_embed = use_pos_embed
         self.embed_method = embed_method
         self.mlp_structure = mlp_structure
         self.adn_fn = adn_fn
@@ -1297,6 +1310,7 @@ class ViT(torch.nn.Module):
             window_size=self.window_size,
             out_dim=embedding_size,
             embed_method=self.embed_method,
+            use_pos_embed=self.use_pos_embed,
             dropout_rate=self.dropout_rate,
             use_class_token=self.use_class_token,
             learnable_embedding=self.learnable_embedding,
