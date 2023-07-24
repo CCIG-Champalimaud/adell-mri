@@ -1,12 +1,12 @@
 import sys
 sys.path.append(r"..")
-from lib.modules.self_supervised.pl import (
-    UNet,ConvNeXt,ResNet)
 from lib.modules.config_parsing import parse_config_ssl,parse_config_unet
-import inspect
+from lib.utils.network_factories import get_ssl_network_no_pl
 from copy import deepcopy
 import argparse
+import numpy as np
 import torch
+from torchsummary import summary
 
 torch.backends.cudnn.benchmark = True
 
@@ -36,7 +36,7 @@ if __name__ == "__main__":
     # network + training
     parser.add_argument(
         '--net_type',dest='net_type',
-        choices=["resnet","unet_encoder","convnext"],
+        choices=["resnet","unet_encoder","convnext","vit"],
         help="Which network should be trained.")
     parser.add_argument(
         "--input_shape",dest="input_shape",required=True,
@@ -51,6 +51,8 @@ if __name__ == "__main__":
     parser.add_argument(
         '--output_model_path',dest='output_model_path',required=True,
         help="Output path the .pt model")
+    parser.add_argument(
+        '--ssl_method',dest="ssl_method",default="simclr")
     
     # training
     parser.add_argument(
@@ -68,36 +70,29 @@ if __name__ == "__main__":
                 del network_config_correct[k]
     else:
         network_config,network_config_correct = parse_config_ssl(
-            args.config_file,0.0,args.input_shape[0])
+            args.config_file,0.0,args.input_shape[0],is_ijepa=args.ssl_method=="ijepa")
+    
+    if args.ssl_method == "ijepa":
+        image_size = args.input_shape[1:]
+        patch_size = network_config_correct["backbone_args"]["patch_size"]
+        feature_map_size = [i//pi for i,pi in zip(image_size,patch_size)]
+        network_config_correct["backbone_args"]["image_size"] = image_size
+        network_config_correct["feature_map_dimensions"] = feature_map_size
 
     network_config_correct = {k:network_config_correct[k]
                               for k in network_config_correct
                               if k not in ["prediction_head_args",
                                            "projection_head_args"]}
     network_config_correct["projection_head_args"] = {}
-    if args.net_type == "unet_encoder":
-        network_config_correct["encoder_only"] = True
-        fn_args = [k for k in inspect.signature(UNet).parameters]
-        network_config_correct = {k:network_config_correct[k] 
-                                  for k in network_config_correct
-                                  if k in fn_args}
-        ssl = UNet(**network_config_correct)
-    elif args.net_type == "convnext":
-        fn_args = [k for k in inspect.signature(ConvNeXt).parameters]
-        network_config_correct = {k:network_config_correct[k] 
-                                  for k in network_config_correct
-                                  if k in fn_args}
-        network_config_correct["backbone_args"] = {
-            k:network_config_correct["backbone_args"][k] 
-            for k in network_config_correct["backbone_args"]
-            if k not in ["res_type"]}
-        ssl = ConvNeXt(**network_config_correct)
-    else:
-        fn_args = [k for k in inspect.signature(ResNet).parameters]
-        network_config_correct = {k:network_config_correct[k] 
-                                  for k in network_config_correct
-                                  if k in fn_args}
-        ssl = ResNet(**network_config_correct)
+    network_config_correct = {k:network_config_correct[k]
+                              for k in network_config_correct
+                              if k not in ["learning_rate",
+                                           "batch_size",
+                                           "weight_decay"]}
+    ssl = get_ssl_network_no_pl(
+        ssl_method=args.ssl_method,
+        net_type=args.net_type,
+        network_config_correct=network_config_correct)
 
     ssl = ssl.to(args.dev)
     state_dict = torch.load(
@@ -109,11 +104,23 @@ if __name__ == "__main__":
                   if "projection_head" not in k}
     state_dict = {k:state_dict[k] for k in state_dict
                   if "ema" not in k}
-    inc = ssl.load_state_dict(state_dict)
+    state_dict = {k:state_dict[k] for k in state_dict
+                  if "patch_masker" not in k}
+    state_dict = {k:state_dict[k] for k in state_dict
+                  if "predictor" not in k}
+    inc = ssl.load_state_dict(state_dict,strict=False)
+    print(f"\t{inc}")
     ssl.eval()
-    
+
+    print("Number of parameters:",sum([np.prod(x.shape) for x in ssl.parameters()]))
+
     ssl.forward = ssl.forward_representation
     example = torch.rand(1,*args.input_shape).to(args.dev)
+    print(f"For input shape: {example.shape}")
+    print(f"Expected output shape: {ssl(example).shape}")
     traced_ssl = torch.jit.trace(ssl,example_inputs=example)
+
+    print("Testing traced module...")
+    print(f"Traced module output shape: {traced_ssl(example).shape}")
     
     traced_ssl.save(args.output_model_path)
