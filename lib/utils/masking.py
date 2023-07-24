@@ -8,23 +8,27 @@ Coords = Union[
     Tuple[int,int,int,int],
     Tuple[int,int,int,int,int,int]]
 
-class TransformerMasker:
+class TransformerMasker(torch.nn.Module):
     def __init__(self,
                  image_dimensions:List[int],
                  min_patch_size:List[int],
                  max_patch_size:List[int],
+                 n_features:int=None,
                  n_patches:int=4,
                  seed:int=42):
+        super().__init__()
         self.image_dimensions = image_dimensions
         self.min_patch_size = min_patch_size
         self.max_patch_size = max_patch_size
-        self.seed = seed
+        self.n_features = n_features
         self.n_patches = n_patches
+        self.seed = seed
 
         self.rng = np.random.default_rng(seed)
         self.n_dim = len(self.image_dimensions)
 
         assert self.n_dim in [2,3]
+        self.initialize_positional_embedding_if_necessary()
 
     def sample_patch(self)->Coords:
         upper_sampling_bound = [
@@ -39,6 +43,19 @@ class TransformerMasker:
         upper_bound = lower_bound + patch_size
         return [*lower_bound,*upper_bound]
     
+    def initialize_positional_embedding_if_necessary(self):
+        if self.n_features is not None:
+            self.positional_embedding = torch.nn.Parameter(
+                torch.as_tensor(
+                    np.zeros(
+                        [np.prod(self.image_dimensions),
+                         self.n_features]),
+                     dtype=torch.float32))
+            torch.nn.init.trunc_normal_(
+                self.positional_embedding,mean=0.0,std=0.02,a=-2.0,b=2.0)
+        else:
+            self.positional_embedding = None
+
     def sample_patches(self,n_patches:int)->List[Coords]:
         return [self.sample_patch() for _ in range(n_patches)]
 
@@ -68,9 +85,12 @@ class TransformerMasker:
     def __call__(self,
                  X:torch.Tensor,
                  mask_vector:torch.Tensor=None,
+                 n_patches:int=None,
                  patch_coords:List[Coords]=None)->Tuple[torch.Tensor,List[torch.Tensor]]:
+        if n_patches is None:
+            n_patches = self.n_patches
         if patch_coords is None:
-            patch_coords = self.sample_patches(self.n_patches)
+            patch_coords = self.sample_patches(n_patches)
         all_patches = []
         full_coords = []
         for coords in patch_coords:
@@ -79,10 +99,14 @@ class TransformerMasker:
             full_coords.append(long_coords)
         if mask_vector is not None:
             full_coords = np.unique(np.concatenate(full_coords))
-            X[:,full_coords,:] = mask_vector[None,None,:]
+            X[:,full_coords,:] = mask_vector.to(X)
+            if self.positional_embedding is not None:
+                p = self.positional_embedding[None,full_coords,:]
+                X[:,full_coords,:] = X[:,full_coords,:] + p.to(X)
         return X,all_patches,patch_coords
 
 class ConvolutionalMasker:
+    # TODO: add positional embedding
     def __init__(self,
                  image_dimensions:List[int],
                  min_patch_size:List[int],
