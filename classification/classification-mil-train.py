@@ -509,12 +509,13 @@ if __name__ == "__main__":
         network_config["module"] = torch.jit.freeze(network_config["module"])
         if "module_out_dim" not in network_config:
             print("2D module output size not specified, inferring...")
-            input_example = torch.rand(1,1,256,256).to(args.dev.split(":")[0])
+            input_example = torch.rand(1,1,*[int(x) for x in args.crop_size][:2]).to(
+                args.dev.split(":")[0])
             output = network_config["module"](input_example)
             network_config["module_out_dim"] = int(output.shape[1])
             print("2D module output size={}".format(
                 network_config["module_out_dim"]))
-                
+
         # instantiate callbacks and loggers
         callbacks = [RichProgressBar()]
         if args.early_stopping is not None:
