@@ -42,11 +42,11 @@ def merge_masks(path_list:List[str],argmax:bool)->sitk.Image:
     images_[1:] = [resample_image_to_target(x,images_[0])
                     for x in images_[1:]]
     images = [sitk.GetArrayFromImage(x) for x in images_]
-    image_out = np.stack(images)
+    image_out = np.stack([np.zeros_like(images[0]),*images])
     if argmax == True:
         image_out = np.argmax(image_out,0)
     else:
-        image_out = image_out.mean() > 0
+        image_out = image_out.mean(0) > 0
     image_out = sitk.GetImageFromArray(image_out)
     image_out.CopyInformation(images_[0])
     return image_out
@@ -55,10 +55,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=desc)
 
     parser.add_argument(
-        "--input_paths",dest="input_paths",type=str,
+        "--input_paths",dest="input_paths",type=str,nargs="+",
         help="Path to directory containing masks.",required=True)
     parser.add_argument(
-        "--patterns",dest="patterns",type=str,
+        "--patterns",dest="patterns",type=str,nargs="+",
         default='*',help="Patterns to match masks")
     parser.add_argument(
         "--pattern_id",dest="pattern_id",type=str,
