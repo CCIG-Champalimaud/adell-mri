@@ -494,7 +494,11 @@ class GenericEnsemble(torch.nn.Module):
             X = [X for _ in self.networks]
         outputs = []
         for x,network,pp in zip(X,self.networks,self.preproc_method):
-            out = pp(network.forward_features(x))
+            if hasattr(network,"forward_features"):
+                out = network.forward_features(x)
+            else:
+                out = network(x)
+            out = pp(out)
             out = out.flatten(start_dim=2).max(-1).values
             outputs.append(out)
         outputs = torch.concat(outputs,1)
