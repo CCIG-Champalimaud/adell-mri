@@ -108,7 +108,21 @@ class VGG(torch.nn.Module):
             GlobalPooling(),
             MLP(512,final_n,classification_structure,
                 adn_fn=get_adn_fn(1,"batch","gelu")))
-    
+
+    def forward_features(self,X: torch.Tensor,
+                         batch_idx:int=None)->torch.Tensor:
+        """Forward method for features only.
+
+        Args:
+            X (torch.Tensor): input tensor
+            batch_idx (int, optional): uses a specific batch ensemble 
+                transformation. Defaults to None (usually random).
+
+        Returns:
+            torch.Tensor: output (classification)
+        """
+        return self.forward(X,return_features=True,batch_idx=batch_idx)
+
     def forward(self,X: torch.Tensor,
                 return_features: bool=False,
                 batch_idx:int=None)->torch.Tensor:
@@ -124,8 +138,8 @@ class VGG(torch.nn.Module):
         Returns:
             torch.Tensor: output (classification)
         """
-        X = self.conv1(X)
-        X = self.conv2(X)
+        X = self.conv1(X,batch_idx=batch_idx)
+        X = self.conv2(X,batch_idx=batch_idx)
         X = self.conv3(X,batch_idx=batch_idx)
         if return_features == True:
             return X
@@ -224,6 +238,19 @@ class CatNet(torch.nn.Module):
         self.classification_layer = torch.nn.Sequential(
             MLP(self.last_size,final_n,[self.last_size for _ in range(3)],
                 adn_fn=get_adn_fn(1,"batch","gelu")))
+
+    def forward_features(self,X:torch.Tensor,
+                         *args,**kwargs)->torch.Tensor:
+        """Forward method for features.
+
+        Args:
+            X (torch.Tensor): input tensor
+            args, kwargs: features passed to the feature extraction module.
+
+        Returns:
+            torch.Tensor: output (classification or features)
+        """
+        return self.forward(X,*args,**kwargs,return_features=True)
     
     def forward(self,X:torch.Tensor,return_features:bool=False,
                 *args,**kwargs)->torch.Tensor:
@@ -265,6 +292,17 @@ class OrdNet(CatNet):
             torch.zeros([1,self.n_classes-1]))
         self.last_act = torch.nn.Sigmoid()
     
+    def forward_features(self,X:torch.Tensor)->torch.Tensor:
+        """Forward method for features.
+
+        Args:
+            X (torch.Tensor): input tensor
+
+        Returns:
+            torch.Tensor: output (classification or features)
+        """
+        return self.forward(X,return_features=True)
+
     def forward(self,X:torch.Tensor,return_features:bool=False)->torch.Tensor:
         """Forward method.
 
@@ -445,16 +483,23 @@ class GenericEnsemble(torch.nn.Module):
         else:
             self.preproc_method = torch.nn.ModuleList(
                 [torch.nn.Identity() for _ in self.n_features])
-    
-    def forward(self,X):
+
+    def forward_features(self,
+                         X:Union[torch.Tensor,List[torch.Tensor]])->torch.Tensor:
+        return self.forward(X,return_features=True)
+
+    def forward(self,X:Union[torch.Tensor,List[torch.Tensor]],
+                return_features:bool=False)->torch.Tensor:
         if isinstance(X,torch.Tensor):
             X = [X for _ in self.networks]
         outputs = []
         for x,network,pp in zip(X,self.networks,self.preproc_method):
-            out = pp(network(x))
+            out = pp(network.forward_features(x))
             out = out.flatten(start_dim=2).max(-1).values
             outputs.append(out)
         outputs = torch.concat(outputs,1)
+        if return_features == True:
+            return outputs
         output = self.prediction_head(outputs)
         return output
     
@@ -514,7 +559,7 @@ class EnsembleNet(torch.nn.Module):
             self.final_activation = torch.nn.Sigmoid()
         else:
             self.final_activation = torch.nn.Softmax(self.n_classes_,1)
-        
+
     def forward(self,X:List[torch.Tensor]):
         predictions = []
         for n,x in zip(self.networks,X):
@@ -570,7 +615,18 @@ class UNetEncoder(UNet):
                 self.head_adn_fn)
         else:
             self.prediction_head = None
-        
+
+    def forward_features(self,X:torch.Tensor)->torch.Tensor:
+        """Forward pass for features.
+
+        Args:
+            X (torch.Tensor): input tensor
+
+        Returns:
+            torch.Tensor
+        """
+        return self.forward_features(X,return_features=True)
+
     def forward(self,X:torch.Tensor,return_features:bool=False)->torch.Tensor:
         """Forward pass for this class.
 
@@ -638,10 +694,19 @@ class ViTClassifier(ViT):
                 adn_fn=get_adn_fn(1,"layer","gelu"))
         )
 
-    def forward(
-        self,
-        X:torch.Tensor,
-        return_features:bool=False)->Tuple[torch.Tensor,TensorList]:
+    def forward_features(self,X:torch.Tensor)->torch.Tensor:
+        """Forward pass.
+
+        Args:
+            X (torch.Tensor): tensor of shape 
+                [-1,self.n_channels,*self.image_size]
+
+        Returns:
+            torch.Tensor: feature tensor.
+        """
+        return self.forward(X,return_features=True)
+
+    def forward(self,X:torch.Tensor,return_features:bool=False)->torch.Tensor:
         """Forward pass.
 
         Args:
@@ -651,7 +716,7 @@ class ViTClassifier(ViT):
                 the classification_head output. Defaults to False.
 
         Returns:
-            torch.Tensor: tensor of shape [...,self.input_dim_primary]
+            torch.Tensor: output tensor.
         """
         embeded_X,_ = super().forward(X)
         if self.use_seq_pool is True:
@@ -718,10 +783,19 @@ class FactorizedViTClassifier(FactorizedViT):
                 [self.input_dim_primary for _ in range(1)],
                 adn_fn=get_adn_fn(1,"layer","gelu")))
     
-    def forward(
-        self,
-        X:torch.Tensor,
-        return_features:bool=False)->Tuple[torch.Tensor,TensorList]:
+    def forward_features(self,X:torch.Tensor)->torch.Tensor:
+        """Forward pass for features.
+
+        Args:
+            X (torch.Tensor): tensor of shape 
+                [-1,self.n_channels,*self.image_size]
+
+        Returns:
+            torch.Tensor: feature tensor.
+        """
+        return self.forward(X,return_features=True)
+
+    def forward(self,X:torch.Tensor,return_features:bool=False)->torch.Tensor:
         """Forward pass.
 
         Args:
@@ -731,7 +805,7 @@ class FactorizedViTClassifier(FactorizedViT):
                 the classification_head output. Defaults to False.
 
         Returns:
-            torch.Tensor: tensor of shape [...,self.input_dim_primary]
+            torch.Tensor: output tensor.
         """
         embeded_X = super().forward(X)
         if self.use_seq_pool is True:
@@ -777,9 +851,7 @@ class MONAIViTClassifier(torch.nn.Module):
             num_classes=nc
         )
     
-    def forward(
-        self,
-        X:torch.Tensor)->Tuple[torch.Tensor,TensorList]:
+    def forward(self,X:torch.Tensor)->Tuple[torch.Tensor,TensorList]:
         """Forward pass.
 
         Args:
