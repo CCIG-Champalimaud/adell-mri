@@ -200,7 +200,7 @@ class MultipleInstanceClassifier(torch.nn.Module):
             return self.final_prediction(torch.max(out * A,-2).values)
         if self.classification_mode == "vocabulary":
             out = self.vocabulary_prediction(out)
-            out = F.softmax(out) * A
+            out = F.softmax(out,dim=-1) * A
             out = out.sum(-2)
             return self.final_prediction(out)
 
