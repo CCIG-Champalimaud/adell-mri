@@ -329,6 +329,9 @@ def get_ssl_network(train_loader_call:Callable,
         ssl = IJEPAPL(**boilerplate,**network_config_correct)
 
     else:
+        if ssl_method == "simclr":
+            # simclr only uses a projection head, no prediction head
+            del network_config_correct["prediction_head_args"]
         boilerplate = {
             "training_dataloader_call":train_loader_call,
             "aug_image_key_1":"augmented_image_1",
