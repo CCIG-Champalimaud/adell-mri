@@ -4,12 +4,13 @@ import torch
 import torch.functional as F
 import einops
 import monai
-from skimage.morphology import convex_hull_image
-from skimage import measure
 from copy import deepcopy
 from itertools import product
-from typing import List,Iterable,Tuple,Dict,Union,Any,Optional
+from skimage.morphology import convex_hull_image
+from skimage import measure
 from sklearn.cluster import DBSCAN
+from pydicom import dcmread
+from typing import List,Iterable,Tuple,Dict,Union,Any,Optional
 from ..custom_types import (
     TensorDict,TensorOrNDarray,NDArrayOrTensorDict,Size2dOr3d)
 
@@ -54,6 +55,28 @@ def normalize_along_slice(X:torch.Tensor,
     X = (X - dim_min) / denominator * mult
     X = X * (max_value - min_value) + min_value
     return X
+
+class LoadIndividualDICOM(monai.transforms.Transform):
+    def __init__(self):
+        pass
+
+    def __call__(self,X:str):
+        out = dcmread(X).pixel_array
+        if len(out.shape) == 2:
+            out = out[None,:,:,None]
+        elif len(out.shape) == 3:
+            out = out[None,:,:,:]
+        return out
+
+class LoadIndividualDICOMd(monai.transforms.MapTransform):
+    def __init__(self,keys:List[str]):
+        self.keys = keys
+        self.tr = LoadIndividualDICOM()
+
+    def __call__(self,X:str):
+        for k in self.keys:
+            X[k] = self.tr(X[k])
+        return X
 
 class ConvertToOneHot(monai.transforms.Transform):
     """

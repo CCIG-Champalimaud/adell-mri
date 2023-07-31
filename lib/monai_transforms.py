@@ -17,6 +17,7 @@ from .utils import (
     RandRotateWithBoxesd,
     SampleChannelDimd,
     AdjustSizesd,
+    LoadIndividualDICOMd,
     PrintShaped,
     PrintTyped)
 from .modules.augmentations import (
