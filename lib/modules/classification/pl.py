@@ -140,7 +140,7 @@ class ClassPLABC(pl.LightningModule,ABC):
         loss = self.calculate_loss(prediction,y,with_params=True)
         self.log("val_loss",loss,on_epoch=True,
                  on_step=False,prog_bar=True,
-                 batch_size=x.shape[0],sync_dist=True)        
+                 batch_size=x.shape[0],sync_dist=True)
         self.update_metrics(prediction,y,self.val_metrics)
         return loss
 
