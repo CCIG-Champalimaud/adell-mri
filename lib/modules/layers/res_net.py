@@ -244,7 +244,7 @@ class ResNet(torch.nn.Module):
             **self.backbone_args)
     
     def init_projection_head(self):
-        if self.prediction_head_args is not None:
+        if self.projection_head_args is not None:
             try:
                 d = self.projection_head_args["structure"][-1]
                 norm_fn = self.projection_head_args["adn_fn"](d).norm_fn
