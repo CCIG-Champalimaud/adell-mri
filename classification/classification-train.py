@@ -20,6 +20,7 @@ from lib.utils.pl_utils import (
     get_logger,
     get_devices,
     delete_checkpoints)
+from lib.utils.torch_utils import load_checkpoint_to_model,get_class_weights
 from lib.utils.dataset_filters import (
     filter_dictionary_with_filters,
     filter_dictionary_with_possible_labels,
@@ -480,34 +481,15 @@ if __name__ == "__main__":
         torch.ones([1]).to("cuda" if "cuda" in args.dev else "cpu")
         
         # get class weights if necessary  
-        class_weights = None
-        if args.class_weights is not None:
-            if args.class_weights[0] == "adaptive":
-                if n_classes == 2:
-                    pos = len([x for x in classes 
-                               if x in args.positive_labels])
-                    neg = len(classes) - pos
-                    weight_neg = (1 / neg) * (len(classes) / 2.0)
-                    weight_pos = (1 / pos) * (len(classes) / 2.0)
-                    class_weights = weight_pos/weight_neg
-                    class_weights = torch.as_tensor(
-                        np.array(class_weights),device=args.dev.split(":")[0],
-                        dtype=torch.float32)
-                else:
-                    pos = {k:0 for k in args.possible_labels}
-                    for c in classes:
-                        pos[c] += 1
-                    pos = np.array([pos[k] for k in pos])
-                    class_weights = (1 / pos) * (len(classes) / 2.0)
-                    class_weights = torch.as_tensor(
-                        np.array(class_weights),device=args.dev.split(":")[0],
-                        dtype=torch.float32)
-            else:
-                class_weights = [float(x) for x in args.class_weights]
-                if class_weights is not None:
-                    class_weights = torch.as_tensor(
-                        np.array(class_weights),device=args.dev.split(":")[0],
-                        dtype=torch.float32)
+        class_weights = get_class_weights(args.class_weights,
+                                          classes=classes,
+                                          n_classes=n_classes,
+                                          positive_labels=args.positive_labels,
+                                          possible_labels=args.possible_labels)
+        if class_weights is not None:
+            class_weights = torch.as_tensor(
+                np.array(class_weights),device=args.dev.split(":")[0],
+                dtype=torch.float32)
                 
         print("Initializing loss with class_weights: {}".format(class_weights))
         if n_classes == 2:
@@ -568,20 +550,8 @@ if __name__ == "__main__":
                 checkpoint = args.checkpoint[val_fold]
             else:
                 checkpoint = args.checkpoint
-            sd = torch.load(checkpoint)
-            # if this is a lightning checkpoint the actual state dict will be
-            # stored as a key
-            if "state_dict" in sd:
-                sd = sd["state_dict"]
-            print(f"Loading checkpoint from {checkpoint}")
-            if args.exclude_from_state_dict is not None:
-                for pattern in args.exclude_from_state_dict:
-                    sd = {k:sd[k] for k in sd
-                          if re.search(pattern,k) is None}
-            output = network.load_state_dict(sd,strict=False)
-            if len(output.unexpected_keys) > 0:
-                raise Exception("Dictionary contains more keys than it should!")
-            print(f"\t{output.missing_keys}")
+            load_checkpoint_to_model(network,checkpoint,
+                                     args.exclude_from_state_dict)
 
         conditional_parameter_freezing(
             network,args.freeze_regex,args.not_freeze_regex)
