@@ -344,7 +344,7 @@ class SelfSLResNetPL(ResNet,SelfSLBasePL):
             ret_string_1 = "projection"
             ret_string_2 = "projection"
             other_args = []
-        elif self.ssl_method == "vicregl":
+        elif self.ssl_method != "vicregl":
             ret_string_1 = "prediction"
             ret_string_2 = "projection"
             other_args = []
@@ -539,7 +539,7 @@ class SelfSLUNetPL(UNet,SelfSLBasePL):
             return op(x)
 
     def step(self,batch,loss_str:str,metrics:dict,train=False):
-        if self.ssl_method == "vicregl":
+        if self.ssl_method != "vicregl":
             other_args = []
         else:
             box_1 = batch[self.box_key_1]
@@ -736,7 +736,7 @@ class SelfSLConvNeXtPL(ConvNeXt,SelfSLBasePL):
             ret_string_1 = "projection"
             ret_string_2 = "projection"
             other_args = []
-        elif self.ssl_method == "vicregl":
+        elif self.ssl_method != "vicregl":
             ret_string_1 = "prediction"
             ret_string_2 = "projection"
             other_args = []
