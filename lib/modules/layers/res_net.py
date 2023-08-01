@@ -107,7 +107,8 @@ class ResNetBackbone(torch.nn.Module):
                 self.in_channels,f,7,padding="same"),
             self.adn_fn(f),
             self.conv_op(
-                f,f,3,padding="same"))
+                f,f,3,padding="same"),
+            self.adn_fn(f))
         self.first_pooling = self.max_pool_op(2,2)
         self.operations = torch.nn.ModuleList([])
         self.be_operations = torch.nn.ModuleList([])
