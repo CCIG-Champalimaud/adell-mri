@@ -598,6 +598,8 @@ class GenericEnsemblePL(GenericEnsemble,pl.LightningModule):
         loss_fn: Callable=F.binary_cross_entropy,
         loss_params: dict={},
         n_epochs: int=100,
+        warmup_steps: int=0,
+        start_decay: int=None,
         *args,**kwargs) -> torch.nn.Module:
         """
         Args:
@@ -616,6 +618,10 @@ class GenericEnsemblePL(GenericEnsemble,pl.LightningModule):
             loss_params (dict, optional): classification loss parameters. 
                 Defaults to {}.
             n_epochs (int, optional): number of epochs. Defaults to 100.
+            warmup_steps (int, optional): number of warmup steps. Defaults 
+                to 0.
+            start_decay (int, optional): number of steps after which decay
+                begins. Defaults to None (decay starts after warmup).
             args: arguments for classification network class.
             kwargs: keyword arguments for classification network class.
 
@@ -634,6 +640,8 @@ class GenericEnsemblePL(GenericEnsemble,pl.LightningModule):
         self.loss_fn = loss_fn
         self.loss_params = loss_params
         self.n_epochs = n_epochs
+        self.warmup_steps = warmup_steps
+        self.start_decay = start_decay
         self.args = args
         self.kwargs = kwargs
         
@@ -675,11 +683,26 @@ class GenericEnsemblePL(GenericEnsemble,pl.LightningModule):
         return self.training_dataloader_call()
 
     def configure_optimizers(self):
+        if isinstance(self.weight_decay,(list,tuple)):
+            # decouples body and head weight decay
+            wd_body,wd_head = self.weight_decay
+            params_head = [p for (n,p) in self.named_parameters()
+                           if "classification" in n]
+            params_body = [p for (n,p) in self.named_parameters()
+                           if "classification" not in n]
+            parameters = [
+                {"params":params_head,"weight_decay":wd_body},
+                {"params":params_body,"weight_decay":wd_head}]
+            wd = wd_body
+        else:
+            parameters = self.parameters()
+            wd = self.weight_decay
         optimizer = torch.optim.AdamW(
-            self.parameters(),lr=self.learning_rate,
-            weight_decay=self.weight_decay)
-        lr_schedulers = torch.optim.lr_scheduler.CosineAnnealingLR(
-            optimizer,self.n_epochs)
+            parameters,lr=self.learning_rate,
+            weight_decay=wd)
+        lr_schedulers = CosineAnnealingWithWarmupLR(
+            optimizer,T_max=self.n_epochs,start_decay=self.start_decay,
+            n_warmup_steps=self.warmup_steps)
 
         return {"optimizer":optimizer,
                 "lr_scheduler":lr_schedulers,
