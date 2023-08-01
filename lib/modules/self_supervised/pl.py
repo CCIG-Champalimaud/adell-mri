@@ -209,6 +209,11 @@ class SelfSLBasePL(pl.LightningModule,ABC):
             self.train_metrics[k] = metric_dict[k]()
             self.val_metrics["V"+k] = metric_dict[k]()
             self.test_metrics["T"+k] = metric_dict[k]()
+    
+    def on_train_start(self):
+        print("Logging hyperparameters...")
+        self.save_hyperparameters()
+        self.log_dict(self.hparams)
 
 class SelfSLResNetPL(ResNet,SelfSLBasePL):
     """Operates a number of non-contrastive self-supervised learning 
