@@ -83,7 +83,7 @@ if __name__ == "__main__":
                               for k in network_config_correct
                               if k not in ["prediction_head_args",
                                            "projection_head_args"]}
-    network_config_correct["projection_head_args"] = {}
+    network_config_correct["projection_head_args"] = None
     network_config_correct = {k:network_config_correct[k]
                               for k in network_config_correct
                               if k not in ["learning_rate",
