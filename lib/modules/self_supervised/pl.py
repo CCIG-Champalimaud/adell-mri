@@ -184,7 +184,7 @@ class SelfSLBasePL(pl.LightningModule,ABC):
             lr=self.learning_rate,weight_decay=self.weight_decay)
         lr_schedulers = lr_schedulers = CosineAnnealingWithWarmupLR(
             optimizer,T_max=n,start_decay=self.start_decay,
-            n_warmup_steps=self.warmup_steps,eta_min=1e-6)
+            n_warmup_steps=self.warmup_steps,eta_min=0.0)
 
         return {"optimizer":optimizer,
                 "lr_scheduler":{"scheduler":lr_schedulers,
