@@ -76,7 +76,7 @@ class IJEPA(torch.nn.Module):
             **self.backbone_args)
 
     def initialize_predictor(self):
-        if len(self.projection_head_args) > 0:
+        if self.projection_head_args is not None:
             arch = predictor_architectures[self.predictor_architecture]
             self.predictor_ = arch(
                 **self.projection_head_args)
