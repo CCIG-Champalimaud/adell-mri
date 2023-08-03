@@ -729,7 +729,7 @@ class OrdinalSigmoidalLoss(torch.nn.Module):
             pred,target,self.n_classes,self.weight)
     
 def mean_squared_error(pred:torch.Tensor,
-                        target:torch.Tensor)->torch.Tensor:
+                       target:torch.Tensor)->torch.Tensor:
     """Standard implementation of mean squared error.
 
     Args:
@@ -745,7 +745,7 @@ def mean_squared_error(pred:torch.Tensor,
     return torch.mean((target-pred)**2,dim=1)
 
 def root_mean_squared_error(pred:torch.Tensor,
-                        target:torch.Tensor)->torch.Tensor:
+                            target:torch.Tensor)->torch.Tensor:
     """Standard implementation of root mean squared error.
 
     Args:
@@ -762,13 +762,11 @@ def root_mean_squared_error(pred:torch.Tensor,
 
 # TODO
 def decorrelation_loss(pred:torch.Tensor,
-                        target_ce:torch.Tensor,
-                        target_ae:torch.Tensor,
-                        beta:float=1,
-                        gamma:float=1,
-                        weight:float=1.,
-                        scale:float=1.,
-                        eps:float=eps)->torch.Tensor:
+                       target_ce:torch.Tensor,
+                       target_ae:torch.Tensor,
+                       beta:float=1,gamma:float=1,
+                       weight:float=1.,scale:float=1.,
+                       eps:float=eps)->torch.Tensor:
     """Implementation fo the decorrelation loss from https://arxiv.org/abs/2008.09858
 
     Args:
@@ -785,8 +783,9 @@ def decorrelation_loss(pred:torch.Tensor,
         dimension of `pred`).
     """
     pred = torch.flatten(pred,start_dim=1)
-    target = torch.flatten(target,start_dim=1)
+    target_ce = torch.flatten(target_ce,start_dim=1)
+    target_ae = torch.flatten(target_ae,start_dim=1)
     ce_loss = binary_cross_entropy(pred, target_ce, weight, scale, eps)
-    ae_loss = mean_squared_error(pred, target)
+    ae_loss = mean_squared_error(pred, target_ae)
     reg = 0
     return ce_loss + beta*ae_loss + gamma*reg
