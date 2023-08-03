@@ -369,3 +369,59 @@ class VGGConvolution3d(torch.nn.Module):
         x = self.n1(x)
         x = self.n2(self.act2(self.c2(x)))
         return self.m(x)
+
+class VGGDeconvolution3d(torch.nn.Module):
+    """
+    Implementation of simple vgg-style deconvolutional blocks.
+    """
+
+    def __init__(self, input_channels: int, first_depth: int,
+                 batch_ensemble: int = 0, last: bool = False, last_channels: int = 1):
+        """
+        Args:
+            input_channels (List[int]): list of input channels for convolutions.
+            first_depth (int): number of output channels for the first convolution.
+            batch_ensemble (int, optional): number of batch ensemble modules.
+                Defautls to 0.
+        """
+
+        super().__init__()
+        self.input_channels = input_channels
+        self.first_depth = first_depth
+        self.batch_ensemble = batch_ensemble
+
+        self.c1 = torch.nn.Conv3d(input_channels, first_depth, 3, padding=1)
+        if self.batch_ensemble > 0:
+            self.c1_batch_ensemble = BatchEnsembleWrapper(
+                None, n=self.batch_ensemble,
+                in_channels=input_channels, out_channels=first_depth)
+        self.act1 = torch.nn.GELU()
+        self.n1 = torch.nn.BatchNorm3d(first_depth)
+        if last:
+            self.c2 = torch.nn.Conv3d(first_depth, last_channels, 3, padding=1)
+            self.act2 = torch.nn.GELU()
+            self.n2 = torch.nn.BatchNorm3d(last_channels)
+        else:
+            self.c2 = torch.nn.Conv3d(first_depth, first_depth, 3, padding=1)
+            self.act2 = torch.nn.GELU()
+            self.n2 = torch.nn.BatchNorm3d(first_depth)
+        self.up = torch.nn.Upsample(scale_factor=2, mode='nearest')
+
+    def forward(self, x: torch.Tensor, batch_idx: int = None) -> torch.Tensor:
+        """
+        Args:
+            X (torch.Tensor): input tensor.
+            batch_idx (int, optional): batch index for the batch ensemble
+                operation (performed only if batch_ensemble > 0).
+                Defaults to None (random batch index).
+        Returns:
+            torch.Tensor or TensorList
+        """
+        if self.batch_ensemble > 0:
+            x = self.c1_batch_ensemble(x, batch_idx, self.c1)
+        else:
+            x = self.c1(x)
+        x = self.act1(x)
+        x = self.n1(x)
+        x = self.n2(self.act2(self.c2(x)))
+        return self.up(x)
