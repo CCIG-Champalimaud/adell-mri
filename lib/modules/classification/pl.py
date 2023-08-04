@@ -1,9 +1,10 @@
+import numpy as np
 import torch
 import torch.nn.functional as F
 import torchmetrics
 import lightning.pytorch as pl
 import torchmetrics.classification as tmc
-from typing import Callable,List,Dict
+from typing import Callable,List,Dict,Any
 from abc import ABC
 
 from .classification import (
@@ -211,6 +212,27 @@ class ClassPLABC(pl.LightningModule,ABC):
             self.log(
                 k,metrics[k],on_epoch=True,
                 on_step=False,prog_bar=True,sync_dist=True)
+
+    def on_train_start(self):
+        print("Training with the following hyperparameters:")
+        parameter_dict = {}
+        for k,v in self.hparams.items():
+            print(f"\t{k}: {v}")
+            if isinstance(v,(list,tuple,torch.Tensor,np.ndarray)):
+                if len(v) > 1:
+                    for i in range(len(v)):
+                        parameter_dict[f"{k}_{i}"] = v[i]
+                else:
+                    parameter_dict[k] = v[0]
+            elif isinstance(v,dict):
+                for kk,vv in v:
+                    parameter_dict[f"{k}_{kk}"] = float(vv)
+            elif isinstance(v,(int,float,bool)):
+                parameter_dict[k] = v
+        parameter_dict = {
+            k:float(parameter_dict[k]) for k in parameter_dict
+            if isinstance(k,(int,float,bool))}
+        self.log_dict(parameter_dict,sync_dist=True)
 
 class ClassNetPL(ClassPLABC):
     """
@@ -1001,7 +1023,8 @@ class MultipleInstanceClassifierPL(MultipleInstanceClassifier,ClassPLABC):
         self.training_batch_preproc = training_batch_preproc
         self.args = args
         self.kwargs = kwargs
-        
+
+        self.save_hyperparameters()
         self.setup_metrics()
 
 class HybridClassifierPL(HybridClassifier,ClassPLABC):

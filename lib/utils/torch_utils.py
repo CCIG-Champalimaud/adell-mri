@@ -50,3 +50,71 @@ def get_class_weights(class_weights:List[Union[float,str]],
             class_weights = [float(x) for x in class_weights]
 
     return class_weights
+
+def conditional_parameter_freezing(network:torch.nn.Module,
+                                   freeze_regex:List[str]=None,
+                                   do_not_freeze_regex:List[str]=None,
+                                   state_dict:Dict[str,torch.Tensor]=None):
+    """Freezes (or not) parameters according to a list of regex and loads an 
+    optional state dict if frozen keys match dictionary.
+
+    Args:
+        network (torch.nn.Module): torch module with a named_parameters 
+            attribute.
+        freeze_regex (List[str], optional): regex for parameter names that 
+            should be frozen. Defaults to None.
+        do_not_freeze_regex (List[str], optional): regex for parameter names 
+            that should not be frozen (overrides freeze_regex). Defaults to 
+            None.
+        state_dict (Dict[str,torch.Tensor], optional): state dict that replaces
+            frozen values. Defaults to None.
+    """
+    keys_to_load = []
+    freeze_regex_list = []
+    do_not_freeze_regex_list = []
+
+    if freeze_regex is not None:
+        freeze_regex_list = [
+            re.compile(fr) for fr in freeze_regex]
+    if do_not_freeze_regex is not None:
+        do_not_freeze_regex_list = [
+            re.compile(dnfr) for dnfr in do_not_freeze_regex]
+    
+    for key,param in network.named_parameters():
+        freeze = False
+        if any([fr.search(key) is not None 
+                for fr in freeze_regex_list]):
+            freeze = True
+        if any([dnfr.search(key) is not None 
+                for dnfr in do_not_freeze_regex_list]):
+            freeze = False
+        if freeze is True:
+            param.requires_grad = False
+            if state_dict is not None:
+                if key in state_dict:
+                    keys_to_load.append(key)
+    if state_dict is not None:
+        with torch.no_grad():
+            network.load_state_dict(
+                {k:state_dict[k] for k in keys_to_load})
+
+def set_classification_layer_bias(pos:float,
+                                  neg:float,
+                                  network:torch.nn.Module,
+                                  class_substr:str="classification"):
+    """Sets the classification layer bias according to class prevalence in the
+    binary classification setting.
+
+    Args:
+        pos (float): number of positive cases.
+        neg (float): number of negative cases.
+        network (torch.nn.Module): network.
+        class_substr (str, optional): class substring corresponding to bias.
+            Defaults to "classification".
+    """
+    value = torch.as_tensor(np.log(pos/neg))
+    for k,v in network.named_parameters():
+        if class_substr in k:
+            if list(v.shape) == [1]:
+                with torch.no_grad():
+                    v[0] = value

@@ -12,7 +12,7 @@ from ..modules.classification.pl import (
     FactorizedViTClassifierPL,
     HybridClassifierPL)
 # detection
-from ..modules.losses import complete_iou_loss
+from ..modules.object_detection.losses import complete_iou_loss
 from ..modules.object_detection.pl import YOLONet3dPL
 from ..utils import get_loss_param_dict,loss_factory
 # segmentation

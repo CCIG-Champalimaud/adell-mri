@@ -8,7 +8,7 @@ from ...custom_types import (Callable)
 
 from ..layers.res_net import ResNet
 from ..layers.conv_next import ConvNeXt
-from .self_supervised import (
+from .losses import (
     BarlowTwinsLoss, VICRegLocalLoss, 
     byol_loss, simsiam_loss, VICRegLoss,NTXentLoss)
 from .jepa import IJEPA

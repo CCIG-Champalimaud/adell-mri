@@ -4,7 +4,6 @@ import json
 import numpy as np
 import torch
 import monai
-import re
 from sklearn.model_selection import train_test_split,StratifiedKFold
 
 from lightning.pytorch import Trainer
@@ -27,7 +26,7 @@ from lib.utils.dataset_filters import (
     filter_dictionary_with_presence)
 from lib.monai_transforms import get_transforms_classification as get_transforms
 from lib.monai_transforms import get_augmentations_class as get_augmentations
-from lib.modules.losses import OrdinalSigmoidalLoss
+from lib.modules.classification.losses import OrdinalSigmoidalLoss
 from lib.modules.config_parsing import parse_config_unet,parse_config_cat
 from lib.utils.network_factories import get_classification_network
 from lib.utils.parser import get_params,merge_args,parse_ids

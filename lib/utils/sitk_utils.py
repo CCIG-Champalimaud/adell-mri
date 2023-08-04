@@ -64,3 +64,34 @@ def spacing_from_dataset_json(dataset_dict:DatasetDict,
         n_workers=n_workers)
     output = get_spacing_quantile(spacing_values,quantile)
     return output
+
+def resample_image(sitk_image:sitk.Image,
+                   out_spacing:List[float]=[1.0, 1.0, 1.0],
+                   out_size:List[int]=None,
+                   is_label:bool=False)->sitk.Image:
+    spacing = sitk_image.GetSpacing()
+    size = sitk_image.GetSize()
+
+    if out_size is None:
+        out_size = [
+            int(np.round(size * (sin / sout)))
+            for size, sin, sout in zip(size, spacing, out_spacing)]
+
+    pad_value = sitk_image.GetPixelIDValue()
+
+    resample = sitk.ResampleImageFilter()
+    resample.SetOutputSpacing(list(out_spacing))
+    resample.SetSize(out_size)
+    resample.SetOutputDirection(sitk_image.GetDirection())
+    resample.SetOutputOrigin(sitk_image.GetOrigin())
+    resample.SetTransform(sitk.Transform())
+    resample.SetDefaultPixelValue(pad_value)
+    if is_label:
+        resample.SetInterpolator(sitk.sitkNearestNeighbor)
+    else:
+        resample.SetInterpolator(sitk.sitkBSpline)
+
+    # perform resampling
+    sitk_image = resample.Execute(sitk_image)
+
+    return sitk_image

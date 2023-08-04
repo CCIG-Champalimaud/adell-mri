@@ -74,7 +74,7 @@ class MultipleInstanceClassifier(torch.nn.Module):
                  use_positional_embedding:bool=True,
                  dim:int=2,
                  attention:bool=False,
-                 reduce_fn:str="max"):
+                 reduce_fn:str="mean"):
         """
         Args:
             module (torch.nn.Module): end-to-end module that takes a batched 
@@ -181,11 +181,12 @@ class MultipleInstanceClassifier(torch.nn.Module):
         elif self.classification_mode == "vocabulary":
             self.vocabulary_prediction = MLP(
                 self.feat_extraction_structure[-1],self.vocabulary_size,
-                structure=self.classification_structure,
+                structure=[],
                 adn_fn=self.classification_adn_fn)
             self.final_prediction = MLP(
                 self.vocabulary_size,n_classes_out,
-                structure=self.classification_structure,adn_fn=torch.nn.Identity)
+                structure=self.classification_structure,
+                adn_fn=self.classification_adn_fn)
 
     def get_prediction(self,X:torch.Tensor)->torch.Tensor:
         b,c = X.shape[0:2]
@@ -200,7 +201,8 @@ class MultipleInstanceClassifier(torch.nn.Module):
             return self.final_prediction(torch.max(out * A,-2).values)
         if self.classification_mode == "vocabulary":
             out = self.vocabulary_prediction(out)
-            out = F.softmax(out,dim=-1) * A
+            out = F.softmax(out,dim=-1)
+            out = out * A
             out = out.sum(-2)
             return self.final_prediction(out)
 

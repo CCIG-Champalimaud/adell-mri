@@ -10,7 +10,9 @@ import sys
 sys.path.append(r"..")
 from lib.utils import (
     load_anchors)
-from lib.monai_transforms import get_transforms_detection
+from lib.monai_transforms import (
+    get_transforms_detection_pre,
+    get_transforms_detection_post)
 from lib.modules.object_detection import YOLONet3d
 from lib.utils.pl_utils import get_devices
 from lib.utils.dataset_filters import (
@@ -34,6 +36,10 @@ if __name__ == "__main__":
         '--image_keys',dest='image_keys',type=str,nargs="+",
         help="Image keys in dataset JSON",required=True)
     parser.add_argument(
+        '--target_spacing',dest='target_spacing',type=str,nargs="+",
+        help="Target spacing (if 'infer' then this is inferred from the training\
+            set)")
+    parser.add_argument(
         '--input_size',dest='input_size',type=float,nargs='+',
         help="Input size for network (for resize options",required=True)
     parser.add_argument(
@@ -55,7 +61,7 @@ if __name__ == "__main__":
         '--net_type',dest="net_type",
         help="Network type",choices=["yolo"],required=True)
     
-    # training
+    # prediction
     parser.add_argument('--dev',dest='dev',default="cpu",
         help="Device for PyTorch training",type=str)
     parser.add_argument(
@@ -104,19 +110,30 @@ if __name__ == "__main__":
     output_size = output_example[0].shape[2:]
 
     print("Setting up transforms...")
-    transform_arguments = {
+    transform_arguments_pre = {
         "keys":keys,
         "adc_keys":adc_keys,
-        "t2_keys":[],
+        "input_size":input_size,
+        "target_spacing":args.target_spacing,
+        "box_class_key":None,
+        "shape_key":None,
+        "box_key":None,
+        "mask_key":None,
+        "mask_mode":None}
+    transform_arguments_post = {
+        "keys":keys,
+        "t2_keys":None,
         "anchor_array":anchor_array,
-        "input_size":args.input_size,
+        "input_size":input_size,
         "output_size":output_size,
         "iou_threshold":args.iou_threshold,
         "box_class_key":None,
         "shape_key":None,
-        "box_key":None}
-    transforms_predict = get_transforms_detection(
-        **transform_arguments,augments=[],predict=True)
+        "box_key":None,
+        "predict":False}
+    transforms_predict = monai.transforms.Compose(
+        [get_transforms_detection_pre(**transform_arguments_pre),
+         get_transforms_detection_post(**transform_arguments_post)])
 
     path_list = [data_dict[k] for k in data_dict]
     predict_dataset = monai.data.Dataset(

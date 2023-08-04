@@ -12,7 +12,7 @@ sys.path.append(r"..")
 from lib.utils import safe_collate
 from lib.utils.pl_utils import get_devices
 from lib.monai_transforms import get_transforms_classification as get_transforms
-from lib.modules.losses import OrdinalSigmoidalLoss
+from lib.modules.classification.losses import OrdinalSigmoidalLoss
 from lib.modules.config_parsing import parse_config_unet,parse_config_cat
 from lib.utils.dataset_filters import (
     filter_dictionary_with_filters,filter_dictionary_with_possible_labels,
