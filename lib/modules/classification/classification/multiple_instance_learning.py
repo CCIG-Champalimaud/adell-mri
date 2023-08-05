@@ -74,7 +74,7 @@ class MultipleInstanceClassifier(torch.nn.Module):
                  use_positional_embedding:bool=True,
                  dim:int=2,
                  attention:bool=False,
-                 reduce_fn:str="max"):
+                 reduce_fn:str="mean"):
         """
         Args:
             module (torch.nn.Module): end-to-end module that takes a batched 
@@ -252,7 +252,7 @@ class TransformableTransformer(torch.nn.Module):
                  use_positional_embedding:bool=True,
                  dim:int=2,
                  use_class_token:bool=True,
-                 reduce_fn:str="max",
+                 reduce_fn:str="mean",
                  *args,**kwargs):
         """
         Args:
