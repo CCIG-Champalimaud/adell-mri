@@ -835,7 +835,8 @@ class LabelOperatord(monai.transforms.Transform):
     """
     Label operator
     """
-    def __init__(self,keys:str,possible_labels:List[int],
+    def __init__(self,keys:str,
+                 possible_labels:List[int],
                  mode:str="cat",
                  positive_labels:List[int]=[1],
                  label_groups:List[List[int]]=None,
