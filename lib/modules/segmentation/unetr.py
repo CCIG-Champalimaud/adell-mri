@@ -747,7 +747,7 @@ class SWINUNet(UNet):
         sd = self.spatial_dimensions
         self.swin_blocks = torch.nn.ModuleList([])
         for i in range(self.number_of_blocks-1):
-            print("Initializing SWIN block={}".format(i))
+            # print("Initializing SWIN block={}".format(i))
             image_size = [x // (2**i) for x in self.image_size]
             if i == 0:
                 n_channels = self.n_channels
