@@ -178,16 +178,18 @@ class Diffusion:
         if x is not None:
             n = x.shape[:2]
         else:
+            # fetch a model parameter to retrieve parameter
+            device = next(model.parameters()).device
             x = torch.randn((n, 
                              n_channels, 
-                             *self.img_size)).to(self.device)
+                             *self.img_size)).to(device)
         model.eval()
         with torch.no_grad():
             self.get_shape(x)
             t_range = reversed(range(start_from + 1, 
                                      self.noise_steps + start_from))
             for i in tqdm(t_range, position=0):
-                t = (torch.ones(n) * i).long().to(self.device)
+                t = (torch.ones(n) * i).long().to(x.device)
                 predicted_noise = model(x, t, classification)
                 alpha = self.alpha[t].reshape(-1,1,1,1)
                 alpha_hat = self.alpha_hat[t].reshape(-1,1,1,1)
