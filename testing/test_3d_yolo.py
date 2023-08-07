@@ -1,5 +1,6 @@
 import sys
 import os
+import logging
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)),'..'))
 
 import torch
@@ -18,31 +19,31 @@ def test_yolo():
 
     bb_center_pred,bb_size_pred,bb_object_pred,class_pred = yolo(input_tensor)
 
-    print("Input shape:",input_tensor.shape)
-    print("\tCenter prediction shape:",bb_center_pred.shape)
-    print("\tSize prediction shape:",bb_size_pred.shape)
-    print("\tObjectness prediction shape:",bb_object_pred.shape)
-    print("\tClass prediction shape:",class_pred.shape)
+    logging.info("Input shape:",input_tensor.shape)
+    logging.info("\tCenter prediction shape:",bb_center_pred.shape)
+    logging.info("\tSize prediction shape:",bb_size_pred.shape)
+    logging.info("\tObjectness prediction shape:",bb_object_pred.shape)
+    logging.info("\tClass prediction shape:",class_pred.shape)
 
     bb_center_pred,bb_size_pred,bb_object_pred,class_pred = yolo.channels_to_anchors(
         [bb_center_pred,bb_size_pred,bb_object_pred,class_pred])
 
-    print("\tTesting prediction to bounding boxes")
+    logging.info("\tTesting prediction to bounding boxes")
     bb,scores,classification = yolo.recover_boxes(
         bb_center_pred[0],bb_size_pred[0],
         bb_object_pred[0],class_pred[0])
-    print("\t\tBounding box shape:",bb.shape)
-    print("\t\tObject scores shape:",scores.shape)
+    logging.info("\t\tBounding box shape:",bb.shape)
+    logging.info("\t\tObject scores shape:",scores.shape)
 
     assert len(bb.shape) == 2,"length of bb shape is wrong"
     assert len(scores.shape) == 1,"length of scores shape is wrong"
 
-    print("\tTesting prediction to bounding boxes with NMS")
+    logging.info("\tTesting prediction to bounding boxes with NMS")
     bb,scores,classification = yolo.recover_boxes(
         bb_center_pred[0],bb_size_pred[0],
         bb_object_pred[0],class_pred[0],nms=True)
-    print("\t\tBounding box shape:",bb.shape)
-    print("\t\tObject scores shape:",scores.shape)
+    logging.info("\t\tBounding box shape:",bb.shape)
+    logging.info("\t\tObject scores shape:",scores.shape)
 
     assert len(bb.shape) == 2,"length of bb shape is wrong for nms"
     assert len(scores.shape) == 1,"length of scores shape is wrong for nms"
