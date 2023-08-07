@@ -9,10 +9,45 @@ import numpy as np
 import torch
 import wandb
 from lightning import Trainer
+from lightning.pytorch import LightningModule
+from lightning.pytorch.callbacks import Callback
 from lightning.pytorch.loggers import WandbLogger
 from lightning.pytorch.callbacks.model_checkpoint import ModelCheckpoint
 
 from typing import List, Union, Tuple, Any, Dict
+
+class LogImage(Callback):
+    def __init__(self,
+                 image_keys: List[str]="image",
+                 caption_keys: List[str]=None,
+                 output_idxs: List[int]=None,
+                 log_frequency=5):
+        self.image_keys = image_keys
+        self.output_idxs = output_idxs
+        self.log_frequency = log_frequency
+
+    def log_image(self,
+                  trainer: Trainer, 
+                  key: str, 
+                  images: List[torch.Tensor], 
+                  caption: List[str]=None):
+        trainer.logger.log_image(
+            key=key, 
+            images=images, 
+            caption=caption)
+
+    def on_validation_batch_end(self,
+                                trainer: Trainer, 
+                                pl_module: LightningModule, 
+                                outputs: Tuple[Any], 
+                                batch: Dict[str,Any], 
+                                batch_idx: int, 
+                                dataloader_idx: int=0):
+        if batch_idx % self.log_frequency == 0:
+            if self.image_keys is not None:
+                pass
+            if self.output_idxs is not None:
+                pass
 
 def allocated_memory_per_gpu()->Dict[int,int]:
     """
