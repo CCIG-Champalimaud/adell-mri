@@ -15,13 +15,12 @@ def sin_cos_encoding(t:int, channels:int, dev:str="cpu"):
     return pos_enc
 
 class DiffusionUNet(UNet):
-    # TODO: embed timestep t
-    # notes: embedding timestep t with positional harmonic embedding (similar/identical
-    # to what is done for ViT). This creates a vector which can be multiplied with channels
-    # at different U-Net stages _after_ a linear operation (showing SiLU + Linear)
-    #
-    # notes: for label conditioning with timestep embedding: to condition do t = y + t
-    # source: https://github.com/tcapelle/Diffusion-Models-pytorch/blob/main/modules.py#L8d2
+    """
+    U-Net for diffusion models 
+
+    Args:
+        UNet (_type_): _description_
+    """
     def __init__(self,
                  t_dim:int=256,
                  classifier_free_guidance:bool=False,
@@ -93,22 +92,22 @@ class DiffusionUNet(UNet):
         Returns:
             torch.Tensor
         """
-
+        
+        if len(t.shape) == 1:
+            t = t[:,None]
         t = sin_cos_encoding(t,self.t_dim,dev=X.device)
         if cls is not None:
             if self.classifier_free_guidance == False:
                 raise Exception(
                     "cls can only be defined if classifier_free_guidance is \
                         True in the constructor")
-            print(cls.shape)
             cls = self.embedding(cls.long())
-            print(cls.shape,t.shape)
             t = t + cls
-            print(t.shape)
         encoding_out = []
         curr = X
         for (op,op_ds),eca in zip(self.encoding_operations,self.encoder_eca):
-            curr = eca(op(curr),t)
+            curr = op(curr)
+            curr = eca(curr,t)
             encoding_out.append(curr)
             curr = op_ds(curr)
 
