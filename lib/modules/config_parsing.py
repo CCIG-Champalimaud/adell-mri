@@ -108,3 +108,25 @@ def parse_config_2d_classifier_3d(config_file:str,
         if k not in ["norm_fn","act_fn"]}
 
     return network_config,network_config_correct
+
+def parse_config_diffusion_unet(config_file,n_keys,n_classes):
+    with open(config_file,'r') as o:
+        network_config = yaml.safe_load(o)
+
+    if "activation_fn" in network_config:
+        network_config["activation_fn"] = activation_factory[
+            network_config["activation_fn"]]
+
+    network_config["classifier_classes"] = n_classes
+    network_config["classifier_free_guidance"] = n_classes is not None
+
+    if "spatial_dimensions" not in network_config:
+        network_config["spatial_dimensions"] = 3
+
+    if "batch_size" not in network_config:
+        network_config["batch_size"] = 1
+    
+    network_config["n_channels"] = n_keys * network_config["n_channels"]
+    if "loss_fn" in network_config:
+        del network_config["loss_fn"]
+    return network_config

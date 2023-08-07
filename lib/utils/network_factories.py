@@ -28,8 +28,11 @@ from lib.modules.self_supervised.pl import (
     SelfSLResNetPL,SelfSLUNetPL,
     SelfSLConvNeXtPL,IJEPAPL,
     ConvNeXt,ResNet,UNet,IJEPA)
+# diffusion
+from lib.modules.diffusion.pl import DiffusionUNetPL
+from lib.modules.diffusion.diffusion_process import Diffusion
 
-from typing import Dict,Any,List,Callable
+from typing import Dict,Any,List,Callable,Tuple,Union
 
 def get_classification_network(net_type:str,
                                network_config:Dict[str,Any],
@@ -377,3 +380,26 @@ def get_ssl_network_no_pl(ssl_method:str,
             ssl = ResNet(**network_config_correct)
 
     return ssl
+
+def get_generative_network(
+        network_config:Dict[str,Any],
+        label_key:str,
+        train_loader_call:Callable,
+        max_epochs:int,
+        warmup_steps:int,
+        start_decay:int,
+        size:Union[Tuple[int,int],Tuple[int,int,int]])->torch.nn.Module:
+    diffusion_process = Diffusion(250,beta_end=0.1,img_size=size)
+    boilerplate_args = {
+        "training_dataloader_call":train_loader_call,
+        "image_key":"image",
+        "label_key":label_key,
+        "n_epochs":max_epochs,
+        "warmup_steps":warmup_steps,
+        "start_decay":start_decay}
+    network = DiffusionUNetPL(
+        diffusion_process=diffusion_process,
+        **boilerplate_args,
+        **network_config)
+    
+    return network

@@ -351,6 +351,58 @@ def get_transforms_classification(x,
                     output_keys={label_key:"label"}))
     return transforms
 
+def get_pre_transforms_generation(keys,
+                                  target_spacing,
+                                  crop_size,
+                                  pad_size,
+                                  target_size=None):
+    transforms = [
+        monai.transforms.LoadImaged(keys,ensure_channel_first=True),
+        monai.transforms.Orientationd(keys,"RAS")]
+    transforms.append(
+        monai.transforms.ScaleIntensityd(keys,0,1))
+    if target_spacing is not None:
+        transforms.extend(
+            [   
+                monai.transforms.Spacingd(
+                    keys,pixdim=target_spacing,dtype=torch.float32),
+            ])
+    if target_size is not None:
+        transforms.append(
+            monai.transforms.Resized(keys=keys,spatial_size=target_size))
+    if pad_size is not None:
+        transforms.append(
+            monai.transforms.SpatialPadd(
+                keys,[int(j) for j in pad_size]))
+    # initial crop with margin allows for rotation transforms to not create
+    # black pixels around the image (these transforms do not need to applied
+    # to the whole image)
+    if crop_size is not None:
+        transforms.append(
+            monai.transforms.CenterSpatialCropd(keys,crop_size))
+    transforms.append(monai.transforms.EnsureTyped(keys))
+    return transforms
+
+def get_post_transforms_generation(keys,
+                                   possible_labels=None,
+                                   positive_labels=None,
+                                   label_groups=None,
+                                   label_key=None,
+                                   label_mode=None):
+    transforms = []
+    transforms.append(
+        monai.transforms.ConcatItemsd(keys,"image"))
+    if isinstance(positive_labels,int):
+        positive_labels = [positive_labels]
+    if label_key is not None:
+        transforms.append(
+            LabelOperatord(
+                [label_key],possible_labels,
+                mode=label_mode,positive_labels=positive_labels,
+                label_groups=label_groups,
+                output_keys={label_key:"label"}))
+    return transforms
+
 def get_pre_transforms_ssl(all_keys:List[str],
                            copied_keys:List[str],
                            adc_keys:List[str],
