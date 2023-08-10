@@ -30,7 +30,8 @@ def get_class_weights(class_weights:List[Union[float,str]],
                       n_classes:int,
                       classes:List[Any],
                       positive_labels:List[Any],
-                      possible_labels:List[Any])->List[float]:
+                      possible_labels:List[Any],
+                      label_groups:List[List[Any]]=None)->List[float]:
     if class_weights is not None:
         if class_weights[0] == "adaptive":
             if n_classes == 2:
@@ -44,6 +45,13 @@ def get_class_weights(class_weights:List[Union[float,str]],
                 pos = {k:0 for k in possible_labels}
                 for c in classes:
                     pos[c] += 1
+                if label_groups is not None:
+                    new_pos = {i:0 for i in range(len(label_groups))}
+                    for i in range(len(label_groups)):
+                        label_group = label_groups[i]
+                        for label in label_group:
+                            new_pos[i] += pos[label]
+                    pos = new_pos
                 pos = np.array([pos[k] for k in pos])
                 class_weights = (1 / pos) * (len(classes) / 2.0)
         else:
