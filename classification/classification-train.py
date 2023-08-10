@@ -495,7 +495,8 @@ if __name__ == "__main__":
                                           classes=classes,
                                           n_classes=n_classes,
                                           positive_labels=args.positive_labels,
-                                          possible_labels=args.possible_labels)
+                                          possible_labels=args.possible_labels,
+                                          label_groups=label_groups)
         if class_weights is not None:
             class_weights = torch.as_tensor(
                 np.array(class_weights),device=args.dev.split(":")[0],
