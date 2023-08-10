@@ -40,6 +40,15 @@ def parse_config_cat(config_file):
         network_config = yaml.safe_load(o)
     return network_config
 
+def parse_config_ensemble(config_file:str,n_classes:int):
+    with open(config_file,'r') as o:
+        network_config = yaml.safe_load(o)
+    
+    if "head_adn_fn" in network_config:
+        network_config["head_adn_fn"] = get_adn_fn(
+            spatial_dim=1,**network_config["head_adn_fn"])
+    return network_config
+
 def parse_config_ssl(config_file:str,dropout_param:float,n_keys:int,
                      is_ijepa=False):
     with open(config_file,'r') as o:
