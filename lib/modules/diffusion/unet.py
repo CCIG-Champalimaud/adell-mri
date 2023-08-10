@@ -1,18 +1,24 @@
-import torch
+import math
 import numpy as np
+import torch
 
 from ..layers.class_attention import EfficientConditioningAttentionBlock
 from ..segmentation.unet import UNet,crop_to_size
 
-def sin_cos_encoding(t:int, channels:int, dev:str="cpu"):
-    inv_freq = 1.0 / (
-        10000
-        ** (torch.arange(0, channels, 2, device=dev).float() / channels)
-    )
-    pos_enc_a = torch.sin(t.repeat(1, channels // 2) * inv_freq)
-    pos_enc_b = torch.cos(t.repeat(1, channels // 2) * inv_freq)
-    pos_enc = torch.cat([pos_enc_a, pos_enc_b], dim=-1)
-    return pos_enc
+def get_timestep_embedding(t: int, channels: int, 
+                           max_period: int = 10000) -> torch.Tensor:
+    exponent = -math.log(max_period) * torch.arange(
+        start=0, end=channels // 2, dtype=torch.float32, device=t.device)
+    freqs = torch.exp(exponent / (channels // 2))
+
+    args = t[:, None].float() * freqs[None, :]
+    embedding = torch.cat([torch.cos(args), torch.sin(args)], dim=-1)
+
+    # zero pad
+    if channels % 2 == 1:
+        embedding = torch.nn.functional.pad(embedding, (0, 1, 0, 0))
+
+    return embedding
 
 class DiffusionUNet(UNet):
     """
@@ -49,13 +55,13 @@ class DiffusionUNet(UNet):
         else:
             self.embedding = None
         self.encoder_eca = torch.nn.ModuleList([
-            eca_op(self.t_dim,d,op_type="linear") 
+            eca_op(self.t_dim,d,op_type="linear")
             for d in self.depth])
         self.decoder_eca = torch.nn.ModuleList([
-            eca_op(self.t_dim,d,op_type="linear") 
+            eca_op(self.t_dim,d,op_type="linear")
             for d in self.depth[:-1][::-1]])
         self.link_eca = torch.nn.ModuleList([
-            eca_op(self.t_dim,d,op_type="linear") 
+            eca_op(self.t_dim,d,op_type="linear")
             for d in self.depth[:-1][::-1]])
 
     def get_final_layer(self,d:int)->torch.nn.Module:
@@ -75,8 +81,7 @@ class DiffusionUNet(UNet):
         return torch.nn.Sequential(
             op(d,d,3,padding=1),
             self.adn_fn(d),
-            op(d,1,1),
-            torch.nn.Sigmoid())
+            op(d,self.n_channels,1))
 
     def forward(self,
                 X:torch.Tensor,
@@ -93,9 +98,10 @@ class DiffusionUNet(UNet):
             torch.Tensor
         """
         
+        t = t.to(X.device)
         if len(t.shape) == 1:
             t = t[:,None]
-        t = sin_cos_encoding(t,self.t_dim,dev=X.device)
+        t = get_timestep_embedding(t,self.t_dim)
         if cls is not None:
             if self.classifier_free_guidance == False:
                 raise Exception(

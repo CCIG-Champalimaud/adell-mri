@@ -32,6 +32,7 @@ class DiffusionUNetPL(DiffusionUNet,pl.LightningModule):
         self.learning_rate = learning_rate
         self.weight_decay = weight_decay
 
+        self.noise_steps = self.diffusion_process.noise_steps
         self.loss_fn = torch.nn.MSELoss()
 
     def calculate_loss(self,prediction, epsilon):
@@ -42,9 +43,9 @@ class DiffusionUNetPL(DiffusionUNet,pl.LightningModule):
         if cls is not None:
             cls = torch.round(cls)
         noisy_image,epsilon = self.diffusion_process.noise_images(x,t)
-        output = self.forward(X=noisy_image,t=t,cls=cls)
+        output = self.forward(X=noisy_image,t=t / self.noise_steps,cls=cls)
         loss = self.calculate_loss(output,epsilon)
-        return loss
+        return loss,output,noisy_image
 
     def unpack_batch(self,batch):
         x = batch[self.image_key]
@@ -57,21 +58,21 @@ class DiffusionUNetPL(DiffusionUNet,pl.LightningModule):
     def training_step(self,batch:dict,batch_idx:int):
         x,cls = self.unpack_batch(batch)
         t = self.diffusion_process.sample_timesteps(x.shape[0]).to(x.device)
-        loss = self.step(x,t,cls)
+        loss,output,noisy_image = self.step(x,t,cls)
         self.log("loss",loss,on_step=True,prog_bar=True)
         return loss
 
     def validation_step(self,batch:dict,batch_idx:int):
         x,cls = self.unpack_batch(batch)
         t = self.diffusion_process.sample_timesteps(x.shape[0]).to(x.device)
-        loss = self.step(x,t,cls)
+        loss,output,noisy_image = self.step(x,t,cls)
         self.log("val_loss",loss,on_epoch=True,prog_bar=True)
-        return loss
+        return loss, output, noisy_image
 
     def test_step(self,batch:dict,batch_idx:int):
         x,cls = self.unpack_batch(batch)
         t = self.diffusion_process.sample_timesteps(x.shape[0]).to(x.device)
-        loss = self.step(x,t,cls)
+        loss,output,noisy_image = self.step(x,t,cls)
         self.log("test_loss",loss)
         return loss
     

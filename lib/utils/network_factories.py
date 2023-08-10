@@ -389,7 +389,10 @@ def get_generative_network(
         warmup_steps:int,
         start_decay:int,
         size:Union[Tuple[int,int],Tuple[int,int,int]])->torch.nn.Module:
-    diffusion_process = Diffusion(250,beta_end=0.1,img_size=size)
+    diffusion_process = Diffusion(1000,
+                                  beta_end=0.1,
+                                  img_size=size,
+                                  scheduler="cosine")
     boilerplate_args = {
         "training_dataloader_call":train_loader_call,
         "image_key":"image",
