@@ -28,7 +28,8 @@ from lib.utils.dataset_filters import (
 from lib.monai_transforms import get_transforms_classification as get_transforms
 from lib.monai_transforms import get_augmentations_class as get_augmentations
 from lib.modules.losses import OrdinalSigmoidalLoss
-from lib.modules.config_parsing import parse_config_unet,parse_config_cat
+from lib.modules.config_parsing import (
+    parse_config_unet,parse_config_cat,parse_config_ensemble)
 from lib.modules.classification.pl import GenericEnsemblePL
 from lib.utils.network_factories import get_classification_network
 from lib.utils.parser import get_params,merge_args,parse_ids
@@ -73,6 +74,10 @@ if __name__ == "__main__":
     parser.add_argument(
         '--positive_labels',dest='positive_labels',type=str,nargs='+',
         help="Labels that should be considered positive (binarizes labels)",
+        default=None)
+    parser.add_argument(
+        '--label_groups',dest='label_groups',type=str,nargs='+',
+        help="Label groups for classification.",
         default=None)
     parser.add_argument(
         '--cache_rate',dest='cache_rate',type=float,
@@ -310,10 +315,16 @@ if __name__ == "__main__":
         if isinstance(C,list):
             C = max(C)
         all_classes.append(str(C))
-    if args.positive_labels is None:
+    label_groups = None
+    if args.label_groups is not None:
+        n_classes = len(args.label_groups)
+        label_groups = [label_group.split(",")
+                        for label_group in args.label_groups]
+    elif args.positive_labels is None:
         n_classes = len(args.possible_labels)
     else:
         n_classes = 2
+
 
     if len(data_dict) == 0:
         raise Exception(
@@ -330,12 +341,14 @@ if __name__ == "__main__":
     t2_keys = [k for k in t2_keys if k in keys]
 
 
-    ensemble_config = parse_config_cat(args.ensemble_config_file)
+    ensemble_config = parse_config_ensemble(
+        args.ensemble_config_file,n_classes)
+    
     network_configs = [
         parse_config_unet(config_file,len(keys),n_classes) 
         if net_type == "unet"
         else parse_config_cat(config_file)
-        for net_type,config_file in zip(config_files,args.net_types)]
+        for config_file,net_type in zip(config_files,args.net_types)]
     
     if args.batch_size is not None:
         ensemble_config["batch_size"] = args.batch_size
@@ -347,7 +360,7 @@ if __name__ == "__main__":
     all_pids = [k for k in data_dict]
 
     print("Setting up transforms...")
-    label_mode = "binary" if n_classes == 2 else "cat"
+    label_mode = "binary" if n_classes == 2 and label_groups is None else "cat"
     transform_arguments = {
         "keys":keys,
         "clinical_feature_keys":clinical_feature_keys,
@@ -357,6 +370,7 @@ if __name__ == "__main__":
         "pad_size":args.pad_size,
         "possible_labels":args.possible_labels,
         "positive_labels":args.positive_labels,
+        "label_groups":label_groups,
         "label_key":args.label_keys,
         "label_mode":label_mode}
     augment_arguments = {
@@ -493,9 +507,11 @@ if __name__ == "__main__":
         
         # get class weights if necessary
         class_weights = get_class_weights(args.class_weights,
+                                          classes=classes,
                                           n_classes=n_classes,
                                           positive_labels=args.positive_labels,
-                                          possible_labels=args.possible_labels)
+                                          possible_labels=args.possible_labels,
+                                          label_groups=label_groups)
         if class_weights is not None:
             class_weights = torch.as_tensor(
                 np.array(class_weights),device=args.dev.split(":")[0],
@@ -504,10 +520,10 @@ if __name__ == "__main__":
         print("Initializing loss with class_weights: {}".format(class_weights))
         if n_classes == 2:
             ensemble_config["loss_fn"] = torch.nn.BCEWithLogitsLoss(class_weights)
-        elif args.net_type == "ord":
+        elif args.net_types[0] == "ord":
             ensemble_config["loss_fn"] = OrdinalSigmoidalLoss(class_weights,n_classes)
         else:
-            ensemble_config["loss_fn"] = torch.nn.CrossEntropy(class_weights)
+            ensemble_config["loss_fn"] = torch.nn.CrossEntropyLoss(class_weights)
         
         n_workers = args.n_workers // n_devices
         bs = ensemble_config["batch_size"]
@@ -554,7 +570,7 @@ if __name__ == "__main__":
             label_smoothing=args.label_smoothing,
             mixup_alpha=args.mixup_alpha,
             partial_mixup=args.partial_mixup)
-            for net_type,network_config in zip(args.net_types,config_files)]
+            for net_type,network_config in zip(args.net_types,network_configs)]
 
         if args.checkpoint is not None:
             if len(args.checkpoint) > 1:
@@ -579,10 +595,10 @@ if __name__ == "__main__":
                     set_classification_layer_bias(pos,neg,network)
         
         boilerplate_args = {
-            "image_key":"image",
+            "image_keys":["image"],
             "label_key":"label"}
         ensemble = GenericEnsemblePL(
-            image_key="image",
+            image_keys=["image"],
             label_key="label",
             networks=networks,
             n_classes=n_classes,
