@@ -8,7 +8,9 @@ from lib.modules.diffusion.unet import DiffusionUNet
 
 h,w,d,c = 32,32,20,1
 
-depths = [[16,32,64],[16,32,64,128]]
+depths = [
+    [16,32,64],
+    [16,32,64,128]]
 bs = 2
 spatial_dims = [2,3]
 t = torch.Tensor([4,2])

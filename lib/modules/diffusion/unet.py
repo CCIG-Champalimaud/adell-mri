@@ -107,7 +107,7 @@ class DiffusionUNet(UNet):
                 raise Exception(
                     "cls can only be defined if classifier_free_guidance is \
                         True in the constructor")
-            cls = self.embedding(cls.long())
+            cls = self.embedding(cls.long())[:,None,:]
             t = t + cls
         encoding_out = []
         curr = X

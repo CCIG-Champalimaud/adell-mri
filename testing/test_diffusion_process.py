@@ -16,10 +16,13 @@ def test_diffusion_process(ndim):
     if ndim == 3:
         image_size = [64,64,32]
         sh = [1,1,64,64,32]
-    diff_proc = Diffusion(10,1e-4,1e-2,image_size,"cpu")
+    diff_proc = Diffusion(10,1e-4,1e-2,image_size)
 
     image = torch.rand(*sh)
-    noise_image,epsilon = diff_proc.noise_images(image,0)
+    epsilon = torch.randn_like(image)
+    t = diff_proc.sample_timesteps(image.shape[0])
+    noise_image,epsilon = diff_proc.noise_images(
+        image,epsilon=epsilon,t=t)
     assert noise_image.shape == image.shape
 
     model = DiffusionUNet(n_channels=1,padding=1,
