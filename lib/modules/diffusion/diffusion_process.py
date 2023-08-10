@@ -201,11 +201,11 @@ class Diffusion:
                           t: int,
                           eta: float=1.0):
         sh = self.get_shape(x)
+        alpha_bar = self.alpha_bar[t].reshape(sh)
         if t > 0:
             alpha_bar_prev = self.alpha_bar[t-1]
         else:
             alpha_bar_prev = torch.ones_like(alpha_bar)
-        alpha_bar = self.alpha_bar[t].reshape(sh)
         alpha_bar_prev = alpha_bar_prev.reshape(sh)
         beta_bar = 1. - alpha_bar
         x_prev = (x - torch.sqrt(beta_bar) * epsilon) / torch.sqrt(alpha_bar)
