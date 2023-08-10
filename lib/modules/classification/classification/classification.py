@@ -2,6 +2,7 @@ import time
 import numpy as np
 import torch
 import torch.nn.functional as F
+from monai.data.meta_tensor import MetaTensor
 
 from ....custom_types import TensorList
 from ...layers.adn_fn import ActDropNorm,get_adn_fn
@@ -467,8 +468,8 @@ class GenericEnsemble(torch.nn.Module):
             nc = self.n_classes
         self.prediction_head = MLP(
             self.n_features_final,nc,
-            self.head_structure,
-            self.head_adn_fn)
+            structure=self.head_structure,
+            adn_fn=self.head_adn_fn)
 
     def initialize_sae_if_necessary(self):
         if self.sae is True:
@@ -490,8 +491,10 @@ class GenericEnsemble(torch.nn.Module):
 
     def forward(self,X:Union[torch.Tensor,List[torch.Tensor]],
                 return_features:bool=False)->torch.Tensor:
-        if isinstance(X,torch.Tensor):
-            X = [X for _ in self.networks]
+        if isinstance(X,(torch.Tensor)):
+            X = [X]
+        if len(X) == 1:
+            X = [X[0] for _ in self.networks]
         outputs = []
         for x,network,pp in zip(X,self.networks,self.preproc_method):
             if hasattr(network,"forward_features"):
