@@ -502,7 +502,8 @@ class GenericEnsemble(torch.nn.Module):
             else:
                 out = network(x)
             out = pp(out)
-            out = out.flatten(start_dim=2).max(-1).values
+            if len(out.shape) > 2:
+                out = out.flatten(start_dim=2).max(-1).values
             outputs.append(out)
         outputs = torch.concat(outputs,1)
         if return_features == True:
