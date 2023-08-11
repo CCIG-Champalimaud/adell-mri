@@ -638,7 +638,7 @@ if __name__ == "__main__":
 
         # assessing performance on validation set
         print("Validating...")
-        
+
         if ckpt is True:
             ckpt_list = ["last","best"]
         else:
@@ -648,19 +648,18 @@ if __name__ == "__main__":
                 ensemble,validation_loader,ckpt_path=ckpt_key)[0]
             for k in test_metrics:
                 out = test_metrics[k]
-                if n_classes == 2:
-                    try:
-                        value = float(out.detach().numpy())
-                    except Exception:
-                        value = float(out)
-                    x = "{},{},{},{},{}".format(k,ckpt_key,val_fold,0,value)
-                    output_file.write(x+'\n')
-                    print(x)
+                try:
+                    value = float(out.detach().numpy())
+                except Exception:
+                    value = float(out)
+                if n_classes > 2:
+                    k = k.split("_")
+                    k,idx = "_".join(k[:-1]),k[-1]
                 else:
-                    for i,v in enumerate(out):
-                        x = "{},{},{},{},{}".format(k,ckpt_key,val_fold,i,v)
-                        output_file.write(x+'\n')
-                        print(x)
+                    idx = 0
+                x = "{},{},{},{},{}".format(k,ckpt_key,val_fold,idx,value)
+                output_file.write(x+'\n')
+                print(x)
         
         if args.delete_checkpoints == True:
             delete_checkpoints(trainer)
