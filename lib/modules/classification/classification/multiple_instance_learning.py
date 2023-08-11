@@ -169,10 +169,13 @@ class MultipleInstanceClassifier(torch.nn.Module):
 
     def init_classification_module(self):
         n_classes_out = 1 if self.n_classes == 2 else self.n_classes
-        self.feature_extraction = MLP(
-            self.module_out_dim,self.feat_extraction_structure[-1],
-            structure=self.feat_extraction_structure[:-1],
-            adn_fn=self.adn_fn)
+        self.feature_extraction = torch.nn.Sequential(
+            torch.nn.LayerNorm(self.module_out_dim),
+            MLP(self.module_out_dim,self.feat_extraction_structure[-1],
+                structure=self.feat_extraction_structure[:-1],
+                adn_fn=self.adn_fn),
+            torch.nn.LayerNorm(self.feat_extraction_structure[-1]),
+            torch.nn.GELU())
         if self.classification_mode in ["mean","max"]:
             self.final_prediction = MLP(
                 self.feat_extraction_structure[-1],n_classes_out,
@@ -313,11 +316,13 @@ class TransformableTransformer(torch.nn.Module):
         kwargs["attention_dim"] = self.transformer_input_dim
         kwargs["hidden_dim"] = self.transformer_input_dim
         self.tbs = TransformerBlockStack(*args,**kwargs)
-        self.classification_module = MLP(
-            self.transformer_input_dim,
-            1 if self.n_classes == 2 else self.n_classes,
-            structure=self.classification_structure,
-            adn_fn=self.classification_adn_fn)
+        self.classification_module = torch.nn.Sequential(
+            torch.nn.LayerNorm(self.transformer_input_dim),
+            torch.nn.GELU(),
+            MLP(self.transformer_input_dim,
+                1 if self.n_classes == 2 else self.n_classes,
+                structure=self.classification_structure,
+                adn_fn=self.classification_adn_fn))
         self.initialize_classification_token()
         self.init_positional_embedding()
     
