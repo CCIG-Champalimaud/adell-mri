@@ -72,12 +72,18 @@ def get_metric_dict(nc:int,
             "CalErr": lambda: torchmetrics.CalibrationError(task="binary")}
     else:
         md = {
-            "Rec":lambda: torchmetrics.Recall(nc,average="macro"),
-            "Spe":lambda: torchmetrics.Specificity(),
-            "Pr":lambda: torchmetrics.Precision(nc,average="macro"),
-            "F1":lambda: torchmetrics.FBetaScore(nc,average="macro"),
-            "AUC":lambda: torchmetrics.AUROC("multilabel"),
-            "CalErr": lambda: torchmetrics.CalibrationError(task="multilabel")}
+            "Rec":lambda: torchmetrics.Recall(
+                task='multiclass',num_classes=nc,average="macro"),
+            "Spe":lambda: torchmetrics.Specificity(
+                task='multiclass',num_classes=nc,average="macro"),
+            "Pr":lambda: torchmetrics.Precision(
+                task='multiclass',num_classes=nc,average="macro"),
+            "F1":lambda: torchmetrics.FBetaScore(
+                task='multiclass',num_classes=nc,average="macro"),
+            "AUC":lambda: torchmetrics.AUROC(
+                task="multiclass",num_classes=nc),
+            "CalErr": lambda: torchmetrics.CalibrationError(
+                task="multiclass",num_classes=nc)}
     if metric_keys is None:
         metric_keys = list(md.keys())
     for k in metric_keys:
@@ -202,7 +208,7 @@ class ClassPLABC(pl.LightningModule,ABC):
 
     def update_metrics(self,prediction,y,metrics):
         if self.n_classes > 2:
-            prediction = torch.softmax(prediction,1).to(torch.int64)
+            prediction = torch.softmax(prediction,1)
         else:
             prediction = torch.sigmoid(prediction)
         if len(y.shape) > 1:
@@ -308,6 +314,9 @@ class ClassNetPL(ClassPLABC):
         
         self.setup_network()
         self.setup_metrics()
+
+        if hasattr(self.network,"forward_features"):
+            self.forward_features = self.network.forward_features
            
     def setup_network(self):
         if self.net_type == "cat":
@@ -605,13 +614,13 @@ class UNetEncoderPL(UNetEncoder,ClassPLABC):
         
         self.setup_metrics()
 
-class GenericEnsemblePL(GenericEnsemble,pl.LightningModule):
+class GenericEnsemblePL(GenericEnsemble,ClassPLABC):
     """
     Ensemble classification network for PL.
     """
     def __init__(
         self,
-        image_keys: List[str]="image",
+        image_keys: List[str]=["image"],
         label_key: str="label",
         learning_rate: float=0.001,
         batch_size: int=4,
@@ -687,7 +696,7 @@ class GenericEnsemblePL(GenericEnsemble,pl.LightningModule):
         loss = self.calculate_loss(prediction,y)
         self.log("val_loss",loss,on_epoch=True,
                  on_step=False,prog_bar=True,
-                 batch_size=x.shape[0])        
+                 batch_size=x[0].shape[0])        
         self.update_metrics(prediction,y,self.val_metrics)
         return loss
 

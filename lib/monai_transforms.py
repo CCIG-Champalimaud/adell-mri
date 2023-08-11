@@ -356,11 +356,14 @@ def get_pre_transforms_generation(keys,
                                   crop_size,
                                   pad_size,
                                   target_size=None):
+    def normalize_image(image: torch.Tensor):
+        std = torch.std(image)
+        if std > 0:
+            return (image - image.mean()) / torch.std(image)
+        return image - image.mean()
     transforms = [
         monai.transforms.LoadImaged(keys,ensure_channel_first=True),
         monai.transforms.Orientationd(keys,"RAS")]
-    transforms.append(
-        monai.transforms.ScaleIntensityd(keys,0,1))
     if target_spacing is not None:
         transforms.extend(
             [   
@@ -370,13 +373,14 @@ def get_pre_transforms_generation(keys,
     if target_size is not None:
         transforms.append(
             monai.transforms.Resized(keys=keys,spatial_size=target_size))
+    transforms.append(
+        monai.transforms.ScaleIntensityd(keys,0,1))
+    # transforms.append(
+    #    monai.transforms.Lambdad(keys,normalize_image))
     if pad_size is not None:
         transforms.append(
             monai.transforms.SpatialPadd(
                 keys,[int(j) for j in pad_size]))
-    # initial crop with margin allows for rotation transforms to not create
-    # black pixels around the image (these transforms do not need to applied
-    # to the whole image)
     if crop_size is not None:
         transforms.append(
             monai.transforms.CenterSpatialCropd(keys,crop_size))

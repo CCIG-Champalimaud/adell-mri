@@ -8,6 +8,7 @@ import atexit
 import numpy as np
 import torch
 import wandb
+from PIL import Image
 from lightning import Trainer
 from lightning.pytorch import LightningModule
 from lightning.pytorch.callbacks import Callback
@@ -16,26 +17,52 @@ from lightning.pytorch.callbacks.model_checkpoint import ModelCheckpoint
 
 from typing import List, Union, Tuple, Any, Dict
 
+def coerce_to_uint8(x: np.ndarray):
+    x = (x - x.min()) / (x.max() - x.min()) * 255
+    return x.astype(np.uint8)
+
+def log_image(trainer: Trainer, 
+              key: str, 
+              images: List[torch.Tensor], 
+              slice_dim: int,
+              n_slices_out: int,
+              caption: List[str]=None):
+    images = images.detach().to("cpu")
+    if len(images.shape) == 5:
+        n_slices = images.shape[slice_dim]
+        slice_idxs = np.arange(0,n_slices,n_slices_out+2)[1:-1]
+        images = torch.index_select(
+            images,
+            slice_dim,
+            torch.as_tensor(slice_idxs))
+        images = torch.split(images,1,dim=slice_dim)
+        images = torch.cat(images,-2).squeeze(-1)
+    images = torch.split(images,1,0)
+    images = [x.squeeze(0).permute(1,2,0).numpy()
+              for x in images]
+    images = [coerce_to_uint8(x).squeeze(-1) for x in images]
+    images = [Image.fromarray(x) for x in images]
+    
+    if caption is not None:
+        trainer.logger.log_image(key=key,images=images,caption=caption)
+    else:
+        trainer.logger.log_image(key=key,images=images)
+
 class LogImage(Callback):
     def __init__(self,
                  image_keys: List[str]="image",
                  caption_keys: List[str]=None,
                  output_idxs: List[int]=None,
-                 log_frequency=5):
+                 n_slices: int=1,
+                 slice_dim: int=4,
+                 log_frequency: int=5):
         self.image_keys = image_keys
+        self.caption_keys = caption_keys
         self.output_idxs = output_idxs
+        self.n_slices = n_slices
+        self.slice_dim = slice_dim
         self.log_frequency = log_frequency
-
-    def log_image(self,
-                  trainer: Trainer, 
-                  key: str, 
-                  images: List[torch.Tensor], 
-                  caption: List[str]=None):
-        trainer.logger.log_image(
-            key=key, 
-            images=images, 
-            caption=caption)
-
+    
     def on_validation_batch_end(self,
                                 trainer: Trainer, 
                                 pl_module: LightningModule, 
@@ -44,10 +71,52 @@ class LogImage(Callback):
                                 batch_idx: int, 
                                 dataloader_idx: int=0):
         if batch_idx % self.log_frequency == 0:
+            if self.caption_keys is not None:
+                captions = []
+                for key in self.caption_keys:
+                    for i in range(len(batch[key])):
+                        if len(captions) < i + 1:
+                            captions.append([])
+                        captions[i].append(f"{key}: {batch[key][i]}")
+                captions = [";".join(x) for x in captions]
+            else:
+                captions = None
             if self.image_keys is not None:
-                pass
+                for key in self.image_keys:
+                    log_image(trainer,
+                              key,
+                              batch[key],
+                              slice_dim=self.slice_dim,
+                              n_slices_out=self.n_slices,
+                              caption=captions)
             if self.output_idxs is not None:
-                pass
+                for idx in self.output_idxs:
+                    log_image(trainer,
+                              key,
+                              outputs[idx],
+                              slice_dim=self.slice_dim,
+                              n_slices_out=self.n_slices,
+                              caption=captions)
+
+class LogImageFromDiffusionProcess(Callback):
+    def __init__(self,
+                 n_slices: int=1,
+                 slice_dim: int=4,
+                 n_images: int=16):
+        self.n_slices = n_slices
+        self.slice_dim = slice_dim
+        self.n_images = n_images
+    
+    def on_validation_epoch_end(self,
+                                trainer: Trainer, 
+                                pl_module: LightningModule):
+        images = pl_module.diffusion_process.sample(
+            pl_module,n=self.n_images)
+        log_image(trainer,
+                  key="Generated images",
+                  images=images,
+                  slice_dim=self.slice_dim,
+                  n_slices_out=self.slice_dim)
 
 def allocated_memory_per_gpu()->Dict[int,int]:
     """

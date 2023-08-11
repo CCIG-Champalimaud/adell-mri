@@ -281,7 +281,7 @@ class RandomSlices(monai.transforms.RandomizableTransform):
             c_prop = c_sum/total_class + self.base
             slice_weight = c_prop.mean(0)
         else:
-            slice_weight = torch.ones([X[self.label_key][0]].shape[-1])
+            slice_weight = torch.ones(X[self.keys[0]].shape[-1])
         slice_idxs = torch.multinomial(slice_weight,self.n,generator=self.g)
         for k in self.keys:
             X[k] = X[k][...,slice_idxs].swapaxes(0,-1)

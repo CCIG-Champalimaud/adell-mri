@@ -11,12 +11,16 @@ from lightning.pytorch.callbacks import RichProgressBar
 import sys
 sys.path.append(r"..")
 from lib.utils import (
-    safe_collate,conditional_parameter_freezing)
+    safe_collate,
+    conditional_parameter_freezing,
+    RandomSlices,
+    collate_last_slice)
 from lib.utils.pl_utils import (
     get_ckpt_callback,
     get_logger,
     get_devices,
-    delete_checkpoints)
+    delete_checkpoints,
+    LogImageFromDiffusionProcess)
 from lib.utils.torch_utils import load_checkpoint_to_model
 from lib.utils.dataset_filters import (
     filter_dictionary_with_filters,
@@ -119,6 +123,9 @@ if __name__ == "__main__":
     parser.add_argument(
         '--max_epochs',dest="max_epochs",
         help="Maximum number of training epochs",default=100,type=int)
+    parser.add_argument(
+        '--check_val_every_n_epoch',dest="check_val_every_n_epoch",
+        help="Validation check frequency",default=5,type=int)
     parser.add_argument(
         '--n_folds',dest="n_folds",
         help="Number of validation folds",default=5,type=int)
@@ -310,10 +317,9 @@ if __name__ == "__main__":
         "label_key":label_keys,
         "label_mode":label_mode}
 
-    transforms_train = monai.transforms.Compose([
+    transforms_train = [
         *get_pre_transforms(**transform_pre_arguments),
-        *get_post_transforms(**transform_post_arguments)])
-    transforms_train.set_random_state(args.seed)
+        *get_post_transforms(**transform_post_arguments)]
     
     train_list = [data_dict[pid] for pid in all_pids]
     
@@ -332,11 +338,6 @@ if __name__ == "__main__":
     ckpt = ckpt_callback is not None
     if status == "finished":
         exit()
-    
-    train_dataset = monai.data.CacheDataset(
-        train_list,transforms_train,
-        cache_rate=args.cache_rate,
-        num_workers=args.n_workers)
 
     if label_keys is not None:
         classes = []
@@ -353,6 +354,20 @@ if __name__ == "__main__":
     
     # PL needs a little hint to detect GPUs.
     torch.ones([1]).to("cuda" if "cuda" in args.dev else "cpu")
+
+    if network_config["spatial_dimensions"] == 2:
+        transforms_train.append(
+            RandomSlices(["image"],None,n=2,base=0.05))
+        collate_fn = collate_last_slice
+    else:
+        collate_fn = safe_collate
+    transforms_train = monai.transforms.Compose(transforms_train)
+    transforms_train.set_random_state(args.seed)
+
+    train_dataset = monai.data.CacheDataset(
+        train_list,transforms_train,
+        cache_rate=args.cache_rate,
+        num_workers=args.n_workers)
         
     n_workers = args.n_workers // n_devices
     bs = network_config["batch_size"]
@@ -363,11 +378,12 @@ if __name__ == "__main__":
             f"Batch size changed from {bs} to {new_bs} (dataset too small)")
         bs = new_bs
         real_bs = bs * n_devices
+
     def train_loader_call():
         return monai.data.ThreadDataLoader(
             train_dataset,batch_size=bs,
             shuffle=True,num_workers=n_workers,generator=g,
-            collate_fn=safe_collate,pin_memory=True,
+            collate_fn=collate_fn,pin_memory=True,
             persistent_workers=args.n_workers>0,
             drop_last=True)
 
@@ -380,7 +396,7 @@ if __name__ == "__main__":
         max_epochs=args.max_epochs,
         warmup_steps=args.warmup_steps,
         start_decay=args.start_decay,
-        size=[int(x) for x in get_size(args.pad_size,args.crop_size)])
+        size=[int(x) for x in get_size(args.pad_size,args.crop_size)][:network_config["spatial_dimensions"]])
 
     if args.checkpoint is not None:
         checkpoint = args.checkpoint
@@ -399,6 +415,10 @@ if __name__ == "__main__":
     logger = get_logger(args.summary_name,args.summary_dir,
                         args.project_name,args.resume,
                         fold=0)
+    
+    if logger is not None:
+        callbacks.append(
+            LogImageFromDiffusionProcess(n_images=8))
             
     trainer = Trainer(
         accelerator=accelerator,
@@ -408,7 +428,7 @@ if __name__ == "__main__":
         gradient_clip_val=args.gradient_clip_val,
         strategy=strategy,
         accumulate_grad_batches=args.accumulate_grad_batches,
-        check_val_every_n_epoch=1,
+        check_val_every_n_epoch=args.check_val_every_n_epoch,
         deterministic="warn")
 
     trainer.fit(network,train_loader,train_loader,ckpt_path=ckpt_path)

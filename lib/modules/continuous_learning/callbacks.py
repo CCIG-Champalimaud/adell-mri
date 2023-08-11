@@ -1,6 +1,6 @@
 import lightning.pytorch as pl
 from lightning.pytorch import Callback
-from types import List,Union
+from typing import List,Union
 
 from .optim import EarlyStopper
 

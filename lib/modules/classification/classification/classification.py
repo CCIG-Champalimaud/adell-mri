@@ -2,6 +2,7 @@ import time
 import numpy as np
 import torch
 import torch.nn.functional as F
+from monai.data.meta_tensor import MetaTensor
 
 from ....custom_types import TensorList
 from ...layers.adn_fn import ActDropNorm,get_adn_fn
@@ -95,9 +96,9 @@ class VGG(torch.nn.Module):
         self.classification_structure = classification_structure
 
         self.conv1 = VGGConvolution3d(
-            self.in_channels, 64, batch_ensemble=batch_ensemble)
+            self.in_channels, 64)
         self.conv2 = VGGConvolution3d(
-            128, 128, batch_ensemble=batch_ensemble)
+            128, 128)
         self.conv3 = VGGConvolution3d(
             256, 256, batch_ensemble=batch_ensemble)
 
@@ -138,8 +139,8 @@ class VGG(torch.nn.Module):
         Returns:
             torch.Tensor: output (classification)
         """
-        X = self.conv1(X,batch_idx=batch_idx)
-        X = self.conv2(X,batch_idx=batch_idx)
+        X = self.conv1(X)
+        X = self.conv2(X)
         X = self.conv3(X,batch_idx=batch_idx)
         if return_features == True:
             return X
@@ -467,8 +468,8 @@ class GenericEnsemble(torch.nn.Module):
             nc = self.n_classes
         self.prediction_head = MLP(
             self.n_features_final,nc,
-            self.head_structure,
-            self.head_adn_fn)
+            structure=self.head_structure,
+            adn_fn=self.head_adn_fn)
 
     def initialize_sae_if_necessary(self):
         if self.sae is True:
@@ -490,8 +491,10 @@ class GenericEnsemble(torch.nn.Module):
 
     def forward(self,X:Union[torch.Tensor,List[torch.Tensor]],
                 return_features:bool=False)->torch.Tensor:
-        if isinstance(X,torch.Tensor):
-            X = [X for _ in self.networks]
+        if isinstance(X,(torch.Tensor)):
+            X = [X]
+        if len(X) == 1:
+            X = [X[0] for _ in self.networks]
         outputs = []
         for x,network,pp in zip(X,self.networks,self.preproc_method):
             if hasattr(network,"forward_features"):

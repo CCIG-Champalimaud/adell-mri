@@ -4,12 +4,46 @@ Diffusion classes to train diffusion models.
 Based on:
     https://github.com/tcapelle/Diffusion-Models-pytorch/blob/main/ddpm.py
     https://github.com/tcapelle/Diffusion-Models-pytorch/blob/main/ddpm_conditional.py
+    https://arxiv.org/abs/2305.03486
+    https://arxiv.org/pdf/2301.10972.pdf
+    https://huggingface.co/blog/annotated-diffusion
 """
 
+import numpy as np
 import torch
-from tqdm import tqdm
+from tqdm.auto import tqdm
 
 from typing import Union,Tuple,List
+
+def cosine_beta_schedule(timesteps: int, 
+                         beta_start: float=0.0001,
+                         beta_end: float=0.02,
+                         s: float=0.008):
+    steps = timesteps + 1
+    x = torch.linspace(0, timesteps, steps)
+    alphas_cumprod = torch.cos(((x / timesteps) + s) / (1 + s) * torch.pi * 0.5) ** 2
+    alphas_cumprod = alphas_cumprod / alphas_cumprod[0]
+    betas = 1 - (alphas_cumprod[1:] / alphas_cumprod[:-1])
+    return torch.clip(betas, 0.0001, 0.9999)
+
+def linear_beta_schedule(timesteps: int, 
+                         beta_start: float=0.0001, 
+                         beta_end: float=0.02,
+                         s: float=None):
+    return torch.linspace(beta_start, beta_end, timesteps)
+
+def quadratic_beta_schedule(timesteps: int, 
+                            beta_start: float=0.0001, 
+                            beta_end: float=0.02,
+                            s: float=None):
+    return torch.linspace(beta_start**0.5, beta_end**0.5, timesteps) ** 2
+
+def sigmoid_beta_schedule(timesteps: int, 
+                          beta_start: float=0.0001, 
+                          beta_end: float=0.02,
+                          s: float=None):
+    betas = torch.linspace(-3, 3, timesteps)
+    return torch.sigmoid(betas) * (beta_end - beta_start) + beta_start
 
 class Diffusion:
     """
@@ -19,10 +53,10 @@ class Diffusion:
 
         $\sqrt{\hat{\alpha}} * X + \sqrt{1 - \hat{alpha}} * \epsilon$,
 
-    where $\hat{\alpha}$ is the cummulative product of a linear space between
-    beta_start and beta_end at timestep $t$, and $\epsilon$ is a noise image.
-    In other words, the diffused image at timestep t is the weighted sum of that
-    same image and a noise vector of the same size.
+    where $\hat{\alpha}$ is the cummulative product of alpha at timestep $t$, 
+    and $\epsilon$ is a noise image. In other words, the diffused image at 
+    timestep t is the weighted sum of that same image and a noise vector of the
+    same size.
 
     To recover an image, a noise image is fed to a given model in ``sample``.
     This works by using a ``model`` to predict \epsilon and reverting the above
@@ -36,30 +70,50 @@ class Diffusion:
                  beta_start: float=1e-4,
                  beta_end: float=0.02,
                  img_size: Union[Tuple[int,int],Tuple[int,int,int]]=(256,256),
-                 device: str="cuda"):
+                 scheduler: str="cosine",
+                 step_key: str="ddpm",
+                 device: str="cuda",
+                 track_progress: bool=False):
         """
         Args:
             noise_steps (int, optional): number of steps in diffusion process. 
                 Defaults to 1000.
-            beta_start (float, optional): initial amount of noise. Defaults to
-                1e-4.
-            beta_end (float, optional): final amount of noise. Defaults to 
-                0.02.
+            beta_start (float, optional): initial amount of noise (only for 
+                linear schedule). Defaults to 1e-4.
+            beta_end (float, optional): final amount of noise (only for 
+                linear schedule). Defaults to 0.02.
             img_size (Union[Tuple[int,int],Tuple[int,int,int]], optional): size
                 of image. Defaults to (256,256).
+            scheduler (float, optional): alpha scheduler. Can be "linear", 
+                "quadratic", "sigmoid" or "cosine". Defaults to "cosine".
         """
         self.noise_steps = noise_steps
         self.beta_start = beta_start
         self.beta_end = beta_end
         self.img_size = img_size
+        self.scheduler = scheduler
+        self.step_key = step_key
+        self.track_progress = track_progress
 
         self.n_dim = len(img_size)
 
+        self.beta = self.get_noise_schedule()
+        self.alpha = 1 - self.beta
+        self.alpha_bar = torch.cumprod(self.alpha,0)
         self.check_arguments()
 
-        self.beta = self.prepare_noise_schedule()
-        self.alpha = 1. - self.beta
-        self.alpha_hat = torch.cumprod(self.alpha, dim=0)
+    def get_noise_schedule(self):
+        return self.schedulers[self.scheduler](self.noise_steps,
+                                               self.beta_start,
+                                               self.beta_end)
+
+    @property
+    def schedulers(self):
+        return {
+            "linear":linear_beta_schedule,
+            "quadratic":quadratic_beta_schedule,
+            "sigmoid":sigmoid_beta_schedule,
+            "cosine":cosine_beta_schedule}
 
     def check_arguments(self):
         """
@@ -79,18 +133,6 @@ class Diffusion:
             if any([isinstance(x,int) == False for x in self.img_size]) is True:
                 raise TypeError("img_size must be tuple of int")
 
-    def prepare_noise_schedule(self)->torch.Tensor:
-        """
-        Returns a noise schedule between ``beta_start`` and ``beta_end``.
-
-        Returns:
-            torch.Tensor: tensor with size [self.noise_steps] going linearly
-                from ``beta_start`` to ``beta_end``.
-        """
-        return torch.linspace(start=self.beta_start, 
-                              end=self.beta_end, 
-                              steps=self.noise_steps)
-
     def get_shape(self, x: torch.Tensor=None)->List[int]:
         """
         Convenience function to return correct shape for alpha vectors.
@@ -109,7 +151,10 @@ class Diffusion:
         new_shape = (-1,*[1 for _ in range(1,n_dim)])
         return new_shape
 
-    def noise_images(self, x: torch.Tensor, t: int)->torch.Tensor:
+    def noise_images(self, 
+                     x: torch.Tensor, 
+                     epsilon: torch.Tensor, 
+                     t: int)->torch.Tensor:
         """
         Introduces noise to images x at timestep t.
 
@@ -121,11 +166,22 @@ class Diffusion:
             torch.Tensor: noised (diffused) images.
         """
         sh = self.get_shape(x)
-        self.alpha_hat = self.alpha_hat.to(x.device)
-        sqrt_alpha_hat = torch.sqrt(self.alpha_hat[t]).reshape(sh)
-        sqrt_one_minus_alpha_hat = torch.sqrt(1 - self.alpha_hat[t]).reshape(sh)
-        epsilon = torch.randn_like(x)
-        return sqrt_alpha_hat * x + sqrt_one_minus_alpha_hat * epsilon, epsilon
+        t = t.to(x.device)
+        self.alpha_bar = self.alpha_bar.to(x.device)
+        alpha_bar = self.alpha_bar[t]
+        sqrt_alpha = torch.sqrt(alpha_bar).reshape(sh)
+        sqrt_one_minus_alpha = torch.sqrt(1 - alpha_bar).reshape(sh)
+        return sqrt_alpha * x + sqrt_one_minus_alpha * epsilon, epsilon
+
+    def __call__(self, 
+                 x: torch.Tensor, 
+                 model: torch.nn.Module, 
+                 epsilon: torch.Tensor, 
+                 t: torch.Tensor,
+                 classification: torch.Tensor=None):
+        noised_image, epsilon = self.noise_images(x,epsilon=epsilon,t=t)
+        prediction = model(noised_image,t/self.noise_steps,classification)
+        return prediction
 
     def sample_timesteps(self, n:int)->torch.Tensor:
         """
@@ -137,7 +193,76 @@ class Diffusion:
         Returns:
             torch.Tensor: tensor with random timesteps.
         """
-        return torch.randint(low=1, high=self.noise_steps, size=(n,))
+        return torch.randint(1,self.noise_steps,(n,))
+
+    def ddpm_reverse_step(self,
+                          x: torch.Tensor, 
+                          epsilon: torch.Tensor,
+                          t: int,
+                          eta: float=1.0):
+        sh = self.get_shape(x)
+        alpha_bar = self.alpha_bar[t].reshape(sh)
+        if t > 0:
+            alpha_bar_prev = self.alpha_bar[t-1]
+        else:
+            alpha_bar_prev = torch.ones_like(alpha_bar)
+        alpha_bar_prev = alpha_bar_prev.reshape(sh)
+        beta_bar = 1. - alpha_bar
+        x_prev = (x - torch.sqrt(beta_bar) * epsilon) / torch.sqrt(alpha_bar)
+        x_prev = torch.clamp(x_prev,-1,1)
+        coef_t_prev = (torch.sqrt(alpha_bar_prev) * self.beta[t]) / beta_bar
+        coef_t = torch.sqrt(self.alpha[t]) * (1. - alpha_bar_prev) / beta_bar
+        x = coef_t_prev * x_prev + coef_t * x
+        if t > 0 and eta > 0:
+            var = (1 - alpha_bar_prev) / (1 - alpha_bar) * self.beta[t]
+            x = x + torch.randn_like(x) * torch.sqrt(var) * eta
+        return x
+
+    def ddim_inverse_step(self,
+                          x: torch.Tensor, 
+                          epsilon: torch.Tensor, 
+                          t: int,
+                          eta: float=1.0):
+        sh = self.get_shape(x)
+        alpha_bar = self.alpha_bar[t]
+        if t > 0:
+            alpha_bar_prev = self.alpha_bar[t-1]
+        else:
+            alpha_bar_prev = torch.ones_like(alpha_bar)
+    
+        alpha_bar = alpha_bar.reshape(sh)
+        alpha_bar_prev = alpha_bar_prev.reshape(sh)
+        var = torch.multiply(
+            torch.sqrt((1 - alpha_bar_prev) / (1 - alpha_bar)),
+            torch.sqrt(1 - alpha_bar / alpha_bar_prev)) * eta
+        x_predict_x0 = torch.divide(
+            x - torch.sqrt(1 - alpha_bar) * epsilon,
+            torch.sqrt(alpha_bar))
+        direction_to_xt = torch.sqrt(1 - alpha_bar_prev - var) * epsilon
+        random_noise = torch.randn_like(epsilon) * var
+        output = torch.add(
+            torch.sqrt(alpha_bar_prev) * x_predict_x0,
+            direction_to_xt + random_noise)
+        return output
+
+    def alpha_deblending_step(self,
+                              x: torch.Tensor, 
+                              epsilon: torch.Tensor, 
+                              t: int,
+                              eta: float=None):
+        return x + (self.alpha_bar[t] - self.alpha_bar[t-1]) * epsilon
+
+    def step(self,
+             x: torch.Tensor,
+             epsilon: torch.Tensor,
+             t: int,
+             eta: float=1.0):
+        if self.step_key == "ddpm":
+            return self.ddpm_reverse_step(x,epsilon=epsilon,t=t,eta=eta)
+        elif self.step_key == "ddim":
+            return self.ddim_reverse_step(x,epsilon=epsilon,t=t,eta=eta)
+        elif self.step_key == "alpha_deblending":
+            return self.alpha_deblending_step(x,epsilon=epsilon,t=t,eta=None)
 
     def sample(self, 
                model: torch.nn.Module, 
@@ -146,7 +271,7 @@ class Diffusion:
                x: torch.Tensor=None,
                classification: torch.Tensor=None,
                classification_scale: float=3.0,
-               start_from: int=0)->torch.Tensor:
+               start_from: int=None)->torch.Tensor:
         """
         Samples an image from a given diffusion model.
 
@@ -167,7 +292,7 @@ class Diffusion:
                 conditioned ouptuts). Defaults to 3.0.
             start_from (int, optional): starts the time sampling from this value.
                 This allows using partially diffused images as input for input
-                conditioning (helpful in artefact detection). Defaults to 0.
+                conditioning (helpful in artefact detection). Defaults to None.
 
         Returns:
             torch.Tensor: image sampled from diffusion process.
@@ -183,33 +308,30 @@ class Diffusion:
             x = torch.randn((n, 
                              n_channels, 
                              *self.img_size)).to(device)
+        self.alpha = self.alpha.to(x.device)
+        self.beta = self.beta.to(x.device)
+        self.alpha_bar = self.alpha_bar.to(x.device)
         model.eval()
+        print("Generating...")
         with torch.no_grad():
-            self.get_shape(x)
-            t_range = reversed(range(start_from + 1, 
-                                     self.noise_steps + start_from))
-            for i in tqdm(t_range, position=0):
-                t = (torch.ones(n) * i).long().to(x.device)
-                predicted_noise = model(x, t, classification)
-                alpha = self.alpha[t].reshape(-1,1,1,1)
-                alpha_hat = self.alpha_hat[t].reshape(-1,1,1,1)
-                beta = self.beta[t].reshape(-1,1,1,1)
+            final_t = self.noise_steps if start_from is None else start_from
+            t_range = reversed(range(1,final_t))
+            if self.track_progress is True:
+                t_range = tqdm(t_range,total=final_t,
+                               desc="Generating...",position=0,
+                               leave=True)
+            for i in t_range:
+                t = torch.as_tensor([i],device=x.device)
+                predicted_noise = model(x, t / self.noise_steps, 
+                                        classification)
                 if classification_scale > 0:
-                    nonconditional_predicted_noise = model(x, t)
+                    nonconditional_predicted_noise = model(
+                        x, t / self.noise_steps)
                     predicted_noise = torch.lerp(
                         input=nonconditional_predicted_noise,
                         end=predicted_noise,
                         weight=classification_scale)
-                if i > 1:
-                    noise = torch.randn_like(x)
-                else:
-                    noise = torch.zeros_like(x)
-                lhs = torch.multiply(
-                    1 / torch.sqrt(alpha),
-                    x - ((1 - alpha) / (torch.sqrt(1 - alpha_hat))) * predicted_noise)
-                rhs = torch.sqrt(beta) * noise
-                x = torch.add(lhs,rhs)
+                x = self.step(x=x,epsilon=predicted_noise,t=t)
         model.train()
-        x = (x.clamp(-1, 1) + 1) / 2
-        x = (x * 255).type(torch.uint8)
+        x = x.clamp(-1, 1)
         return x

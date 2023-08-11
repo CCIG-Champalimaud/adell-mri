@@ -69,6 +69,9 @@ class EfficientConditioningAttentionBlock(torch.nn.Module):
         elif self.op_type == "linear":
             self.op = torch.nn.Sequential(
                 torch.nn.SiLU(),
+                torch.nn.Linear(self.input_channels,self.input_channels),
+                torch.nn.LayerNorm(self.input_channels),
+                torch.nn.SiLU(),
                 torch.nn.Linear(self.input_channels,self.input_channels))
 
     def forward(self, X:torch.Tensor, cls:torch.Tensor)->torch.Tensor:
