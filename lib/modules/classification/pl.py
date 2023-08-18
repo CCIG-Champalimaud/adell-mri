@@ -4,7 +4,8 @@ import torch.nn.functional as F
 import torchmetrics
 import lightning.pytorch as pl
 import torchmetrics.classification as tmc
-from typing import Callable,List,Dict,Any
+from tqdm import tqdm
+from typing import Callable,List,Dict
 from abc import ABC
 
 from .classification import (
@@ -236,6 +237,10 @@ class ClassPLABC(pl.LightningModule,ABC):
                     self.log(
                         f"{k}_{i}",metric[i],on_epoch=True,
                         on_step=False,prog_bar=True,sync_dist=True)
+            else:
+                self.log(
+                    k,metric,on_epoch=True,
+                    on_step=False,prog_bar=True,sync_dist=True)
 
     def on_train_start(self):
         print("Training with the following hyperparameters:")
@@ -257,6 +262,14 @@ class ClassPLABC(pl.LightningModule,ABC):
             k:float(parameter_dict[k]) for k in parameter_dict
             if isinstance(k,(int,float,bool))}
         self.log_dict(parameter_dict,sync_dist=True)
+    
+    def on_fit_end(self):
+        if hasattr(self,"gaussian_process"):
+            if self.gaussian_process == True:
+                for batch in tqdm(self.training_dataloader_call()):
+                    x, y = batch[self.image_key],batch[self.label_key]
+                    self.gaussian_process_head.update_inv_cov(x,y)
+                self.cov = torch.linalg.inv(self.inv_conv)
 
 class ClassNetPL(ClassPLABC):
     """
@@ -724,7 +737,7 @@ class GenericEnsemblePL(GenericEnsemble,ClassPLABC):
         prediction = torch.squeeze(prediction,1)
 
         loss = self.calculate_loss(prediction,y)
-            
+
         self.update_metrics(prediction,y,self.test_metrics,log=False)
         return loss
 
