@@ -728,19 +728,27 @@ class TransformerBlock(torch.nn.Module):
             self.adn_fn(struc),
             torch.nn.Linear(struc,self.input_dim_primary))
     
-    def forward(self,X:torch.Tensor,mask=None)->torch.Tensor:
+    def forward(self,X:torch.Tensor,mask:torch.Tensor=None,
+                return_attention:bool=False)->Union[torch.Tensor,
+                                                    Tuple[torch.Tensor,
+                                                          torch.Tensor]]:
         """Forward pass.
 
         Args:
             X (torch.Tensor): tensor of shape [...,self.input_dim_primary]
-            mask (torch.Tensor): attention masking tensor. Should have shape
-                [].
+            mask (torch.Tensor, optioanl): attention masking tensor. Should have
+                shape []. Defaults to None.
+            return_attention (bool, optional): also returns the attention. 
+                Defaults to False.
 
         Returns:
             torch.Tensor: tensor of shape [...,self.input_dim_primary]
         """
-        X = X + self.drop_op_1(self.mha(self.norm_op_1(X),mask=mask))
+        attention = self.mha(self.norm_op_1(X),mask=mask)
+        X = X + self.drop_op_1(attention)
         X = X + self.drop_op_2(self.mlp(self.norm_op_2(X)))
+        if return_attention is True:
+            return X, attention
         return X
 
 class SWINTransformerBlock(torch.nn.Module):
@@ -1026,19 +1034,28 @@ class TransformerBlockStack(torch.nn.Module):
     def forward(
         self,
         X:torch.Tensor,
-        return_at:Union[str,List[int]]="end")->Tuple[torch.Tensor,TensorList]:
+        return_at:Union[str,List[int]]="end",
+        return_attention:bool=False)->Union[Tuple[torch.Tensor,
+                                                  TensorList],
+                                            Tuple[torch.Tensor,
+                                                  TensorList,
+                                                  TensorList]]:
         """Forward pass.
 
         Args:
             X (torch.Tensor): tensor of shape [...,self.input_dim_primary]
             return_at (Union[str,List[int]], optional): sets the intermediary 
                 outputs that will be returned together with the final output.
+            return_attention (bool, optional): also returns the attention for 
+                all. blocks in return_at. Defaults to False.
 
         Returns:
             torch.Tensor: tensor of shape [...,self.input_dim_primary]
             List[torch.Tensor]: list of intermediary tensors corresponding to
                 the ith transformer outputs, where i is contained in return_at.
                 Same shape as the final output.
+            List[torch.Tensor]: list of intermediary tensors corresponding to
+                the ith attention outputs, where i is contained in return_at.
         """
         if isinstance(return_at,list):
             assert max(return_at) < self.number_of_blocks,\
@@ -1046,10 +1063,19 @@ class TransformerBlockStack(torch.nn.Module):
         if return_at == "end" or return_at is None:
             return_at = []
         outputs = []
+        attentions = []
         for i,block in enumerate(self.transformer_blocks):
-            X = block(X)
+            X = block(X,return_attention=return_attention)
+            if return_attention is True:
+                X,attention = X
             if i in return_at:
                 outputs.append(X)
+                attentions.append(attention)
+        if return_attention is True:
+            if return_at == []:
+                return X, outputs, [attention]
+            else:
+                return X, outputs, attentions
         return X,outputs
 
 class SWINTransformerBlockStack(torch.nn.Module):

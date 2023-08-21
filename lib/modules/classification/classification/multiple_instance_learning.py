@@ -199,21 +199,24 @@ class MultipleInstanceClassifier(torch.nn.Module):
             A = torch.ones([b,c,1],device=X.device) / c
         out = self.feature_extraction(X)
         if self.classification_mode == "mean":
-            return self.final_prediction(torch.sum(out * A,-2))
+            return self.final_prediction(torch.sum(out * A,-2)), A
         if self.classification_mode == "max":
-            return self.final_prediction(torch.max(out * A,-2).values)
+            return self.final_prediction(torch.max(out * A,-2).values), A
         if self.classification_mode == "vocabulary":
             out = self.vocabulary_prediction(out)
             out = F.softmax(out,dim=-1)
             out = out * A
             out = out.sum(-2)
-            return self.final_prediction(out)
+            return self.final_prediction(out), A
 
-    def forward(self,X:torch.Tensor)->torch.Tensor:
+    def forward(self,X:torch.Tensor,
+                return_attention:bool=False)->torch.Tensor:
         """Forward pass.
 
         Args:
             X (torch.Tensor): input tensor.
+            return_attention (bool, optional): returns the attention layer for 
+                the last transformer block. Defaults to False.
 
         Returns:
             torch.Tensor: output logits.
@@ -222,7 +225,9 @@ class MultipleInstanceClassifier(torch.nn.Module):
         ssl_representation = self.v_module(X)
         if self.positional_embedding is not None:
             ssl_representation = ssl_representation + self.positional_embedding
-        output = self.get_prediction(ssl_representation)
+        output, attention = self.get_prediction(ssl_representation)
+        if return_attention is True:
+            return output, attention
         return output
 
 class TransformableTransformer(torch.nn.Module):
@@ -387,11 +392,13 @@ class TransformableTransformer(torch.nn.Module):
         X = self.rep_to_emb(X)
         return X
 
-    def forward(self,X:torch.Tensor)->torch.Tensor:
+    def forward(self,X:torch.Tensor,return_attention:bool=False)->torch.Tensor:
         """Forward pass.
 
         Args:
             X (torch.Tensor): input tensor.
+            return_attention (bool, optional): returns the attention layer for 
+                the last transformer block. Defaults to False.
 
         Returns:
             torch.Tensor: output logits.
@@ -410,10 +417,16 @@ class TransformableTransformer(torch.nn.Module):
                                             b=batch_size)
                 ssl_representation = torch.concat(
                     [class_token,ssl_representation],1)
-        transformer_output = self.tbs(ssl_representation)[0]
+        transformer_output = self.tbs(ssl_representation,
+                                      return_attention=return_attention)
+        if return_attention is True:
+            attention = transformer_output[-1][0]
+        transformer_output = transformer_output[0]
         if self.use_class_token is True:
             transformer_output = transformer_output[:,0,:]
         else:
             transformer_output = transformer_output.mean(1)
         output = self.classification_module(transformer_output)
+        if return_attention is True:
+            return output, attention
         return output

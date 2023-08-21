@@ -163,6 +163,11 @@ class ClassPLABC(pl.LightningModule,ABC):
         self.update_metrics(prediction,y,self.test_metrics)
         return loss
 
+    def predict_step(self,batch,batch_idx,*args,**kwargs):
+        x, y = batch[self.image_key]
+        prediction = self.forward(x,*args,**kwargs)
+        return prediction
+
     def train_dataloader(self) -> torch.utils.data.DataLoader:
         return self.training_dataloader_call()
 
