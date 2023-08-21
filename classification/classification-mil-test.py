@@ -287,6 +287,7 @@ if __name__ == "__main__":
                     **boilerplate_args,
                     **network_config)
 
+            train_loader_call = None
             state_dict = torch.load(checkpoint)["state_dict"]
             network.load_state_dict(state_dict)
             network = network.eval().to(args.dev)
