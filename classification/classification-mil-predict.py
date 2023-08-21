@@ -104,7 +104,7 @@ if __name__ == "__main__":
     parser.add_argument(
         '--type',dest='type',action="store",default="probability",
         help="Prediction type.",
-        choices=["probability","logit","features","attention"])
+        choices=["probability","logit","attention"])
     
     # training
     parser.add_argument(
@@ -272,6 +272,13 @@ if __name__ == "__main__":
                 else:
                     prediction_output = [torch.nn.functional.softmax(x,axis=-1)
                                          for x in prediction_output]
+            elif prediction_output == "logit":
+                prediction_output = prediction_output
+            elif prediction_output == "attention":
+                prediction_output = [
+                    {"logit":x[0],
+                     "attention":x[1]}
+                    for x in prediction_output]
             prediction_output["checkpoint"] = checkpoint
             prediction_output["pids"] = prediction_pids
             all_metrics.append(prediction_output)
