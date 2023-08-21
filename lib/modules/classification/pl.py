@@ -4,7 +4,8 @@ import torch.nn.functional as F
 import torchmetrics
 import lightning.pytorch as pl
 import torchmetrics.classification as tmc
-from typing import Callable,List,Dict,Any
+from tqdm import tqdm
+from typing import Callable,List,Dict
 from abc import ABC
 
 from .classification import (
@@ -45,7 +46,8 @@ def f1(prediction:torch.Tensor,y:torch.Tensor)->torch.Tensor:
 
 def get_metric_dict(nc:int,
                     metric_keys:List[str]=None,
-                    prefix:str="")->Dict[str,torchmetrics.Metric]:
+                    prefix:str="",
+                    average:str="macro")->Dict[str,torchmetrics.Metric]:
     """
     Constructs a metric dictionary.
 
@@ -56,6 +58,8 @@ def get_metric_dict(nc:int,
             None (all keys).
         prefix (str, optional): which prefix should be added to the metric
             key on the output dict. Defaults to "".
+        average (str, optional): how to average values across classes. Defaults
+            to "macro".
 
     Returns:
         Dict[str,torchmetrics.Metric]: dictionary containing the metrics 
@@ -73,13 +77,13 @@ def get_metric_dict(nc:int,
     else:
         md = {
             "Rec":lambda: torchmetrics.Recall(
-                task='multiclass',num_classes=nc,average="macro"),
+                task='multiclass',num_classes=nc,average=average),
             "Spe":lambda: torchmetrics.Specificity(
-                task='multiclass',num_classes=nc,average="macro"),
+                task='multiclass',num_classes=nc,average=average),
             "Pr":lambda: torchmetrics.Precision(
-                task='multiclass',num_classes=nc,average="macro"),
+                task='multiclass',num_classes=nc,average=average),
             "F1":lambda: torchmetrics.FBetaScore(
-                task='multiclass',num_classes=nc,average="macro"),
+                task='multiclass',num_classes=nc,average=average),
             "AUC":lambda: torchmetrics.AUROC(
                 task="multiclass",num_classes=nc),
             "CalErr": lambda: torchmetrics.CalibrationError(
@@ -160,8 +164,11 @@ class ClassPLABC(pl.LightningModule,ABC):
         self.log("test_loss",loss,on_epoch=True,
                  on_step=False,prog_bar=True,
                  batch_size=x.shape[0],sync_dist=True)        
-        self.update_metrics(prediction,y,self.test_metrics)
+        self.update_metrics(prediction,y,self.test_metrics,log=False)
         return loss
+    
+    def on_test_epoch_end(self):
+        self.log_metrics_end_epoch(self.test_metrics)
 
     def predict_step(self,batch,batch_idx,*args,**kwargs):
         x, y = batch[self.image_key]
@@ -209,9 +216,9 @@ class ClassPLABC(pl.LightningModule,ABC):
         self.val_metrics = get_metric_dict(
             self.n_classes,None,prefix="V_")
         self.test_metrics = get_metric_dict(
-            self.n_classes,None,prefix="T_")
+            self.n_classes,None,prefix="T_",average="none")
 
-    def update_metrics(self,prediction,y,metrics):
+    def update_metrics(self,prediction,y,metrics,log=True):
         if self.n_classes > 2:
             prediction = torch.softmax(prediction,1)
         else:
@@ -220,9 +227,25 @@ class ClassPLABC(pl.LightningModule,ABC):
             y.squeeze(1)
         for k in metrics:
             metrics[k](prediction,y)
-            self.log(
-                k,metrics[k],on_epoch=True,
-                on_step=False,prog_bar=True,sync_dist=True)
+            if log == True:
+                self.log(
+                    k,metrics[k],on_epoch=True,
+                    on_step=False,prog_bar=True,sync_dist=True)
+
+    def log_metrics_end_epoch(self,metrics):
+        for k in metrics:
+            metric = metrics[k].compute()
+            if len(metric.shape) == 0:
+                metric = metric.reshape(1)
+            if len(metric) > 1:
+                for i in range(len(metric)):
+                    self.log(
+                        f"{k}_{i}",metric[i],on_epoch=True,
+                        on_step=False,prog_bar=True,sync_dist=True)
+            else:
+                self.log(
+                    k,metric,on_epoch=True,
+                    on_step=False,prog_bar=True,sync_dist=True)
 
     def on_train_start(self):
         print("Training with the following hyperparameters:")
@@ -244,6 +267,14 @@ class ClassPLABC(pl.LightningModule,ABC):
             k:float(parameter_dict[k]) for k in parameter_dict
             if isinstance(k,(int,float,bool))}
         self.log_dict(parameter_dict,sync_dist=True)
+    
+    def on_fit_end(self):
+        if hasattr(self,"gaussian_process"):
+            if self.gaussian_process == True:
+                for batch in tqdm(self.training_dataloader_call()):
+                    x, y = batch[self.image_key],batch[self.label_key]
+                    self.gaussian_process_head.update_inv_cov(x,y)
+                self.cov = torch.linalg.inv(self.inv_conv)
 
 class ClassNetPL(ClassPLABC):
     """
@@ -711,8 +742,8 @@ class GenericEnsemblePL(GenericEnsemble,ClassPLABC):
         prediction = torch.squeeze(prediction,1)
 
         loss = self.calculate_loss(prediction,y)
-            
-        self.update_metrics(prediction,y,self.test_metrics)
+
+        self.update_metrics(prediction,y,self.test_metrics,log=False)
         return loss
 
     def train_dataloader(self) -> torch.utils.data.DataLoader:
@@ -749,14 +780,6 @@ class GenericEnsemblePL(GenericEnsemble,ClassPLABC):
         lr = self.learning_rate
         last_lr = sch['_last_lr'][0] if '_last_lr' in sch else lr
         self.log("lr",last_lr)
-
-    def setup_metrics(self):
-        self.train_metrics = get_metric_dict(
-            self.n_classes,[],prefix="")
-        self.val_metrics = get_metric_dict(
-            self.n_classes,None,prefix="V_")
-        self.test_metrics = get_metric_dict(
-            self.n_classes,None,prefix="T_")
 
 class ViTClassifierPL(ViTClassifier,ClassPLABC):
     """

@@ -2,7 +2,6 @@ import time
 import numpy as np
 import torch
 import torch.nn.functional as F
-from monai.data.meta_tensor import MetaTensor
 
 from ....custom_types import TensorList
 from ...layers.adn_fn import ActDropNorm,get_adn_fn
@@ -11,6 +10,7 @@ from ...layers.res_net import ResNet,ResNetBackbone,ProjectionHead
 from ...layers.self_attention import (
     ConcurrentSqueezeAndExcite2d,
     ConcurrentSqueezeAndExcite3d)
+from ...layers.gaussian_process import GaussianProcessLayer
 from ...segmentation.unet import UNet
 from ...layers.linear_blocks import MLP,SeqPool
 from ...layers.vit import ViT,FactorizedViT
@@ -432,7 +432,8 @@ class GenericEnsemble(torch.nn.Module):
                  head_structure:List[int],
                  n_classes:int,
                  head_adn_fn: Callable=None,
-                 sae: bool=False):
+                 sae: bool=False,
+                 gaussian_process: bool=False):
         """
         Args:
             spatial_dimensions (int): spatial dimension of input.
@@ -444,7 +445,9 @@ class GenericEnsemble(torch.nn.Module):
                 function for the prediction head. Defaults to None (no 
                 function).
             sae (bool, optional): applies a squeeze and excite layer to the 
-                output of each network. Defaults to False
+                output of each network. Defaults to False.
+            gaussian_process (bool, optional): replaces the last layer with a
+                gaussian process layer. Defaults to False.
         """
         super().__init__()
         self.spatial_dimensions = spatial_dimensions
@@ -454,6 +457,7 @@ class GenericEnsemble(torch.nn.Module):
         self.n_classes = n_classes
         self.head_adn_fn = head_adn_fn
         self.sae = sae
+        self.gaussian_process = gaussian_process
 
         if isinstance(self.n_features,int):
             self.n_features = [self.n_features for _ in self.networks]
@@ -466,10 +470,22 @@ class GenericEnsemble(torch.nn.Module):
             nc = 1
         else:
             nc = self.n_classes
-        self.prediction_head = MLP(
-            self.n_features_final,nc,
-            structure=self.head_structure,
-            adn_fn=self.head_adn_fn)
+        if self.gaussian_process == True:
+            self.prediction_head = torch.nn.Sequential(
+                self.head_adn_fn(self.n_features_final),
+                MLP(
+                    self.n_features_final,self.head_structure[-1],
+                    structure=self.head_structure[:-1],
+                    adn_fn=self.head_adn_fn))
+            self.gaussian_process_head = GaussianProcessLayer(
+                self.head_structure[-1],nc)
+        else:
+            self.prediction_head = torch.nn.Sequential(
+                self.head_adn_fn(self.n_features_final),
+                MLP(
+                    self.n_features_final,nc,
+                    structure=self.head_structure,
+                    adn_fn=self.head_adn_fn))
 
     def initialize_sae_if_necessary(self):
         if self.sae is True:
@@ -502,12 +518,15 @@ class GenericEnsemble(torch.nn.Module):
             else:
                 out = network(x)
             out = pp(out)
-            out = out.flatten(start_dim=2).max(-1).values
+            if len(out.shape) > 2:
+                out = out.flatten(start_dim=2).max(-1).values
             outputs.append(out)
         outputs = torch.concat(outputs,1)
         if return_features == True:
             return outputs
         output = self.prediction_head(outputs)
+        if self.gaussian_process == True:
+            output = self.gaussian_process_head(output)
         return output
     
 class EnsembleNet(torch.nn.Module):

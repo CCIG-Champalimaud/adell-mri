@@ -38,7 +38,9 @@ def get_adn_fn(spatial_dim,norm_fn="batch",
                               dropout_param=dropout_param)
 
 class ActDropNorm(torch.nn.Module):
-    def __init__(self,in_channels:int=None,ordering:str='NDA',
+    def __init__(self,
+                 in_channels:int=None,
+                 ordering:str='NDA',
                  norm_fn: torch.nn.Module=torch.nn.BatchNorm2d,
                  act_fn: torch.nn.Module=torch.nn.PReLU,
                  dropout_fn:torch.nn.Module=torch.nn.Dropout,
