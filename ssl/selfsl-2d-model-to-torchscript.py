@@ -6,9 +6,14 @@ from copy import deepcopy
 import argparse
 import numpy as np
 import torch
-from torchsummary import summary
 
 torch.backends.cudnn.benchmark = True
+
+def unpack_shape(X):
+    if isinstance(X,torch.Tensor):
+        return X.shape
+    else:
+        return [unpack_shape(x) for x in X]
 
 def force_cudnn_initialization():
     """Convenience function to initialise CuDNN (and avoid the lazy loading
@@ -18,16 +23,6 @@ def force_cudnn_initialization():
     dev = torch.device('cuda')
     torch.nn.functional.conv2d(torch.zeros(s,s,s,s,device=dev), 
                                torch.zeros(s,s,s,s,device=dev))
-
-def filter_dicom_dict_on_presence(data_dict,all_keys):
-    def check_intersection(a,b):
-        return len(set.intersection(set(a),set(b))) == len(set(b))
-    for k in data_dict:
-        for kk in data_dict[k]:
-            data_dict[k][kk] = [
-                element for element in data_dict[k][kk]
-                if check_intersection(element.keys(),all_keys)]
-    return data_dict
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
@@ -53,6 +48,9 @@ if __name__ == "__main__":
         help="Output path the .pt model")
     parser.add_argument(
         '--ssl_method',dest="ssl_method",default="simclr")
+    parser.add_argument(
+        '--forward_method_name',dest="forward_method_name",
+        default="forward")
     
     # training
     parser.add_argument(
@@ -60,7 +58,7 @@ if __name__ == "__main__":
         help="Device for model allocation")
 
     args = parser.parse_args()
-    
+        
     if args.net_type == "unet_encoder":
         network_config,_ = parse_config_unet(
             args.config_file,args.input_shape[0],2)
@@ -114,13 +112,14 @@ if __name__ == "__main__":
 
     print("Number of parameters:",sum([np.prod(x.shape) for x in ssl.parameters()]))
 
-    ssl.forward = ssl.forward_representation
+    print(f"ssl.{args.forward_method_name}")
+    ssl.forward = eval(f"ssl.{args.forward_method_name}")
     example = torch.rand(1,*args.input_shape).to(args.dev)
     print(f"For input shape: {example.shape}")
-    print(f"Expected output shape: {ssl(example).shape}")
+    print(f"Expected output shape: {unpack_shape(ssl(example))}")
     traced_ssl = torch.jit.trace(ssl,example_inputs=example)
 
     print("Testing traced module...")
-    print(f"Traced module output shape: {traced_ssl(example).shape}")
+    print(f"Traced module output shape: {unpack_shape(traced_ssl(example))}")
     
     traced_ssl.save(args.output_model_path)

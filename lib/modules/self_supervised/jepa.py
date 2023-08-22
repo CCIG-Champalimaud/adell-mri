@@ -120,7 +120,7 @@ class IJEPA(torch.nn.Module):
                              for patch in patches]
         return predicted_X,predicted_patches
 
-    def forward(self,X:torch.Tensor)->IJEPAOut:
+    def forward(self, X:torch.Tensor)->IJEPAOut:
         # encode full image and return
         return self.forward_representation(X)
 

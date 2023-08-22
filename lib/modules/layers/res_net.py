@@ -34,6 +34,10 @@ def resnet_to_encoding_ops(res_net:List[torch.nn.Module])->ModuleList:
     return encoding_operations
 
 class ResNetBackbone(torch.nn.Module):
+    """
+    Default ResNet backbone. Takes a `structure` and `maxpool_structure`
+    to parameterize the entire network.
+    """
     def __init__(
         self,
         spatial_dim:int,
@@ -44,9 +48,7 @@ class ResNetBackbone(torch.nn.Module):
         adn_fn:torch.nn.Module=torch.nn.Identity,
         res_type:str="resnet",
         batch_ensemble:int=0):
-        """Default ResNet backbone. Takes a `structure` and `maxpool_structure`
-        to parameterize the entire network.
-
+        """
         Args:
             spatial_dim (int): number of dimensions.
             in_channels (int): number of input channels.
@@ -175,15 +177,17 @@ class ResNetBackbone(torch.nn.Module):
             return self.forward_regular(X,batch_idx=batch_idx)
 
 class ProjectionHead(torch.nn.Module):
+    """
+    Classification head. Takes a `structure` argument to parameterize
+    the entire network. Takes in a [B,C,(H,W,D)] vector, flattens and 
+    performs convolution operations on it.
+    """
     def __init__(
         self,
         in_channels:int,
         structure:List[int],
         adn_fn:torch.nn.Module=torch.nn.Identity):
-        """Classification head. Takes a `structure` argument to parameterize
-        the entire network. Takes in a [B,C,(H,W,D)] vector, flattens and 
-        performs convolution operations on it.
-
+        """
         Args:
             in_channels (int): number of input channels.
             structure (List[Tuple[int,int,int,int]]): Structure of the 
@@ -219,12 +223,14 @@ class ProjectionHead(torch.nn.Module):
         return o
 
 class ResNet(torch.nn.Module):
+    """
+    ResNet module.
+    """
     def __init__(self,
                  backbone_args:dict,
                  projection_head_args:dict=None,
                  prediction_head_args:dict=None):
-        """Quick way of creating a ResNet.
-
+        """
         Args:
             backbone_args (dict): parameter dict for ResNetBackbone.
             projection_head_args (dict): parameter dict for ProjectionHead.
@@ -261,8 +267,12 @@ class ResNet(torch.nn.Module):
             self.prediction_head = ProjectionHead(
                 **self.prediction_head_args)
 
-    def forward_representation(self,X):
-        X = self.backbone(X)
+    def forward_representation(self,X,*args,**kwargs):
+        X = self.backbone(X,*args,**kwargs)
+        return X
+
+    def forward_representation_with_intermediate(self,X,*args,**kwargs):
+        X = self.backbone.forward_with_intermediate(X)
         return X
 
     def forward(self,X,ret="projection"):
@@ -277,11 +287,13 @@ class ResNet(torch.nn.Module):
             return X
 
 class ResNetSimSiam(torch.nn.Module):
+    """
+    Very similar to ResNet but with one peculiarity - no activation
+    in the last layer of the projection head.
+    """
     def __init__(self,backbone_args:dict,projection_head_args:dict,
                  prediction_head_args:dict=None):
-        """Very similar to ResNet but with a few pecularities: 1) no activation
-        in the last layer of the projection head and 2)
-
+        """
         Args:
             backbone_args (dict): _description_
             projection_head_args (dict): _description_

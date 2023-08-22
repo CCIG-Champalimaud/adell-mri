@@ -11,6 +11,9 @@ from .utils import SequentialWithArgs
 from typing import List,Tuple,Union
 
 class ConvNeXtV2Block(torch.nn.Module):
+    """
+    Default ConvNeXtV2 block. 
+    """
     def __init__(self,
                  input_channels:int,
                  intermediate_channels:int,
@@ -56,6 +59,10 @@ class ConvNeXtV2Block(torch.nn.Module):
         return self.ops(X,mask=mask)
 
 class ConvNeXtBackbone(torch.nn.Module):
+    """
+    Default ConvNeXt backbone. Takes a `structure` and `maxpool_structure`
+    to parameterize the entire network.
+    """
     def __init__(
         self,
         spatial_dim:int,
@@ -65,9 +72,7 @@ class ConvNeXtBackbone(torch.nn.Module):
         padding=None,
         adn_fn:torch.nn.Module=torch.nn.Identity,
         batch_ensemble:int=0):
-        """Default ConvNeXt backbone. Takes a `structure` and `maxpool_structure`
-        to parameterize the entire network.
-
+        """
         Args:
             spatial_dim (int): number of dimensions.
             in_channels (int): number of input channels.
@@ -185,6 +190,11 @@ class ConvNeXtBackbone(torch.nn.Module):
             return self.forward_regular(X,batch_idx=batch_idx)
 
 class ConvNeXtBackboneDetection(ConvNeXtBackbone):
+    """
+    Default ConvNeXt backbone for detection. Replaces the input layer with 
+    a convolutional operation that does not lead to such a large decrease in
+    resolution.
+    """
     def init_input_layer(self):
         f = self.structure[0][0]
         return torch.nn.Sequential(
@@ -193,6 +203,10 @@ class ConvNeXtBackboneDetection(ConvNeXtBackbone):
             LayerNorm(f,data_format="channels_first"))
 
 class ConvNeXtV2Backbone(torch.nn.Module):
+    """
+    Default ConvNeXtV2 backbone. Takes a `structure` and `maxpool_structure`
+    to parameterize the entire network.
+    """
     def __init__(
         self,
         spatial_dim:int,
@@ -201,9 +215,7 @@ class ConvNeXtV2Backbone(torch.nn.Module):
         maxpool_structure:List[Union[Tuple[int,int],Tuple[int,int,int]]]=None,
         padding=None,
         batch_ensemble:int=0):
-        """Default ConvNeXt backbone. Takes a `structure` and `maxpool_structure`
-        to parameterize the entire network.
-
+        """
         Args:
             spatial_dim (int): number of dimensions.
             in_channels (int): number of input channels.
@@ -316,12 +328,14 @@ class ConvNeXtV2Backbone(torch.nn.Module):
             return self.forward_regular(X,mask=mask,batch_idx=batch_idx)
 
 class ConvNeXt(torch.nn.Module):
+    """
+    ConvNeXt module.
+    """
     def __init__(self,
                  backbone_args:dict,
                  projection_head_args:dict,
                  prediction_head_args:dict=None):
-        """Quick way of creating a ResNet.
-
+        """
         Args:
             backbone_args (dict): parameter dict for ResNetBackbone.
             projection_head_args (dict): parameter dict for ProjectionHead.

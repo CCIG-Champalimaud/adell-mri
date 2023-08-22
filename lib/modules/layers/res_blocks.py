@@ -6,6 +6,11 @@ from .regularization import GRN
 from ...custom_types import ModuleList
 
 class ResidualBlock2d(torch.nn.Module):
+    """
+    Default residual block in 2 dimensions. If `out_channels`
+    is different from `in_channels` then a convolution is applied to
+    the skip connection to match the number of `out_channels`.
+    """
     def __init__(
         self,
         in_channels:int,
@@ -13,10 +18,7 @@ class ResidualBlock2d(torch.nn.Module):
         inter_channels:int=None,
         out_channels:int=None,
         adn_fn:torch.nn.Module=torch.nn.Identity):
-        """Default residual block in 2 dimensions. If `out_channels`
-        is different from `in_channels` then a convolution is applied to
-        the skip connection to match the number of `out_channels`.
-
+        """
         Args:
             in_channels (int): number of input channels.
             kernel_size (int): kernel size.
@@ -77,14 +79,16 @@ class ResidualBlock2d(torch.nn.Module):
         return self.adn_op(self.final_op(self.op(X) + X))
 
 class ResidualBlock3d(torch.nn.Module):
+    """
+    Default residual block in 3 dimensions. If `out_channels`
+    is different from `in_channels` then a convolution is applied to
+    the skip connection to match the number of `out_channels`.
+    """
     def __init__(
         self,in_channels:int,kernel_size:int,
         inter_channels:int=None,out_channels:int=None,
         adn_fn:torch.nn.Module=torch.nn.Identity):
-        """Default residual block in 3 dimensions. If `out_channels`
-        is different from `in_channels` then a convolution is applied to
-        the skip connection to match the number of `out_channels`.
-
+        """
         Args:
             in_channels (int): number of input channels.
             kernel_size (int): kernel size.
@@ -191,14 +195,16 @@ class ParallelOperationsAndSum(torch.nn.Module):
         return output
 
 class ResNeXtBlock2d(torch.nn.Module):
+    """
+    Default ResNeXt block in 2 dimensions. If `out_channels`
+    is different from `in_channels` then a convolution is applied to
+    the skip connection to match the number of `out_channels`.
+    """
     def __init__(
         self,in_channels:int,kernel_size:int,
         inter_channels:int=None,out_channels:int=None,
         adn_fn:torch.nn.Module=torch.nn.Identity,n_splits:int=16):
-        """Default ResNeXt block in 2 dimensions. If `out_channels`
-        is different from `in_channels` then a convolution is applied to
-        the skip connection to match the number of `out_channels`.
-
+        """
         Args:
             in_channels (int): number of input channels.
             inter_channels (int): number of intermediary channels. Defaults 
@@ -258,14 +264,16 @@ class ResNeXtBlock2d(torch.nn.Module):
         return self.final_op(self.op(X) + self.skip_op(X))
 
 class ResNeXtBlock3d(torch.nn.Module):
+    """
+    Default ResNeXt block in 3 dimensions. If `out_channels`
+    is different from `in_channels` then a convolution is applied to
+    the skip connection to match the number of `out_channels`.
+    """
     def __init__(
         self,in_channels:int,kernel_size:int,
         inter_channels:int=None,out_channels:int=None,
         adn_fn:torch.nn.Module=torch.nn.Identity,n_splits:int=32):
-        """Default ResNeXt block in 2 dimensions. If `out_channels`
-        is different from `in_channels` then a convolution is applied to
-        the skip connection to match the number of `out_channels`.
-
+        """
         Args:
             in_channels (int): number of input channels.
             inter_channels (int): number of intermediary channels. Defaults 

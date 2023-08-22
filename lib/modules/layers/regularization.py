@@ -4,18 +4,20 @@ import torch.nn.functional as F
 from typing import Tuple
 
 class UOut(torch.nn.Module):
+    """
+    Form of dropout suggested in [1]. Rather than dropping out 
+    specific channels, each channel X is modified such that 
+    $X' = X + rX$, where $x \sim U(-\beta,\beta)$. This guarantees
+    a much smaller variance shift and allows for a dropout-like
+    activation layer to be combined with batch-normalization without
+    performance drops (more info on this in [1]). This operation is
+    performed on the first dimension after the batch dimension (assumed
+    to be the channel dimension).
+    
+    [1] https://ieeexplore.ieee.org/document/8953671
+    """
     def __init__(self,beta: float=0.) -> torch.nn.Module:
-        """Form of dropout suggested in [1]. Rather than dropping out 
-        specific channels, each channel X is modified such that 
-        $X' = X + rX$, where $x \sim U(-\beta,\beta)$. This guarantees
-        a much smaller variance shift and allows for a dropout-like
-        activation layer to be combined with batch-normalization without
-        performance drops (more info on this in [1]). This operation is
-        performed on the first dimension after the batch dimension (assumed
-        to be the channel dimension).
-        
-        [1] https://ieeexplore.ieee.org/document/8953671
-
+        """
         Args:
             beta (float, optional): beta parameter for the uniform 
             distribution from which $r$ will be sampled for reference, the
