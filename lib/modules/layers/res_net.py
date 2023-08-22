@@ -271,7 +271,7 @@ class ResNet(torch.nn.Module):
         X = self.backbone(X,*args,**kwargs)
         return X
 
-    def forward_representation_with_intermediate(self,X,*args,**kwargs):
+    def forward_representation_with_intermediate(self,X):
         X = self.backbone.forward_with_intermediate(X)
         return X
 

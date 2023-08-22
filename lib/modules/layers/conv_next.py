@@ -374,6 +374,14 @@ class ConvNeXt(torch.nn.Module):
             self.prediction_head = ProjectionHead(
                 **self.prediction_head_args)
 
+    def forward_representation(self,X,*args,**kwargs):
+        X = self.backbone(X,*args,**kwargs)
+        return X
+
+    def forward_representation_with_intermediate(self,X):
+        X = self.backbone.forward_with_intermediate(X)
+        return X
+
     def forward(self,X,ret="projection"):
         X = self.backbone(X)
         if ret == "representation":
