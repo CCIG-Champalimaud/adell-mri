@@ -211,9 +211,25 @@ class SelfSLBasePL(pl.LightningModule,ABC):
             self.test_metrics["T"+k] = metric_dict[k]()
     
     def on_train_start(self):
-        print("Logging hyperparameters...")
-        self.save_hyperparameters()
-        self.log_dict(self.hparams)
+        print("Training with the following hyperparameters:")
+        parameter_dict = {}
+        for k,v in self.hparams.items():
+            print(f"\t{k}: {v}")
+            if isinstance(v,(list,tuple,torch.Tensor,np.ndarray)):
+                if len(v) > 1:
+                    for i in range(len(v)):
+                        parameter_dict[f"{k}_{i}"] = v[i]
+                else:
+                    parameter_dict[k] = v[0]
+            elif isinstance(v,dict):
+                for kk,vv in v:
+                    parameter_dict[f"{k}_{kk}"] = float(vv)
+            elif isinstance(v,(int,float,bool)):
+                parameter_dict[k] = v
+        parameter_dict = {
+            k:float(parameter_dict[k]) for k in parameter_dict
+            if isinstance(k,(int,float,bool))}
+        self.log_dict(parameter_dict,sync_dist=True)
 
 class SelfSLResNetPL(ResNet,SelfSLBasePL):
     """Operates a number of non-contrastive self-supervised learning 
@@ -331,6 +347,7 @@ class SelfSLResNetPL(ResNet,SelfSLBasePL):
             "vicregl":["inv","var","cov","local"]
         }
         
+        self.save_hyperparameters()
         self.setup_metrics()
 
     def forward_ema_stop_grad(self,x,ret):
@@ -530,6 +547,7 @@ class SelfSLUNetPL(UNet,SelfSLBasePL):
             "vicregl":["inv","var","cov","local"]
         }
         
+        self.save_hyperparameters()
         self.setup_metrics()
 
     def forward_ema_stop_grad(self,x):
@@ -723,6 +741,7 @@ class SelfSLConvNeXtPL(ConvNeXt,SelfSLBasePL):
             "vicregl":["inv","var","cov","local"]
         }
         
+        self.save_hyperparameters()
         self.setup_metrics()
 
     def forward_ema_stop_grad(self,x,ret):
@@ -893,6 +912,7 @@ class IJEPAPL(IJEPA,SelfSLBasePL):
         else:
             self.ema = None
         
+        self.save_hyperparameters()
         self.setup_metrics()
         self.init_loss()
 

@@ -117,7 +117,8 @@ class ConvNeXtBackbone(torch.nn.Module):
         return torch.nn.Sequential(
             self.conv_op(
                 self.in_channels,f,4,stride=4),
-            LayerNorm(f,data_format="channels_first"))
+            LayerNorm(f,data_format="channels_first"),
+            torch.nn.GELU())
 
     def init_layers(self):
         f = self.structure[0][0]
@@ -127,6 +128,7 @@ class ConvNeXtBackbone(torch.nn.Module):
                 self.input_layer,self.batch_ensemble,
                 self.in_channels,f)
         self.operations = torch.nn.ModuleList([])
+        self.be_operations = torch.nn.ModuleList([])
         self.pooling_operations = torch.nn.ModuleList([])
         prev_inp = f
         for s,mp in zip(self.structure,self.maxpool_structure):
@@ -139,14 +141,16 @@ class ConvNeXtBackbone(torch.nn.Module):
             if self.batch_ensemble > 0:
                 op.append(self.res_op(inp,k,inter,inp,torch.nn.Identity))
                 op = torch.nn.Sequential(*op)
-                op = BatchEnsembleWrapper(
-                    op,self.batch_ensemble,prev_inp,inp)
+                be_op = BatchEnsembleWrapper(
+                    None,self.batch_ensemble,prev_inp,inp,self.adn_fn)
             else:
                 op.append(self.res_op(inp,k,inter,inp))
                 op = torch.nn.Sequential(*op)
+                be_op = None
 
             prev_inp = inp
             self.operations.append(op)
+            self.be_operations.append(be_op)
             self.pooling_operations.append(self.max_pool_op(mp,mp))
     
         self.apply(self._init_weights)
