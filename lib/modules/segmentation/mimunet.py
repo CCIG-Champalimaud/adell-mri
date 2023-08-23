@@ -103,7 +103,7 @@ class MIMUNet(torch.nn.Module):
         if self.n_channels > 1:
             self.feature_reduction = torch.nn.ModuleList([
                 torch.nn.Sequential(
-                    torch.nn.Conv3D(d * self.n_channels,d,1),
+                    torch.nn.Conv3d(d * self.n_channels,d,1),
                     self.adn_fn(d))
                 for d in self.depth
             ])
