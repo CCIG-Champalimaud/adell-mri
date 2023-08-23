@@ -92,6 +92,7 @@ if __name__ == "__main__":
         net_type=args.net_type,
         network_config_correct=network_config_correct)
 
+    train_loader_call = None
     ssl = ssl.to(args.dev)
     state_dict = torch.load(
         args.checkpoint,
