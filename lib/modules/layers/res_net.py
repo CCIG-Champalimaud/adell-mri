@@ -160,6 +160,32 @@ class ResNetBackbone(torch.nn.Module):
             X = pooled_X
         return X,output_list
 
+    def forward_intermediate(self,
+                             X:torch.Tensor,
+                             after_pool:bool=False,
+                             batch_idx:int=None):
+        output_list = []
+        X = self.input_layer(X)
+        if after_pool is False:
+            output_list.append(X)
+        X = self.first_pooling(X)
+        if after_pool is True:
+            output_list.append(X)
+        for op,be_op,pool_op in zip(self.operations,
+                                    self.be_operations,
+                                    self.pooling_operations):
+            if self.batch_ensemble > 0:
+                X = be_op(X,batch_idx,mod=op)
+            else:
+                X = op(X)
+            pooled_X = pool_op(X)
+            if after_pool == True:
+                output_list.append(pooled_X)
+            else:
+                output_list.append(X)
+            X = pooled_X
+        return output_list
+
     def forward_regular(self,
                         X:torch.Tensor,
                         batch_idx:int=None)->torch.Tensor:
