@@ -117,8 +117,7 @@ class ConvNeXtBackbone(torch.nn.Module):
         return torch.nn.Sequential(
             self.conv_op(
                 self.in_channels,f,4,stride=4),
-            LayerNorm(f,data_format="channels_first"),
-            torch.nn.GELU())
+            LayerNorm(f,data_format="channels_first"))
 
     def init_layers(self):
         f = self.structure[0][0]
@@ -360,7 +359,7 @@ class ConvNeXt(torch.nn.Module):
             **self.backbone_args)
     
     def init_projection_head(self):
-        if len(self.projection_head_args) > 0:
+        if self.projection_head_args is not None:
             try:
                 d = self.projection_head_args["structure"][-1]
                 norm_fn = self.projection_head_args["adn_fn"](d).norm_fn
