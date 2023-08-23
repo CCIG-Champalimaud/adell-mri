@@ -1,3 +1,4 @@
+import numpy as np
 import torch
 import torchmetrics
 import lightning.pytorch as pl
@@ -222,8 +223,9 @@ class SelfSLBasePL(pl.LightningModule,ABC):
                 else:
                     parameter_dict[k] = v[0]
             elif isinstance(v,dict):
-                for kk,vv in v:
-                    parameter_dict[f"{k}_{kk}"] = float(vv)
+                for kk,vv in v.items():
+                    if isinstance(vv,float):
+                        parameter_dict[f"{k}_{kk}"] = float(vv)
             elif isinstance(v,(int,float,bool)):
                 parameter_dict[k] = v
         parameter_dict = {
