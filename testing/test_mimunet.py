@@ -24,6 +24,17 @@ def test_unet_base():
     i = torch.rand(size=[1,c,h,w,d])
     output_size = [1,1,h,w,d]
     a = MIMUNet(module=module,upscale_type="transpose",link_type="identity",
-               n_classes=2,n_channels=1,n_slices=d)
+               n_classes=2,n_channels=c,n_slices=d)
+    o = a(i)
+    assert list(o.shape) == output_size
+
+def test_unet_base_more_channels():
+    c = 2
+    module = ResNetBackbone(**backbone_args)
+    module.forward = module.forward_intermediate
+    i = torch.rand(size=[1,c,h,w,d])
+    output_size = [1,1,h,w,d]
+    a = MIMUNet(module=module,upscale_type="transpose",link_type="identity",
+               n_classes=2,n_channels=c,n_slices=d)
     o = a(i)
     assert list(o.shape) == output_size
