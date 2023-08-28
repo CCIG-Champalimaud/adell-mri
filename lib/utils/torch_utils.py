@@ -23,7 +23,7 @@ def load_checkpoint_to_model(
     output = model.load_state_dict(sd,strict=False)
 
     if len(output.unexpected_keys) > 0:
-        raise Exception("Dictionary contains more keys than it should!")
+        raise Exception("Dictionary contains more keys than it should:" + str(output.unexpected_keys))
     print(f"\t{output.missing_keys}")
 
 def get_class_weights(class_weights:List[Union[float,str]],
