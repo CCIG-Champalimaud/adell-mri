@@ -315,8 +315,6 @@ if __name__ == "__main__":
 
     if "batch_size" not in network_config:
         network_config["batch_size"] = 1
-    
-    all_pids = [k for k in data_dict]
 
     print("Setting up transforms...")
     label_mode = "binary" if n_classes == 2 and label_groups is None else "cat"
@@ -354,6 +352,7 @@ if __name__ == "__main__":
         ScaleIntensityAlongDimd("image",dim=-1)])
     transforms_train.set_random_state(args.seed)
     
+    all_pids = [k for k in data_dict]
     if args.folds is None:
         if args.n_folds > 1:
             fold_generator = StratifiedKFold(
@@ -388,13 +387,13 @@ if __name__ == "__main__":
     
     for val_fold in range(args.n_folds):
         train_idxs,val_idxs = next(fold_generator)
+        if args.subsample_training_data is not None:
+            train_idxs = rng.choice(
+                train_idxs,
+                size=int(len(train_idxs)*args.subsample_training_data),
+                replace=False)
         train_pids = [all_pids[i] for i in train_idxs]
         val_pids = [all_pids[i] for i in val_idxs]
-        if args.subsample_training_data is not None:
-            train_pids = rng.choice(
-                train_pids,
-                size=int(len(train_pids)*args.subsample_training_data),
-                replace=False)
         train_list = [data_dict[pid] for pid in train_pids]
         val_list = [data_dict[pid] for pid in val_pids]
         
