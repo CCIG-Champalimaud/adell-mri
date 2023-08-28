@@ -95,6 +95,10 @@ if __name__ == "__main__":
         help="Subsamples data to a given size",
         default=None)
     parser.add_argument(
+        '--subsample_training_data',dest='subsample_training_data',type=float,
+        help="Subsamples training data by this fraction (for learning curves)",
+        default=None)
+    parser.add_argument(
         '--batch_size',dest='batch_size',type=int,default=None,
         help="Overrides batch size in config file")
     parser.add_argument(
@@ -386,6 +390,11 @@ if __name__ == "__main__":
         train_idxs,val_idxs = next(fold_generator)
         train_pids = [all_pids[i] for i in train_idxs]
         val_pids = [all_pids[i] for i in val_idxs]
+        if args.subsample_training_data is not None:
+            train_pids = rng.choice(
+                train_pids,
+                size=int(len(train_pids)*args.subsample_training_data),
+                replace=False)
         train_list = [data_dict[pid] for pid in train_pids]
         val_list = [data_dict[pid] for pid in val_pids]
         
