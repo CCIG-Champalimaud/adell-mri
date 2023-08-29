@@ -12,6 +12,7 @@ from .unet import UNet,BrUNet
 from .unetpp import UNetPlusPlus
 from .unetr import UNETR
 from .unetr import SWINUNet
+from .mimunet import MIMUNet
 from ..extract_lesion_candidates import extract_lesion_candidates
 from ..learning_rate import CosineAnnealingWithWarmupLR
 
@@ -121,6 +122,10 @@ class UNetBasePL(pl.LightningModule,ABC):
         
         self.train_batch_size = None
         self.raise_nan_loss = False
+
+        self.bottleneck_classification = False
+        self.feature_conditioning_key = None
+        self.skip_conditioning_key = None
 
     def calculate_loss(self,prediction,y):
         loss = self.loss_fn(prediction,y,**self.loss_params)
@@ -702,6 +707,100 @@ class UNetPlusPlusPL(UNetPlusPlus,UNetBasePL):
         self.all_true = []
 
         self.bn_mult = 0.1
+
+class MIMUNetPL(MIMUNet,UNetBasePL):
+    """
+    Modifiable input module U-Net (MIMU-Net) for PyTorch Lightning.
+    """
+    def __init__(
+        self,
+        image_key: str="image",
+        label_key: str="label",
+        learning_rate: float=0.001,
+        lr_encoder: float=None,
+        cosine_decay: bool=True,
+        batch_size: int=4,
+        n_epochs: int=100,
+        weight_decay: float=0.005,
+        training_dataloader_call: Callable=None,
+        loss_fn: Callable=torch.nn.functional.binary_cross_entropy,
+        loss_params: dict={},
+        picai_eval: bool=False,*args,**kwargs) -> torch.nn.Module:
+        """
+        Args:
+            image_key (str): key corresponding to the input from the train
+                dataloader.
+            label_key (str): key corresponding to the label map from the train
+                dataloader.
+            learning_rate (float, optional): learning rate. Defaults to 0.001.
+            lr_encoder (float, optional): encoder learning rate.
+            batch_size (int, optional): batch size. Defaults to 4.
+            n_epochs (int, optional): number of epochs. Defaults to 100.
+            weight_decay (float, optional): weight decay for optimizer. Defaults 
+                to 0.005.
+            training_dataloader_call (Callable, optional): call for the 
+            training dataloader. Defaults to None.
+            loss_fn (Callable, optional): function to calculate the loss. 
+                Defaults to torch.nn.functional.binary_cross_entropy.
+            loss_params (dict, optional): additional parameters for the loss
+                function. Defaults to {}.
+            picai_eval (bool, optional): evaluates network using PI-CAI 
+                metrics as well (can be a bit long).
+            args: arguments for UNet class.
+            kwargs: keyword arguments for UNet class.
+
+        [1] https://www.nature.com/articles/s41592-018-0261-2
+
+        Returns:
+            pl.LightningModule: a U-Net module.
+        """
+        
+        super().__init__(*args,**kwargs)
+        
+        self.image_key = image_key
+        self.label_key = label_key
+        self.learning_rate = learning_rate
+        self.lr_encoder = lr_encoder
+        self.cosine_decay = cosine_decay
+        self.batch_size = batch_size
+        self.n_epochs = n_epochs
+        self.weight_decay = weight_decay
+        self.training_dataloader_call = training_dataloader_call
+        self.loss_fn = loss_fn
+        self.loss_params = loss_params
+        self.picai_eval = picai_eval
+        
+        self.loss_fn_class = torch.nn.BCEWithLogitsLoss()
+        self.setup_metrics()
+
+        # for metrics (AUC, AP) which require a list of predictions + gt
+        self.all_pred = []
+        self.all_true = []
+
+    def step(self,x,y,y_class=None,x_cond=None,x_fc=None):
+        y = torch.round(y)
+        output = self.forward(X=x)
+        if self.deep_supervision is False:
+            prediction = output
+        else:
+            prediction,deep_outputs = output
+        prediction = prediction
+
+        loss = self.calculate_loss(prediction,y)
+        if self.deep_supervision is True:
+            t = len(deep_outputs)
+            additional_losses = torch.zeros_like(loss)
+            for i,o in enumerate(deep_outputs):
+                S = o.shape[-self.spatial_dimensions:]
+                y_small = F.interpolate(y,S,mode="nearest")
+                l = self.calculate_loss(o,y_small).mean()/(2**(t-i))/(t+1)
+                additional_losses = additional_losses + l
+            loss = loss + additional_losses
+        output_loss = loss
+        class_loss = None
+        pred_class = None
+
+        return prediction,pred_class,loss,class_loss,output_loss
    
 class BrUNetPL(BrUNet,UNetBasePL):
     def __init__(
