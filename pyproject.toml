@@ -2,7 +2,8 @@
 name = "adell-mri"
 version = "0.1.0"
 description = "A deep-learning library built with torch, lightning and MONAI for medical imaging."
-authors = ["josegcpa <jose.almeida@research.fchampalimaud.pt>"]
+authors = ["josegcpa <jose.almeida@research.fchampalimaud.pt>",
+           "NMVRodrigues"]
 license = "LICENSE"
 readme = "README.md"
 
