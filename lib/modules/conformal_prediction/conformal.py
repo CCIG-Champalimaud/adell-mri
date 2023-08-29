@@ -14,7 +14,7 @@ class AdaptivePredictionSets(torch.nn.Module):
                pred: torch.Tensor):
         self.y.append(y)
         self.pred.append(pred)
-    
+
     def calculate(self):
         y = torch.concatenate(self.y,0)
         pred = torch.concatenate(self.pred,0)
@@ -26,7 +26,7 @@ class AdaptivePredictionSets(torch.nn.Module):
         qhat = torch.quantile(
             scores, ceil((n+1)*(1-self.alpha))/n, interpolation='higher')
         self.qhat = torch.nn.Parameter(qhat,requires_grad=False)
-    
+
     def reset(self):
         self.y = []
         self.pred = []

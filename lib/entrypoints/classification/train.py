@@ -4,37 +4,33 @@ import json
 import numpy as np
 import torch
 import monai
-import re
 from sklearn.model_selection import train_test_split,StratifiedKFold
 
 from lightning.pytorch import Trainer
 from lightning.pytorch.callbacks import (
-    EarlyStopping,RichProgressBar)
+    EarlyStopping,StochasticWeightAveraging,RichProgressBar)
 
 import sys
-sys.path.append(r"..")
-from lib.utils import (
+from ...utils import (
     safe_collate,set_classification_layer_bias,conditional_parameter_freezing)
-from lib.utils.pl_utils import (
+from ...utils.pl_utils import (
     get_ckpt_callback,
     get_logger,
     get_devices,
     delete_checkpoints)
-from lib.utils.torch_utils import load_checkpoint_to_model,get_class_weights
-from lib.utils.dataset_filters import (
+from ...utils.torch_utils import load_checkpoint_to_model,get_class_weights
+from ...utils.dataset_filters import (
     filter_dictionary_with_filters,
     filter_dictionary_with_possible_labels,
     filter_dictionary_with_presence)
-from lib.monai_transforms import get_transforms_classification as get_transforms
-from lib.monai_transforms import get_augmentations_class as get_augmentations
-from lib.modules.losses import OrdinalSigmoidalLoss
-from lib.modules.config_parsing import (
-    parse_config_unet,parse_config_cat,parse_config_ensemble)
-from lib.modules.classification.pl import GenericEnsemblePL
-from lib.utils.network_factories import get_classification_network
-from lib.utils.parser import get_params,merge_args,parse_ids
+from ...monai_transforms import get_transforms_classification as get_transforms
+from ...monai_transforms import get_augmentations_class as get_augmentations
+from ...modules.classification.losses import OrdinalSigmoidalLoss
+from ...modules.config_parsing import parse_config_unet,parse_config_cat
+from ...utils.network_factories import get_classification_network
+from ...utils.parser import get_params,merge_args,parse_ids
 
-if __name__ == "__main__":
+def main(arguments):
     parser = argparse.ArgumentParser()
 
     # params
@@ -111,16 +107,12 @@ if __name__ == "__main__":
 
     # network + training
     parser.add_argument(
-        '--config_files',dest="config_files",nargs="+",
-        help="Paths to network configuration file (yaml; size 1 or same size as\
-            net types)",
+        '--config_file',dest="config_file",
+        help="Path to network configuration file (yaml)",
         required=True)
     parser.add_argument(
-        '--ensemble_config_file',dest='ensemble_config_file',
-        help="Configures ensemble.",required=True)
-    parser.add_argument(
-        '--net_types',dest='net_types',nargs="+",
-        help="Classification types.",
+        '--net_type',dest='net_type',
+        help="Classification type.",
         choices=["cat","ord","unet","vit","factorized_vit", "vgg"],default="cat")
     
     # training
@@ -165,11 +157,7 @@ if __name__ == "__main__":
         help='Checkpoint ID.')
     parser.add_argument(
         '--checkpoint',dest='checkpoint',type=str,default=None,
-        nargs="+",help='Resumes training from these checkpoint. For each model\
-            in the ensemble, a checkpoint should be provided in a comma separated\
-            list and folds separated by space. I.e., for 2 folds and 3 models in \
-            the ensemble: \
-            model0_f0,model1_f0,model2_f0 model0_f1,model1_f1,model2_f1')
+        nargs="+",help='Resumes training from this checkpoint.')
     parser.add_argument(
         '--freeze_regex',dest='freeze_regex',type=str,default=None,nargs="+",
         help='Matches parameter names and freezes them.')
@@ -212,11 +200,15 @@ if __name__ == "__main__":
         help="No. of checks before early stop (defaults to no early stop).")
     parser.add_argument(
         '--warmup_steps',dest='warmup_steps',type=float,default=0.0,
-        help="Number of warmup steps.")
+        help="Number of warmup steps (if SWA is triggered it starts after\
+            this number of steps).")
     parser.add_argument(
         '--start_decay',dest='start_decay',type=float,default=None,
         help="Step at which decay starts. Defaults to starting right after \
             warmup ends.")
+    parser.add_argument(
+        '--swa',dest='swa',action="store_true",
+        help="Use stochastic gradient averaging.",default=False)
     parser.add_argument(
         '--gradient_clip_val',dest="gradient_clip_val",
         help="Value for gradient clipping",
@@ -246,7 +238,7 @@ if __name__ == "__main__":
         '--learning_rate',dest='learning_rate',type=float,default=None,
         help="Overrides learning rate in config file")
 
-    args = parser.parse_args()
+    args = parser.parse_args(arguments)
 
     if args.params_from is not None:
         param_dict = get_params(args.params_from)
@@ -258,11 +250,6 @@ if __name__ == "__main__":
     g = torch.Generator()
     g.manual_seed(args.seed)
     rng = np.random.default_rng(args.seed)
-
-    if len(args.config_files) == 1:
-        config_files = [args.config_files[0] for _ in args.net_types]
-    else:
-        config_files = args.config_files
 
     accelerator,devices,strategy = get_devices(args.dev)
     n_devices = len(devices) if isinstance(devices,list) else devices
@@ -279,11 +266,11 @@ if __name__ == "__main__":
     
     if args.excluded_ids is not None:
         args.excluded_ids = parse_ids(args.excluded_ids,
-                                      output_format="list")
+                                    output_format="list")
         print("Removing IDs specified in --excluded_ids")
         prev_len = len(data_dict)
         data_dict = {k:data_dict[k] for k in data_dict
-                     if k not in args.excluded_ids}
+                    if k not in args.excluded_ids}
         print("\tRemoved {} IDs".format(prev_len - len(data_dict)))
     data_dict = filter_dictionary_with_possible_labels(
         data_dict,args.possible_labels,args.label_keys)
@@ -315,6 +302,7 @@ if __name__ == "__main__":
         if isinstance(C,list):
             C = max(C)
         all_classes.append(str(C))
+    
     label_groups = None
     if args.label_groups is not None:
         n_classes = len(args.label_groups)
@@ -324,7 +312,6 @@ if __name__ == "__main__":
         n_classes = len(args.possible_labels)
     else:
         n_classes = 2
-
 
     if len(data_dict) == 0:
         raise Exception(
@@ -340,22 +327,19 @@ if __name__ == "__main__":
     adc_keys = [k for k in adc_keys if k in keys]
     t2_keys = [k for k in t2_keys if k in keys]
 
-
-    ensemble_config = parse_config_ensemble(
-        args.ensemble_config_file,n_classes)
-    
-    network_configs = [
-        parse_config_unet(config_file,len(keys),n_classes) 
-        if net_type == "unet"
-        else parse_config_cat(config_file)
-        for config_file,net_type in zip(config_files,args.net_types)]
+    if args.net_type == "unet":
+        network_config,_ = parse_config_unet(args.config_file,
+                                            len(keys),n_classes)
+    else:
+        network_config = parse_config_cat(args.config_file)
     
     if args.batch_size is not None:
-        ensemble_config["batch_size"] = args.batch_size
+        network_config["batch_size"] = args.batch_size
     if args.learning_rate is not None:
-        ensemble_config["learning_rate"] = args.learning_rate
-    if "batch_size" not in ensemble_config:
-        ensemble_config["batch_size"] = 1
+        network_config["learning_rate"] = args.learning_rate
+
+    if "batch_size" not in network_config:
+        network_config["batch_size"] = 1
     
     all_pids = [k for k in data_dict]
 
@@ -429,7 +413,7 @@ if __name__ == "__main__":
             train_val_pids = rng.choice(
                 train_pids,n_train_val,replace=False)
             train_pids = [pid for pid in train_pids 
-                          if pid not in train_val_pids]
+                        if pid not in train_val_pids]
         else:
             train_val_pids = val_pids
         train_list = [data_dict[pid] for pid in train_pids]
@@ -444,9 +428,9 @@ if __name__ == "__main__":
         if len(clinical_feature_keys) > 0:
             clinical_feature_values = [[train_sample[k]
                                         for train_sample in train_list]
-                                       for k in clinical_feature_keys]
+                                    for k in clinical_feature_keys]
             clinical_feature_values = np.array(clinical_feature_values,
-                                               dtype=np.float32)
+                                            dtype=np.float32)
             clinical_feature_means = np.mean(clinical_feature_values,axis=1)
             clinical_feature_stds = np.std(clinical_feature_values,axis=1)
         else:
@@ -461,7 +445,7 @@ if __name__ == "__main__":
             val_fold=val_fold,
             monitor=args.monitor,
             metadata={"train_pids":train_pids,
-                      "transform_arguments":transform_arguments})
+                    "transform_arguments":transform_arguments})
         ckpt = ckpt_callback is not None
         if status == "finished":
             continue
@@ -505,13 +489,13 @@ if __name__ == "__main__":
         # PL needs a little hint to detect GPUs.
         torch.ones([1]).to("cuda" if "cuda" in args.dev else "cpu")
         
-        # get class weights if necessary
+        # get class weights if necessary  
         class_weights = get_class_weights(args.class_weights,
-                                          classes=classes,
-                                          n_classes=n_classes,
-                                          positive_labels=args.positive_labels,
-                                          possible_labels=args.possible_labels,
-                                          label_groups=label_groups)
+                                        classes=classes,
+                                        n_classes=n_classes,
+                                        positive_labels=args.positive_labels,
+                                        possible_labels=args.possible_labels,
+                                        label_groups=label_groups)
         if class_weights is not None:
             class_weights = torch.as_tensor(
                 np.array(class_weights),device=args.dev.split(":")[0],
@@ -519,14 +503,14 @@ if __name__ == "__main__":
                 
         print("Initializing loss with class_weights: {}".format(class_weights))
         if n_classes == 2:
-            ensemble_config["loss_fn"] = torch.nn.BCEWithLogitsLoss(class_weights)
-        elif args.net_types[0] == "ord":
-            ensemble_config["loss_fn"] = OrdinalSigmoidalLoss(class_weights,n_classes)
+            network_config["loss_fn"] = torch.nn.BCEWithLogitsLoss(class_weights)
+        elif args.net_type == "ord":
+            network_config["loss_fn"] = OrdinalSigmoidalLoss(class_weights,n_classes)
         else:
-            ensemble_config["loss_fn"] = torch.nn.CrossEntropyLoss(class_weights)
+            network_config["loss_fn"] = torch.nn.CrossEntropy(class_weights)
         
         n_workers = args.n_workers // n_devices
-        bs = ensemble_config["batch_size"]
+        bs = network_config["batch_size"]
         real_bs = bs * n_devices
         if len(train_dataset) < real_bs:
             new_bs = len(train_dataset) // n_devices
@@ -544,16 +528,16 @@ if __name__ == "__main__":
 
         train_loader = train_loader_call()
         train_val_loader = monai.data.ThreadDataLoader(
-            train_dataset_val,batch_size=ensemble_config["batch_size"],
+            train_dataset_val,batch_size=network_config["batch_size"],
             shuffle=False,num_workers=n_workers,
             collate_fn=safe_collate)
         validation_loader = monai.data.ThreadDataLoader(
-            validation_dataset,batch_size=ensemble_config["batch_size"],
+            validation_dataset,batch_size=network_config["batch_size"],
             shuffle=False,num_workers=n_workers,
             collate_fn=safe_collate)
 
-        networks = [get_classification_network(
-            net_type=net_type,
+        network = get_classification_network(
+            net_type=args.net_type,
             network_config=network_config,
             dropout_param=args.dropout_param,
             seed=args.seed,
@@ -570,43 +554,17 @@ if __name__ == "__main__":
             label_smoothing=args.label_smoothing,
             mixup_alpha=args.mixup_alpha,
             partial_mixup=args.partial_mixup)
-            for net_type,network_config in zip(args.net_types,network_configs)]
 
         if args.checkpoint is not None:
             if len(args.checkpoint) > 1:
-                checkpoints = args.checkpoint[val_fold]
+                checkpoint = args.checkpoint[val_fold]
             else:
-                checkpoints = args.checkpoint
-            # here each checkpoint should actually be a list of len(networks)
-            # checkpoints or size 1. If checkpoint is empty, this is skipped
-            checkpoints = checkpoints.split(",")
-            if len(checkpoints) == 1:
-                checkpoints = [checkpoints[0] for _ in networks]
-            if len(checkpoints) != len(networks):
-                raise Exception("len(checkpoints) should be the same as len(networks)")
-            for network,checkpoint in zip(networks,checkpoints):
-                load_checkpoint_to_model(network,checkpoint,
-                                         args.exclude_from_state_dict)
-                conditional_parameter_freezing(
-                    network,args.freeze_regex,args.not_freeze_regex)
-                if args.correct_classification_bias is True and n_classes == 2:
-                    pos = len([x for x in classes if x in args.positive_labels])
-                    neg = len(classes) - pos
-                    set_classification_layer_bias(pos,neg,network)
-        
-        boilerplate_args = {
-            "image_keys":["image"],
-            "label_key":"label"}
-        ensemble = GenericEnsemblePL(
-            image_keys=["image"],
-            label_key="label",
-            networks=networks,
-            n_classes=n_classes,
-            training_dataloader_call=train_loader_call,
-            n_epochs=args.max_epochs,
-            warmup_steps=args.warmup_steps,
-            start_decay=args.start_decay,
-            **ensemble_config)
+                checkpoint = args.checkpoint
+            load_checkpoint_to_model(network,checkpoint,
+                                    args.exclude_from_state_dict)
+
+        conditional_parameter_freezing(
+            network,args.freeze_regex,args.not_freeze_regex)
 
         # instantiate callbacks and loggers
         callbacks = [RichProgressBar()]
@@ -619,10 +577,20 @@ if __name__ == "__main__":
         if ckpt_callback is not None:   
             callbacks.append(ckpt_callback)
 
+        if args.swa is True:
+            swa_callback = StochasticWeightAveraging(
+                network_config["learning_rate"],swa_epoch_start=args.warmup_steps)
+            callbacks.append(swa_callback)
+
         logger = get_logger(args.summary_name,args.summary_dir,
                             args.project_name,args.resume,
                             fold=val_fold)
-                
+        
+        if args.correct_classification_bias is True and n_classes == 2:
+            pos = len([x for x in classes if x in args.positive_labels])
+            neg = len(classes) - pos
+            set_classification_layer_bias(pos,neg,network)
+        
         trainer = Trainer(
             accelerator=accelerator,
             devices=devices,logger=logger,callbacks=callbacks,
@@ -634,36 +602,33 @@ if __name__ == "__main__":
             check_val_every_n_epoch=1,
             deterministic="warn")
 
-        trainer.fit(ensemble,train_loader,train_val_loader,ckpt_path=ckpt_path)
+        trainer.fit(network,train_loader,train_val_loader,ckpt_path=ckpt_path)
 
         # assessing performance on validation set
         print("Validating...")
-
+        
         if ckpt is True:
             ckpt_list = ["last","best"]
         else:
             ckpt_list = ["last"]
         for ckpt_key in ckpt_list:
             test_metrics = trainer.test(
-                ensemble,validation_loader,ckpt_path=ckpt_key)
-            test_metrics = test_metrics[0]
+                network,validation_loader,ckpt_path=ckpt_key)[0]
             for k in test_metrics:
                 out = test_metrics[k]
-                try:
-                    value = float(out.detach().numpy())
-                except Exception:
-                    value = float(out)
-                if n_classes > 2:
-                    k = k.split("_")
-                    if k[-1].isdigit():
-                        k,idx = "_".join(k[:-1]),k[-1]
-                    else:
-                        k,idx = "_".join(k),0
+                if n_classes == 2:
+                    try:
+                        value = float(out.detach().numpy())
+                    except Exception:
+                        value = float(out)
+                    x = "{},{},{},{},{}".format(k,ckpt_key,val_fold,0,value)
+                    output_file.write(x+'\n')
+                    print(x)
                 else:
-                    idx = 0
-                x = "{},{},{},{},{}".format(k,ckpt_key,val_fold,idx,value)
-                output_file.write(x+'\n')
-                print(x)
+                    for i,v in enumerate(out):
+                        x = "{},{},{},{},{}".format(k,ckpt_key,val_fold,i,v)
+                        output_file.write(x+'\n')
+                        print(x)
         
         if args.delete_checkpoints == True:
             delete_checkpoints(trainer)
