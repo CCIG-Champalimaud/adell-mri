@@ -5,6 +5,7 @@ supported_modes = [
     "classification_mil",
     "classification_ensemble",
     "segmentation",
+    "segmentation_from_2d_module",
     "ssl",
     "detection"
 ]
@@ -31,6 +32,9 @@ def main():
     # segmentation modes
     elif arguments[0] == "segmentation":
         from .entrypoints.segmentation.__main__ import main
+        main(arguments[1:])
+    elif arguments[0] == "segmentation_from_2d_module":
+        from .entrypoints.segmentation_from_2d_module.__main__ import main
         main(arguments[1:])
 
     # ssl modes
