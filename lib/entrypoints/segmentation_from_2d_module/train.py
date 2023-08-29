@@ -24,6 +24,7 @@ from ...utils import (
 from ...utils.pl_utils import get_ckpt_callback,get_logger,get_devices
 from ...monai_transforms import get_transforms_unet as get_transforms
 from ...monai_transforms import get_augmentations_unet as get_augmentations
+from ...modules.layers.adn_fn import get_adn_fn
 from ...modules.segmentation.pl import MIMUNetPL
 from ...modules.config_parsing import parse_config_unet
 from ...utils.parser import parse_ids
@@ -576,6 +577,19 @@ def main(arguments):
             collate_fn=collate_fn_val,persistent_workers=True)
 
         # make other network configurations compatible with mimunet
+        adn_fn_args = {
+            "spatial_dim": 3,
+            "norm_fn": "batch",
+            "act_fn": "swish",
+            "dropout_param": 0.1
+        }
+        if "norm_type" in network_config:
+            adn_fn_args["norm_fn"] = network_config["norm_type"]
+        if "activation_fn" in network_config:
+            adn_fn_args["act_fn"] = network_config["activation_fn"]
+        if "dropout_param" in network_config:
+            adn_fn_args["dropout_param"] = network_config["dropout_param"]
+        network_config["adn_fn"] = get_adn_fn(**adn_fn_args)
         network_config = {k:network_config[k] for k in network_config
                           if k not in ["depth","spatial_dimensions",
                                        "conv_type","norm_type","interpolation",
