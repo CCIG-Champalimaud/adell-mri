@@ -6,6 +6,7 @@ authors = ["josegcpa <jose.almeida@research.fchampalimaud.pt>",
            "NMVRodrigues"]
 license = "LICENSE"
 readme = "README.md"
+packages = [{include = "lib"}]
 
 [tool.poetry.dependencies]
 python = "^3.11"
