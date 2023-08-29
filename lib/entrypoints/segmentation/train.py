@@ -13,7 +13,6 @@ from lightning.pytorch import Trainer
 from lightning.pytorch.callbacks import EarlyStopping
 from lightning.pytorch.callbacks import RichProgressBar
 
-import sys
 from ...utils import (
     GetAllCropsd,
     PartiallyRandomSampler,
