@@ -17,6 +17,7 @@ def is_if_none(a: Any,b: Any)->Any:
 
 class MIMUNet(torch.nn.Module):
     """
+    Modifiable input module U-Net (MIMU-Net).
     """
     def __init__(self,
                  module:torch.nn.Module,
@@ -83,7 +84,7 @@ class MIMUNet(torch.nn.Module):
     @staticmethod
     def infer_depth_padding_kernel_size(module: torch.nn.Module,
                                         test_shape: List[int]=[1,1,256,256]):
-        X = torch.randn(*test_shape)
+        X = torch.randn(*test_shape).to(next(module.parameters()))
         output = module(X)
         depth = [x.shape[1] for x in output]
         diff_from_same = []
