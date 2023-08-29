@@ -1,0 +1,34 @@
+[tool.poetry]
+name = "adell-mri"
+version = "0.1.0"
+description = "A deep-learning library built with torch, lightning and MONAI for medical imaging."
+authors = ["josegcpa <jose.almeida@research.fchampalimaud.pt>"]
+license = "LICENSE"
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+dvc = "2.45.1"
+einops = "0.6.1"
+itk = "5.3.0"
+lightning = "2.0.3"
+monai = "1.1.0"
+multiprocess = "0.70.13"
+nibabel = "3.2.2"
+numpy = "1.23.5"
+pandas = "1.4.2"
+pydicom = "2.3.0"
+pytest = "7.2.0"
+pyyaml = "6.0"
+scikit-image = "0.19.2"
+scikit-learn = "1.3.0"
+scipy = "1.11.1"
+simpleitk = "2.2.1"
+torch = "2.0.1"
+torchmetrics = "0.11.1"
+tqdm = "4.64.1"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
