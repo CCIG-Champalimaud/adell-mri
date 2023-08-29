@@ -631,9 +631,10 @@ def main(arguments):
             nw = args.n_workers // len(devices)
         else:
             nw = args.n_workers
+
         def train_loader_call(batch_size): 
             return monai.data.ThreadDataLoader(
-                train_dataset,batch_size=batch_size,
+                dataset=train_dataset,batch_size=batch_size, # noqa: F821
                 num_workers=nw,generator=g,sampler=sampler,
                 collate_fn=collate_fn_train,pin_memory=True,
                 persistent_workers=True,drop_last=True)
