@@ -62,7 +62,7 @@ if __name__ == "__main__":
         '--mask_pattern',dest="mask_pattern",default="*nii.gz",
         help="Pattern to match for mask")
     parser.add_argument(
-        '--id_pattern',dest="id_pattern",default="*",type=str,
+        '--id_pattern',dest="id_pattern",default=".*",type=str,
         help="Pattern to extract IDs from image files")
     parser.add_argument(
         '--output_json',dest="output_json",required=True,
