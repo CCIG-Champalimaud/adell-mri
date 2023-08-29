@@ -300,6 +300,10 @@ class ResNet(torch.nn.Module):
     def forward_representation_with_intermediate(self,X):
         X = self.backbone.forward_with_intermediate(X)
         return X
+    
+    def forward_intermediate(self,X):
+        X = self.backbone.forward_intermediate(X)
+        return X
 
     def forward(self,X,ret="projection"):
         X = self.backbone(X)
