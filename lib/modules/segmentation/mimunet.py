@@ -15,6 +15,12 @@ def is_if_none(a: Any,b: Any)->Any:
         return b
     return a
 
+def zeros_like(X: torch.Tensor, shape: List[int]):
+    X_shape = X.shape
+    for i in range(len(shape)):
+        shape[i] = shape[i] if shape[i] != -1 else X_shape[i]
+    return torch.zeros(shape).to(X)
+
 class MIMUNet(torch.nn.Module):
     """
     Modifiable input module U-Net (MIMU-Net).
@@ -116,11 +122,34 @@ class MIMUNet(torch.nn.Module):
                 for d in self.depth
             ])
 
-    def v_module(self,X:torch.Tensor)->torch.Tensor:
-        X = self.vol_to_slice(X).unsqueeze(1) # unsqueeze a channel dimension
-        X = self.module(X)
-        X = [S(x) for x,S in zip(X,self.slice_to_vol)]
-        return X
+    def v_module(self,X: torch.Tensor)->torch.Tensor:
+        n = self.n_slices
+        b,c,h,w,n_X = X.shape
+        if n_X == self.n_slices:
+            X = self.vol_to_slice(X).unsqueeze(1) # unsqueeze a channel dimension
+            X = self.module(X)
+            output = [S(x) for x,S in zip(X,self.slice_to_vol)]
+        else: # so that inference runs for arbitrarily sized tensors
+            output = None
+            denominator = []
+            slice_ranges = [
+                slice(i, i + n) if (i + n) < n_X else slice(n_X - n, n_X)
+                for i in range(0,n_X,self.n_slices)]
+            for sr in slice_ranges:
+                sliced_X = X[...,sr]
+                sliced_X = self.vol_to_slice(sliced_X).unsqueeze(1)
+                sliced_X = self.module(sliced_X)
+                sliced_X = [S(x) for x,S in zip(sliced_X,self.slice_to_vol)]
+                if output is None:
+                    output = [zeros_like(sx, [-1,-1,-1,-1,n_X])
+                              for sx in sliced_X]
+                    denominator = [zeros_like(sx, [-1,-1,-1,-1,n_X]) 
+                                   for sx in sliced_X]
+                for i in range(len(output)):
+                    output[i][..., sr] += sliced_X[i]
+                    denominator[i][..., sr] += 1
+            output = [out / den for out, den in zip(output, denominator)]
+        return output
 
     def init_link_ops(self):
         """Initializes linking (skip) operations.
