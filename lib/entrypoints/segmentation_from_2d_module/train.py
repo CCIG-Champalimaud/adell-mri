@@ -5,6 +5,7 @@ import numpy as np
 import torch
 import monai
 import gc
+from copy import deepcopy
 from sklearn.model_selection import KFold,train_test_split
 from tqdm import tqdm
 
@@ -577,24 +578,26 @@ def main(arguments):
             collate_fn=collate_fn_val,persistent_workers=True)
 
         # make other network configurations compatible with mimunet
+        network_config_corr = deepcopy(network_config)
         adn_fn_args = {
             "spatial_dim": 3,
             "norm_fn": "batch",
             "act_fn": "swish",
-            "dropout_param": 0.1
-        }
-        if "norm_type" in network_config:
-            adn_fn_args["norm_fn"] = network_config["norm_type"]
-        if "activation_fn" in network_config:
-            adn_fn_args["act_fn"] = network_config["activation_fn"]
-        if "dropout_param" in network_config:
-            adn_fn_args["dropout_param"] = network_config["dropout_param"]
-        network_config["adn_fn"] = get_adn_fn(**adn_fn_args)
-        network_config = {k:network_config[k] for k in network_config
-                          if k not in ["depth","spatial_dimensions",
-                                       "conv_type","norm_type","interpolation",
-                                       "dropout_param","activation_fn",
-                                       "kernel_sizes","strides","padding"]}
+            "dropout_param": 0.1}
+        if "norm_type" in network_config_corr:
+            adn_fn_args["norm_fn"] = network_config_corr["norm_type"]
+        if "activation_fn" in network_config_corr:
+            adn_fn_args["act_fn"] = network_config_corr["activation_fn"]
+        if "dropout_param" in network_config_corr:
+            adn_fn_args["dropout_param"] = network_config_corr["dropout_param"]
+        network_config_corr["adn_fn"] = get_adn_fn(**adn_fn_args)
+        network_config_corr = {k:network_config_corr[k] 
+                               for k in network_config_corr
+                               if k not in ["depth","spatial_dimensions",
+                                            "conv_type","norm_type",
+                                            "interpolation","dropout_param",
+                                            "activation_fn","kernel_sizes",
+                                            "strides","padding"]}
         module_2d = torch.jit.load(args.module_path,
                                    map_location=args.dev)
         module_2d.requires_grad = False
@@ -610,7 +613,7 @@ def main(arguments):
                          training_dataloader_call=train_loader_call,
                          deep_supervision=args.deep_supervision,
                          loss_params=loss_params,
-                         **network_config)
+                         **network_config_corr)
         unet.module = torch.jit.freeze(unet.module)
 
         if args.early_stopping is not None:
