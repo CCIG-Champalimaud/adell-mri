@@ -5,8 +5,8 @@ import numpy as np
 import torch
 import monai
 from pathlib import Path
+from tqdm import tqdm
 
-from lightning.pytorch import Trainer
 import sys
 from ...utils import (
     safe_collate,ScaleIntensityAlongDimd,EinopsRearranged)
@@ -34,9 +34,6 @@ def main(arguments):
     parser.add_argument(
         '--dataset_json',dest='dataset_json',type=str,
         help="JSON containing dataset information",required=True)
-    parser.add_argument(
-        '--metric_path',dest='metric_path',type=str,required=True,
-        help='Path to metrics file.')
     parser.add_argument(
         '--prediction_ids',dest='prediction_ids',type=str,nargs="+",
         help="List of IDs for prediction",required=True)
@@ -117,6 +114,9 @@ def main(arguments):
     parser.add_argument(
         '--checkpoints',dest='checkpoints',type=str,default=None,
         nargs="+",help='List of checkpoints for prediction.')
+    parser.add_argument(
+        '--output_path',dest='output_path',type=str,default="output.csv",
+        help='Path to file with CV metrics + information.')
 
     args = parser.parse_args(arguments)
 
@@ -258,30 +258,42 @@ def main(arguments):
                     **boilerplate_args,
                     **network_config)
 
-            train_loader_call = None
             state_dict = torch.load(checkpoint)["state_dict"]
             network.load_state_dict(state_dict)
             network = network.eval().to(args.dev)
-            trainer = Trainer(accelerator=accelerator,devices=devices)
-            prediction_output = trainer.predict(network,prediction_loader)[0]
-            if prediction_output == "probability":
+            kwargs = {}
+            if args.type == "attention":
+                kwargs["return_attention"] = True
+            prediction_output = []
+            with tqdm(prediction_loader,total=len(prediction_loader)) as pbar:
+                for idx,batch in enumerate(pbar):
+                    batch = {k:batch[k].to(args.dev) for k in batch
+                             if isinstance(batch[k],torch.Tensor)}
+                    prediction_output.append(network.predict_step(batch,idx,**kwargs))
+            attention = None
+            if args.type == "probability":
                 if args.n_classes == 2:
-                    prediction_output = [torch.nn.functional.sigmoid(x)
+                    prediction_output = [torch.nn.functional.sigmoid(x)[0]
                                          for x in prediction_output]
                 else:
-                    prediction_output = [torch.nn.functional.softmax(x,axis=-1)
+                    prediction_output = [torch.nn.functional.softmax(x,axis=-1)[0]
                                          for x in prediction_output]
-            elif prediction_output == "logit":
-                prediction_output = prediction_output
-            elif prediction_output == "attention":
-                prediction_output = [
-                    {"logit":x[0],
-                     "attention":x[1]}
-                    for x in prediction_output]
+            elif args.type == "logit":
+                prediction_output = [x[0] for x in prediction_output]
+            elif args.type == "attention":
+                attention = [x[1][0] for x in prediction_output]
+                prediction_output = [x[0][0] for x in prediction_output]
+            prediction_output = {
+                k:x.detach().cpu().numpy().tolist() 
+                for x,k in zip(prediction_output,prediction_pids)}
+            prediction_output = {"prediction":prediction_output}
+            if attention is not None:
+                prediction_output["attention"] = {
+                    k:x.detach().cpu().numpy().tolist() 
+                    for x,k in zip(attention,prediction_pids)}
             prediction_output["checkpoint"] = checkpoint
-            prediction_output["pids"] = prediction_pids
             all_metrics.append(prediction_output)
     
-    Path(args.metric_path).parent.mkdir(exist_ok=True,parents=True)
-    with open(args.metric_path,"w") as o:
+    Path(args.output_path).parent.mkdir(exist_ok=True,parents=True)
+    with open(args.output_path,"w") as o:
         json.dump(all_metrics,o)
