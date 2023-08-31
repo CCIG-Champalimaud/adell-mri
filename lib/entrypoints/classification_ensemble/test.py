@@ -266,7 +266,7 @@ def main(arguments):
             checkpoint_list = [args.checkpoints[iteration]]
         else:
             checkpoint_list = args.checkpoints
-        for checkpoint in checkpoint_list:
+        for checkpoint_idx,checkpoint in enumerate(checkpoint_list):
             networks = [get_classification_network(
                 net_type=net_type,
                 network_config=network_config,
@@ -287,9 +287,6 @@ def main(arguments):
                 partial_mixup=None)
                 for net_type,network_config in zip(args.net_types,network_configs)]
             
-            boilerplate_args = {
-                "image_keys":["image"],
-                "label_key":"label"}
             ensemble = GenericEnsemblePL(
                 image_keys=["image"],
                 label_key="label",
