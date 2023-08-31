@@ -4,6 +4,7 @@ import json
 import numpy as np
 import torch
 import monai
+from pathlib import Path
 from tqdm import tqdm
 
 import sys
@@ -283,5 +284,6 @@ def main(arguments):
                     pbar.update()
             global_output.append(output_dict)
     
+    Path(args.output_path).parent.mkdir(exist_ok=True,parents=True)
     with open(args.output_path,"w") as o:
         o.write(json.dumps(global_output))
