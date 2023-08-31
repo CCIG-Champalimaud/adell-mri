@@ -4,7 +4,7 @@ import torch.nn.functional as F
 import torchmetrics
 import lightning.pytorch as pl
 import torchmetrics.classification as tmc
-from typing import Callable,Dict,List
+from typing import Callable,Dict,List,Tuple
 from abc import ABC
 
 from .picai_eval import evaluate
@@ -16,7 +16,8 @@ from .mimunet import MIMUNet
 from ..extract_lesion_candidates import extract_lesion_candidates
 from ..learning_rate import CosineAnnealingWithWarmupLR
 
-def binary_iou_manual(pred,truth):
+def binary_iou_manual(pred: torch.Tensor,
+                      truth: torch.Tensor)->Tuple[torch.Tensor,torch.Tensor]:
     binary_pred = pred > 0.5
     intersection = torch.logical_and(
         binary_pred,truth == 1)
@@ -24,7 +25,7 @@ def binary_iou_manual(pred,truth):
     union = binary_pred.sum() + truth.sum() - intersection
     return intersection,union
  
-def split(x,n_splits,dim):
+def split(x: torch.Tensor,n_splits: int,dim: int)->torch.Tensor:
     size = int(x.shape[dim]//n_splits)
     return torch.split(x,size,dim)
 
@@ -122,6 +123,7 @@ class UNetBasePL(pl.LightningModule,ABC):
         
         self.train_batch_size = None
         self.raise_nan_loss = False
+        self.make_uniform = False
 
         self.bottleneck_classification = False
         self.feature_conditioning_key = None
@@ -155,6 +157,33 @@ class UNetBasePL(pl.LightningModule,ABC):
                         print("\t\taverage grad({})={}".format(n,pg))
             raise RuntimeError(
                 "nan found in loss (see above for details)")
+
+    def crop_if_necessary(self,
+                          y: torch.Tensor,
+                          prediction: torch.Tensor)->Tuple[torch.Tensor,
+                                                           torch.Tensor]:
+        """
+        Crops y to the same shape as prediction.
+
+        Args:
+            y (torch.Tensor): ground truth.
+            prediction (torch.Tensor): prediction.
+        """
+        if self.make_uniform is True:
+            pred_sh = prediction.shape[2:]
+            y_sh = y.shape[2:]
+            diffs = [a-b for a,b in zip(y_sh,pred_sh)]
+            slices = []
+            if any([diff > 0 for diff in diffs]):
+                for diff,y_dim in zip(diffs,y_sh):
+                    a = diff // 2
+                    b = y_dim - (diff - a)
+                    slices.append(slice(a,b))
+                y = y[:,:,slices[0],:,:]
+                y = y[:,:,:,slices[1],:]
+                if len(y_sh) == 3:
+                    y = y[:,:,:,:,slices[2]]
+        return y,prediction
 
     def step(self,x,y,y_class,x_cond,x_fc):
         y = torch.round(y)
@@ -307,6 +336,8 @@ class UNetBasePL(pl.LightningModule,ABC):
                                    y.squeeze(1).detach().cpu().numpy()):
                     self.all_pred.append(s_p)
                     self.all_true.append(s_y)
+
+            y,out = self.crop_if_necessary(y,pred_final)
 
             update_metrics(
                 self,self.test_metrics,pred_final,
@@ -777,6 +808,8 @@ class MIMUNetPL(MIMUNet,UNetBasePL):
         self.all_pred = []
         self.all_true = []
 
+        self.make_uniform = True
+
     def step(self,x,y,y_class=None,x_cond=None,x_fc=None):
         y = torch.round(y)
         output = self.forward(X=x)
@@ -785,6 +818,9 @@ class MIMUNetPL(MIMUNet,UNetBasePL):
         else:
             prediction,deep_outputs = output
         prediction = prediction
+
+        if self.training is False:
+            y,prediction = self.crop_if_necessary(y,prediction)
 
         loss = self.calculate_loss(prediction,y)
         if self.deep_supervision is True:

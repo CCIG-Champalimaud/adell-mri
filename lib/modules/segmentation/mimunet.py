@@ -297,7 +297,6 @@ class MIMUNet(torch.nn.Module):
             deep_outputs.append(curr)
 
         curr = self.final_layer(curr)
-        
         if self.deep_supervision is True:
             for i in range(len(deep_outputs)):
                 o = deep_outputs[i]
