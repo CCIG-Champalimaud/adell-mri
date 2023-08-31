@@ -4,6 +4,7 @@ import torch.nn.functional as F
 import torchmetrics
 import lightning.pytorch as pl
 import torchmetrics.classification as tmc
+
 from tqdm import tqdm
 from typing import Callable,List,Dict
 from abc import ABC
@@ -12,6 +13,7 @@ from .classification import (
     CatNet,OrdNet,ordinal_prediction_to_class,SegCatNet,
     UNetEncoder,GenericEnsemble,ViTClassifier,FactorizedViTClassifier,
     TransformableTransformer,MultipleInstanceClassifier,HybridClassifier, VGG)
+from ..conformal_prediction import AdaptivePredictionSets
 from ..learning_rate import CosineAnnealingWithWarmupLR
 
 try:
@@ -110,6 +112,7 @@ class ClassPLABC(pl.LightningModule,ABC):
         super().__init__()
 
         self.raise_nan_loss = False
+        self.calibrated = False
 
     def calculate_loss(self,prediction,y,with_params=False):
         y = y.to(prediction.device)
@@ -165,14 +168,76 @@ class ClassPLABC(pl.LightningModule,ABC):
                  on_step=False,prog_bar=True,
                  batch_size=x.shape[0],sync_dist=True)        
         self.update_metrics(prediction,y,self.test_metrics,log=False)
-        return loss
+        return loss, prediction
     
+    def on_train_start(self):
+        print("Training with the following hyperparameters:")
+        parameter_dict = {}
+        for k,v in self.hparams.items():
+            print(f"\t{k}: {v}")
+            if isinstance(v,(list,tuple,torch.Tensor,np.ndarray)):
+                if len(v) > 1:
+                    for i in range(len(v)):
+                        parameter_dict[f"{k}_{i}"] = v[i]
+                else:
+                    parameter_dict[k] = v[0]
+            elif isinstance(v,dict):
+                for kk,vv in v:
+                    parameter_dict[f"{k}_{kk}"] = float(vv)
+            elif isinstance(v,(int,float,bool)):
+                parameter_dict[k] = v
+        parameter_dict = {
+            k:float(parameter_dict[k]) for k in parameter_dict
+            if isinstance(k,(int,float,bool))}
+        self.log_dict(parameter_dict,sync_dist=True)
+
+    def on_train_epoch_end(self):
+        sch = self.lr_schedulers().state_dict()
+        lr = self.learning_rate
+        last_lr = sch['_last_lr'][0] if '_last_lr' in sch else lr
+        self.log("lr",last_lr,sync_dist=True,prog_bar=True)
+
+    def on_fit_end(self):
+        if hasattr(self,"gaussian_process"):
+            if self.gaussian_process == True:
+                with tqdm(self.training_dataloader_call()) as pbar:
+                    pbar.set_description("Fitting GP covariance")
+                    for batch in pbar:
+                        x, y = batch[self.image_key],batch[self.label_key]
+                        self.gaussian_process_head.update_inv_cov(x,y)
+                    self.cov = torch.linalg.inv(self.inv_conv)
+
+    def calibrate(self, dataloader):
+        self.calibration = AdaptivePredictionSets(0.2)
+        with tqdm(dataloader) as pbar:
+            pbar.set_description("Calibrating adaptive prediction sets")
+            for batch in pbar:
+                x, y = batch[self.image_key],batch[self.label_key]
+                prediction = self.forward(x)
+                if self.n_classes == 2:
+                    prediction = F.sigmoid(prediction)
+                else:
+                    prediction = F.softmax(prediction, -1)
+                self.calibration.update(y, prediction)
+            self.calibration.calculate()
+        self.calibrated = True
+
     def on_test_epoch_end(self):
         self.log_metrics_end_epoch(self.test_metrics)
 
     def predict_step(self,batch,batch_idx,*args,**kwargs):
         x = batch[self.image_key]
+        x = batch[self.image_key]
         prediction = self.forward(x,*args,**kwargs)
+        return prediction
+
+    def predict_calibrated_step(self,batch,batch_idx,*args,**kwargs):
+        prediction = self.predict_step(batch)
+        if self.calibrated is True:
+            prediction = self.calibration(prediction)
+        else:
+            RuntimeError(
+                "Model needs to be calibrated before calibrated prediction")
         return prediction
 
     def train_dataloader(self) -> torch.utils.data.DataLoader:
@@ -203,12 +268,6 @@ class ClassPLABC(pl.LightningModule,ABC):
         return {"optimizer":optimizer,
                 "lr_scheduler":lr_schedulers,
                 "monitor":"val_loss"}
-
-    def on_train_epoch_end(self):
-        sch = self.lr_schedulers().state_dict()
-        lr = self.learning_rate
-        last_lr = sch['_last_lr'][0] if '_last_lr' in sch else lr
-        self.log("lr",last_lr,sync_dist=True,prog_bar=True)
 
     def setup_metrics(self):
         self.train_metrics = get_metric_dict(
@@ -246,36 +305,6 @@ class ClassPLABC(pl.LightningModule,ABC):
                 self.log(
                     k,metric,on_epoch=True,
                     on_step=False,prog_bar=True,sync_dist=True)
-
-    def on_train_start(self):
-        print("Training with the following hyperparameters:")
-        parameter_dict = {}
-        for k,v in self.hparams.items():
-            print(f"\t{k}: {v}")
-            if isinstance(v,(list,tuple,torch.Tensor,np.ndarray)):
-                if len(v) > 1:
-                    for i in range(len(v)):
-                        parameter_dict[f"{k}_{i}"] = v[i]
-                else:
-                    if len(v) > 0:
-                        parameter_dict[k] = v[0]
-            elif isinstance(v,dict):
-                for kk,vv in v:
-                    parameter_dict[f"{k}_{kk}"] = float(vv)
-            elif isinstance(v,(int,float,bool)):
-                parameter_dict[k] = v
-        parameter_dict = {
-            k:float(parameter_dict[k]) for k in parameter_dict
-            if isinstance(k,(int,float,bool))}
-        self.log_dict(parameter_dict,sync_dist=True)
-    
-    def on_fit_end(self):
-        if hasattr(self,"gaussian_process"):
-            if self.gaussian_process == True:
-                for batch in tqdm(self.training_dataloader_call()):
-                    x, y = batch[self.image_key],batch[self.label_key]
-                    self.gaussian_process_head.update_inv_cov(x,y)
-                self.cov = torch.linalg.inv(self.inv_conv)
 
 class ClassNetPL(ClassPLABC):
     """
