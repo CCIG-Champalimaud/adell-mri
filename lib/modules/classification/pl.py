@@ -171,7 +171,7 @@ class ClassPLABC(pl.LightningModule,ABC):
         self.log_metrics_end_epoch(self.test_metrics)
 
     def predict_step(self,batch,batch_idx,*args,**kwargs):
-        x, y = batch[self.image_key]
+        x = batch[self.image_key]
         prediction = self.forward(x,*args,**kwargs)
         return prediction
 
@@ -257,7 +257,8 @@ class ClassPLABC(pl.LightningModule,ABC):
                     for i in range(len(v)):
                         parameter_dict[f"{k}_{i}"] = v[i]
                 else:
-                    parameter_dict[k] = v[0]
+                    if len(v) > 0:
+                        parameter_dict[k] = v[0]
             elif isinstance(v,dict):
                 for kk,vv in v:
                     parameter_dict[f"{k}_{kk}"] = float(vv)
