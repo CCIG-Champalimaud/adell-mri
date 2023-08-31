@@ -169,21 +169,28 @@ class MultipleInstanceClassifier(torch.nn.Module):
 
     def init_classification_module(self):
         n_classes_out = 1 if self.n_classes == 2 else self.n_classes
-        self.feature_extraction = torch.nn.Sequential(
-            torch.nn.LayerNorm(self.module_out_dim),
-            MLP(self.module_out_dim,self.feat_extraction_structure[-1],
-                structure=self.feat_extraction_structure[:-1],
-                adn_fn=self.adn_fn),
-            torch.nn.LayerNorm(self.feat_extraction_structure[-1]),
-            torch.nn.GELU())
+        if len(self.feat_extraction_structure) > 0:
+            self.feature_extraction = torch.nn.Sequential(
+                torch.nn.LayerNorm(self.module_out_dim),
+                MLP(self.module_out_dim,self.feat_extraction_structure[-1],
+                    structure=self.feat_extraction_structure[:-1],
+                    adn_fn=self.adn_fn),
+                torch.nn.LayerNorm(self.feat_extraction_structure[-1]),
+                torch.nn.GELU())
+            last_layer_value = self.feat_extraction_structure[-1]
+        else:
+            self.feature_extraction = torch.nn.Sequential(
+                torch.nn.LayerNorm(self.module_out_dim),
+                torch.nn.GELU())
+            last_layer_value = self.module_out_dim
         if self.classification_mode in ["mean","max"]:
             self.final_prediction = MLP(
-                self.feat_extraction_structure[-1],n_classes_out,
+                last_layer_value,n_classes_out,
                 structure=self.classification_structure,
                 adn_fn=self.classification_adn_fn)
         elif self.classification_mode == "vocabulary":
             self.vocabulary_prediction = MLP(
-                self.feat_extraction_structure[-1],self.vocabulary_size,
+                last_layer_value,self.vocabulary_size,
                 structure=[],
                 adn_fn=self.classification_adn_fn)
             self.final_prediction = MLP(
