@@ -27,13 +27,11 @@ class MILAttention(torch.nn.Module):
         self.V = torch.nn.Linear(self.n_dim,self.n_dim)
         self.U = torch.nn.Linear(self.n_dim,self.n_dim)
         self.W = torch.nn.Linear(self.n_dim,1)
-    
+
     def calculate_attention(self,X:torch.Tensor)->torch.Tensor:
         return F.softmax(
             self.W(
-                torch.multiply(
-                    F.tanh(self.V(X)),
-                    F.sigmoid(self.U(X)))),
+                F.tanh(self.V(X)) * F.sigmoid(self.U(X))),
             self.along_dim)
 
     def forward(self,X:torch.Tensor)->torch.Tensor:
