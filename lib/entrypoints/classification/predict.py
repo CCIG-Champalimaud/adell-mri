@@ -168,10 +168,7 @@ def main(arguments):
 
     if "batch_size" not in network_config:
         network_config["batch_size"] = 1
-    
-    all_pids = [k for k in data_dict]
 
-    label_mode = "binary" if args.n_classes == 2 else "cat"
     transform_arguments = {
         "keys":keys,
         "clinical_feature_keys":clinical_feature_keys,
@@ -180,7 +177,7 @@ def main(arguments):
         "crop_size":args.crop_size,
         "pad_size":args.pad_size}
 
-    transforms_val = monai.transforms.Compose([
+    transforms_prediction = monai.transforms.Compose([
         *get_transforms("pre",**transform_arguments),
         *get_transforms("post",**transform_arguments)])
 
@@ -208,7 +205,7 @@ def main(arguments):
         prediction_list = [data_dict[pid] for pid in curr_prediction_ids]
         
         prediction_dataset = monai.data.CacheDataset(
-            prediction_list,transforms_val,num_workers=args.n_workers,
+            prediction_list,transforms_prediction,num_workers=args.n_workers,
             cache_rate=args.cache_rate)
         
         # PL sometimes needs a little hint to detect GPUs.
@@ -265,8 +262,6 @@ def main(arguments):
                 "checkpoint":checkpoint,
                 "predictions":{}
             }
-            batch = []
-            batch_ids = []
             with tqdm(total=len(curr_prediction_ids)) as pbar:
                 for identifier,element in zip(curr_prediction_ids,
                                               prediction_dataset):
