@@ -341,5 +341,4 @@ class Diffusion:
                         weight=classification_scale)
                 x = self.step(x=x,epsilon=predicted_noise,t=t)
         model.train()
-        x = x.clamp(-1, 1)
         return x
