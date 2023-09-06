@@ -34,11 +34,11 @@ try:
 except ImportError:  # pragma: no cover
     pass
 
-from picai_eval.analysis_utils import (calculate_dsc, calculate_iou,
+from .analysis_utils import (calculate_dsc, calculate_iou,
                                        label_structure, parse_detection_map)
-from picai_eval.image_utils import (read_label, read_prediction,
+from .image_utils import (read_label, read_prediction,
                                     resize_image_with_crop_or_pad)
-from picai_eval.metrics import Metrics
+from .metrics import Metrics
 
 PathLike = Union[str, Path]
 
