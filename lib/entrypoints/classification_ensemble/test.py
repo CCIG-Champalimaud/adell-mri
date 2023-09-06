@@ -231,7 +231,7 @@ def main(arguments):
         *get_transforms("pre",**transform_arguments),
         *get_transforms("post",**transform_arguments)])
     
-    all_test_ids = parse_ids(args.test_ids)
+    all_test_ids = parse_ids(args.test_ids,"list")
     for iteration in range(len(all_test_ids)):
         test_ids = all_test_ids[iteration]
         test_list = [data_dict[pid] for pid in test_ids if pid in data_dict]
@@ -319,4 +319,3 @@ def main(arguments):
                     idx = 0
                 x = "{},{},{},{},{}".format(k,checkpoint,iteration,idx,value)
                 output_file.write(x+'\n')
-                print(x)
