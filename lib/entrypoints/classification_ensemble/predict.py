@@ -208,7 +208,7 @@ def main(arguments):
         post_proc_fn = torch.nn.Identity()
 
     if args.prediction_ids:
-        prediction_ids = parse_ids(args.prediction_ids)
+        prediction_ids = parse_ids(args.prediction_ids,"list")
     else:
         prediction_ids = [[k for k in data_dict]]
     for iteration in range(len(prediction_ids)):
@@ -266,10 +266,11 @@ def main(arguments):
                 n_epochs=None,
                 warmup_steps=None,
                 start_decay=None,
-                **ensemble_config).to(args.dev)
+                **ensemble_config).to(args.dev).eval()
 
             load_checkpoint_to_model(
-                ensemble,checkpoint,exclude_from_state_dict=["loss_fn.weight"])
+                ensemble,checkpoint,
+                exclude_from_state_dict=["loss_fn.weight"])
 
             output_dict = {
                 "iteration":iteration,
