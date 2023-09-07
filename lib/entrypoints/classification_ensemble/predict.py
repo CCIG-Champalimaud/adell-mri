@@ -1,18 +1,14 @@
 import argparse
 import json
-import numpy as np
 import torch
 import monai
-
-from lightning.pytorch import Trainer
+from tqdm import tqdm
+from pathlib import Path
 
 import sys
-from ...utils import (safe_collate)
-from ...utils.pl_utils import (get_devices)
 from ...utils.torch_utils import load_checkpoint_to_model
 from ...utils.dataset_filters import (
     filter_dictionary_with_filters,
-    filter_dictionary_with_possible_labels,
     filter_dictionary_with_presence)
 from ...monai_transforms import get_transforms_classification as get_transforms
 from ...modules.losses import OrdinalSigmoidalLoss
@@ -36,11 +32,8 @@ def main(arguments):
         '--dataset_json',dest='dataset_json',type=str,
         help="JSON containing dataset information",required=True)
     parser.add_argument(
-        '--test_ids',dest="test_ids",type=str,default=None,nargs="+",
+        '--prediction_ids',dest="prediction_ids",type=str,default=None,nargs="+",
         help="Comma-separated IDs to be used in each test")
-    parser.add_argument(
-        '--one_to_one',dest="one_to_one",action="store_true",
-        help="Tests the checkpoint only on the corresponding test_ids set")
     parser.add_argument(
         '--image_keys',dest='image_keys',type=str,nargs='+',
         help="Image keys in the dataset JSON.",
@@ -53,23 +46,11 @@ def main(arguments):
         '--adc_keys',dest='adc_keys',type=str,nargs='+',
         help="Image keys corresponding to ADC.",default=None)
     parser.add_argument(
-        '--label_keys',dest='label_keys',type=str,default="image_labels",
-        help="Label keys in the dataset JSON.")
-    parser.add_argument(
         '--filter_on_keys',dest='filter_on_keys',type=str,default=[],nargs="+",
         help="Filters the dataset based on a set of specific key:value pairs.")
     parser.add_argument(
-        '--possible_labels',dest='possible_labels',type=str,nargs='+',
-        help="All the possible labels in the data.",
-        required=True)
-    parser.add_argument(
-        '--positive_labels',dest='positive_labels',type=str,nargs='+',
-        help="Labels that should be considered positive (binarizes labels)",
-        default=None)
-    parser.add_argument(
-        '--label_groups',dest='label_groups',type=str,nargs='+',
-        help="Label groups for classification.",
-        default=None)
+        '--n_classes',dest='n_classes',type=int,
+        help="Number of classes.",required=True)
     parser.add_argument(
         '--cache_rate',dest='cache_rate',type=float,
         help="Rate of samples to be cached",
@@ -116,14 +97,22 @@ def main(arguments):
         '--excluded_ids',dest='excluded_ids',type=str,default=None,nargs="+",
         help="Comma separated list of IDs to exclude.")
     parser.add_argument(
+        '--one_to_one',dest="one_to_one",action="store_true",
+        help="Tests the checkpoint only on the corresponding test_ids set")
+    parser.add_argument(
+        '--type',dest='type',action="store",default="probability",
+        help="Returns either probability the classification probability or the\
+            features in the last layer.",
+        choices=["probability","logit","features"])
+    parser.add_argument(
         '--checkpoints',dest='checkpoints',type=str,default=None,
         nargs="+",help='Tests using these checkpoints')
     parser.add_argument(
-        '--metric_path',dest='metric_path',type=str,default="metrics.csv",
-        help='Path to file with CV metrics + information.')
-    parser.add_argument(
         '--batch_size',dest='batch_size',type=int,default=None,
         help="Overrides batch size in config file")
+    parser.add_argument(
+        '--output_path',dest='output_path',type=str,default="output.csv",
+        help='Path to file with CV metrics + information.')
 
     args = parser.parse_args(arguments)
 
@@ -135,12 +124,6 @@ def main(arguments):
         config_files = [args.config_files[0] for _ in args.net_types]
     else:
         config_files = args.config_files
-
-    accelerator,devices,strategy = get_devices(args.dev)
-    n_devices = len(devices) if isinstance(devices,list) else devices
-    n_devices = 1 if isinstance(devices,str) else n_devices
-
-    output_file = open(args.metric_path,'w')
 
     data_dict = json.load(open(args.dataset_json,'r'))
     
@@ -157,32 +140,14 @@ def main(arguments):
         data_dict = {k:data_dict[k] for k in data_dict
                      if k not in args.excluded_ids}
         print("\tRemoved {} IDs".format(prev_len - len(data_dict)))
-    data_dict = filter_dictionary_with_possible_labels(
-        data_dict,args.possible_labels,args.label_keys)
     if len(args.filter_on_keys) > 0:
         data_dict = filter_dictionary_with_filters(
             data_dict,args.filter_on_keys)
     data_dict = filter_dictionary_with_presence(
-        data_dict,args.image_keys + [args.label_keys] + clinical_feature_keys)
+        data_dict,args.image_keys + clinical_feature_keys)
     if len(clinical_feature_keys) > 0:
         data_dict = filter_dictionary_with_filters(
             data_dict,[f"{k}!=nan" for k in clinical_feature_keys])
-    all_classes = []
-    for k in data_dict:
-        C = data_dict[k][args.label_keys]
-        if isinstance(C,list):
-            C = max(C)
-        all_classes.append(str(C))
-    label_groups = None
-    if args.label_groups is not None:
-        n_classes = len(args.label_groups)
-        label_groups = [label_group.split(",")
-                        for label_group in args.label_groups]
-    elif args.positive_labels is None:
-        n_classes = len(args.possible_labels)
-    else:
-        n_classes = 2
-
 
     if len(data_dict) == 0:
         raise Exception(
@@ -197,10 +162,10 @@ def main(arguments):
     adc_keys = [k for k in adc_keys if k in keys]
 
     ensemble_config = parse_config_ensemble(
-        args.ensemble_config_file,n_classes)
+        args.ensemble_config_file,args.n_classes)
     
     network_configs = [
-        parse_config_unet(config_file,len(keys),n_classes) 
+        parse_config_unet(config_file,len(keys),args.n_classes) 
         if net_type == "unet"
         else parse_config_cat(config_file)
         for config_file,net_type in zip(config_files,args.net_types)]
@@ -213,7 +178,7 @@ def main(arguments):
     all_pids = [k for k in data_dict]
 
     print("Setting up transforms...")
-    label_mode = "binary" if n_classes == 2 and label_groups is None else "cat"
+    label_mode = "binary" if args.n_classes == 2 else "cat"
     transform_arguments = {
         "keys":keys,
         "clinical_feature_keys":clinical_feature_keys,
@@ -221,47 +186,52 @@ def main(arguments):
         "target_spacing":args.target_spacing,
         "crop_size":args.crop_size,
         "pad_size":args.pad_size,
-        "possible_labels":args.possible_labels,
-        "positive_labels":args.positive_labels,
-        "label_groups":label_groups,
-        "label_key":args.label_keys,
+        "possible_labels":None,
+        "positive_labels":None,
+        "label_groups":None,
+        "label_key":None,
         "label_mode":label_mode}
 
-    transforms_testing = monai.transforms.Compose([
+    transforms_prediction = monai.transforms.Compose([
         *get_transforms("pre",**transform_arguments),
         *get_transforms("post",**transform_arguments)])
     
-    all_test_ids = parse_ids(args.test_ids,"list")
-    for iteration in range(len(all_test_ids)):
-        test_ids = all_test_ids[iteration]
-        test_list = [data_dict[pid] for pid in test_ids if pid in data_dict]
+    global_output = []
+    extra_args = {}
 
-        print("Testing fold",iteration)
-        for u,c in zip(*np.unique([x[args.label_keys] for x in test_list],
-                                  return_counts=True)):
-            print(f"\tCases({u}) = {c}")
+    if args.type == "probability":
+        if args.n_classes > 2:
+            post_proc_fn = torch.nn.Softmax(-1)
+        else:
+            post_proc_fn = torch.nn.Sigmoid()
+    else:
+        post_proc_fn = torch.nn.Identity()
+
+    if args.prediction_ids:
+        prediction_ids = parse_ids(args.prediction_ids,"list")
+    else:
+        prediction_ids = [[k for k in data_dict]]
+    for iteration in range(len(prediction_ids)):
+        curr_prediction_ids = [pid for pid in prediction_ids[iteration]
+                               if pid in data_dict]
+        prediction_list = [data_dict[pid] for pid in curr_prediction_ids]
         
-        test_dataset = monai.data.Dataset(test_list,transforms_testing)
+        prediction_dataset = monai.data.CacheDataset(
+            prediction_list,transforms_prediction,num_workers=args.n_workers,
+            cache_rate=args.cache_rate)
         
         # PL sometimes needs a little hint to detect GPUs.
         torch.ones([1]).to("cuda" if "cuda" in args.dev else "cpu")
         
-        if n_classes == 2:
+        if args.n_classes == 2:
             ensemble_config["loss_fn"] = torch.nn.BCEWithLogitsLoss()
         elif args.net_types[0] == "ord":
             ensemble_config["loss_fn"] = OrdinalSigmoidalLoss(
-                n_classes=n_classes)
+                n_classes=args.n_classes)
         else:
             ensemble_config["loss_fn"] = torch.nn.CrossEntropyLoss()
 
-        test_loader = monai.data.ThreadDataLoader(
-            test_dataset,batch_size=ensemble_config["batch_size"],
-            shuffle=False,num_workers=args.n_workers,
-            collate_fn=safe_collate)
-
-        print("Setting up testing...")
         batch_preprocessing = None
-
         if args.one_to_one is True:
             checkpoint_list = [args.checkpoints[iteration]]
         else:
@@ -272,7 +242,7 @@ def main(arguments):
                 network_config=network_config,
                 dropout_param=0.0,
                 seed=42,
-                n_classes=n_classes,
+                n_classes=args.n_classes,
                 keys=keys,
                 clinical_feature_keys=clinical_feature_keys,
                 train_loader_call=None,
@@ -291,31 +261,38 @@ def main(arguments):
                 image_keys=["image"],
                 label_key="label",
                 networks=networks,
-                n_classes=n_classes,
+                n_classes=args.n_classes,
                 training_dataloader_call=None,
                 n_epochs=None,
                 warmup_steps=None,
                 start_decay=None,
-                **ensemble_config)
+                **ensemble_config).to(args.dev).eval()
 
             load_checkpoint_to_model(
-                ensemble,checkpoint,exclude_from_state_dict=["loss_fn.weight"])
+                ensemble,checkpoint,
+                exclude_from_state_dict=["loss_fn.weight"])
 
-            trainer = Trainer(accelerator=accelerator,devices=devices)
-            test_metrics = trainer.test(ensemble,test_loader)[0]
-            for k in test_metrics:
-                out = test_metrics[k]
-                try:
-                    value = float(out.detach().numpy())
-                except Exception:
-                    value = float(out)
-                if n_classes > 2:
-                    k = k.split("_")
-                    if k[-1].isdigit():
-                        k,idx = "_".join(k[:-1]),k[-1]
-                    else:
-                        k,idx = "_".join(k),0
-                else:
-                    idx = 0
-                x = "{},{},{},{},{}".format(k,checkpoint,iteration,idx,value)
-                output_file.write(x+'\n')
+            output_dict = {
+                "iteration":iteration,
+                "prediction_ids":curr_prediction_ids,
+                "checkpoint":checkpoint,
+                "predictions":{}
+            }
+
+            with tqdm(total=len(curr_prediction_ids)) as pbar:
+                for identifier,element in zip(curr_prediction_ids,
+                                              prediction_dataset):
+                    pbar.set_description("Predicting {}".format(identifier))
+                    output = ensemble.forward(
+                        element["image"].unsqueeze(0).to(args.dev),
+                        **extra_args).detach()
+                    output = output.cpu()
+                    output = post_proc_fn(output)
+                    output = output.numpy()[0].tolist()
+                    output_dict["predictions"][identifier] = output
+                    pbar.update()
+            global_output.append(output_dict)
+    
+    Path(args.output_path).parent.mkdir(exist_ok=True,parents=True)
+    with open(args.output_path,"w") as o:
+        o.write(json.dumps(global_output))

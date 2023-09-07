@@ -2,7 +2,8 @@ import sys
 
 supported_modes = [
     "train",
-    "test"
+    "test",
+    "predict"
 ]
 
 def main(arguments):
@@ -17,6 +18,9 @@ def main(arguments):
         main(arguments[1:])
     elif arguments[0] == "test":
         from .test import main
+        main(arguments[1:])
+    elif arguments[0] == "predict":
+        from .predict import main
         main(arguments[1:])
     else:
         raise NotImplementedError(

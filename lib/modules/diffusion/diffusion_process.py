@@ -9,8 +9,8 @@ Based on:
     https://huggingface.co/blog/annotated-diffusion
 """
 
-import numpy as np
 import torch
+from math import sqrt
 from tqdm.auto import tqdm
 
 from typing import Union,Tuple,List
@@ -31,6 +31,13 @@ def linear_beta_schedule(timesteps: int,
                          beta_end: float=0.02,
                          s: float=None):
     return torch.linspace(beta_start, beta_end, timesteps)
+
+def scaled_linear_beta_schedule(timesteps: int, 
+                                beta_start: float=0.0001, 
+                                beta_end: float=0.02,
+                                s: float=None):
+    return torch.square(
+        torch.linspace(sqrt(beta_start), sqrt(beta_end), timesteps))
 
 def quadratic_beta_schedule(timesteps: int, 
                             beta_start: float=0.0001, 
@@ -111,6 +118,7 @@ class Diffusion:
     def schedulers(self):
         return {
             "linear":linear_beta_schedule,
+            "scaled_linear":scaled_linear_beta_schedule,
             "quadratic":quadratic_beta_schedule,
             "sigmoid":sigmoid_beta_schedule,
             "cosine":cosine_beta_schedule}
@@ -333,5 +341,4 @@ class Diffusion:
                         weight=classification_scale)
                 x = self.step(x=x,epsilon=predicted_noise,t=t)
         model.train()
-        x = x.clamp(-1, 1)
         return x
