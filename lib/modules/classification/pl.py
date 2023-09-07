@@ -398,7 +398,7 @@ class ClassNetPL(ClassPLABC):
         self.forward = self.network.forward
         self.n_classes = self.network.n_classes
 
-    def update_metrics(self,prediction,y,metrics):
+    def update_metrics(self,prediction,y,metrics,log=True):
         if self.net_type == "ord":
             prediction = ordinal_prediction_to_class(prediction)
         elif self.n_classes > 2:
@@ -409,9 +409,10 @@ class ClassNetPL(ClassPLABC):
             y.squeeze(1)
         for k in metrics:
             metrics[k](prediction,y)
-            self.log(
-                k,metrics[k],on_epoch=True,
-                on_step=False,prog_bar=True)
+            if log is True:
+                self.log(
+                    k,metrics[k],on_epoch=True,
+                    on_step=False,prog_bar=True)
 
 class SegCatNetPL(SegCatNet,pl.LightningModule):
     """
