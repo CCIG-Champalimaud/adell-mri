@@ -8,11 +8,11 @@ from pathlib import Path
 from tqdm import tqdm
 
 import sys
+from lib.utils.utils import subsample_dataset
 from ...monai_transforms import get_transforms_classification as get_transforms
 from ...modules.classification.losses import OrdinalSigmoidalLoss
 from ...modules.config_parsing import parse_config_unet,parse_config_cat
-from ...utils.dataset_filters import (
-    filter_dictionary_with_filters,filter_dictionary_with_existence)
+from ...utils.dataset_filters import filter_dictionary
 from ...utils.network_factories import get_classification_network
 from ...utils.parser import parse_ids
 from ...utils.parser import get_params,merge_args
@@ -127,24 +127,15 @@ def main(arguments):
         clinical_feature_keys = args.clinical_feature_keys
 
     data_dict = json.load(open(args.dataset_json,'r'))
-    if len(args.filter_on_keys) > 0:
-        data_dict = filter_dictionary_with_filters(
-            data_dict,args.filter_on_keys)
-    data_dict = filter_dictionary_with_existence(
-        data_dict,args.image_keys)
-    if args.subsample_size is not None:
-        strata = {}
-        for k in data_dict:
-            label = None
-            if label not in strata:
-                strata[label] = []
-            strata[label].append(k)
-        p = [len(strata[k]) / len(data_dict) for k in strata]
-        split = rng.multinomial(args.subsample_size,p)
-        ss = []
-        for k,s in zip(strata,split):
-            ss.extend(rng.choice(strata[k],size=s,replace=False,shuffle=False))
-        data_dict = {k:data_dict[k] for k in ss}
+    
+    data_dict = filter_dictionary(
+        data_dict,
+        filters_presence=args.image_keys + [args.label_keys] + clinical_feature_keys,
+        filters=args.filter_on_keys)
+    data_dict = subsample_dataset(
+        data_dict=data_dict,
+        subsample_size=args.subsample_size,
+        rng=rng)
 
     if len(data_dict) == 0:
         raise Exception(

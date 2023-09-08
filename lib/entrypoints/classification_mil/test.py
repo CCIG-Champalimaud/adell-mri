@@ -10,12 +10,10 @@ from pathlib import Path
 from lightning.pytorch import Trainer
 import sys
 from ...utils import (
-    safe_collate,ScaleIntensityAlongDimd,EinopsRearranged)
+    safe_collate,ScaleIntensityAlongDimd,EinopsRearranged,
+    subsample_dataset)
 from ...utils.pl_utils import get_devices
-from ...utils.dataset_filters import (
-    filter_dictionary_with_filters,
-    filter_dictionary_with_possible_labels,
-    filter_dictionary_with_presence)
+from ...utils.dataset_filters import filter_dictionary
 from ...monai_transforms import get_transforms_classification as get_transforms
 from ...modules.classification.pl import (
     TransformableTransformerPL,MultipleInstanceClassifierPL)
@@ -147,26 +145,19 @@ def main(arguments):
         data_dict = {k:data_dict[k] for k in data_dict
                      if k not in excluded_ids}
         print("Excluded {} cases with --excluded_ids".format(a - len(data_dict)))
-    data_dict = filter_dictionary_with_possible_labels(
-        data_dict,args.possible_labels,args.label_keys)
-    if len(args.filter_on_keys) > 0:
-        data_dict = filter_dictionary_with_filters(
-            data_dict,args.filter_on_keys)
-    data_dict = filter_dictionary_with_presence(
-        data_dict,args.image_keys + [args.label_keys])
-    if args.subsample_size is not None:
-        strata = {}
-        for k in data_dict:
-            label = data_dict[k][args.label_keys]
-            if label not in strata:
-                strata[label] = []
-            strata[label].append(k)
-        p = [len(strata[k]) / len(data_dict) for k in strata]
-        split = rng.multinomial(args.subsample_size,p)
-        ss = []
-        for k,s in zip(strata,split):
-            ss.extend(rng.choice(strata[k],size=s,replace=False,shuffle=False))
-        data_dict = {k:data_dict[k] for k in ss}
+
+    data_dict = filter_dictionary(
+        data_dict,
+        filters_presence=args.image_keys + [args.label_keys],
+        possible_labels=args.possible_labels,
+        label_key=args.label_keys,
+        filters=args.filter_on_keys)
+    data_dict = subsample_dataset(
+        data_dict=data_dict,
+        subsample_size=args.subsample_size,
+        rng=rng,
+        strata_key=args.label_keys)
+
     all_classes = []
     for k in data_dict:
         C = data_dict[k][args.label_keys]

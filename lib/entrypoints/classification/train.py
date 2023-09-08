@@ -12,7 +12,8 @@ from lightning.pytorch.callbacks import (
 
 import sys
 from ...utils import (
-    safe_collate,set_classification_layer_bias,conditional_parameter_freezing)
+    safe_collate,set_classification_layer_bias,conditional_parameter_freezing,
+    subsample_dataset)
 from ...utils.pl_utils import (
     get_ckpt_callback,
     get_logger,
@@ -20,9 +21,7 @@ from ...utils.pl_utils import (
     delete_checkpoints)
 from ...utils.torch_utils import load_checkpoint_to_model,get_class_weights
 from ...utils.dataset_filters import (
-    filter_dictionary_with_filters,
-    filter_dictionary_with_possible_labels,
-    filter_dictionary_with_presence)
+    filter_dictionary,filter_dictionary_with_filters)
 from ...monai_transforms import get_transforms_classification as get_transforms
 from ...monai_transforms import get_augmentations_class as get_augmentations
 from ...modules.classification.losses import OrdinalSigmoidalLoss
@@ -272,30 +271,22 @@ def main(arguments):
         data_dict = {k:data_dict[k] for k in data_dict
                     if k not in args.excluded_ids}
         print("\tRemoved {} IDs".format(prev_len - len(data_dict)))
-    data_dict = filter_dictionary_with_possible_labels(
-        data_dict,args.possible_labels,args.label_keys)
-    if len(args.filter_on_keys) > 0:
-        data_dict = filter_dictionary_with_filters(
-            data_dict,args.filter_on_keys)
-    data_dict = filter_dictionary_with_presence(
-        data_dict,args.image_keys + [args.label_keys] + clinical_feature_keys)
+
+    data_dict = filter_dictionary(
+        data_dict,
+        filters_presence=args.image_keys + [args.label_keys] + clinical_feature_keys,
+        possible_labels=args.possible_labels,
+        label_key=args.label_keys,
+        filters=args.filter_on_keys)
     if len(clinical_feature_keys) > 0:
         data_dict = filter_dictionary_with_filters(
             data_dict,[f"{k}!=nan" for k in clinical_feature_keys])
-    if args.subsample_size is not None and len(data_dict) > args.subsample_size:
-        strata = {}
-        for k in data_dict:
-            label = data_dict[k][args.label_keys]
-            if label not in strata:
-                strata[label] = []
-            strata[label].append(k)
-        strata = {k:strata[k] for k in sorted(strata.keys())}
-        ps = [len(strata[k]) / len(data_dict) for k in strata]
-        split = [int(p * args.subsample_size) for p in ps]
-        ss = []
-        for k,s in zip(strata,split):
-            ss.extend(rng.choice(strata[k],size=s,replace=False,shuffle=False))
-        data_dict = {k:data_dict[k] for k in ss}
+    data_dict = subsample_dataset(
+        data_dict=data_dict,
+        subsample_size=args.subsample_size,
+        rng=rng,
+        strata_key=args.label_keys)
+
     all_classes = []
     for k in data_dict:
         C = data_dict[k][args.label_keys]
@@ -401,12 +392,13 @@ def main(arguments):
 
     for val_fold in range(args.n_folds):
         train_idxs,val_idxs = next(fold_generator)
-        train_pids = [all_pids[i] for i in train_idxs]
         if args.subsample_training_data is not None:
-            train_pids = rng.choice(
-                train_pids,
-                size=int(len(train_pids)*args.subsample_training_data),
+            train_idxs = rng.choice(
+                train_idxs,
+                size=int(len(train_idxs)*args.subsample_training_data),
                 replace=False)
+        train_pids = [all_pids[i] for i in train_idxs]
+        
         val_pids = [all_pids[i] for i in val_idxs]
         if args.val_from_train is not None:
             n_train_val = int(len(train_pids)*args.val_from_train)

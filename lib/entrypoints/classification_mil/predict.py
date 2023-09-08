@@ -9,11 +9,10 @@ from tqdm import tqdm
 
 import sys
 from ...utils import (
-    safe_collate,ScaleIntensityAlongDimd,EinopsRearranged)
+    safe_collate,ScaleIntensityAlongDimd,EinopsRearranged,
+    subsample_dataset)
 from ...utils.pl_utils import get_devices
-from ...utils.dataset_filters import (
-    filter_dictionary_with_filters,
-    filter_dictionary_with_presence)
+from ...utils.dataset_filters import filter_dictionary
 from ...monai_transforms import get_transforms_classification as get_transforms
 from ...modules.classification.pl import (
     TransformableTransformerPL,MultipleInstanceClassifierPL)
@@ -141,14 +140,15 @@ def main(arguments):
         data_dict = {k:data_dict[k] for k in data_dict
                      if k not in excluded_ids}
         print("Excluded {} cases with --excluded_ids".format(a - len(data_dict)))
-    if len(args.filter_on_keys) > 0:
-        data_dict = filter_dictionary_with_filters(
-            data_dict,args.filter_on_keys)
-    data_dict = filter_dictionary_with_presence(
-        data_dict,args.image_keys)
-    if args.subsample_size is not None:
-        ss = rng.choice(list(data_dict.keys()),args.subsample_size)
-        data_dict = {k:data_dict[k] for k in ss}
+    
+    data_dict = filter_dictionary(
+        data_dict,
+        filters_presence=args.image_keys,
+        filters=args.filter_on_keys)
+    data_dict = subsample_dataset(
+        data_dict=data_dict,
+        subsample_size=args.subsample_size,
+        rng=rng)
 
     if len(data_dict) == 0:
         raise Exception(
