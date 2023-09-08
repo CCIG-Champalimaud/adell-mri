@@ -151,6 +151,10 @@ def main(arguments):
         '--excluded_ids',dest='excluded_ids',type=str,default=None,nargs="+",
         help="Comma separated list of IDs to exclude.")
     parser.add_argument(
+        '--excluded_ids_from_training_data',dest='excluded_ids_from_training_data',
+        type=str,default=None,nargs="+",help="Comma separated list of IDs to \
+            exclude from training data.")
+    parser.add_argument(
         '--checkpoint_dir',dest='checkpoint_dir',type=str,default=None,
         help='Path to directory where checkpoints will be saved.')
     parser.add_argument(
@@ -252,6 +256,12 @@ def main(arguments):
         data_dict = {k:data_dict[k] for k in data_dict
                      if k not in args.excluded_ids}
         print("\tRemoved {} IDs".format(prev_len - len(data_dict)))
+    
+    if args.excluded_ids_from_training_data is not None:
+        excluded_ids_from_training_data = parse_ids(
+            args.excluded_ids_from_training_data,output_format="list")
+    else:
+        excluded_ids_from_training_data = []
 
     data_dict = filter_dictionary(
         data_dict,
@@ -364,8 +374,10 @@ def main(arguments):
                 print("No val samples in fold {}".format(fold_idx))
                 continue
             else:
+                N = len([i for i in train_idxs 
+                         if all_pids[i] not in excluded_ids_from_training_data])
                 print("Fold {}: {} train samples; {} val samples".format(
-                    fold_idx,len(train_idxs),len(val_idxs)))
+                    fold_idx,N,len(val_idxs)))
             folds.append([train_idxs,val_idxs])
         args.n_folds = len(folds)
         fold_generator = iter(folds)
@@ -377,11 +389,17 @@ def main(arguments):
     
     for val_fold in range(args.n_folds):
         train_idxs,val_idxs = next(fold_generator)
+
         if args.subsample_training_data is not None:
             train_idxs = rng.choice(
                 train_idxs,
                 size=int(len(train_idxs)*args.subsample_training_data),
                 replace=False)
+        if args.excluded_ids_from_training_data is not None:
+            train_idxs = [
+                idx for idx in train_idxs
+                if all_pids[idx] not in excluded_ids_from_training_data]
+
         train_pids = [all_pids[i] for i in train_idxs]
         val_pids = [all_pids[i] for i in val_idxs]
         train_list = [data_dict[pid] for pid in train_pids]
