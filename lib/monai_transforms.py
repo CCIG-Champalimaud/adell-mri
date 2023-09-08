@@ -575,7 +575,7 @@ def get_augmentations_class(augment,
                             intp_resampling_augmentations,
                             flip_axis=[0]):
     valid_arg_list = ["intensity","noise","rbf","affine","shear","flip",
-                      "trivial"]
+                      "blur","trivial"]
     for a in augment:
         if a not in valid_arg_list:
             raise NotImplementedError(
@@ -605,6 +605,10 @@ def get_augmentations_class(augment,
         augments.append(
             monai.transforms.RandFlipd(image_keys,prob=prob,
                                        spatial_axis=flip_axis))
+
+    if "blur" in augment:
+        augments.extend([
+            monai.transforms.RandGaussianSmoothd(image_keys)])
 
     if "rbf" in augment and len(t2_keys) > 0:
         augments.append(

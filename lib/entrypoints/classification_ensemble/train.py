@@ -409,7 +409,9 @@ def main(arguments):
             if len(val_idxs) == 0:
                 print("No val samples in fold {}".format(fold_idx))
                 continue
-            print(f"Validation fold {fold_idx} has {len(val_idxs)} samples")
+            else:
+                print("Fold {}: {} train samples; {} val samples".format(
+                    fold_idx,len(train_idxs),len(val_idxs)))
             folds.append([train_idxs,val_idxs])
         args.n_folds = len(folds)
         fold_generator = iter(folds)
