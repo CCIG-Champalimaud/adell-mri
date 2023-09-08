@@ -14,7 +14,8 @@ import sys
 sys.path.append(r"..")
 from lib.utils import (
     safe_collate,set_classification_layer_bias,
-    ScaleIntensityAlongDimd,EinopsRearranged)
+    ScaleIntensityAlongDimd,EinopsRearranged,
+    subsample_dataset)
 from lib.utils.pl_utils import (
     get_ckpt_callback,
     get_logger,
@@ -22,9 +23,7 @@ from lib.utils.pl_utils import (
     GPULock)
 from lib.utils.batch_preprocessing import BatchPreprocessing
 from lib.utils.dataset_filters import (
-    filter_dictionary_with_filters,
-    filter_dictionary_with_possible_labels,
-    filter_dictionary_with_presence)
+    filter_dictionary)
 from lib.monai_transforms import get_transforms_classification as get_transforms
 from lib.monai_transforms import get_augmentations_class as get_augmentations
 from lib.modules.classification.pl import (
@@ -56,7 +55,7 @@ if __name__ == "__main__":
         '--label_keys',dest='label_keys',type=str,default="image_labels",
         help="Label keys in the dataset JSON.")
     parser.add_argument(
-        '--filter_on_keys',dest='filter_on_keys',type=str,default=[],nargs="+",
+        '--filter_on_keys',dest='filter_on_keys',type=str,default=None,nargs="+",
         help="Filters the dataset based on a set of specific key:value pairs.")
     parser.add_argument(
         '--possible_labels',dest='possible_labels',type=str,nargs='+',
@@ -255,26 +254,17 @@ if __name__ == "__main__":
         data_dict = {k:data_dict[k] for k in data_dict
                      if k not in args.excluded_ids}
         print("\tRemoved {} IDs".format(prev_len - len(data_dict)))
-    data_dict = filter_dictionary_with_possible_labels(
-        data_dict,args.possible_labels,args.label_keys)
-    if len(args.filter_on_keys) > 0:
-        data_dict = filter_dictionary_with_filters(
-            data_dict,args.filter_on_keys)
-    data_dict = filter_dictionary_with_presence(
-        data_dict,args.image_keys + [args.label_keys])
-    if args.subsample_size is not None:
-        strata = {}
-        for k in data_dict:
-            label = data_dict[k][args.label_keys]
-            if label not in strata:
-                strata[label] = []
-            strata[label].append(k)
-        p = [len(strata[k]) / len(data_dict) for k in strata]
-        split = rng.multinomial(args.subsample_size,p)
-        ss = []
-        for k,s in zip(strata,split):
-            ss.extend(rng.choice(strata[k],size=s,replace=False,shuffle=False))
-        data_dict = {k:data_dict[k] for k in ss}
+    data_dict = filter_dictionary(
+        data_dict,
+        filters_presence=args.image_keys + [args.label_keys],
+        possible_labels=args.possible_labels,
+        label_key=args.label_keys,
+        filters=args.filter_on_keys)
+    data_dict = subsample_dataset(
+        data_dict=data_dict,
+        subsample_size=args.subsample_size,
+        rng=rng,
+        strata_key=args.label_keys)
     all_classes = []
     for k in data_dict:
         C = data_dict[k][args.label_keys]

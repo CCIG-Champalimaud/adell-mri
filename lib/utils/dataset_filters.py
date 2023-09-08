@@ -28,7 +28,7 @@ def filter_dictionary_with_presence(D:DatasetDict,
     return out_dict
 
 def filter_dictionary_with_existence(D:DatasetDict,
-                                    filters:List[str])->DatasetDict:
+                                     filters:List[str])->DatasetDict:
     """Filters a dictionary based on whether files with a given key exist.
 
     Args:
@@ -144,3 +144,37 @@ def filter_dictionary_with_filters(D:DatasetDict,
             out_dict[pid] = D[pid]
     print("\tOutput size: {}".format(len(out_dict)))
     return out_dict
+
+def filter_dictionary(D:DatasetDict,
+                      filters_presence:List[str]=None,
+                      filters_existence:List[str]=None,
+                      possible_labels:List[str]=None,
+                      label_key:str=None,
+                      filters:List[str]=None)->DatasetDict:
+    """
+    Wraps all dataset filters in a more convenient function.
+
+    Args:
+        D (DatasetDict): dataset dictionary
+        filters_presence (List[str], optional): list of filters for 
+            filter_dictionary_with_presence. Defaults to None.
+        filters_existence (List[str], optional): list of filters for
+            filter_dictionary_with_existence. Defaults to None.
+        possible_labels (List[str], optional): list of possible labels. 
+            Defaults to None.
+        label_key (str, optional): label key. Defaults to None.
+        filters (List[str], optional): list of filters for 
+            filter_dictionary_with_filters. Defaults to None.
+
+    Returns:
+        DatasetDict: filtered dictionary.
+    """
+    if filters_presence is not None:
+        D = filter_dictionary_with_presence(D,filters_presence)
+    if filters_existence is not None:
+        D = filter_dictionary_with_existence(D,filters_existence)
+    if (possible_labels is not None) and (label_key is not None):
+        D = filter_dictionary_with_possible_labels(D,possible_labels,label_key)
+    if filters is not None:
+        D = filter_dictionary_with_filters(D,filters)
+    return D
