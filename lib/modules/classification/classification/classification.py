@@ -102,8 +102,12 @@ class VGG(torch.nn.Module):
         self.conv3 = VGGConvolution3d(
             256, 256, batch_ensemble=batch_ensemble)
 
-        final_n = 1
-        self.last_act = torch.nn.Sigmoid()
+        if self.n_classes == 2:
+            final_n = 1
+            self.last_act = torch.nn.Sigmoid()
+        else:
+            final_n = self.n_classes
+            self.last_act = torch.nn.Softmax()
 
         self.classification_layer = torch.nn.Sequential(
             GlobalPooling(),
