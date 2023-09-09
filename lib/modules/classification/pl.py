@@ -402,7 +402,7 @@ class ClassNetPL(ClassPLABC):
         if self.net_type == "ord":
             prediction = ordinal_prediction_to_class(prediction)
         elif self.n_classes > 2:
-            prediction = torch.softmax(prediction,1).to(torch.int64)
+            prediction = torch.softmax(prediction,1)
         else:
             prediction = torch.sigmoid(prediction)
         if len(y.shape) > 1:
