@@ -130,7 +130,7 @@ def main(arguments):
     
     data_dict = filter_dictionary(
         data_dict,
-        filters_presence=args.image_keys + [args.label_keys] + clinical_feature_keys,
+        filters_presence=args.image_keys + clinical_feature_keys,
         filters=args.filter_on_keys)
     data_dict = subsample_dataset(
         data_dict=data_dict,
