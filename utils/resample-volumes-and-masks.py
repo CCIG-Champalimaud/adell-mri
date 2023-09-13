@@ -72,19 +72,21 @@ if __name__ == "__main__":
 
     parser.add_argument(
         "--image_path",dest="image_path",required=True,
-        type=str,help="Path to fixed image")
+        type=str,help="Path to folder containing fixed images.")
     parser.add_argument(
         "--mask_path",dest="mask_path",required=True,
-        type=str,help="Path to masks")
+        type=str,help="Path to folder containing masks.")
     parser.add_argument(
         "--image_patterns",dest="image_patterns",required=True,
-        nargs="+",type=str,help="Pattern used to search for images")
+        nargs="+",type=str,help="Pattern used to search for images \
+            (must be regex compatible)")
     parser.add_argument(
         "--mask_patterns",dest="mask_patterns",required=True,
-        nargs="+",type=str,help="Pattern used to search for masks")
+        nargs="+",type=str,help="Pattern used to search for masks \
+            (must be regex compatible)")
     parser.add_argument(
         "--id_pattern",dest="id_pattern",required=True,
-        type=str,help="Pattern used to extract ID")
+        type=str,help="Pattern used to extract ID (must be regex compatible)")
     parser.add_argument(
         '--spacing',dest='spacing',required=True,nargs='+',
         type=float,help="Target spacing")
