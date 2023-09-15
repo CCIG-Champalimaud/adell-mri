@@ -277,16 +277,19 @@ def main(arguments):
             test_metrics = trainer.test(network,test_loader)[0]
             for k in test_metrics:
                 out = test_metrics[k]
-                if n_classes == 2:
-                    try:
-                        value = float(out.detach().numpy())
-                    except Exception:
-                        value = float(out)
-                    x = "{},{},{},{},{}".format(k,checkpoint,iteration,0,value)
-                    output_file.write(x+'\n')
-                    print(x)
+                out = test_metrics[k]
+                try:
+                    value = float(out.detach().numpy())
+                except Exception:
+                    value = float(out)
+                if n_classes > 2:
+                    k = k.split("_")
+                    if k[-1].isdigit():
+                        k,idx = "_".join(k[:-1]),k[-1]
+                    else:
+                        k,idx = "_".join(k),0
                 else:
-                    for i,v in enumerate(out):
-                        x = "{},{},{},{},{}".format(k,checkpoint,iteration,i,v)
-                        output_file.write(x+'\n')
-                        print(x)
+                    idx = 0
+                x = "{},{},{},{},{}".format(k,checkpoint,iteration,idx,value)
+                output_file.write(x+'\n')
+                print(x)
