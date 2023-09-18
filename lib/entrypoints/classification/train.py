@@ -624,22 +624,25 @@ def main(arguments):
             ckpt_list = ["last"]
         for ckpt_key in ckpt_list:
             test_metrics = trainer.test(
-                network,validation_loader,ckpt_path=ckpt_key)[0]
+                network,validation_loader,ckpt_path=ckpt_key)
+            test_metrics = test_metrics[0]
             for k in test_metrics:
                 out = test_metrics[k]
-                if n_classes == 2:
-                    try:
-                        value = float(out.detach().numpy())
-                    except Exception:
-                        value = float(out)
-                    x = "{},{},{},{},{}".format(k,ckpt_key,val_fold,0,value)
-                    output_file.write(x+'\n')
-                    print(x)
+                try:
+                    value = float(out.detach().numpy())
+                except Exception:
+                    value = float(out)
+                if n_classes > 2:
+                    k = k.split("_")
+                    if k[-1].isdigit():
+                        k,idx = "_".join(k[:-1]),k[-1]
+                    else:
+                        k,idx = "_".join(k),0
                 else:
-                    for i,v in enumerate(out):
-                        x = "{},{},{},{},{}".format(k,ckpt_key,val_fold,i,v)
-                        output_file.write(x+'\n')
-                        print(x)
+                    idx = 0
+                x = "{},{},{},{},{}".format(k,ckpt_key,val_fold,idx,value)
+                output_file.write(x+'\n')
+                print(x)
         
         if args.delete_checkpoints == True:
             delete_checkpoints(trainer)

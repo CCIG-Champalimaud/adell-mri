@@ -56,6 +56,10 @@ def main(arguments):
         help="Labels that should be considered positive (binarizes labels)",
         default=None)
     parser.add_argument(
+        '--label_groups',dest='label_groups',type=str,nargs='+',
+        help="Label groups for classification.",
+        default=None)
+    parser.add_argument(
         '--target_spacing',dest='target_spacing',action="store",default=None,
         help="Resamples all images to target spacing",nargs='+',type=float)
     parser.add_argument(
@@ -149,7 +153,13 @@ def main(arguments):
         if isinstance(C,list):
             C = max(C)
         all_classes.append(str(C))
-    if args.positive_labels is None:
+
+    label_groups = None
+    if args.label_groups is not None:
+        n_classes = len(args.label_groups)
+        label_groups = [label_group.split(",")
+                        for label_group in args.label_groups]
+    elif args.positive_labels is None:
         n_classes = len(args.possible_labels)
     else:
         n_classes = 2
@@ -181,7 +191,7 @@ def main(arguments):
     all_pids = [k for k in data_dict]
 
     print("Setting up transforms...")
-    label_mode = "binary" if n_classes == 2 else "cat"
+    label_mode = "binary" if n_classes == 2 and label_groups is None else "cat"
     transform_arguments = {
         "keys":keys,
         "clinical_feature_keys":clinical_feature_keys,
@@ -191,6 +201,7 @@ def main(arguments):
         "pad_size":args.pad_size,
         "possible_labels":args.possible_labels,
         "positive_labels":args.positive_labels,
+        "label_groups":label_groups,
         "label_key":args.label_keys,
         "label_mode":label_mode}
 
@@ -220,7 +231,7 @@ def main(arguments):
             network_config["loss_fn"] = OrdinalSigmoidalLoss(
                 n_classes=n_classes)
         else:
-            network_config["loss_fn"] = torch.nn.CrossEntropy()
+            network_config["loss_fn"] = torch.nn.CrossEntropyLoss()
 
         test_loader = monai.data.ThreadDataLoader(
             test_dataset,batch_size=network_config["batch_size"],
@@ -266,16 +277,19 @@ def main(arguments):
             test_metrics = trainer.test(network,test_loader)[0]
             for k in test_metrics:
                 out = test_metrics[k]
-                if n_classes == 2:
-                    try:
-                        value = float(out.detach().numpy())
-                    except Exception:
-                        value = float(out)
-                    x = "{},{},{},{},{}".format(k,checkpoint,iteration,0,value)
-                    output_file.write(x+'\n')
-                    print(x)
+                out = test_metrics[k]
+                try:
+                    value = float(out.detach().numpy())
+                except Exception:
+                    value = float(out)
+                if n_classes > 2:
+                    k = k.split("_")
+                    if k[-1].isdigit():
+                        k,idx = "_".join(k[:-1]),k[-1]
+                    else:
+                        k,idx = "_".join(k),0
                 else:
-                    for i,v in enumerate(out):
-                        x = "{},{},{},{},{}".format(k,checkpoint,iteration,i,v)
-                        output_file.write(x+'\n')
-                        print(x)
+                    idx = 0
+                x = "{},{},{},{},{}".format(k,checkpoint,iteration,idx,value)
+                output_file.write(x+'\n')
+                print(x)
