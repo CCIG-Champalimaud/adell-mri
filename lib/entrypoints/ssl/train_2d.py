@@ -1,3 +1,4 @@
+import os
 import argparse
 import random
 import json
@@ -66,6 +67,10 @@ def main(arguments):
     parser.add_argument(
         '--dataset_json',dest='dataset_json',type=str,
         help="JSON containing dataset information",required=True)
+    parser.add_argument(
+        '--dataset_is_list',dest='dataset_is_list',action="store_true",
+        help="Whether the dataset simply contains a paragraph-separated list of\
+            paths. This is helpful to avoid the JSON structure")
     parser.add_argument(
         '--train_pids',dest='train_pids',action="store",
         default=None,type=str,nargs='+',
@@ -238,11 +243,15 @@ def main(arguments):
     non_adc_keys = [k for k in keys if k not in adc_image_keys]
     all_keys = [*keys]
 
-    data_dict = json.load(open(args.dataset_json,'r'))
+    if args.dataset_is_list is True:
+        tmp = [x.strip() for x in open(args.dataset_json)]
+        data_dict = {k.split(os.sep)[-1]:{args.image_keys[0]:k} for k in tmp}
+    else:
+        data_dict = json.load(open(args.dataset_json,'r'))
     if len(data_dict) == 0:
         print("No data in dataset JSON")
         exit()
-    #data_dict = filter_orientations(data_dict)
+
     data_dict = filter_dicom_dict_on_presence(data_dict,all_keys)
     if args.max_slices is not None:
         data_dict = filter_dicom_dict_by_size(data_dict,args.max_slices)
