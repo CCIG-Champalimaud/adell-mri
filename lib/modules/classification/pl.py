@@ -409,10 +409,10 @@ class ClassNetPL(ClassPLABC):
             y.squeeze(1)
         for k in metrics:
             metrics[k](prediction,y)
-            if log is True:
+            if log == True:
                 self.log(
                     k,metrics[k],on_epoch=True,
-                    on_step=False,prog_bar=True)
+                    on_step=False,prog_bar=True,sync_dist=True)
 
 class SegCatNetPL(SegCatNet,pl.LightningModule):
     """

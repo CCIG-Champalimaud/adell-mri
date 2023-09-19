@@ -277,7 +277,6 @@ def main(arguments):
             test_metrics = trainer.test(network,test_loader)[0]
             for k in test_metrics:
                 out = test_metrics[k]
-                out = test_metrics[k]
                 try:
                     value = float(out.detach().numpy())
                 except Exception:
