@@ -416,7 +416,8 @@ def get_pre_transforms_ssl(all_keys:List[str],
                            pad_size:List[int],
                            n_channels:int=1,
                            n_dim:int=3,
-                           skip_augmentations:bool=False):
+                           skip_augmentations:bool=False,
+                           jpeg_dataset:bool=False):
     intp = []
     intp_resampling_augmentations = []
     key_correspondence = {k:kk for k,kk in zip(all_keys,copied_keys)}
@@ -427,9 +428,11 @@ def get_pre_transforms_ssl(all_keys:List[str],
     transforms = [
         monai.transforms.LoadImaged(
             all_keys,ensure_channel_first=True,image_only=True),
-        SampleChannelDimd(all_keys,n_channels),
-        SampleChannelDimd(all_keys,1,3),
-        monai.transforms.SqueezeDimd(all_keys,-1,update_meta=False)]
+        SampleChannelDimd(all_keys,n_channels)]
+    if jpeg_dataset is False:
+        transforms.extend(
+            [SampleChannelDimd(all_keys,1,3),
+             monai.transforms.SqueezeDimd(all_keys,-1,update_meta=False)])
     if n_dim == 3:
         transforms.append(monai.transforms.Orientationd(all_keys,"RAS"))
     if target_spacing is not None:

@@ -68,9 +68,13 @@ def main(arguments):
         '--dataset_json',dest='dataset_json',type=str,
         help="JSON containing dataset information",required=True)
     parser.add_argument(
-        '--dataset_is_list',dest='dataset_is_list',action="store_true",
+        '--jpeg_dataset',dest='jpeg_dataset',action="store_true",
         help="Whether the dataset simply contains a paragraph-separated list of\
             paths. This is helpful to avoid the JSON structure")
+    parser.add_argument(
+        '--num_samples',dest='num_samples',type=int,default=None,
+        help="Number of samples per epoch for JPEG dataset (must be specified)\
+            if the --jpeg_dataset flag is used")
     parser.add_argument(
         '--train_pids',dest='train_pids',action="store",
         default=None,type=str,nargs='+',
@@ -243,27 +247,27 @@ def main(arguments):
     non_adc_keys = [k for k in keys if k not in adc_image_keys]
     all_keys = [*keys]
 
-    if args.dataset_is_list is True:
+    if args.jpeg_dataset is True:
         tmp = [x.strip() for x in open(args.dataset_json)]
         data_dict = {k.split(os.sep)[-1]:{args.image_keys[0]:k} for k in tmp}
     else:
         data_dict = json.load(open(args.dataset_json,'r'))
+        data_dict = filter_dicom_dict_on_presence(data_dict,all_keys)
+        if args.max_slices is not None:
+            data_dict = filter_dicom_dict_by_size(data_dict,args.max_slices)
+        for k in data_dict:
+            for kk in data_dict[k]:
+                for i in range(len(data_dict[k][kk])):  
+                    data_dict[k][kk][i]["pid"] = k
+
     if len(data_dict) == 0:
         print("No data in dataset JSON")
         exit()
-
-    data_dict = filter_dicom_dict_on_presence(data_dict,all_keys)
-    if args.max_slices is not None:
-        data_dict = filter_dicom_dict_by_size(data_dict,args.max_slices)
 
     if args.subsample_size is not None:
         ss = np.random.choice(
             list(data_dict.keys()),args.subsample_size,replace=False)
         data_dict = {k:data_dict[k] for k in ss}
-    for k in data_dict:
-        for kk in data_dict[k]:
-            for i in range(len(data_dict[k][kk])):  
-                data_dict[k][kk][i]["pid"] = k
 
     if args.net_type == "unet_encoder":
         network_config,_ = parse_config_unet(
@@ -299,7 +303,8 @@ def main(arguments):
         "pad_size":args.pad_size,
         "n_channels":1,
         "n_dim":2,
-        "skip_augmentations":is_ijepa}
+        "skip_augmentations":is_ijepa,
+        "jpeg_dataset":args.jpeg_dataset}
     
     post_transform_args = {
         "all_keys":all_keys,
@@ -330,24 +335,36 @@ def main(arguments):
         *get_post_transforms_ssl(**post_transform_args)]
 
     if args.train_pids is not None:
-        train_pids = args.train_pids
+        train_pids = {pid:"" for pid in args.train_pids}
     else:
-        train_pids = [pid for pid in data_dict]
-    train_list = [data_dict[pid] for pid in data_dict
+        # checking intersections is much much faster in dicts
+        train_pids = {pid:"" for pid in data_dict}
+
+    train_list = [value for pid,value in data_dict.items()
                   if pid in train_pids]
+    train_pids = list(train_pids.keys())
     
-    # split workers across cache construction and data loading
-    train_dataset = DICOMDataset(
-        train_list,
-        monai.transforms.Compose(transforms))
-    if args.steps_per_epoch is not None:
-        n_samples = args.steps_per_epoch * network_config["batch_size"]
+    print(f"Training set size: {len(train_list)}")
+
+    if args.jpeg_dataset is True:
+        train_dataset = monai.data.Dataset(
+            train_list,monai.transforms.Compose(transforms))
+        sampler = torch.utils.data.RandomSampler(
+            train_list,num_samples=args.num_samples,generator=g)
+        val_sampler = torch.utils.data.RandomSampler(
+            train_list,num_samples=args.num_samples,generator=g)
     else:
-        n_samples = None
-    sampler = SliceSampler(
-        train_list,n_iterations=n_iterations,n_samples=n_samples)
-    val_sampler = SliceSampler(
-        train_list,n_iterations=n_iterations,n_samples=n_samples)
+        train_dataset = DICOMDataset(
+            train_list,
+            monai.transforms.Compose(transforms))
+        if args.steps_per_epoch is not None:
+            n_samples = args.steps_per_epoch * network_config["batch_size"]
+        else:
+            n_samples = None
+        sampler = SliceSampler(
+            train_list,n_iterations=n_iterations,n_samples=n_samples)
+        val_sampler = SliceSampler(
+            train_list,n_iterations=n_iterations,n_samples=n_samples)
 
     n_devices = len(devices) if isinstance(devices,list) else 1
     agb = args.accumulate_grad_batches
@@ -447,18 +464,25 @@ def main(arguments):
     precision = args.precision
     trainer = Trainer(
         accelerator=accelerator,
-        devices=devices,logger=logger,callbacks=callbacks,
-        strategy=strategy,max_epochs=max_epochs,max_steps=max_steps,
+        devices=devices,
+        logger=logger,
+        callbacks=callbacks,
+        strategy=strategy,
+        max_epochs=max_epochs,
+        max_steps=max_steps,
         sync_batchnorm=True if strategy is not None else False,
         enable_checkpointing=ckpt,
         val_check_interval=val_check_interval,
         check_val_every_n_epoch=check_val_every_n_epoch,
         precision=precision,
         accumulate_grad_batches=args.accumulate_grad_batches,
-        gradient_clip_val=args.gradient_clip_val)
+        gradient_clip_val=args.gradient_clip_val,
+        limit_train_batches=len(train_loader) // n_devices,
+        limit_val_batches=len(val_loader) // n_devices)
     
     torch.cuda.empty_cache()
     force_cudnn_initialization()
+
     trainer.fit(ssl,val_dataloaders=val_loader,ckpt_path=ckpt_path)
     
     print("Validating...")
