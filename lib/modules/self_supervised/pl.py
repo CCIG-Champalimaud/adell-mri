@@ -320,7 +320,6 @@ class SelfSLResNetPL(ResNet,SelfSLBasePL):
         self.n_steps = n_steps
         self.warmup_steps = warmup_steps
         self.start_decay = start_decay
-        self.ema = ema
         self.ssl_method = ssl_method
         self.temperature = temperature
         self.vic_reg_loss_params = vic_reg_loss_params
@@ -331,6 +330,7 @@ class SelfSLResNetPL(ResNet,SelfSLBasePL):
             kwargs["backbone_args"]["in_channels"] = 1
         
         super().__init__(*args,**kwargs)
+        self.ema = ema
 
         if all([self.ssl_method not in ["vicreg","vicregl","simclr"],
                 self.stop_gradient is False]):
