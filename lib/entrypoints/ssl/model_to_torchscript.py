@@ -49,6 +49,10 @@ def main(arguments):
     parser.add_argument(
         '--forward_method_name',dest="forward_method_name",
         default="forward")
+    parser.add_argument(
+        "--ema",dest="ema",action="store_true",
+        help="Triggers exponential moving average (redundant, for \
+            compatibility)")
     
     # training
     parser.add_argument(
