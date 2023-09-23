@@ -80,7 +80,8 @@ class Diffusion:
                  scheduler: str="cosine",
                  step_key: str="ddpm",
                  device: str="cuda",
-                 track_progress: bool=False):
+                 track_progress: bool=False,
+                 clip_sample: bool=True):
         """
         Args:
             noise_steps (int, optional): number of steps in diffusion process. 
@@ -93,6 +94,8 @@ class Diffusion:
                 of image. Defaults to (256,256).
             scheduler (float, optional): alpha scheduler. Can be "linear", 
                 "quadratic", "sigmoid" or "cosine". Defaults to "cosine".
+            clip_sample (bool, optional): clips sample during generation.
+                Defaults to True.
         """
         self.noise_steps = noise_steps
         self.beta_start = beta_start
@@ -101,6 +104,7 @@ class Diffusion:
         self.scheduler = scheduler
         self.step_key = step_key
         self.track_progress = track_progress
+        self.clip_sample = clip_sample
 
         self.n_dim = len(img_size)
 
@@ -340,5 +344,7 @@ class Diffusion:
                         end=predicted_noise,
                         weight=classification_scale)
                 x = self.step(x=x,epsilon=predicted_noise,t=t)
+                if self.clip_sample is True:
+                    x = torch.clamp(x, -1, 1)
         model.train()
         return x
