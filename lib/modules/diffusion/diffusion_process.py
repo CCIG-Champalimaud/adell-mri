@@ -218,19 +218,22 @@ class Diffusion:
             alpha_bar_prev = self.alpha_bar[t-1]
         else:
             alpha_bar_prev = torch.ones_like(alpha_bar)
+
         alpha_bar_prev = alpha_bar_prev.reshape(sh)
         beta_bar = 1. - alpha_bar
-        x_prev = (x - torch.sqrt(beta_bar) * epsilon) / torch.sqrt(alpha_bar)
-        x_prev = torch.clamp(x_prev,-1,1)
-        coef_t_prev = (torch.sqrt(alpha_bar_prev) * self.beta[t]) / beta_bar
+        x_orig = (x - torch.sqrt(beta_bar) * epsilon) / torch.sqrt(alpha_bar)
+        if self.clip_sample is True:
+            x_orig = torch.clamp(x_orig, -1, 1)
+        coef_t_orig = torch.sqrt(alpha_bar_prev) * self.beta[t] / beta_bar
         coef_t = torch.sqrt(self.alpha[t]) * (1. - alpha_bar_prev) / beta_bar
-        x = coef_t_prev * x_prev + coef_t * x
+        x = coef_t_orig * x_orig + coef_t * x
         if t > 0 and eta > 0:
             var = (1 - alpha_bar_prev) / (1 - alpha_bar) * self.beta[t]
-            x = x + torch.randn_like(x) * torch.sqrt(var) * eta
+            var = torch.randn_like(x) * torch.sqrt(var) * eta
+            x = x + var
         return x
 
-    def ddim_inverse_step(self,
+    def ddim_reverse_step(self,
                           x: torch.Tensor, 
                           epsilon: torch.Tensor, 
                           t: int,
@@ -276,6 +279,7 @@ class Diffusion:
         elif self.step_key == "alpha_deblending":
             return self.alpha_deblending_step(x,epsilon=epsilon,t=t,eta=None)
 
+    @torch.no_grad()
     def sample(self, 
                model: torch.nn.Module, 
                n: int=1,
@@ -325,26 +329,23 @@ class Diffusion:
         self.alpha_bar = self.alpha_bar.to(x.device)
         model.eval()
         print("Generating...")
-        with torch.no_grad():
-            final_t = self.noise_steps if start_from is None else start_from
-            t_range = reversed(range(1,final_t))
-            if self.track_progress is True:
-                t_range = tqdm(t_range,total=final_t,
-                               desc="Generating...",position=0,
-                               leave=True)
-            for i in t_range:
-                t = torch.as_tensor([i],device=x.device)
-                predicted_noise = model(x, t / self.noise_steps, 
-                                        classification)
-                if classification_scale > 0:
-                    nonconditional_predicted_noise = model(
-                        x, t / self.noise_steps)
-                    predicted_noise = torch.lerp(
-                        input=nonconditional_predicted_noise,
-                        end=predicted_noise,
-                        weight=classification_scale)
-                x = self.step(x=x,epsilon=predicted_noise,t=t)
-                if self.clip_sample is True:
-                    x = torch.clamp(x, -1, 1)
+        final_t = self.noise_steps if start_from is None else start_from
+        t_range = reversed(range(0,final_t))
+        if self.track_progress is True:
+            t_range = tqdm(t_range,total=final_t-1,
+                            desc="Generating...",position=0,
+                            leave=True)
+        for i in t_range:
+            t = torch.as_tensor([i],device=x.device)
+            predicted_noise = model(x, t / self.noise_steps, 
+                                    classification)
+            if classification_scale > 0:
+                nonconditional_predicted_noise = model(
+                    x, t / self.noise_steps)
+                predicted_noise = torch.lerp(
+                    input=nonconditional_predicted_noise,
+                    end=predicted_noise,
+                    weight=classification_scale)
+            x = self.step(x=x,epsilon=predicted_noise,t=t)
         model.train()
         return x
