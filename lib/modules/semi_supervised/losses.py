@@ -1,5 +1,6 @@
 import numpy as np
 import torch
+import torch.nn.functional as F
 import einops
 from queue import Queue
 from math import prod
@@ -136,7 +137,7 @@ class NearestNeighbourLoss(torch.nn.Module):
                 elements = elements[
                     self.rng.choice(n_elements,self.max_elements_per_batch)]
             if n_elements > 0:
-                self.q[cl].put(elements)
+                self.q[cl].put(elements.detach())
 
     def get_from_class(self, n: int, cl: int):
         q = self.q[cl]
@@ -157,12 +158,13 @@ class NearestNeighbourLoss(torch.nn.Module):
     def __len__(self):
         return sum([len(q) for q in self.q])
 
-    def get_past_samples(self):
+    def get_past_samples(self, device="cuda"):
         n_samples = [np.minimum(self.n_samples,len(self.q[cl]))
                      for cl in range(self.n_classes)]
         past_sample_labels = torch.as_tensor(np.concatenate(
             [np.repeat(cl,n) 
-             for cl,n in zip(range(self.n_classes),n_samples)],0)).to(y.device)
+             for cl,n in zip(range(self.n_classes),n_samples)],0),
+            device=device)
         past_sample_labels = F.one_hot(past_sample_labels,self.n_classes)
         past_samples = [
             self.get(n,cl)
