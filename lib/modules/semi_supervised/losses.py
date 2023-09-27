@@ -1,5 +1,7 @@
+import numpy as np
 import torch
 import einops
+from queue import Queue
 from math import prod
 
 class AnatomicalContrastiveLoss(torch.nn.Module):
@@ -93,3 +95,112 @@ class AnatomicalContrastiveLoss(torch.nn.Module):
 
         # calculate the anatomical contrastive loss
         return self.l_anco() 
+
+class NearestNeighbourLoss(torch.nn.Module):
+    """
+    Nearest neighbour loss:
+    
+    1. For a given FIFO queue of past elements and a new sample, use the oldest
+        elements from the queue to calculate the distances between the new sample
+        and the old elements
+    2. Maximise the cosine similarity between queue elements and elements from
+        the new sample belonging to the same class.
+    """
+    def __init__(self,
+                 maxsize: int,
+                 n_classes: int,
+                 max_elements_per_batch: int,
+                 n_samples_per_class: int,
+                 seed: int=42):
+        super().__init__()
+        self.maxsize = maxsize
+        self.n_classes = n_classes
+        self.max_elements_per_batch = max_elements_per_batch
+        self.n_samples_per_class = n_samples_per_class
+        self.seed = seed
+
+        self.q = [Queue(maxsize=self.maxsize) for _ in range(self.n_classes)]
+        self.rng = np.random.default_rng(seed)
+    
+    def put(self, 
+            X: torch.Tensor,
+            y: torch.Tensor):
+        X = X.flatten(X,start_dim=2)
+        y = y.flatten(y,start_dim=2)
+        b, c, v = torch.where(y > 0)
+        for cl in range(self.n_classes):
+            idx = c == cl
+            elements = X[b[idx], :, v[idx]]
+            n_elements = elements.shape[0]
+            if n_elements > self.max_elements_per_batch:
+                elements = elements[
+                    self.rng.choice(n_elements,self.max_elements_per_batch)]
+            if n_elements > 0:
+                self.q[cl].put(elements)
+
+    def get_from_class(self, n: int, cl: int):
+        q = self.q[cl]
+        n_elements = len(q)
+        return [q.get() for _ in self.rng.choice(n_elements,n)]
+
+    def get(self, n: int, cl: int=None):
+        if cl is not None:
+            output = self.get_from_class(n,cl)
+        else:
+            output = []
+            sample = self.rng.choice(self.n_classes,size=n)
+            un,count = np.unique(sample,return_counts=True)
+            for cl, n in zip(un, count):
+                output.append(self.get_from_class(n, cl))
+        return torch.cat(output,0)
+
+    def __len__(self):
+        return sum([len(q) for q in self.q])
+
+    def get_past_samples(self):
+        n_samples = [np.minimum(self.n_samples,len(self.q[cl]))
+                     for cl in range(self.n_classes)]
+        past_sample_labels = torch.as_tensor(np.concatenate(
+            [np.repeat(cl,n) 
+             for cl,n in zip(range(self.n_classes),n_samples)],0)).to(y.device)
+        past_sample_labels = F.one_hot(past_sample_labels,self.n_classes)
+        past_samples = [
+            self.get(n,cl)
+            for cl,n in zip(range(self.n_classes),n_samples)]
+        past_samples = torch.cat(past_samples)
+        return past_samples, past_sample_labels
+
+    def forward(self,
+                X: torch.Tensor,
+                y: torch.Tensor):
+        X = X.flatten(start_dim=2)
+        y = y.flatten(start_dim=2)
+        b,c,v = torch.where(y > 0)
+        past_samples, past_sample_labels = self.get_past_samples()
+        distances = F.cosine_similarity(X[:,None],past_samples[None,:])
+        is_same = torch.unsqueeze(
+            torch.sum(y[:,None] * past_sample_labels[None,:],-1),-1)
+        same_class_distances = distances * is_same
+        other_class_distances = distances * (1 - is_same)
+        return torch.mean(
+            same_class_distances.sum(-1) / other_class_distances.sum(-1))
+
+class PseudoLabelCrossEntropy(torch.nn.Module):
+    """
+    Calculates cross-entropy between probability map p_1 and pseudo-labels 
+    calculated from probability map p_2 given a probability threshold.
+
+    Useful for distillation, semi-supervised learning, etc.
+    """
+    def __init__(self, 
+                 threshold: float,
+                 *args,
+                 **kwargs):
+        super().__init__()
+        self.threshold = threshold
+
+        self.ce = torch.nn.CrossEntropyLoss(*args, **kwargs)
+
+    def forward(self, pred: torch.Tensor, proba: torch.Tensor):
+        pseudo_y = proba > self.threshold
+        return self.ce(pred, pseudo_y)
