@@ -30,7 +30,9 @@ from lib.modules.self_supervised.pl import (
     ConvNeXt,ResNet,UNet,IJEPA)
 # diffusion
 from lib.modules.diffusion.pl import DiffusionUNetPL
-from lib.modules.diffusion.diffusion_process import Diffusion
+from lib.modules.diffusion.embedder import Embedder
+from generative.inferers import DiffusionInferer
+from generative.networks.schedulers import DDPMScheduler
 
 from typing import Dict,Any,List,Callable,Tuple,Union
 
@@ -382,26 +384,43 @@ def get_ssl_network_no_pl(ssl_method:str,
     return ssl
 
 def get_generative_network(
-        network_config:Dict[str,Any],
-        label_key:str,
-        train_loader_call:Callable,
-        max_epochs:int,
-        warmup_steps:int,
-        start_decay:int,
-        size:Union[Tuple[int,int],Tuple[int,int,int]])->torch.nn.Module:
-    diffusion_process = Diffusion(1000,
-                                  beta_end=0.1,
-                                  img_size=size,
-                                  scheduler="cosine")
+        network_config: Dict[str,Any],
+        categorical_specification: List[List[str] | int],
+        numerical_specification: int,
+        train_loader_call: Callable,
+        max_epochs: int,
+        warmup_steps: int,
+        start_decay: int,
+        diffusion_steps: int)->torch.nn.Module:
+    
+    scheduler = DDPMScheduler(diffusion_steps, schedule="scaled_linear_beta", 
+                              beta_start=0.0005, beta_end=0.0195)
+    inferer = DiffusionInferer(scheduler)
+    if any([categorical_specification is not None,
+            numerical_specification is not None]):
+        embedder = Embedder(categorical_specification,
+                            numerical_specification)
+    else:
+        embedder = None
+
     boilerplate_args = {
         "training_dataloader_call":train_loader_call,
         "image_key":"image",
-        "label_key":label_key,
+        "cat_condition_key": None,
+        "num_condition_key": None,
         "n_epochs":max_epochs,
         "warmup_steps":warmup_steps,
         "start_decay":start_decay}
+    
+    if categorical_specification is not None:
+        boilerplate_args["cat_condition_key"] = "cat"
+    if numerical_specification is not None:
+        boilerplate_args["num_condition_key"] = "num"
+
     network = DiffusionUNetPL(
-        diffusion_process=diffusion_process,
+        inferer=inferer,
+        scheduler=scheduler,
+        embedder=embedder,
         **boilerplate_args,
         **network_config)
     
