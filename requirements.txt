@@ -1,5 +1,6 @@
 dvc==2.45.1
 einops==0.6.1
+generative @ git+https://github.com/Project-MONAI/GenerativeModels/releases/tag/0.2.2
 itk==5.3.0
 lightning==2.0.3
 monai==1.1.0
