@@ -32,7 +32,7 @@ class AnatomicalContrastiveLoss(torch.nn.Module):
 
         self.average_representations = torch.zeros(
             [1,self.n_classes,self.n_features])
-        
+
         self.hard_examples = torch.zeros(
             [batch_size, self.top_k, n_features])
         self.hard_example_class = torch.zeros(
@@ -46,7 +46,7 @@ class AnatomicalContrastiveLoss(torch.nn.Module):
         for i in range(self.n_classes):
             rep = pred[b[c == i],:,v[c == i]]
             if prod(rep.shape) > 0:
-                rep = einops.rearrange(rep,"b c v -> c (b v)")
+                rep = rep.permute(1,0)
                 self.average_representations[:,i,:] = torch.add(
                     self.average_representations[:,i,:] * (1 - self.ema_theta),
                     rep.mean(1) * self.ema_theta)
@@ -54,27 +54,33 @@ class AnatomicalContrastiveLoss(torch.nn.Module):
     def update_hard_examples(self, 
                              proba: torch.Tensor, 
                              embeddings: torch.Tensor,
-                             c: torch.LongTensor):
+                             labels: torch.LongTensor):
         weights = proba.prod(1)
         for i in range(self.batch_size):
             top_k = weights[i].topk(self.top_k)
-            self.hard_examples[i] = embeddings[i,:,top_k]
-            self.hard_example_class[i] = c[top_k]
+            self.hard_examples[i] = embeddings[i,:,top_k.indices].permute(1,0)
+            self.hard_example_class[i] = labels[i,top_k.indices].unsqueeze(-1)
 
     def delete(self, X, idx):
         return torch.cat([X[:,:idx], X[:,(idx+1):]],1)
 
     def l_anco(self):
-        for i in range(self.n_classes):
-            he = self.hard_examples[self.hard_example_class == i]
-            par = self.average_representations[:,i,:]
-            nar = self.delete(self.average_representations,i)
-            num = torch.exp(he * par / self.tau)
-            neg_den = torch.sum(
-                torch.exp(he[:,None] * nar[:,:,None] / self.tau),
-                1, keepdim=True)
-            out = -torch.log(num / (num / neg_den))
-            return torch.sum(out.flatten(start_dim=1),1)
+        output = torch.zeros([self.batch_size,self.n_classes]).to(
+            self.average_representations)
+        for batch in range(self.batch_size):
+            for nc in range(self.n_classes):
+                idx,_ = torch.where(self.hard_example_class[batch] == nc)
+                he = self.hard_examples[batch,idx]
+                par = self.average_representations[:,nc,:]
+                nar = self.delete(self.average_representations,nc)
+                num = torch.exp(he * par / self.tau)
+                neg_den = torch.sum(
+                    torch.exp(he[:,None] * nar / self.tau),
+                    1, keepdim=True)
+                out = -torch.log(num / (num + neg_den))
+                if prod(out.shape) > 0:
+                    output[batch,nc] = torch.mean(out.flatten(start_dim=1))
+        return - output.sum() / self.batch_size
 
     def forward(self, 
                 proba: torch.Tensor, 
@@ -84,6 +90,7 @@ class AnatomicalContrastiveLoss(torch.nn.Module):
         proba = proba.flatten(start_dim=2)
         y = y.flatten(start_dim=2)
         embeddings = embeddings.flatten(start_dim=2)
+        labels = torch.argmax(y, dim=1)
 
         # get indices for y
         b,c,v = torch.where(y > 0)
@@ -92,10 +99,12 @@ class AnatomicalContrastiveLoss(torch.nn.Module):
         self.update_average_class_representation(embeddings, b, c, v)
 
         # mine hard examples 
-        self.update_hard_examples(proba=proba, embeddings=embeddings)
+        self.update_hard_examples(proba=proba, 
+                                  embeddings=embeddings, 
+                                  labels=labels)
 
         # calculate the anatomical contrastive loss
-        return self.l_anco() 
+        return self.l_anco()
 
 class NearestNeighbourLoss(torch.nn.Module):
     """
@@ -106,18 +115,24 @@ class NearestNeighbourLoss(torch.nn.Module):
         and the old elements
     2. Maximise the cosine similarity between queue elements and elements from
         the new sample belonging to the same class.
+
+    Based on Frosst 2019 [1].
+
+    [1] https://proceedings.mlr.press/v97/frosst19a.html
     """
     def __init__(self,
                  maxsize: int,
                  n_classes: int,
                  max_elements_per_batch: int,
                  n_samples_per_class: int,
+                 temperature: float=0.1,
                  seed: int=42):
         super().__init__()
         self.maxsize = maxsize
         self.n_classes = n_classes
         self.max_elements_per_batch = max_elements_per_batch
         self.n_samples_per_class = n_samples_per_class
+        self.temperature = temperature
         self.seed = seed
 
         self.q = [Queue(maxsize=self.maxsize) for _ in range(self.n_classes)]
@@ -126,8 +141,8 @@ class NearestNeighbourLoss(torch.nn.Module):
     def put(self, 
             X: torch.Tensor,
             y: torch.Tensor):
-        X = X.flatten(X,start_dim=2)
-        y = y.flatten(y,start_dim=2)
+        X = X.flatten(start_dim=2)
+        y = y.flatten(start_dim=2)
         b, c, v = torch.where(y > 0)
         for cl in range(self.n_classes):
             idx = c == cl
@@ -141,7 +156,7 @@ class NearestNeighbourLoss(torch.nn.Module):
 
     def get_from_class(self, n: int, cl: int):
         q = self.q[cl]
-        n_elements = len(q)
+        n_elements = q.qsize()
         return [q.get() for _ in self.rng.choice(n_elements,n)]
 
     def get(self, n: int, cl: int=None):
@@ -156,36 +171,38 @@ class NearestNeighbourLoss(torch.nn.Module):
         return torch.cat(output,0)
 
     def __len__(self):
-        return sum([len(q) for q in self.q])
+        return sum([q.qsize() for q in self.q])
 
     def get_past_samples(self, device="cuda"):
-        n_samples = [np.minimum(self.n_samples,len(self.q[cl]))
+        n_samples = [np.minimum(self.n_samples_per_class,self.q[cl].qsize())
                      for cl in range(self.n_classes)]
-        past_sample_labels = torch.as_tensor(np.concatenate(
-            [np.repeat(cl,n) 
-             for cl,n in zip(range(self.n_classes),n_samples)],0),
-            device=device)
-        past_sample_labels = F.one_hot(past_sample_labels,self.n_classes)
         past_samples = [
             self.get(n,cl)
             for cl,n in zip(range(self.n_classes),n_samples)]
+        past_sample_labels = torch.as_tensor(np.concatenate(
+            [np.repeat(cl,past_sample.shape[0]) 
+             for cl,past_sample in zip(range(self.n_classes),past_samples)],0),
+            device=device)
+        past_sample_labels = F.one_hot(past_sample_labels,self.n_classes)
         past_samples = torch.cat(past_samples)
         return past_samples, past_sample_labels
 
     def forward(self,
                 X: torch.Tensor,
                 y: torch.Tensor):
-        X = X.flatten(start_dim=2)
-        y = y.flatten(start_dim=2)
+        X = X.flatten(start_dim=2).permute(0, 2, 1)
+        y = y.flatten(start_dim=2).permute(0, 2, 1)
         b,c,v = torch.where(y > 0)
-        past_samples, past_sample_labels = self.get_past_samples()
-        distances = F.cosine_similarity(X[:,None],past_samples[None,:])
-        is_same = torch.unsqueeze(
-            torch.sum(y[:,None] * past_sample_labels[None,:],-1),-1)
-        same_class_distances = distances * is_same
-        other_class_distances = distances * (1 - is_same)
-        return torch.mean(
-            same_class_distances.sum(-1) / other_class_distances.sum(-1))
+        past_samples, past_sample_labels = self.get_past_samples(X.device)
+        distances = 1 - F.cosine_similarity(
+            X[:,:,None], past_samples[None,None,:],-1)
+        is_same = torch.sum(y[:,:,None] * past_sample_labels[None,None,:],-1)
+        same_class_distances = torch.exp(
+            - distances * is_same / self.temperature)
+        other_class_distances = torch.exp(
+            - distances * (1 - is_same) / self.temperature)
+        return torch.nanmean(
+            same_class_distances.nansum(-1) / other_class_distances.nansum(-1))
 
 class PseudoLabelCrossEntropy(torch.nn.Module):
     """
@@ -205,4 +222,4 @@ class PseudoLabelCrossEntropy(torch.nn.Module):
 
     def forward(self, pred: torch.Tensor, proba: torch.Tensor):
         pseudo_y = proba > self.threshold
-        return self.ce(pred, pseudo_y)
+        return self.ce(pred, pseudo_y.float())
