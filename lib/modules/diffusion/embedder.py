@@ -41,7 +41,7 @@ class CategoricalEmbedder(torch.nn.Module):
                         for x,conversion in zip(X[i],self.conversions)]
             X = torch.as_tensor(X,device=self.device)
         out = []
-        for x,embedder in zip(X.permute(1,0),self.embedders):
+        for x,embedder in zip(X.permute(1,0).contiguous(),self.embedders):
             out.append(embedder(x))
         out = torch.cat(out,axis=1)
         return out

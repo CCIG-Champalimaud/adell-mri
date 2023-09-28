@@ -52,8 +52,9 @@ class DiffusionUNetPL(DiffusionModelUNet,pl.LightningModule):
         return loss.mean()
 
     def randn_like(self, x: torch.Tensor):
-        return torch.randn(size=x.shape,generator=self.g,
-                           dtype=x.dtype).to(x.device)
+        return torch.randn(
+            size=x.shape,generator=self.g,
+            dtype=x.dtype,layout=x.layout).contiguous().to(x.device)
     
     def timesteps_like(self, x: torch.Tensor):
         return torch.randint(
