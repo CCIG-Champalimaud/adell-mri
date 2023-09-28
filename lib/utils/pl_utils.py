@@ -99,24 +99,33 @@ class LogImage(Callback):
                               caption=captions)
 
 class LogImageFromDiffusionProcess(Callback):
+    """
+    Logs images from diffusion models. Expects the lightning module to have a
+    `generate_image` function.
+    """
     def __init__(self,
-                 n_slices: int=1,
+                 size: List[int],
+                 n_slices: int=3,
                  slice_dim: int=4,
-                 n_images: int=16):
+                 n_images: int=16,
+                 every_n_epochs: int=5):
+        self.size = size
         self.n_slices = n_slices
         self.slice_dim = slice_dim
         self.n_images = n_images
+        self.every_n_epochs = every_n_epochs
     
     def on_validation_epoch_end(self,
                                 trainer: Trainer, 
                                 pl_module: LightningModule):
-        images = pl_module.diffusion_process.sample(
-            pl_module,n=self.n_images)
-        log_image(trainer,
-                  key="Generated images",
-                  images=images,
-                  slice_dim=self.slice_dim,
-                  n_slices_out=self.slice_dim)
+        ep = pl_module.current_epoch
+        if ep % self.every_n_epochs == 0 and ep > 0:
+            images = pl_module.generate_image(size=self.size,n=self.n_images)
+            log_image(trainer,
+                      key="Generated images",
+                      images=images,
+                      slice_dim=self.slice_dim,
+                      n_slices_out=self.slice_dim)
 
 def allocated_memory_per_gpu()->Dict[int,int]:
     """
