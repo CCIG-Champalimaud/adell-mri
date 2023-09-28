@@ -19,26 +19,32 @@ from lib.utils.pl_utils import (
     get_ckpt_callback,
     get_logger,
     get_devices,
-    delete_checkpoints,
     LogImageFromDiffusionProcess)
 from lib.utils.torch_utils import load_checkpoint_to_model
 from lib.utils.dataset_filters import (
     filter_dictionary_with_filters,
-    filter_dictionary_with_possible_labels,
     filter_dictionary_with_presence)
 from lib.monai_transforms import (
     get_pre_transforms_generation as get_pre_transforms,
     get_post_transforms_generation as get_post_transforms)
-from lib.modules.config_parsing import parse_config_diffusion_unet
 from lib.utils.network_factories import get_generative_network
 from lib.utils.parser import get_params,merge_args,parse_ids
+
+def get_conditional_specification(d: dict, cond_key: str):
+    possible_values = []
+    for k in d:
+        if cond_key in d[k]:
+            v = d[k][cond_key]
+            if v not in possible_values:
+                possible_values.append(d[k][cond_key])
+    return possible_values
 
 def get_size(*size_list):
     for size in size_list:
         if size is not None:
             return size
 
-if __name__ == "__main__":
+def main(arguments):
     parser = argparse.ArgumentParser()
 
     # params
@@ -56,22 +62,16 @@ if __name__ == "__main__":
         help="Image keys in the dataset JSON.",
         required=True)
     parser.add_argument(
-        '--label_keys',dest='label_keys',type=str,default=None,
-        help="Label keys in the dataset JSON for class guidance.")
+        '--cat_condition_keys',dest='cat_condition_keys', default=None, nargs="+",
+        help="Label keys in the dataset JSON for categorical variables (applied\
+            with classifier-free guidance).")
+    parser.add_argument(
+        '--num_condition_keys',dest='num_condition_keys', default=None, nargs="+",
+        help="Label keys in the dataset JSON for numerical variables (applied\
+            with 'classifier-free guidance').")
     parser.add_argument(
         '--filter_on_keys',dest='filter_on_keys',type=str,default=[],nargs="+",
         help="Filters the dataset based on a set of specific key:value pairs.")
-    parser.add_argument(
-        '--possible_labels',dest='possible_labels',type=str,nargs='+',default=[],
-        help="All the possible labels in the data.")
-    parser.add_argument(
-        '--positive_labels',dest='positive_labels',type=str,nargs='+',
-        help="Labels that should be considered positive (binarizes labels)",
-        default=None)
-    parser.add_argument(
-        '--label_groups',dest='label_groups',type=str,nargs='+',
-        help="Label groups for classification.",
-        default=None)
     parser.add_argument(
         '--cache_rate',dest='cache_rate',type=float,
         help="Rate of samples to be cached",default=1.0)
@@ -106,10 +106,6 @@ if __name__ == "__main__":
         '--config_file',dest="config_file",
         help="Path to network configuration file (yaml)",
         required=True)
-    parser.add_argument(
-        '--net_type',dest='net_type',
-        help="Classification type.",
-        choices=["cat","ord","unet","vit","factorized_vit", "vgg"],default="cat")
     
     # training
     parser.add_argument(
@@ -156,9 +152,6 @@ if __name__ == "__main__":
         default=None,nargs="+",
             help='Regex to exclude parameters from state dict in --checkpoint')
     parser.add_argument(
-        '--delete_checkpoints',dest='delete_checkpoints',action="store_true",
-        help='Deletes checkpoints after training (keeps only metrics).')
-    parser.add_argument(
         '--monitor',dest='monitor',type=str,default="val_loss",
         help="Metric that is monitored to determine the best checkpoint.")
     parser.add_argument(
@@ -201,13 +194,13 @@ if __name__ == "__main__":
         help="Number batches to accumulate before backpropgating gradient",
         default=1,type=int)
     parser.add_argument(
-        '--batch_size',dest='batch_size',type=int,default=None,
+        '--batch_size',dest='batch_size',type=int,default=2,
         help="Overrides batch size in config file")
     parser.add_argument(
-        '--learning_rate',dest='learning_rate',type=float,default=None,
+        '--learning_rate',dest='learning_rate',type=float,default=0.0001,
         help="Overrides learning rate in config file")
 
-    args = parser.parse_args()
+    args = parser.parse_args(arguments)
 
     if args.params_from is not None:
         param_dict = get_params(args.params_from)
@@ -227,21 +220,20 @@ if __name__ == "__main__":
     output_file = open(args.metric_path,'w')
 
     data_dict = json.load(open(args.dataset_json,'r'))
-    label_keys = args.label_keys
-    if args.label_keys is not None:
-        presence_keys = [*args.image_keys,label_keys]
-        label_groups = None
-        if args.label_groups is not None:
-            n_classes = len(args.label_groups)
-            label_groups = [label_group.split(",")
-                            for label_group in args.label_groups]
-        elif args.positive_labels is None:
-            n_classes = len(args.possible_labels)
-        else:
-            n_classes = 2
-    else:
-        presence_keys = args.image_keys
-        n_classes = 0
+    presence_keys = [*args.image_keys]
+    categorical_specification = None
+    numerical_specification = None
+    with_conditioning = False
+    if args.cat_condition_keys is not None:
+        categorical_specification = [
+            get_conditional_specification(data_dict, k)
+            for k in args.cat_condition_keys]
+        presence_keys.extend(args.cat_condition_keys)
+        with_conditioning = True
+    if args.num_condition_keys is not None:
+        numerical_specification = len(args.num_condition_keys)
+        presence_keys.extend(args.num_condition_keys)
+        with_conditioning = True
     if args.excluded_ids is not None:
         args.excluded_ids = parse_ids(args.excluded_ids,
                                       output_format="list")
@@ -250,32 +242,13 @@ if __name__ == "__main__":
         data_dict = {k:data_dict[k] for k in data_dict
                      if k not in args.excluded_ids}
         print("\tRemoved {} IDs".format(prev_len - len(data_dict)))
-    if label_keys is not None:
-        data_dict = filter_dictionary_with_possible_labels(
-            data_dict,args.possible_labels,args.label_keys)
     if len(args.filter_on_keys) > 0:
         data_dict = filter_dictionary_with_filters(
             data_dict,args.filter_on_keys)
     data_dict = filter_dictionary_with_presence(
         data_dict,presence_keys)
     if args.subsample_size is not None and len(data_dict) > args.subsample_size:
-        if label_keys is not None:
-            strata = {}
-            for k in data_dict:
-                label = data_dict[k][args.label_keys]
-                if label not in strata:
-                    strata[label] = []
-                strata[label].append(k)
-            strata = {k:strata[k] for k in sorted(strata.keys())}
-            ps = [len(strata[k]) / len(data_dict) for k in strata]
-            split = [int(p * args.subsample_size) for p in ps]
-            ss = []
-            for k,s in zip(strata,split):
-                ss.extend(
-                    rng.choice(strata[k],size=s,
-                               replace=False,shuffle=False))
-        else:
-            ss = rng.choice(list(data_dict.keys()),size=args.subsample_size)
+        ss = rng.choice(list(data_dict.keys()),size=args.subsample_size)
         data_dict = {k:data_dict[k] for k in ss}
 
     if len(data_dict) == 0:
@@ -288,34 +261,31 @@ if __name__ == "__main__":
     
     keys = args.image_keys
 
-    network_config = parse_config_diffusion_unet(args.config_file,
-                                                 len(keys),
-                                                 n_classes=n_classes)
-    
-    if args.batch_size is not None:
-        network_config["batch_size"] = args.batch_size
-    if args.learning_rate is not None:
-        network_config["learning_rate"] = args.learning_rate
-
-    if "batch_size" not in network_config:
-        network_config["batch_size"] = 1
+    network_config = {
+        "spatial_dims": 3,
+        "in_channels": 1,
+        "out_channels": 1,
+        "num_channels": [128, 256, 512],
+        "attention_levels": [False, False, True],
+        "num_head_channels": [0, 256, 512],
+        "num_res_blocks": 2,
+        "with_conditioning": with_conditioning,
+        "cross_attention_dim":512 if with_conditioning else None,
+        "batch_size": args.batch_size,
+        "learning_rate": args.learning_rate}
     
     all_pids = [k for k in data_dict]
 
     print("Setting up transforms...")
-    label_mode = "binary" if n_classes == 2 and label_groups is None else "cat"
     transform_pre_arguments = {
         "keys":keys,
         "target_spacing":args.target_spacing,
         "crop_size":args.crop_size,
         "pad_size":args.pad_size}
     transform_post_arguments = {
-        "keys":keys,
-        "possible_labels":args.possible_labels,
-        "positive_labels":args.positive_labels,
-        "label_groups":args.label_groups,
-        "label_key":label_keys,
-        "label_mode":label_mode}
+        "image_keys":keys,
+        "cat_keys": args.cat_condition_keys,
+        "num_keys": args.num_condition_keys}
 
     transforms_train = [
         *get_pre_transforms(**transform_pre_arguments),
@@ -334,28 +304,19 @@ if __name__ == "__main__":
         monitor=args.monitor,
         metadata={"train_pids":all_pids,
                   "transform_arguments":{**transform_pre_arguments,
-                                         **transform_post_arguments}})
+                                         **transform_post_arguments},
+                  "categorical_specification": categorical_specification,
+                  "numerical_specification": numerical_specification})
     ckpt = ckpt_callback is not None
     if status == "finished":
         exit()
 
-    if label_keys is not None:
-        classes = []
-        for p in train_list:
-            P = str(p[args.label_keys])
-            if isinstance(P,list) or isinstance(P,tuple):
-                P = max(P)
-            classes.append(P)
-        U,C = np.unique(classes,return_counts=True)
-        for u,c in zip(U,C):
-            print(f"Number of {u} cases: {c}")
-    else:
-        print(f"Number of cases: {len(train_list)}")
+    print(f"Number of cases: {len(train_list)}")
     
     # PL needs a little hint to detect GPUs.
     torch.ones([1]).to("cuda" if "cuda" in args.dev else "cpu")
 
-    if network_config["spatial_dimensions"] == 2:
+    if network_config["spatial_dims"] == 2:
         transforms_train.append(
             RandomSlices(["image"],None,n=2,base=0.05))
         collate_fn = collate_last_slice
@@ -391,12 +352,13 @@ if __name__ == "__main__":
     
     network = get_generative_network(
         network_config=network_config,
-        label_key="label" if label_keys else None,
+        categorical_specification=categorical_specification,
+        numerical_specification=numerical_specification,
         train_loader_call=train_loader_call,
         max_epochs=args.max_epochs,
         warmup_steps=args.warmup_steps,
         start_decay=args.start_decay,
-        size=[int(x) for x in get_size(args.pad_size,args.crop_size)][:network_config["spatial_dimensions"]])
+        diffusion_steps=1000)
 
     if args.checkpoint is not None:
         checkpoint = args.checkpoint
@@ -417,8 +379,11 @@ if __name__ == "__main__":
                         fold=0)
     
     if logger is not None:
+        size = get_size(args.pad_size,args.crop_size)
         callbacks.append(
-            LogImageFromDiffusionProcess(n_images=8))
+            LogImageFromDiffusionProcess(
+                n_images=8,
+                size=[int(x) for x in size][:network_config["spatial_dims"]]))
             
     trainer = Trainer(
         accelerator=accelerator,
@@ -445,19 +410,6 @@ if __name__ == "__main__":
             network,train_loader,ckpt_path=ckpt_key)[0]
         for k in test_metrics:
             out = test_metrics[k]
-            if n_classes == 2:
-                try:
-                    value = float(out.detach().numpy())
-                except Exception:
-                    value = float(out)
-                x = "{},{},{},{},{}".format(k,ckpt_key,0,0,value)
-                output_file.write(x+'\n')
-                print(x)
-            else:
-                for i,v in enumerate(out):
-                    x = "{},{},{},{},{}".format(k,ckpt_key,0,i,v)
-                    output_file.write(x+'\n')
-                    print(x)
-    
-    if args.delete_checkpoints == True:
-        delete_checkpoints(trainer)
+            value = float(out.detach().numpy())
+            output_file.write(value+'\n')
+            print(value)

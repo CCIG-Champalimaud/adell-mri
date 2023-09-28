@@ -16,10 +16,7 @@ from .utils import (
     MasksToBBd,
     RandRotateWithBoxesd,
     SampleChannelDimd,
-    AdjustSizesd,
-    LoadIndividualDICOMd,
-    PrintShaped,
-    PrintTyped)
+    AdjustSizesd)
 from .modules.augmentations import (
     generic_augments,mri_specific_augments,spatial_augments,
     AugmentationWorkhorsed)
@@ -37,6 +34,12 @@ def unbox(x):
         return x[0]
     else:
         return x
+
+def box(x):
+    if isinstance(x,float):
+        return np.array([x],dtype=np.float32)
+    else:
+        return np.array([x])
 
 def get_transforms_unet_seg(seg_keys,
                             target_spacing,
@@ -354,29 +357,19 @@ def get_transforms_classification(x,
 def get_pre_transforms_generation(keys,
                                   target_spacing,
                                   crop_size,
-                                  pad_size,
-                                  target_size=None):
-    def normalize_image(image: torch.Tensor):
-        std = torch.std(image)
-        if std > 0:
-            return (image - image.mean()) / torch.std(image)
-        return image - image.mean()
+                                  pad_size):
     transforms = [
-        monai.transforms.LoadImaged(keys,ensure_channel_first=True),
+        monai.transforms.LoadImaged(
+            keys,ensure_channel_first=True,image_only=True),
         monai.transforms.Orientationd(keys,"RAS")]
     if target_spacing is not None:
         transforms.extend(
-            [   
+            [
                 monai.transforms.Spacingd(
                     keys,pixdim=target_spacing,dtype=torch.float32),
             ])
-    if target_size is not None:
-        transforms.append(
-            monai.transforms.Resized(keys=keys,spatial_size=target_size))
     transforms.append(
         monai.transforms.ScaleIntensityd(keys,0,1))
-    # transforms.append(
-    #    monai.transforms.Lambdad(keys,normalize_image))
     if pad_size is not None:
         transforms.append(
             monai.transforms.SpatialPadd(
@@ -387,24 +380,22 @@ def get_pre_transforms_generation(keys,
     transforms.append(monai.transforms.EnsureTyped(keys))
     return transforms
 
-def get_post_transforms_generation(keys,
-                                   possible_labels=None,
-                                   positive_labels=None,
-                                   label_groups=None,
-                                   label_key=None,
-                                   label_mode=None):
+def get_post_transforms_generation(image_keys: List[str],
+                                   cat_keys: List[str]=None,
+                                   num_keys: List[str]=None):
     transforms = []
     transforms.append(
-        monai.transforms.ConcatItemsd(keys,"image"))
-    if isinstance(positive_labels,int):
-        positive_labels = [positive_labels]
-    if label_key is not None:
+        monai.transforms.ConcatItemsd(image_keys,"image"))
+    if cat_keys is not None:
         transforms.append(
-            LabelOperatord(
-                [label_key],possible_labels,
-                mode=label_mode,positive_labels=positive_labels,
-                label_groups=label_groups,
-                output_keys={label_key:"label"}))
+            monai.transforms.Lambdad(cat_keys,box,track_meta=False))
+        transforms.append(
+            monai.transforms.ConcatItemsd(cat_keys,"cat"))
+    if num_keys is not None:
+        transforms.append(
+            monai.transforms.Lambdad(num_keys,box))
+        transforms.append(
+            monai.transforms.ConcatItemsd(num_keys,"num"))
     return transforms
 
 def get_pre_transforms_ssl(all_keys:List[str],

@@ -2,14 +2,19 @@ import torch
 import lightning.pytorch as pl
 from typing import Callable,Dict,List
 
-from .unet import DiffusionUNet
+from generative.inferers import DiffusionInferer
+from generative.networks.nets import DiffusionModelUNet
+from generative.networks.schedulers import DDPMScheduler
 from ..learning_rate import CosineAnnealingWithWarmupLR
 
-class DiffusionUNetPL(DiffusionUNet,pl.LightningModule):
+class DiffusionUNetPL(DiffusionModelUNet,pl.LightningModule):
     def __init__(self,
-                 diffusion_process,
+                 inferer: Callable=DiffusionInferer,
+                 scheduler: Callable=DDPMScheduler,
+                 embedder: torch.nn.Module=None,
                  image_key: str="image",
-                 label_key: str="label",
+                 cat_condition_key: str="cat_condition",
+                 num_condition_key: str="num_condition",
                  n_epochs: int=100,
                  warmup_steps: int=0,
                  start_decay: int=0,
@@ -17,13 +22,17 @@ class DiffusionUNetPL(DiffusionUNet,pl.LightningModule):
                  batch_size: int=16,
                  learning_rate: float=0.001,
                  weight_decay: float=0.005,
+                 seed: int=42,
                  *args,
                  **kwargs):
         super().__init__(*args,**kwargs)
 
-        self.diffusion_process = diffusion_process
+        self.inferer = inferer
+        self.scheduler = scheduler
+        self.embedder = embedder
         self.image_key = image_key
-        self.label_key = label_key
+        self.cat_condition_key = cat_condition_key
+        self.num_condition_key = num_condition_key
         self.n_epochs = n_epochs
         self.warmup_steps = warmup_steps
         self.start_decay = start_decay
@@ -31,51 +40,80 @@ class DiffusionUNetPL(DiffusionUNet,pl.LightningModule):
         self.batch_size = batch_size
         self.learning_rate = learning_rate
         self.weight_decay = weight_decay
+        self.seed = seed
 
-        self.noise_steps = self.diffusion_process.noise_steps
+        self.g = torch.Generator()
+        self.g.manual_seed(self.seed)
+        self.noise_steps = self.scheduler.num_train_timesteps
         self.loss_fn = torch.nn.MSELoss()
 
     def calculate_loss(self,prediction, epsilon):
         loss = self.loss_fn(prediction,epsilon)
         return loss.mean()
 
-    def step(self,x:torch.Tensor,t:torch.Tensor,cls:torch.Tensor=None):
-        if cls is not None:
-            cls = torch.round(cls)
-        noisy_image,epsilon = self.diffusion_process.noise_images(x,t)
-        output = self.forward(X=noisy_image,t=t / self.noise_steps,cls=cls)
-        loss = self.calculate_loss(output,epsilon)
-        return loss,output,noisy_image
+    def randn_like(self, x: torch.Tensor):
+        return torch.randn(size=x.shape,generator=self.g,
+                           dtype=x.dtype).to(x.device)
+    
+    def timesteps_like(self, x: torch.Tensor):
+        return torch.randint(
+            0, self.noise_steps, (x.shape[0],),
+            generator=self.g).to(x.device).long()
+
+    def step(self, x:torch.Tensor, condition:torch.Tensor=None):
+        if condition is not None:
+            condition = torch.round(condition)
+        epsilon = self.randn_like(x)
+        timesteps = self.timesteps_like(x)
+        epsilon_pred = self.inferer(inputs=x, diffusion_model=self, 
+                                    noise=epsilon, timesteps=timesteps,
+                                    condition=condition)
+        loss = self.calculate_loss(epsilon_pred, epsilon)
+        return loss
 
     def unpack_batch(self,batch):
         x = batch[self.image_key]
-        if self.label_key is not None:
-            cls = batch[self.label_key]
+        if self.with_conditioning is True:
+            if self.cat_condition_key is not None:
+                cat_condition = batch[self.cat_condition_key]
+            else:
+                cat_condition = None
+            if self.num_condition_key is not None:
+                num_condition = batch[self.num_condition_key]
+            else:
+                num_condition = None
+            # expects three dimensions (batch, seq, embedding size)
+            condition = self.embedder(cat_condition, num_condition).unsqueeze(1)
         else:
-            cls = None
-        return x,cls
+            condition = None
+        return x, condition
 
-    def training_step(self,batch:dict,batch_idx:int):
-        x,cls = self.unpack_batch(batch)
-        t = self.diffusion_process.sample_timesteps(x.shape[0]).to(x.device)
-        loss,output,noisy_image = self.step(x,t,cls)
+    def training_step(self,batch:dict, batch_idx:int):
+        x,condition = self.unpack_batch(batch)
+        loss = self.step(x, condition)
         self.log("loss",loss,on_step=True,prog_bar=True)
         return loss
 
-    def validation_step(self,batch:dict,batch_idx:int):
-        x,cls = self.unpack_batch(batch)
-        t = self.diffusion_process.sample_timesteps(x.shape[0]).to(x.device)
-        loss,output,noisy_image = self.step(x,t,cls)
+    def validation_step(self,batch:dict, batch_idx:int):
+        x,condition = self.unpack_batch(batch)
+        loss = self.step(x, condition)
         self.log("val_loss",loss,on_epoch=True,prog_bar=True)
-        return loss, output, noisy_image
+        return loss
 
-    def test_step(self,batch:dict,batch_idx:int):
-        x,cls = self.unpack_batch(batch)
-        t = self.diffusion_process.sample_timesteps(x.shape[0]).to(x.device)
-        loss,output,noisy_image = self.step(x,t,cls)
+    def test_step(self,batch:dict, batch_idx:int):
+        x,condition= self.unpack_batch(batch)
+        loss = self.step(x, condition)
         self.log("test_loss",loss)
         return loss
     
+    @torch.no_grad()
+    def generate_image(self, size=List[int], n=int):
+        noise = torch.randn([n,self.in_channels,*size])
+        sample = self.inferer.sample(input_noise=noise,
+                                     diffusion_model=self,
+                                     scheduler=self.scheduler)
+        return sample
+
     def train_dataloader(self) -> torch.utils.data.DataLoader:
         return self.training_dataloader_call(self.batch_size)
     

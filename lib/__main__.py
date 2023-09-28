@@ -4,6 +4,7 @@ supported_modes = [
     "classification",
     "classification_mil",
     "classification_ensemble",
+    "generative",
     "segmentation",
     "segmentation_from_2d_module",
     "ssl",
@@ -27,6 +28,11 @@ def main():
         main(arguments[1:])
     elif arguments[0] == "classification_ensemble":
         from .entrypoints.classification_ensemble.__main__ import main
+        main(arguments[1:])
+
+    # generation modes
+    elif arguments[0] == "generative":
+        from .entrypoints.generative.__main__ import main
         main(arguments[1:])
     
     # segmentation modes
