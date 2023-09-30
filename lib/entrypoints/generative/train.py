@@ -126,12 +126,6 @@ def main(arguments):
         '--check_val_every_n_epoch',dest="check_val_every_n_epoch",
         help="Validation check frequency",default=5,type=int)
     parser.add_argument(
-        '--n_folds',dest="n_folds",
-        help="Number of validation folds",default=5,type=int)
-    parser.add_argument(
-        '--folds',dest="folds",type=str,default=None,nargs="+",
-        help="Comma-separated IDs to be used in each space-separated fold")
-    parser.add_argument(
         '--excluded_ids',dest='excluded_ids',type=str,default=None,nargs="+",
         help="Comma separated list of IDs to exclude.")
     parser.add_argument(
