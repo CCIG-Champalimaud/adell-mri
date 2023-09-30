@@ -107,8 +107,8 @@ class LogImageFromDiffusionProcess(Callback):
                  size: List[int],
                  n_slices: int=3,
                  slice_dim: int=4,
-                 n_images: int=16,
-                 every_n_epochs: int=5):
+                 n_images: int=2,
+                 every_n_epochs: int=1):
         self.size = size
         self.n_slices = n_slices
         self.slice_dim = slice_dim
@@ -427,7 +427,9 @@ def get_logger(summary_name:str,summary_dir:str,
         logger = None
     return logger
 
-def get_devices(device_str:str)->Tuple[str,Union[List[int],int],str]:
+def get_devices(device_str: str, 
+                strategy: str="ddp_find_unused_parameters_true")->Tuple[
+                    str,Union[List[int],int],str]:
     """Takes a string with form "{device}:{device_ids}" where device_ids is a
     comma separated list of device IDs (i.e. cuda:0,1).
 
@@ -435,7 +437,7 @@ def get_devices(device_str:str)->Tuple[str,Union[List[int],int],str]:
         device_str (str): device string. Can be "cpu" or "cuda" if no 
             parallelization is necessary or "cuda:0,1" if training is to be
             distributed across GPUs 0 and 1, for instance.
-        kwargs: keyword arguments for DDPStrategy
+        strategy (str): parallelization strategy. Defaults to "ddp".
 
     Returns:
         Tuple[str,Union[List[int],int],str]: a tuple containing the accelerator
@@ -443,7 +445,7 @@ def get_devices(device_str:str)->Tuple[str,Union[List[int],int],str]:
             specified after the ":" in the device_str) and the parallelization
             strategy ("ddp" if len(devices) > 0, None otherwise)
     """
-    strategy = "auto"
+    strategy_out = "auto"
     if ":" in device_str:
         accelerator = "gpu" if "cuda" in device_str else "cpu"
         try:
@@ -451,8 +453,8 @@ def get_devices(device_str:str)->Tuple[str,Union[List[int],int],str]:
         except:
             devices = "auto"
         if len(devices) > 1:
-            strategy = "ddp_find_unused_parameters_true"
+            strategy_out = strategy
     else:
         accelerator = "gpu" if "cuda" in device_str else "cpu"
         devices = 1
-    return accelerator,devices,strategy
+    return accelerator,devices,strategy_out
