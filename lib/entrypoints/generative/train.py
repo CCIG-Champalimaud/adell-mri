@@ -120,6 +120,9 @@ def main(arguments):
         '--max_epochs',dest="max_epochs",
         help="Maximum number of training epochs",default=100,type=int)
     parser.add_argument(
+        '--precision',dest='precision',type=str,default="32",
+        help="Floating point precision")
+    parser.add_argument(
         '--check_val_every_n_epoch',dest="check_val_every_n_epoch",
         help="Validation check frequency",default=5,type=int)
     parser.add_argument(
@@ -294,7 +297,7 @@ def main(arguments):
     train_list = [data_dict[pid] for pid in all_pids]
     
     print("\tTrain set size={}".format(len(train_list)))
-            
+
     ckpt_callback,ckpt_path,status = get_ckpt_callback(
         checkpoint_dir=args.checkpoint_dir,
         checkpoint_name=args.checkpoint_name,
@@ -382,7 +385,7 @@ def main(arguments):
         size = get_size(args.pad_size,args.crop_size)
         callbacks.append(
             LogImageFromDiffusionProcess(
-                n_images=8,
+                n_images=2,
                 size=[int(x) for x in size][:network_config["spatial_dims"]]))
             
     trainer = Trainer(
@@ -394,6 +397,7 @@ def main(arguments):
         strategy=strategy,
         accumulate_grad_batches=args.accumulate_grad_batches,
         check_val_every_n_epoch=args.check_val_every_n_epoch,
+        precision=args.precision,
         deterministic="warn")
 
     trainer.fit(network,train_loader,train_loader,ckpt_path=ckpt_path)
