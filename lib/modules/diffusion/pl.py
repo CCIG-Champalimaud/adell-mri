@@ -6,6 +6,7 @@ from generative.inferers import DiffusionInferer
 from generative.networks.nets import DiffusionModelUNet
 from generative.networks.schedulers import DDPMScheduler
 from ..learning_rate import CosineAnnealingWithWarmupLR
+from ..classification.pl import meta_tensors_to_tensors
 
 class DiffusionUNetPL(DiffusionModelUNet,pl.LightningModule):
     def __init__(self,
@@ -89,6 +90,9 @@ class DiffusionUNetPL(DiffusionModelUNet,pl.LightningModule):
             condition = None
         return x, condition
 
+    def on_before_batch_transfer(self,batch,dataloader_idx):
+        return meta_tensors_to_tensors(batch)
+
     def training_step(self,batch:dict, batch_idx:int):
         x,condition = self.unpack_batch(batch)
         loss = self.step(x, condition)
@@ -107,9 +111,14 @@ class DiffusionUNetPL(DiffusionModelUNet,pl.LightningModule):
         self.log("test_loss",loss)
         return loss
     
+    @property
+    def device(self):
+        return next(self.parameters()).device
+
     @torch.no_grad()
     def generate_image(self, size=List[int], n=int):
-        noise = torch.randn([n,self.in_channels,*size])
+        noise = torch.randn([n,self.in_channels,*size],
+                            device=self.device)
         sample = self.inferer.sample(input_noise=noise,
                                      diffusion_model=self,
                                      scheduler=self.scheduler)
