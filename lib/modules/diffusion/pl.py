@@ -22,7 +22,7 @@ class DiffusionUNetPL(DiffusionModelUNet,pl.LightningModule):
                  training_dataloader_call: Callable=None,
                  batch_size: int=16,
                  learning_rate: float=0.001,
-                 weight_decay: float=0.005,
+                 weight_decay: float=0.0,
                  seed: int=42,
                  *args,
                  **kwargs):
@@ -128,7 +128,7 @@ class DiffusionUNetPL(DiffusionModelUNet,pl.LightningModule):
         return self.training_dataloader_call(self.batch_size)
     
     def configure_optimizers(self):
-        optimizer = torch.optim.AdamW(
+        optimizer = torch.optim.Adam(
             self.parameters(),
             lr=self.learning_rate,weight_decay=self.weight_decay)
         lr_schedulers = CosineAnnealingWithWarmupLR(

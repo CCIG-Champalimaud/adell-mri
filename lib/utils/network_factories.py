@@ -398,8 +398,10 @@ def get_generative_network(
     inferer = DiffusionInferer(scheduler)
     if any([categorical_specification is not None,
             numerical_specification is not None]):
-        embedder = Embedder(categorical_specification,
-                            numerical_specification)
+        embedder = Embedder(
+            categorical_specification,
+            numerical_specification,
+            embedding_size=network_config["cross_attention_dim"])
     else:
         embedder = None
 

@@ -262,12 +262,12 @@ def main(arguments):
         "spatial_dims": 3,
         "in_channels": 1,
         "out_channels": 1,
-        "num_channels": [128, 256, 512],
+        "num_channels": [64, 128, 256],
         "attention_levels": [False, False, True],
-        "num_head_channels": [0, 256, 512],
+        "num_head_channels": [0, 0, 256],
         "num_res_blocks": 2,
         "with_conditioning": with_conditioning,
-        "cross_attention_dim":512 if with_conditioning else None,
+        "cross_attention_dim":256 if with_conditioning else None,
         "batch_size": args.batch_size,
         "learning_rate": args.learning_rate}
     
@@ -297,7 +297,7 @@ def main(arguments):
         checkpoint_name=args.checkpoint_name,
         max_epochs=args.max_epochs,
         resume_from_last=args.resume_from_last,
-        val_fold=0,
+        val_fold=None,
         monitor=args.monitor,
         metadata={"train_pids":all_pids,
                   "transform_arguments":{**transform_pre_arguments,
@@ -373,7 +373,7 @@ def main(arguments):
 
     logger = get_logger(args.summary_name,args.summary_dir,
                         args.project_name,args.resume,
-                        fold=0)
+                        fold=None)
     
     if logger is not None:
         size = get_size(args.pad_size,args.crop_size)
