@@ -22,6 +22,7 @@ from lib.utils.pl_utils import (
     LogImageFromDiffusionProcess)
 from lib.utils.torch_utils import load_checkpoint_to_model
 from lib.utils.dataset_filters import (
+    filter_dictionary,
     filter_dictionary_with_filters,
     filter_dictionary_with_presence)
 from lib.monai_transforms import (
@@ -239,11 +240,9 @@ def main(arguments):
         data_dict = {k:data_dict[k] for k in data_dict
                      if k not in args.excluded_ids}
         print("\tRemoved {} IDs".format(prev_len - len(data_dict)))
-    if len(args.filter_on_keys) > 0:
-        data_dict = filter_dictionary_with_filters(
-            data_dict,args.filter_on_keys)
-    data_dict = filter_dictionary_with_presence(
-        data_dict,presence_keys)
+    data_dict = filter_dictionary(data_dict, 
+                                  filters_presence=presence_keys,
+                                  filters=args.filter_on_keys)
     if args.subsample_size is not None and len(data_dict) > args.subsample_size:
         ss = rng.choice(list(data_dict.keys()),size=args.subsample_size)
         data_dict = {k:data_dict[k] for k in ss}
