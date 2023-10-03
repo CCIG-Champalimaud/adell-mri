@@ -1,5 +1,6 @@
 import argparse
 import random
+import yaml
 import json
 import numpy as np
 import torch
@@ -105,6 +106,11 @@ def main(arguments):
         help="Path to network configuration file (yaml)",
         required=True)
     
+    # diffusion
+    parser.add_argument(
+        '--diffusion_steps',dest='diffusion_steps',
+        help="Number of diffusion steps",type=int,default=1000)
+
     # training
     parser.add_argument(
         '--dev',dest='dev',default="cpu",
@@ -254,18 +260,11 @@ def main(arguments):
     
     keys = args.image_keys
 
-    network_config = {
-        "spatial_dims": 3,
-        "in_channels": 1,
-        "out_channels": 1,
-        "num_channels": [64, 128, 256],
-        "attention_levels": [False, False, True],
-        "num_head_channels": [0, 0, 256],
-        "num_res_blocks": 2,
-        "with_conditioning": with_conditioning,
-        "cross_attention_dim":256 if with_conditioning else None,
-        "batch_size": args.batch_size,
-        "learning_rate": args.learning_rate}
+    network_config = yaml.load(args.config_file)
+    network_config["batch_size"] = args.batch_size
+    network_config["learning_rate"] = args.learning_rate
+    network_config["with_conditioning"] = with_conditioning
+    network_config["cross_attention_dim"] = 256 if with_conditioning else None
     
     all_pids = [k for k in data_dict]
 
