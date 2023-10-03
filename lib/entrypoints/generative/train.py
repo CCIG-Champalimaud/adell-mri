@@ -21,10 +21,7 @@ from lib.utils.pl_utils import (
     get_devices,
     LogImageFromDiffusionProcess)
 from lib.utils.torch_utils import load_checkpoint_to_model
-from lib.utils.dataset_filters import (
-    filter_dictionary,
-    filter_dictionary_with_filters,
-    filter_dictionary_with_presence)
+from lib.utils.dataset_filters import filter_dictionary
 from lib.monai_transforms import (
     get_pre_transforms_generation as get_pre_transforms,
     get_post_transforms_generation as get_post_transforms)
@@ -407,6 +404,8 @@ def main(arguments):
             network,train_loader,ckpt_path=ckpt_key)[0]
         for k in test_metrics:
             out = test_metrics[k]
-            value = float(out.detach().numpy())
-            output_file.write(value+'\n')
-            print(value)
+            if isinstance(out,float) is False:
+                value = float(out.detach().numpy())
+            else:
+                value = out
+            output_file.write(f'{value}\n')
