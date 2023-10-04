@@ -12,6 +12,7 @@ from lightning.pytorch.callbacks import (
     EarlyStopping,RichProgressBar)
 
 import sys
+from ...entrypoints.assemble_args import Parser
 from ...utils import (
     safe_collate,set_classification_layer_bias,conditional_parameter_freezing,
     subsample_dataset)
@@ -33,221 +34,40 @@ from ...utils.network_factories import get_classification_network
 from ...utils.parser import get_params,merge_args,parse_ids
 
 def main(arguments):
-    parser = argparse.ArgumentParser()
+    parser = Parser()
 
-    # params
-    parser.add_argument(
-        '--params_from',dest='params_from',type=str,default=None,
-        help="Parameter path used to retrieve values for the CLI (can be a path\
-            to a YAML file or 'dvc' to retrieve dvc params)")
-
-    # data
-    parser.add_argument(
-        '--dataset_json',dest='dataset_json',type=str,
-        help="JSON containing dataset information",required=True)
-    parser.add_argument(
-        '--image_keys',dest='image_keys',type=str,nargs='+',
-        help="Image keys in the dataset JSON.",
-        required=True)
-    parser.add_argument(
-        '--clinical_feature_keys',dest='clinical_feature_keys',type=str,
-        nargs='+',help="Tabular clinical feature keys in the dataset JSON.",
-        default=None)
-    parser.add_argument(
-        '--t2_keys',dest='t2_keys',type=str,nargs='+',
-        help="Image keys corresponding to T2.",default=None)
-    parser.add_argument(
-        '--adc_keys',dest='adc_keys',type=str,nargs='+',
-        help="Image keys corresponding to ADC.",default=None)
-    parser.add_argument(
-        '--label_keys',dest='label_keys',type=str,default="image_labels",
-        help="Label keys in the dataset JSON.")
-    parser.add_argument(
-        '--filter_on_keys',dest='filter_on_keys',type=str,default=[],nargs="+",
-        help="Filters the dataset based on a set of specific key:value pairs.")
-    parser.add_argument(
-        '--possible_labels',dest='possible_labels',type=str,nargs='+',
-        help="All the possible labels in the data.",
-        required=True)
-    parser.add_argument(
-        '--positive_labels',dest='positive_labels',type=str,nargs='+',
-        help="Labels that should be considered positive (binarizes labels)",
-        default=None)
-    parser.add_argument(
-        '--label_groups',dest='label_groups',type=str,nargs='+',
-        help="Label groups for classification.",
-        default=None)
-    parser.add_argument(
-        '--cache_rate',dest='cache_rate',type=float,
-        help="Rate of samples to be cached",
-        default=1.0)
-    parser.add_argument(
-        '--target_spacing',dest='target_spacing',action="store",default=None,
-        help="Resamples all images to target spacing",nargs='+',type=float)
-    parser.add_argument(
-        '--pad_size',dest='pad_size',action="store",
-        default=None,type=float,nargs='+',
-        help="Size of central padded image after resizing (if none is specified\
-            then no padding is performed).")
-    parser.add_argument(
-        '--crop_size',dest='crop_size',action="store",
-        default=None,type=float,nargs='+',
-        help="Size of central crop after resizing (if none is specified then\
-            no cropping is performed).")
-    parser.add_argument(
-        '--subsample_size',dest='subsample_size',type=int,
-        help="Subsamples data to a given size",
-        default=None)
-    parser.add_argument(
-        '--subsample_training_data',dest='subsample_training_data',type=float,
-        help="Subsamples training data by this fraction (for learning curves)",
-        default=None)
-    parser.add_argument(
-        '--val_from_train',dest='val_from_train',default=None,type=float,
-        help="Uses this fraction of training data as a validation set \
-            during training")
-
-    # network + training
-    parser.add_argument(
-        '--config_files',dest="config_files",nargs="+",
-        help="Paths to network configuration file (yaml; size 1 or same size as\
-            net types)",
-        required=True)
-    parser.add_argument(
-        '--ensemble_config_file',dest='ensemble_config_file',
-        help="Configures ensemble.",required=True)
-    parser.add_argument(
-        '--net_types',dest='net_types',nargs="+",
-        help="Classification types.",
-        choices=["cat","ord","unet","vit","factorized_vit", "vgg"],default="cat")
+    parser.add_argument([
+        "params_from",
+        "dataset_json",
+        "image_keys", "clinical_feature_keys", "label_keys",
+        "t2_keys", "adc_keys",
+        "filter_on_keys",
+        "possible_labels", "positive_labels", "label_groups",
+        "cache_rate",
+        "target_spacing", "pad_size", "crop_size", 
+        "subsample_size", "subsample_training_data", "val_from_train",
+        "config_files", "ensemble_config_file", 
+        ("classification_net_types","net_types"),
+        "dev", "n_workers", "seed",
+        "augment",
+        "label_smoothing", "mixup_alpha", "partial_mixup", "dropout_param",
+        "max_epochs", 
+        "n_folds", "folds", "excluded_ids", "excluded_ids_from_training_data",
+        "checkpoint_dir", "checkpoint_name", 
+        ("checkpoint_ensemble","checkpoint"),
+        "freeze_regex", "not_freeze_regex",
+        "exclude_from_state_dict",
+        "delete_checkpoints", 
+        "project_name", "resume",
+        "monitor", "summary_dir","summary_name", "metric_path",
+        "early_stopping",
+        "resume_from_last", "warmup_steps", "start_decay",
+        "gradient_clip_val", "accumulate_grad_batches",
+        "weighted_sampling", "class_weights",
+        "correct_classification_bias",
+        "batch_size", "learning_rate"
+    ])
     
-    # training
-    parser.add_argument(
-        '--dev',dest='dev',default="cpu",
-        help="Device for PyTorch training",type=str)
-    parser.add_argument(
-        '--seed',dest='seed',help="Random seed",default=42,type=int)
-    parser.add_argument(
-        '--n_workers',dest='n_workers',
-        help="No. of workers",default=0,type=int)
-    parser.add_argument(
-        '--augment',dest='augment',type=str,nargs="+",
-        help="Use data augmentations",default=[])
-    parser.add_argument(
-        '--label_smoothing',dest="label_smoothing",
-        help="Label smoothing value",default=None,type=float)
-    parser.add_argument(
-        '--mixup_alpha',dest="mixup_alpha",
-        help="Alpha for mixup",default=None,type=float)
-    parser.add_argument(
-        '--partial_mixup',dest="partial_mixup",
-        help="Applies mixup only to this fraction of the batch",
-        default=None,type=float)
-    parser.add_argument(
-        '--max_epochs',dest="max_epochs",
-        help="Maximum number of training epochs",default=100,type=int)
-    parser.add_argument(
-        '--n_folds',dest="n_folds",
-        help="Number of validation folds",default=5,type=int)
-    parser.add_argument(
-        '--folds',dest="folds",type=str,default=None,nargs="+",
-        help="Comma-separated IDs to be used in each space-separated fold")
-    parser.add_argument(
-        '--excluded_ids',dest='excluded_ids',type=str,default=None,nargs="+",
-        help="Comma separated list of IDs to exclude.")
-    parser.add_argument(
-        '--excluded_ids_from_training_data',dest='excluded_ids_from_training_data',
-        type=str,default=None,nargs="+",help="Comma separated list of IDs to \
-            exclude from training data.")
-    parser.add_argument(
-        '--checkpoint_dir',dest='checkpoint_dir',type=str,default=None,
-        help='Path to directory where checkpoints will be saved.')
-    parser.add_argument(
-        '--checkpoint_name',dest='checkpoint_name',type=str,default=None,
-        help='Checkpoint ID.')
-    parser.add_argument(
-        '--checkpoint',dest='checkpoint',type=str,default=None,
-        nargs="+",help='Resumes training from these checkpoint. For each model\
-            in the ensemble, a checkpoint should be provided in a comma separated\
-            list and folds separated by space. I.e., for 2 folds and 3 models in \
-            the ensemble: \
-            model0_f0,model1_f0,model2_f0 model0_f1,model1_f1,model2_f1')
-    parser.add_argument(
-        '--freeze_regex',dest='freeze_regex',type=str,default=None,nargs="+",
-        help='Matches parameter names and freezes them.')
-    parser.add_argument(
-        '--not_freeze_regex',dest='not_freeze_regex',type=str,default=None,
-        nargs="+",help='Matches parameter names and skips freezing them (\
-            overrides --freeze_regex)')
-    parser.add_argument(
-        '--exclude_from_state_dict',dest='exclude_from_state_dict',type=str,
-        default=None,nargs="+",
-            help='Regex to exclude parameters from state dict in --checkpoint')
-    parser.add_argument(
-        '--delete_checkpoints',dest='delete_checkpoints',action="store_true",
-        help='Deletes checkpoints after training (keeps only metrics).')
-    parser.add_argument(
-        '--monitor',dest='monitor',type=str,default="val_loss",
-        help="Metric that is monitored to determine the best checkpoint.")
-    parser.add_argument(
-        '--resume_from_last',dest='resume_from_last',action="store_true",
-        help="Resumes from the last checkpoint stored for a given fold.")
-    parser.add_argument(
-        '--summary_dir',dest='summary_dir',type=str,default="summaries",
-        help='Path to summary directory (for wandb).')
-    parser.add_argument(
-        '--summary_name',dest='summary_name',type=str,default="model_x",
-        help='Summary name.')
-    parser.add_argument(
-        '--metric_path',dest='metric_path',type=str,default="metrics.csv",
-        help='Path to file with CV metrics + information.')
-    parser.add_argument(
-        '--project_name',dest='project_name',type=str,default=None,
-        help='Wandb project name.')
-    parser.add_argument(
-        '--resume',dest='resume',type=str,default="allow",
-        choices=["allow","must","never","auto","none"],
-        help='Whether wandb project should be resumed (check \
-            https://docs.wandb.ai/ref/python/init for more details).')
-    parser.add_argument(
-        '--early_stopping',dest='early_stopping',type=int,default=None,
-        help="No. of checks before early stop (defaults to no early stop).")
-    parser.add_argument(
-        '--warmup_steps',dest='warmup_steps',type=float,default=0.0,
-        help="Number of warmup steps.")
-    parser.add_argument(
-        '--start_decay',dest='start_decay',type=float,default=None,
-        help="Step at which decay starts. Defaults to starting right after \
-            warmup ends.")
-    parser.add_argument(
-        '--gradient_clip_val',dest="gradient_clip_val",
-        help="Value for gradient clipping",
-        default=0.0,type=float)
-    parser.add_argument(
-        '--dropout_param',dest='dropout_param',type=float,
-        help="Parameter for dropout.",default=0.1)
-    parser.add_argument(
-        '--accumulate_grad_batches',dest="accumulate_grad_batches",
-        help="Number batches to accumulate before backpropgating gradient",
-        default=1,type=int)
-    # strategies to handle imbalanced classes
-    parser.add_argument(
-        '--weighted_sampling',dest='weighted_sampling',action="store_true",
-        help="Samples according to class proportions.",default=False)
-    parser.add_argument(
-        '--correct_classification_bias',dest='correct_classification_bias',
-        action="store_true",default=False,
-        help="Sets the final classification bias to log(pos/neg).")
-    parser.add_argument(
-        '--class_weights',dest='class_weights',type=str,nargs='+',
-        help="Class weights (by alphanumeric order).",default=None)
-    parser.add_argument(
-        '--batch_size',dest='batch_size',type=int,default=None,
-        help="Overrides batch size in config file")
-    parser.add_argument(
-        '--learning_rate',dest='learning_rate',type=float,default=None,
-        help="Overrides learning rate in config file")
-
     args = parser.parse_args(arguments)
 
     if args.params_from is not None:

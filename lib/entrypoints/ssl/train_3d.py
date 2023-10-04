@@ -14,6 +14,7 @@ from lightning.pytorch.strategies import DDPStrategy
 from lightning.pytorch.callbacks.model_checkpoint import ModelCheckpoint
 from lightning.pytorch.callbacks import RichProgressBar
 
+from ...entrypoints.assemble_args import Parser
 from ...utils import (
     CopyEntryd,
     collate_last_slice,
@@ -21,6 +22,7 @@ from ...utils import (
     ConditionalRescalingd,
     ExposeTransformKeyMetad,
     safe_collate)
+from ...utils.pl_utils import get_ckpt_callback,get_logger,get_devices
 from ...modules.augmentations import (
     AugmentationWorkhorsed,generic_augments,mri_specific_augments,
     spatial_augments)
@@ -41,135 +43,30 @@ def force_cudnn_initialization():
                                torch.zeros(s,s,s,s,device=dev))
 
 def main(arguments):
-    parser = argparse.ArgumentParser()
+    parser = Parser()
 
-    # data
-    parser.add_argument(
-        '--dataset_json',dest='dataset_json',type=str,
-        help="JSON containing dataset information",required=True)
-    parser.add_argument(
-        '--train_pids',dest='train_pids',action="store",
-        default=None,type=str,nargs='+',
-        help="IDs in dataset_json used for training")
-    parser.add_argument(
-        '--pad_size',dest='pad_size',action="store",
-        default=None,type=float,nargs='+',
-        help="Size of central padded image after resizing (if none is specified\
-            then no padding is performed).")
-    parser.add_argument(
-        '--crop_size',dest='crop_size',action="store",
-        default=None,type=float,nargs='+',
-        help="Size of central crop after resizing (if none is specified then\
-            no cropping is performed).")
-    parser.add_argument(
-        '--random_crop_size',dest='random_crop_size',action="store",
-        default=None,type=float,nargs='+',
-        help="Size of crop with random centre.")
-    parser.add_argument(
-        '--target_spacing',dest='target_spacing',action="store",default=None,
-        help="Resamples all images to target spacing",nargs='+',type=float)
-    parser.add_argument(
-        '--image_keys',dest='image_keys',type=str,nargs='+',
-        help="Image keys in the dataset JSON. First key is used as template",
-        required=True)
-    parser.add_argument(
-        '--adc_image_keys',dest='adc_image_keys',type=str,nargs='+',
-        help="Keys corresponding to input images which are ADC maps \
-            (normalized differently)",
-        default=None)
-    parser.add_argument(
-        '--adc_factor',dest='adc_factor',type=float,default=1/3,
-        help="Multiplies ADC images by this factor.")
-    parser.add_argument(
-        '--subsample_size',dest='subsample_size',type=int,
-        help="Subsamples data to a given size",
-        default=None)
-    parser.add_argument(
-        '--cache_rate',dest='cache_rate',type=float,
-        help="Cache rate for CacheDataset",
-        default=1.0)
-    parser.add_argument(
-        '--precision',dest='precision',type=str,
-        help="Floating point precision",choices=["16","32","bf16"],
-        default="32")
-    parser.add_argument(
-        '--unet_encoder',dest='unet_encoder',action="store_true",
-        help="Trains a UNet encoder")
-    parser.add_argument(
-        '--batch_size',dest='batch_size',type=int,default=None,
-        help="Overrides batch size in config file")
-
-    # network + training
-    parser.add_argument(
-        '--config_file',dest="config_file",
-        help="Path to network configuration file (yaml)",
-        required=True)
-    parser.add_argument(
-        '--ema',dest="ema",action="store_true",
-        help="Includes exponential moving average teacher (like BYOL)")
-    parser.add_argument(
-        '--from_checkpoint',dest='from_checkpoint',action="store",
-        help="Uses this checkpoint as a starting point for the network")
+    parser.add_argument_by_key([
+        "dataset_json",
+        "image_keys","adc_image_keys",
+        "train_pids",
+        "target_spacing",
+        "pad_size","crop_size","random_crop_size",
+        "subsample_size",
+        "cache_rate",
+        "precision",
+        "unet_encoder",
+        "batch_size",
+        "config_file","ssl_method","ema",
+        "checkpoint_dir","checkpoint_name","checkpoint","resume_from_last",
+        "project_name","resume","summary_name","summary_dir","metric_path",
+        "dev","n_workers",
+        "seed",
+        "max_epochs",
+        "accumulate_grad_batches","gradient_clip_val",
+        "dropout_param",
+        "ssl_method"
+    ])
     
-    # training
-    parser.add_argument(
-        '--dev',dest='dev',type=str,
-        help="Device for PyTorch training")
-    parser.add_argument(
-        '--seed',dest='seed',help="Random seed",default=42,type=int)
-    parser.add_argument(
-        '--n_workers',dest='n_workers',
-        help="Number of workers",default=1,type=int)
-    parser.add_argument(
-        '--n_devices',dest='n_devices',
-        help="Number of devices",default=1,type=int)
-    parser.add_argument(
-        '--max_epochs',dest="max_epochs",
-        help="Maximum number of training epochs",default=100,type=int)
-    parser.add_argument(
-        '--accumulate_grad_batches',dest="accumulate_grad_batches",
-        help="Number batches to accumulate before backpropgating gradient",
-        default=1,type=int)
-    parser.add_argument(
-        '--gradient_clip_val',dest="gradient_clip_val",
-        help="Value for gradient clipping",
-        default=0.0,type=float)
-    parser.add_argument(
-        '--checkpoint_dir',dest='checkpoint_dir',type=str,default="models",
-        help='Path to directory where checkpoints will be saved.')
-    parser.add_argument(
-        '--checkpoint_name',dest='checkpoint_name',type=str,default=None,
-        help='Checkpoint ID.')
-    parser.add_argument(
-        '--summary_dir',dest='summary_dir',type=str,default="summaries",
-        help='Path to summary directory (for wandb).')
-    parser.add_argument(
-        '--summary_name',dest='summary_name',type=str,default=None,
-        help='Summary name.')
-    parser.add_argument(
-        '--project_name',dest='project_name',type=str,default=None,
-        help='Project name for wandb.')
-    parser.add_argument(
-        '--resume',dest='resume',type=str,default="allow",
-        choices=["allow","must","never","auto","none"],
-        help='Whether wandb project should be resumed (check \
-            https://docs.wandb.ai/ref/python/init for more details).')
-    parser.add_argument(
-        '--metric_path',dest='metric_path',type=str,default="metrics.csv",
-        help='Path to file with CV metrics + information.')
-    parser.add_argument(
-        '--dropout_param',dest='dropout_param',type=float,
-        help="Parameter for dropout.",default=0.0)
-    parser.add_argument(
-        '--vicreg',dest='vicreg',action="store_true",
-        help="Use VICReg loss")
-    parser.add_argument(
-        '--vicregl',dest='vicregl',action="store_true",
-        help="Use VICRegL loss")
-    parser.add_argument(
-        '--resume_from_last',dest='resume_from_last',action="store_true",
-        help="Resumes training from last checkpoint.")
-
     args = parser.parse_args(arguments)
 
     torch.manual_seed(args.seed)
@@ -255,7 +152,7 @@ def main(arguments):
                 ConditionalRescalingd(args.adc_image_keys,1000,0.001))
             scaling_ops.append(
                 monai.transforms.ScaleIntensityd(
-                    args.adc_image_keys,None,None,-(1-args.adc_factor)))
+                    args.adc_image_keys,None,None,-(1-1/3)))
         crop_op = []
         if args.crop_size is not None:
             crop_op.append(
@@ -299,7 +196,7 @@ def main(arguments):
         
         if len(roi_size) == 0:
             cropping_strategy = []
-        if args.vicregl is True:
+        if args.ssl_method == "vicregl":
             cropping_strategy = [
                 monai.transforms.RandSpatialCropd(
                     all_keys,roi_size=roi_size,random_size=False),
@@ -352,23 +249,7 @@ def main(arguments):
     train_list = [data_dict[pid] for pid in data_dict
                   if pid in train_pids]
 
-    if ":" in args.dev:
-        devices = args.dev.split(":")[-1].split(",")
-        devices = [int(i) for i in devices]
-        if len(devices) > 1:
-            #strategy = "deepspeed_stage_2"
-            strategy = DDPStrategy(find_unused_parameters=False,
-                                   static_graph=True)
-        else:
-            strategy = None
-    else:
-        devices = args.n_devices
-        if devices > 1:
-            #strategy = "deepspeed_stage_2"
-            strategy = DDPStrategy(find_unused_parameters=False,
-                                   static_graph=True)
-        else:
-            strategy = None
+    accelerator,devices,strategy = get_devices(args.dev)
 
     # split workers across cache construction and data loading
     a = args.n_workers // 2
@@ -396,8 +277,8 @@ def main(arguments):
             box_key_1="box_1",
             box_key_2="box_2",
             n_epochs=args.max_epochs,
-            vic_reg=args.vicreg,
-            vic_reg_local=args.vicregl,
+            vic_reg=args.ssl_method == "vicreg",
+            vic_reg_local=args.ssl_method == "vicregl",
             ema=ema,
             **network_config_correct)
     else:
@@ -408,58 +289,39 @@ def main(arguments):
             box_key_1="box_1",
             box_key_2="box_2",
             n_epochs=args.max_epochs,
-            vic_reg=args.vicreg,
-            vic_reg_local=args.vicregl,
+            vic_reg=args.ssl_method == "vicreg",
+            vic_reg_local=args.ssl_method == "vicregl",
             ema=ema,
             **network_config_correct)
     if "cuda" in args.dev:
         ssl = ssl.to("cuda")
 
-    if args.from_checkpoint is not None:
+    if args.checkpoint is not None:
         state_dict = torch.load(
-            args.from_checkpoint,map_location=args.dev)['state_dict']
+            args.checkpoint,map_location=args.dev)['state_dict']
         inc = ssl.load_state_dict(state_dict)
     
     callbacks = [RichProgressBar()]
 
-    ckpt_path = None
-    if args.checkpoint_name is not None:
-        ckpt_name = args.checkpoint_name
-        ckpt_name = ckpt_name + "_{epoch:03d}"
-        ckpt_name = ckpt_name + "_{val_loss:.3f}"
-        ckpt_callback = ModelCheckpoint(
-            dirpath=args.checkpoint_dir,
-            filename=ckpt_name,monitor="val_loss",
-            save_last=True,save_top_k=1,mode="min")
-        ckpt_last = args.checkpoint_name + "_last"
-        ckpt_callback.CHECKPOINT_NAME_LAST = ckpt_last
+    ckpt_callback,ckpt_path,status = get_ckpt_callback(
+        checkpoint_dir=args.checkpoint_dir,
+        checkpoint_name=args.checkpoint_name,
+        max_epochs=args.max_epochs,
+        resume_from_last=args.resume_from_last,
+        val_fold=None,
+        monitor="val_loss")
+    if ckpt_callback is not None:   
         callbacks.append(ckpt_callback)
-        ckpt_last_full = os.path.join(
-            args.checkpoint_dir,ckpt_last+'.ckpt')
-        if os.path.exists(ckpt_last_full) and args.resume_from_last is True:
-            ckpt_path = ckpt_last_full
-            epoch = torch.load(ckpt_path)["epoch"]
-            if epoch >= (args.max_epochs-1):
-                print("Training has finished, exiting")
-                exit()
-            else:
-                print("Resuming training from checkpoint in {} (epoch={})".format(
-                    ckpt_path,epoch))
-        ckpt = True
-    else:
-        ckpt = False
+    ckpt = ckpt_callback is not None
+    if status == "finished":
+        print("Training has finished")
+        exit()
     
-    if args.summary_name is not None and args.project_name is not None:
-        wandb.finish()
-        wandb_resume = args.resume
-        if wandb_resume == "none":
-            wandb_resume = None
-        run_name = args.summary_name.replace(':','_')
-        logger = WandbLogger(
-            save_dir=args.summary_dir,project=args.project_name,
-            name=run_name,version=run_name,reinit=True,resume=wandb_resume)
-    else:
-        logger = None
+    logger = get_logger(summary_name=args.summary_name,
+                        summary_dir=args.summary_dir,
+                        project_name=args.project_name,
+                        resume=args.resume,
+                        fold=None)
 
     precision = {"16":16,"32":32,"bf16":"bf16"}[args.precision]
     trainer = Trainer(

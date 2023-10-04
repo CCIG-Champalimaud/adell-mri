@@ -1,4 +1,3 @@
-import argparse
 import random
 import yaml
 import numpy as np
@@ -10,7 +9,7 @@ from sklearn.model_selection import KFold,train_test_split
 from lightning.pytorch import Trainer
 from lightning.pytorch.callbacks import RichProgressBar
 
-import sys
+from ...entrypoints.assemble_args import Parser
 from ...utils import (
     safe_collate,
     load_anchors)
@@ -29,139 +28,32 @@ from ...utils.network_factories import get_detection_network
 torch.backends.cudnn.benchmark = True
 
 def main(arguments):
-    parser = argparse.ArgumentParser()
+    parser = Parser()
 
-    # data
-    parser.add_argument(
-        '--dataset_json',dest='dataset_json',type=str,
-        help="JSON containing dataset information",required=True)
-    parser.add_argument(
-        '--image_keys',dest='image_keys',type=str,nargs="+",
-        help="Image keys in dataset JSON",required=True)
-    parser.add_argument(
-        '--box_key',dest='box_key',type=str,default="boxes",
-        help="Box key in dataset JSON")
-    parser.add_argument(
-        '--box_class_key',dest='box_class_key',type=str,default="box_classes",
-        help="Box class key in dataset JSON")
-    parser.add_argument(
-        '--shape_key',dest='shape_key',type=str,default="shape",
-        help="Shape key in dataset JSON")
-    parser.add_argument(
-        '--mask_key',dest='mask_key',type=str,default=None,
-        help="Mask key in dataset JSON")
-    parser.add_argument(
-        '--mask_mode',dest='mask_mode',type=str,default="mask_is_labels",
-        choices=["mask_is_labels","infer_labels","single_object"],
-        help="If using mask_key, defines how boxes are inferred. mask_is_labels\
-            uses the mask as labels; infer_labels infers connected components \
-            using skimage.measure.label; single_object assumes the mask represents\
-            a single, not necessarily connected, object.")
-    parser.add_argument(
-        '--target_spacing',dest='target_spacing',type=str,nargs="+",
-        help="Target spacing (if 'infer' then this is inferred from the training\
-            set)")
-    parser.add_argument(
-        '--input_size',dest='input_size',type=float,nargs='+',
-        help="Input size for network (for padding and cropping)",required=True)
-    parser.add_argument(
-        '--n_classes',dest='n_classes',type=int,default=2,
-        help="Number of classes")
-    parser.add_argument(
-        '--anchor_csv',dest='anchor_csv',type=str,
-        help="Path to CSV file containing anchors",required=True)
-    parser.add_argument(
-        '--min_anchor_area',dest='min_anchor_area',type=float,
-        help="Minimum anchor area (filters anchors)",default=None)
-    parser.add_argument(
-        '--filter_on_keys',dest='filter_on_keys',type=str,default=[],nargs="+",
-        help="Filters the dataset based on a set of specific key:value pairs.")
-    parser.add_argument(
-        '--adc_keys',dest='adc_keys',type=str,nargs="+",
-        help="Image keys corresponding to ADC in dataset JSON")
-    parser.add_argument(
-        '--t2_keys',dest='t2_keys',type=str,nargs="+",
-        help="Image keys corresponding to T2 in dataset JSON")
-
-    # network
-    parser.add_argument(
-        '--config_file',dest="config_file",
-        help="Path to network configuration file (yaml)",
-        required=True)
-    parser.add_argument(
-        '--net_type',dest="net_type",
-        help="Network type",choices=["yolo"],required=True)
-    
-    # training
-    parser.add_argument('--dev',dest='dev',default="cpu",
-        help="Device for PyTorch training",type=str)
-    parser.add_argument(
-        '--seed',dest='seed',help="Random seed",default=42,type=int)
-    parser.add_argument(
-        '--n_workers',dest='n_workers',
-        help="No. of workers",default=0,type=int)
-    parser.add_argument(
-        '--augment',dest='augment',type=str,nargs="+",
-        default=[],choices=["intensity","noise","rbf","rotate","trivial"],
-        help="Use data augmentations (use rotate with care, not very stable \
-            when objects are close to the border)")
-    parser.add_argument(
-        '--loss_gamma',dest="loss_gamma",
-        help="Gamma for focal loss",default=2.0,type=float)
-    parser.add_argument(
-        '--loss_comb',dest="loss_comb",
-        help="Relative weight for combined losses",default=0.5,type=float)
-    parser.add_argument(
-        '--max_epochs',dest="max_epochs",
-        help="Maximum number of training epochs",default=100,type=int)
-    parser.add_argument(
-        '--warmup_steps',dest='warmup_steps',type=float,default=0.0,
-        help="Number of warmup steps (if SWA is triggered it starts after\
-            this number of steps).")
-    parser.add_argument(
-        '--n_folds',dest="n_folds",
-        help="Number of validation folds",default=5,type=int)
-    parser.add_argument(
-        '--checkpoint_dir',dest='checkpoint_dir',type=str,default=None,
-        help='Path to directory where checkpoints will be saved.')
-    parser.add_argument(
-        '--checkpoint_name',dest='checkpoint_name',type=str,default=None,
-        help='Checkpoint ID.')
-    parser.add_argument(
-        '--resume_from_last',dest='resume_from_last',action="store_true",
-        help="Resumes from the last checkpoint stored for a given fold.")
-    parser.add_argument(
-        '--monitor',dest='monitor',type=str,default="val_loss",
-        help="Metric that is monitored to determine the best checkpoint.")
-    parser.add_argument(
-        '--project_name',dest='project_name',type=str,default=None,
-        help='Wandb project name.')
-    parser.add_argument(
-        '--summary_dir',dest='summary_dir',type=str,default="summaries",
-        help='Path to summary directory (for tensorboard).')
-    parser.add_argument(
-        '--summary_name',dest='summary_name',type=str,default="model_x",
-        help='Summary name.')
-    parser.add_argument(
-        '--resume',dest='resume',type=str,default="allow",
-        choices=["allow","must","never","auto","none"],
-        help='Whether wandb project should be resumed (check \
-            https://docs.wandb.ai/ref/python/init for more details).')
-    parser.add_argument(
-        '--metric_path',dest='metric_path',type=str,default="metrics.csv",
-        help='Path to file with CV metrics + information.')
-    parser.add_argument(
-        '--class_weights',dest='class_weights',type=float,nargs='+',
-        help="Class weights (by alphanumeric order).",default=1.)
-    parser.add_argument(
-        '--iou_threshold',dest='iou_threshold',type=float,
-        help="IoU threshold for pred-gt overlaps.",default=0.5)
-    parser.add_argument(
-        '--dropout_param',dest='dropout_param',type=float,
-        help="Parameter for dropout.",default=0.0)
-    parser.add_argument(
-        '--subsample_size',dest='subsample_size',type=int,
-        help="Subsamples data to a given size",default=None)
+    parser.add_argument_by_key([
+        "dataset_json",
+        "image_keys","box_key","box_class_key","shape_key","t2_keys","adc_keys",
+        "filter_on_keys",
+        "mask_key","mask_mode",
+        "target_spacing",
+        "pad_size","crop_size",
+        "n_classes",
+        "anchor_csv",
+        "min_anchor_area",
+        "config_file",
+        ("detection_net_type","net_type"),
+        "dev","n_workers","seed",
+        ("augment","augment",{help: "Augmentations (use rotate with care, not\
+            well defined when objects are close to the border)"}),
+        "loss_gamma","loss_comb",
+        "max_epochs",
+        'warmup_steps',"n_folds",
+        "checkpoint_dir","checkpoint_name","resume_from_last",
+        "project_name","resume","summary_dir","summary_name","monitor",
+        "metric_path",
+        "class_weights","subsample_size","dropout_param",
+        "iou_threshold"
+    ])
 
     args = parser.parse_args(arguments)
 
@@ -197,7 +89,8 @@ def main(arguments):
                                                      args.subsample_size,
                                                      replace=False)}
     
-    input_size = [int(i) for i in args.input_size]
+    crop_size = [int(i) for i in args.crop_size]
+    pad_size = [int(i) for i in args.pad_size]
     
     keys = args.image_keys
     adc_keys = args.adc_keys if args.adc_keys else []
@@ -241,7 +134,8 @@ def main(arguments):
         transform_arguments_pre = {
             "keys":keys,
             "adc_keys":adc_keys,
-            "input_size":input_size,
+            "crop_size":crop_size,
+            "pad_size":pad_size,
             "target_spacing":target_spacing,
             "box_class_key":box_class_key,
             "shape_key":shape_key,
@@ -271,14 +165,15 @@ def main(arguments):
         output_example = YOLONet3d(
             n_channels=1,n_classes=args.n_classes,adn_fn=torch.nn.Identity,
             anchor_sizes=anchor_array,dev=args.dev)(
-                torch.ones([1,1,*input_size]))
+                torch.ones([1,1,*crop_size]))
         output_size = output_example[0].shape[2:]
             
         transform_arguments_post = {
             "keys":keys,
             "t2_keys":t2_keys,
             "anchor_array":anchor_array,
-            "input_size":input_size,
+            "crop_size":crop_size,
+            "pad_size":pad_size,
             "output_size":output_size,
             "iou_threshold":args.iou_threshold,
             "box_class_key":box_class_key,

@@ -8,6 +8,7 @@ import monai
 from lightning.pytorch import Trainer
 
 import sys
+from ..assemble_args import Parser
 from ...utils import safe_collate, subsample_dataset
 from ...utils.pl_utils import get_devices
 from ...monai_transforms import get_transforms_classification as get_transforms
@@ -18,100 +19,25 @@ from ...utils.network_factories import get_classification_network
 from ...utils.parser import get_params,merge_args,parse_ids
 
 def main(arguments):
-    parser = argparse.ArgumentParser()
+    parser = Parser()
+
+    parser.add_argument_by_key([
+        ("classification_net_type","net_type"),
+        "params_from",
+        "dataset_json",
+        "image_keys", "clinical_feature_keys", "adc_keys", "label_keys",
+        "filter_on_keys",
+        "possible_labels", "positive_labels", "label_groups",
+        "target_spacing", "pad_size", "crop_size",
+        "subsample_size", "batch_size",
+        "config_file",
+        "dev", "seed", "n_workers",
+        "metric_path",
+        "test_ids",
+        "one_to_one",
+        ("test_checkpoints","checkpoints")
+    ])
     
-    # params
-    parser.add_argument(
-        '--params_from',dest='params_from',type=str,default=None,
-        help="Parameter path used to retrieve values for the CLI (can be a path\
-            to a YAML file or 'dvc' to retrieve dvc params)")
-
-    # data
-    parser.add_argument(
-        '--dataset_json',dest='dataset_json',type=str,
-        help="JSON containing dataset information",required=True)
-    parser.add_argument(
-        '--image_keys',dest='image_keys',type=str,nargs='+',
-        help="Image keys in the dataset JSON.",
-        required=True)
-    parser.add_argument(
-        '--clinical_feature_keys',dest='clinical_feature_keys',type=str,
-        nargs='+',help="Tabular clinical feature keys in the dataset JSON.",
-        default=None)
-    parser.add_argument(
-        '--adc_keys',dest='adc_keys',type=str,nargs='+',
-        help="Image keys corresponding to ADC.",default=None)
-    parser.add_argument(
-        '--label_keys',dest='label_keys',type=str,default="image_labels",
-        help="Label keys in the dataset JSON.")
-    parser.add_argument(
-        '--filter_on_keys',dest='filter_on_keys',type=str,default=[],nargs="+",
-        help="Filters the dataset based on a set of specific key:value pairs.")
-    parser.add_argument(
-        '--possible_labels',dest='possible_labels',type=str,nargs='+',
-        help="All the possible labels in the data.",
-        required=True)
-    parser.add_argument(
-        '--positive_labels',dest='positive_labels',type=str,nargs='+',
-        help="Labels that should be considered positive (binarizes labels)",
-        default=None)
-    parser.add_argument(
-        '--label_groups',dest='label_groups',type=str,nargs='+',
-        help="Label groups for classification.",
-        default=None)
-    parser.add_argument(
-        '--target_spacing',dest='target_spacing',action="store",default=None,
-        help="Resamples all images to target spacing",nargs='+',type=float)
-    parser.add_argument(
-        '--pad_size',dest='pad_size',action="store",
-        default=None,type=float,nargs='+',
-        help="Size of central padded image after resizing (if none is specified\
-            then no padding is performed).")
-    parser.add_argument(
-        '--crop_size',dest='crop_size',action="store",
-        default=None,type=float,nargs='+',
-        help="Size of central crop after resizing (if none is specified then\
-            no cropping is performed).")
-    parser.add_argument(
-        '--subsample_size',dest='subsample_size',type=int,
-        help="Subsamples data to a given size",
-        default=None)
-    parser.add_argument(
-        '--batch_size',dest='batch_size',type=int,default=None,
-        help="Overrides batch size in config file")
-
-    # network
-    parser.add_argument(
-        '--config_file',dest="config_file",
-        help="Path to network configuration file (yaml)",
-        required=True)
-    parser.add_argument(
-        '--net_type',dest='net_type',
-        help="Classification type. Can be categorical (cat) or ordinal (ord)",
-        choices=["cat","ord","unet","vit","factorized_vit","vgg"],default="cat")
-    
-    # testing
-    parser.add_argument(
-        '--dev',dest='dev',default="cpu",
-        help="Device for PyTorch testing",type=str)
-    parser.add_argument(
-        '--seed',dest='seed',help="Random seed",default=42,type=int)
-    parser.add_argument(
-        '--n_workers',dest='n_workers',
-        help="No. of workers",default=0,type=int)
-    parser.add_argument(
-        '--test_ids',dest="test_ids",type=str,default=None,nargs="+",
-        help="Comma-separated IDs to be used in each test")
-    parser.add_argument(
-        '--one_to_one',dest="one_to_one",action="store_true",
-        help="Tests the checkpoint only on the corresponding test_ids set")
-    parser.add_argument(
-        '--checkpoints',dest='checkpoints',type=str,default=None,
-        nargs="+",help='Test using these checkpoints.')
-    parser.add_argument(
-        '--metric_path',dest='metric_path',type=str,default="metrics.csv",
-        help='Path to file with CV metrics + information.')
-
     args = parser.parse_args(arguments)
 
     if args.params_from is not None:

@@ -7,6 +7,7 @@ import monai
 from lightning.pytorch import Trainer
 
 import sys
+from ...entrypoints.assemble_args import Parser
 from ...utils import (safe_collate)
 from ...utils.pl_utils import (get_devices)
 from ...utils.torch_utils import load_checkpoint_to_model
@@ -23,108 +24,25 @@ from ...utils.network_factories import get_classification_network
 from ...utils.parser import get_params,merge_args,parse_ids
 
 def main(arguments):
-    parser = argparse.ArgumentParser()
+    parser = Parser()
 
-    # params
-    parser.add_argument(
-        '--params_from',dest='params_from',type=str,default=None,
-        help="Parameter path used to retrieve values for the CLI (can be a path\
-            to a YAML file or 'dvc' to retrieve dvc params)")
-
-    # data
-    parser.add_argument(
-        '--dataset_json',dest='dataset_json',type=str,
-        help="JSON containing dataset information",required=True)
-    parser.add_argument(
-        '--test_ids',dest="test_ids",type=str,default=None,nargs="+",
-        help="Comma-separated IDs to be used in each test")
-    parser.add_argument(
-        '--one_to_one',dest="one_to_one",action="store_true",
-        help="Tests the checkpoint only on the corresponding test_ids set")
-    parser.add_argument(
-        '--image_keys',dest='image_keys',type=str,nargs='+',
-        help="Image keys in the dataset JSON.",
-        required=True)
-    parser.add_argument(
-        '--clinical_feature_keys',dest='clinical_feature_keys',type=str,
-        nargs='+',help="Tabular clinical feature keys in the dataset JSON.",
-        default=None)
-    parser.add_argument(
-        '--adc_keys',dest='adc_keys',type=str,nargs='+',
-        help="Image keys corresponding to ADC.",default=None)
-    parser.add_argument(
-        '--label_keys',dest='label_keys',type=str,default="image_labels",
-        help="Label keys in the dataset JSON.")
-    parser.add_argument(
-        '--filter_on_keys',dest='filter_on_keys',type=str,default=[],nargs="+",
-        help="Filters the dataset based on a set of specific key:value pairs.")
-    parser.add_argument(
-        '--possible_labels',dest='possible_labels',type=str,nargs='+',
-        help="All the possible labels in the data.",
-        required=True)
-    parser.add_argument(
-        '--positive_labels',dest='positive_labels',type=str,nargs='+',
-        help="Labels that should be considered positive (binarizes labels)",
-        default=None)
-    parser.add_argument(
-        '--label_groups',dest='label_groups',type=str,nargs='+',
-        help="Label groups for classification.",
-        default=None)
-    parser.add_argument(
-        '--cache_rate',dest='cache_rate',type=float,
-        help="Rate of samples to be cached",
-        default=1.0)
-    parser.add_argument(
-        '--target_spacing',dest='target_spacing',action="store",default=None,
-        help="Resamples all images to target spacing",nargs='+',type=float)
-    parser.add_argument(
-        '--pad_size',dest='pad_size',action="store",
-        default=None,type=float,nargs='+',
-        help="Size of central padded image after resizing (if none is specified\
-            then no padding is performed).")
-    parser.add_argument(
-        '--crop_size',dest='crop_size',action="store",
-        default=None,type=float,nargs='+',
-        help="Size of central crop after resizing (if none is specified then\
-            no cropping is performed).")
-
-    # network + training
-    parser.add_argument(
-        '--config_files',dest="config_files",nargs="+",
-        help="Paths to network configuration file (yaml; size 1 or same size as\
-            net types)",
-        required=True)
-    parser.add_argument(
-        '--ensemble_config_file',dest='ensemble_config_file',
-        help="Configures ensemble.",required=True)
-    parser.add_argument(
-        '--net_types',dest='net_types',nargs="+",
-        help="Classification types.",
-        choices=["cat","ord","unet","vit","factorized_vit", "vgg"],default="cat")
+    parser.add_argument_by_key([
+        "params_from",
+        "dataset_json",
+        "image_keys", "clinical_feature_keys", "adc_keys", "label_keys",
+        "possible_labels", "positive_labels", "label_groups",
+        "filter_on_keys", "excluded_ids",
+        "cache_rate",
+        "target_spacing", "pad_size", "crop_size",
+        "config_files", "ensemble_config_file", 
+        ("classification_net_types","net_types"),
+        "test_ids", "one_to_one",
+        "dev","n_workers",
+        ("test_checkpoints","checkpoints"),
+        "metric_path",
+        "batch_size"
+    ])
     
-    # training
-    parser.add_argument(
-        '--dev',dest='dev',default="cpu",
-        help="Device for PyTorch training",type=str)
-    parser.add_argument(
-        '--n_workers',dest='n_workers',
-        help="No. of workers",default=0,type=int)
-    parser.add_argument(
-        '--folds',dest="folds",type=str,default=None,nargs="+",
-        help="Comma-separated IDs to be used in each space-separated fold")
-    parser.add_argument(
-        '--excluded_ids',dest='excluded_ids',type=str,default=None,nargs="+",
-        help="Comma separated list of IDs to exclude.")
-    parser.add_argument(
-        '--checkpoints',dest='checkpoints',type=str,default=None,
-        nargs="+",help='Tests using these checkpoints')
-    parser.add_argument(
-        '--metric_path',dest='metric_path',type=str,default="metrics.csv",
-        help='Path to file with CV metrics + information.')
-    parser.add_argument(
-        '--batch_size',dest='batch_size',type=int,default=None,
-        help="Overrides batch size in config file")
-
     args = parser.parse_args(arguments)
 
     if args.params_from is not None:

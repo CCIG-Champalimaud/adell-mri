@@ -205,7 +205,8 @@ def get_transforms_unet(x,
 
 def get_transforms_detection_pre(keys:List[str],
                                  adc_keys:List[str],
-                                 input_size:List[int],
+                                 pad_size:List[int],
+                                 crop_size:List[int],
                                  box_class_key:str,
                                  shape_key:str,
                                  box_key:str,
@@ -239,8 +240,8 @@ def get_transforms_detection_pre(keys:List[str],
         transforms.append(
             monai.transforms.ScaleIntensityd(adc_keys,None,None,-2/3))
     transforms.extend([
-        monai.transforms.SpatialPadd(keys,input_size),
-        monai.transforms.CenterSpatialCropd(keys,input_size)])
+        monai.transforms.SpatialPadd(keys,pad_size),
+        monai.transforms.CenterSpatialCropd(keys,crop_size)])
     if mask_key is not None:
         transforms.append(
             MasksToBBd(keys=[mask_key],

@@ -9,6 +9,7 @@ from copy import deepcopy
 from lightning.pytorch import Trainer
 from lightning.pytorch.callbacks import RichProgressBar
 
+from ...entrypoints.assemble_args import Parser
 from ...utils import safe_collate, ExponentialMovingAverage
 from ...utils.pl_utils import get_devices,get_ckpt_callback,get_logger
 from ...modules.config_parsing import parse_config_ssl,parse_config_unet
@@ -61,171 +62,35 @@ def filter_dicom_dict_by_size(data_dict,max_size):
     return output_dict
 
 def main(arguments):
-    parser = argparse.ArgumentParser()
+    parser = Parser()
 
-    # data
-    parser.add_argument(
-        '--dataset_json',dest='dataset_json',type=str,
-        help="JSON containing dataset information",required=True)
-    parser.add_argument(
-        '--jpeg_dataset',dest='jpeg_dataset',action="store_true",
-        help="Whether the dataset simply contains a paragraph-separated list of\
-            paths. This is helpful to avoid the JSON structure")
-    parser.add_argument(
-        '--num_samples',dest='num_samples',type=int,default=None,
-        help="Number of samples per epoch for JPEG dataset (must be specified)\
-            if the --jpeg_dataset flag is used")
-    parser.add_argument(
-        '--train_pids',dest='train_pids',action="store",
-        default=None,type=str,nargs='+',
-        help="IDs in dataset_json used for training")
-    parser.add_argument(
-        '--pad_size',dest='pad_size',action="store",
-        default=None,type=float,nargs='+',
-        help="Size of central padded image after resizing (if none is specified\
-            then no padding is performed).")
-    parser.add_argument(
-        '--crop_size',dest='crop_size',action="store",
-        default=None,type=float,nargs='+',
-        help="Size of central crop after resizing (if none is specified then\
-            no cropping is performed).")
-    parser.add_argument(
-        '--random_crop_size',dest='random_crop_size',action="store",
-        default=None,type=float,nargs='+',
-        help="Size of crop with random centre.")
-    parser.add_argument(
-        '--scaled_crop_size',dest='scaled_crop_size',action="store",
-        default=None,type=int,nargs='+',
-        help="Crops a region with at least a quarter of the specified size \
-            and then resizes them image to this size.")
-    parser.add_argument(
-        '--target_spacing',dest='target_spacing',action="store",default=None,
-        help="Resamples all images to target spacing",nargs='+',type=float)
-    parser.add_argument(
-        '--image_keys',dest='image_keys',type=str,nargs='+',
-        help="Image keys in the dataset JSON. First key is used as template",
-        required=True)
-    parser.add_argument(
-        '--adc_image_keys',dest='adc_image_keys',type=str,nargs='+',
-        help="Keys corresponding to input images which are ADC maps \
-            (normalized differently)",
-        default=None)
-    parser.add_argument(
-        '--adc_factor',dest='adc_factor',type=float,default=1/3,
-        help="Multiplies ADC images by this factor.")
-    parser.add_argument(
-        '--subsample_size',dest='subsample_size',type=int,
-        help="Subsamples data to a given size",
-        default=None)
-    parser.add_argument(
-        '--cache_rate',dest='cache_rate',type=float,
-        help="Cache rate for CacheDataset",
-        default=1.0)
-    parser.add_argument(
-        '--precision',dest='precision',type=str,
-        help="Floating point precision",default="32")
-    parser.add_argument(
-        '--net_type',dest='net_type',
-        choices=["resnet","unet_encoder","convnext","vit"],
-        help="Which network should be trained.")
-    parser.add_argument(
-        '--batch_size',dest='batch_size',type=int,default=None,
-        help="Overrides batch size in config file")
-    parser.add_argument(
-        '--max_slices',dest='max_slices',type=int,default=None,
-        help="Excludes studies with over max_slices")
-
-    # network + training
-    parser.add_argument(
-        '--config_file',dest="config_file",
-        help="Path to network configuration file (yaml)",
-        required=True)
-    parser.add_argument(
-        '--ema',dest="ema",action="store_true",
-        help="Includes exponential moving average teacher (like BYOL)")
-    parser.add_argument(
-        '--stop_gradient',dest="stop_gradient",action="store_true",
-        help="Stops gradient")
-    parser.add_argument(
-        '--lars',dest="lars",action="store_true",
-        help="Wraps optimizer with LARS")
-    parser.add_argument(
-        '--from_checkpoint',dest='from_checkpoint',action="store",
-        help="Uses this checkpoint as a starting point for the network")
-    parser.add_argument(
-        '--n_series_iterations',dest="n_series_iterations",default=2,type=int,
-        help="Number of iterations over each series per epoch")
-    parser.add_argument(
-        '--n_transforms',dest="n_transforms",default=3,type=int,
-        help="Number of augmentations for each image")
+    parser.add_argument_by_key([
+        "dataset_json",
+        "image_keys",
+        "adc_keys",
+        "jpeg_dataset",
+        "num_samples",
+        "train_pids",
+        "pad_size","crop_size","random_crop_size",
+        "scaled_crop_size",
+        "target_spacing",
+        "subsample_size",
+        "cache_rate",
+        "precision",
+        "net_type",
+        "batch_size",
+        "max_slices",
+        "config_file", "ssl_method", "ema", "stop_gradient",
+        "checkpoint_dir","checkpoint_name","checkpoint","resume_from_last",
+        "project_name","resume","summary_dir","summary_name","metric_path",
+        "n_series_iterations", "n_transforms",
+        "dev","n_workers", "seed",
+        "max_epochs",
+        "check_val_every_n_epoch", "accumulate_grad_batches","gradient_clip_val",
+        "steps_per_epoch", "warmup_epochs",
+        "dropout_param"
+    ])
     
-    # training
-    parser.add_argument(
-        '--dev',dest='dev',type=str,default="cuda",
-        help="Device for PyTorch training")
-    parser.add_argument(
-        '--seed',dest='seed',help="Random seed",default=42,type=int)
-    parser.add_argument(
-        '--n_workers',dest='n_workers',
-        help="Number of workers",default=1,type=int)
-    parser.add_argument(
-        '--n_devices',dest='n_devices',
-        help="Number of devices",default=1,type=int)
-    parser.add_argument(
-        '--max_epochs',dest="max_epochs",
-        help="Maximum number of training epochs",default=100,type=int)
-    parser.add_argument(
-        '--check_val_every_n_epoch',dest="check_val_every_n_epoch",
-        help="Validation check frequency",default=5,type=int)
-    parser.add_argument(
-        '--steps_per_epoch',dest="steps_per_epoch",
-        help="Number of steps per epoch",default=None,type=int)
-    parser.add_argument(
-        '--warmup_epochs',dest='warmup_epochs',type=float,default=0.0,
-        help="Number of warmup epochs (if SWA is triggered it starts after\
-            this number of epochs).")
-    parser.add_argument(
-        '--accumulate_grad_batches',dest="accumulate_grad_batches",
-        help="Number batches to accumulate before backpropgating gradient",
-        default=1,type=int)
-    parser.add_argument(
-        '--gradient_clip_val',dest="gradient_clip_val",
-        help="Value for gradient clipping",
-        default=0.0,type=float)
-    parser.add_argument(
-        '--checkpoint_dir',dest='checkpoint_dir',type=str,default="models",
-        help='Path to directory where checkpoints will be saved.')
-    parser.add_argument(
-        '--checkpoint_name',dest='checkpoint_name',type=str,default=None,
-        help='Checkpoint ID.')
-    parser.add_argument(
-        '--summary_dir',dest='summary_dir',type=str,default="summaries",
-        help='Path to summary directory (for wandb).')
-    parser.add_argument(
-        '--summary_name',dest='summary_name',type=str,default=None,
-        help='Summary name.')
-    parser.add_argument(
-        '--project_name',dest='project_name',type=str,default=None,
-        help='Project name for wandb.')
-    parser.add_argument(
-        '--resume',dest='resume',type=str,default="allow",
-        choices=["allow","must","never","auto","none"],
-        help='Whether wandb project should be resumed (check \
-            https://docs.wandb.ai/ref/python/init for more details).')
-    parser.add_argument(
-        '--metric_path',dest='metric_path',type=str,default="metrics.csv",
-        help='Path to file with CV metrics + information.')
-    parser.add_argument(
-        '--dropout_param',dest='dropout_param',type=float,
-        help="Parameter for dropout.",default=0.0)
-    parser.add_argument(
-        "--ssl_method",dest="ssl_method",type=str,
-        help="SSL method",choices=["simsiam","byol","simclr",
-                                   "vicreg","vicregl","ijepa"])
-    parser.add_argument(
-        '--resume_from_last',dest='resume_from_last',action="store_true",
-        help="Resumes training from last checkpoint.")
-
     args = parser.parse_args(arguments)
 
     torch.manual_seed(args.seed)
@@ -241,7 +106,7 @@ def main(arguments):
 
     keys = args.image_keys
     copied_keys = [k+"_copy" for k in keys]
-    if args.adc_image_keys is None:
+    if args.adc_keys is None:
         adc_image_keys = []
     adc_image_keys = [k for k in adc_image_keys if k in keys]
     non_adc_keys = [k for k in keys if k not in adc_image_keys]
@@ -433,9 +298,9 @@ def main(arguments):
                           network_config_correct=network_config_correct,
                           stop_gradient=args.stop_gradient)
 
-    if args.from_checkpoint is not None:
+    if args.checkpoint is not None:
         state_dict = torch.load(
-            args.from_checkpoint,map_location=args.dev)['state_dict']
+            args.checkpoint,map_location=args.dev)['state_dict']
         inc = ssl.load_state_dict(state_dict)
     
     callbacks = [RichProgressBar()]

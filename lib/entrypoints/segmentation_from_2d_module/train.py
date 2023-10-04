@@ -13,6 +13,7 @@ from lightning.pytorch import Trainer
 from lightning.pytorch.callbacks import EarlyStopping
 from lightning.pytorch.callbacks import RichProgressBar
 
+from ...entrypoints.assemble_args import Parser
 from ...utils import (
     GetAllCropsd,
     PartiallyRandomSampler,
@@ -48,208 +49,43 @@ def get_first(*lists):
             return l
 
 def main(arguments):
-    parser = argparse.ArgumentParser()
+    parser = Parser()
 
-    # data
-    parser.add_argument(
-        '--dataset_json',dest='dataset_json',type=str,nargs="+",
-        help="JSON containing dataset information",required=True)
-    parser.add_argument(
-        '--resize_size',dest='resize_size',type=float,nargs='+',default=None,
-        help="Input size for network")
-    parser.add_argument(
-        '--resize_keys',dest='resize_keys',type=str,nargs='+',default=None,
-        help="Keys that will be resized to input size")
-    parser.add_argument(
-        '--pad_size',dest='pad_size',action="store",
-        default=None,type=float,nargs='+',
-        help="Padding size after resizing.")
-    parser.add_argument(
-        '--crop_size',dest='crop_size',action="store",
-        default=None,type=float,nargs='+',
-        help="Crop size after padding.")
-    parser.add_argument(
-        '--random_crop_size',dest='random_crop_size',action="store",
-        default=None,type=float,nargs='+',
-        help="Size of random crop (last step of the preprocessing pipeline).")
-    parser.add_argument(
-        '--n_crops',dest='n_crops',action="store",
-        default=1,type=int,help="Number of random crops.")
-    parser.add_argument(
-        '--target_spacing',dest='target_spacing',action="store",required=True,
-        help="Resamples all images to target spacing",nargs='+',type=str)
-    parser.add_argument(
-        '--image_keys',dest='image_keys',type=str,nargs='+',
-        help="Image keys in the dataset JSON. First key is used as template",
-        required=True)
-    parser.add_argument(
-        '--mask_image_keys',dest='mask_image_keys',type=str,nargs='+',
-        help="Keys corresponding to input images which are segmentation masks",
-        default=None)
-    parser.add_argument(
-        '--adc_keys',dest='adc_keys',type=str,nargs='+',
-        help="Keys corresponding to input images which are ADC maps \
-            (normalized differently)",default=None)
-    parser.add_argument(
-        '--t2_keys',dest='t2_keys',type=str,nargs='+',
-        help="Keys corresponding to T2W images",default=None)
-    parser.add_argument(
-        '--adc_factor',dest='adc_factor',type=float,default=1/3,
-        help="Multiplies ADC images by this factor.")
-    parser.add_argument(
-        '--mask_keys',dest='mask_keys',type=str,nargs='+',
-        help="Mask key in the dataset JSON.",
-        required=True)
-    parser.add_argument(
-        '--deep_supervision',dest='deep_supervision',
-        action="store_true",help="Triggers deep supervision.")
-    parser.add_argument(
-        '--possible_labels',dest='possible_labels',type=int,nargs='+',
-        help="All the possible labels in the data.",
-        required=True)
-    parser.add_argument(
-        '--positive_labels',dest='positive_labels',type=int,nargs='+',
-        help="Labels that should be considered positive (binarizes labels)",
-        default=None)
-    parser.add_argument(
-        '--constant_ratio',dest='constant_ratio',type=float,default=None,
-        help="If there are masks with only one value, defines how many are\
-            included relatively to masks with more than one value.")
-    parser.add_argument(
-        '--subsample_size',dest='subsample_size',type=int,
-        help="Subsamples data to a given size",
-        default=None)
-    parser.add_argument(
-        '--cache_rate',dest='cache_rate',type=float,
-        help="Rate of samples to be cached",
-        default=1.0)
-    parser.add_argument(
-        '--missing_to_empty',dest='missing_to_empty',
-        type=str,nargs="+",choices=["image","mask"],
-        help="If some images or masks are missing, assume they are empty \
-            tensors.")
-
-    # network + training
-    parser.add_argument(
-        '--config_file',dest="config_file",
-        help="Path to network configuration file (yaml)",
-        required=True)
-    parser.add_argument(
-        '--module_path',dest='module_path',
-        help="Path to 2D torchscript module",required=True)
-    parser.add_argument(
-        '--cosine_decay',dest='cosine_decay',action="store_true",
-        default=False,help="Decreases the LR using cosine decay.")
-    parser.add_argument(
-        '--from_checkpoint',dest='from_checkpoint',action="store",nargs="+",
-        default=None,
-        help="Uses this space-separated list of checkpoints as a starting\
-            points for the network at each fold. If no checkpoint is provided\
-            for a given fold, the network is initialized randomly.")
-    parser.add_argument(
-        '--resume_from_last',dest='resume_from_last',action="store_true",
-        default=None,
-        help="Resumes from the last checkpoint stored for a given fold.")
-    
-    # training
-    parser.add_argument(
-        '--dev',dest='dev',type=str,
-        help="Device for PyTorch training")
-    parser.add_argument(
-        '--seed',dest='seed',help="Random seed",default=42,type=int)
-    parser.add_argument(
-        '--n_workers',dest='n_workers',
-        help="Number of workers",default=1,type=int)
-    parser.add_argument(
-        '--n_devices',dest='n_devices',
-        help="Number of devices",default=1,type=int)
-    parser.add_argument(
-        '--augment',dest='augment',action="store",nargs="+",
-        help="Sets data augmentation.",default=[])
-    parser.add_argument(
-        '--loss_gamma',dest="loss_gamma",
-        help="Gamma for focal loss",default=2.0,type=float)
-    parser.add_argument(
-        '--loss_comb',dest="loss_comb",
-        help="Relative weight for combined losses",default=0.5,type=float)
-    parser.add_argument(
-        '--loss_scale',dest="loss_scale",
-        help="Loss scale (helpful for 16bit trainign",default=1.0,type=float)
-    parser.add_argument(
-        '--learning_rate',dest="learning_rate",
-        help="Learning rate (overrides the lr specified in network_config)",
-        default=None,type=float)
-    parser.add_argument(
-        '--batch_size',dest="batch_size",
-        help="Batch size (overrides the batch size specified in network_config)",
-        default=None,type=int)
-    parser.add_argument(
-        '--gradient_clip_val',dest="gradient_clip_val",
-        help="Value for gradient clipping",
-        default=0.0,type=float)
-    parser.add_argument(
-        '--max_epochs',dest="max_epochs",
-        help="Maximum number of training epochs",default=100,type=int)
-    parser.add_argument(
-        '--dataset_iterations_per_epoch',dest="dataset_iterations_per_epoch",
-        help="Number of dataset iterations per epoch",default=1.0,type=float)
-    parser.add_argument(
-        '--precision',dest='precision',type=str,default="32",
-        help="Floating point precision",choices=["16","32","bf16"])
-    parser.add_argument(
-        '--n_folds',dest="n_folds",
-        help="Number of validation folds",default=5,type=int)
-    parser.add_argument(
-        '--folds',dest="folds",
-        help="Specifies the comma separated IDs for each fold (overrides\
-            n_folds)",default=None,type=str,nargs='+')
-    parser.add_argument(
-        '--excluded_ids',dest="excluded_ids",nargs="+",default=None,
-        help="Excludes these IDs from training and testing")
-    parser.add_argument(
-        '--use_val_as_train_val',dest='use_val_as_train_val',action="store_true",
-        help="Use validation set as training validation set.",default=False)
-    parser.add_argument(
-        '--check_val_every_n_epoch',dest='check_val_every_n_epoch',type=int,
-        default=1,help="Epoch frequency of validation.")
-    parser.add_argument(
-        '--picai_eval',dest='picai_eval',action="store_true",
-        help="Validates model using PI-CAI metrics.")
-    parser.add_argument(
-        '--accumulate_grad_batches',dest='accumulate_grad_batches',type=int,
-        default=1,help="Accumulate batches to calculate gradients.")
-    parser.add_argument(
-        '--checkpoint_dir',dest='checkpoint_dir',type=str,default="models",
-        help='Path to directory where checkpoints will be saved.')
-    parser.add_argument(
-        '--checkpoint_name',dest='checkpoint_name',type=str,default=None,
-        help='Checkpoint ID.')
-    parser.add_argument(
-        '--monitor',dest='monitor',type=str,default="val_loss",
-        help='Metric to monitor when saving the best ckpt.')
-    parser.add_argument(
-        '--summary_dir',dest='summary_dir',type=str,default="summaries",
-        help='Path to summary directory (for wandb).')
-    parser.add_argument(
-        '--summary_name',dest='summary_name',type=str,default=None,
-        help='Summary name.')
-    parser.add_argument(
-        '--project_name',dest='project_name',type=str,default=None,
-        help='Project name for wandb.')
-    parser.add_argument(
-        '--resume',dest='resume',type=str,default="allow",
-        choices=["allow","must","never","auto","none"],
-        help='Whether wandb project should be resumed (check \
-            https://docs.wandb.ai/ref/python/init for more details).')
-    parser.add_argument(
-        '--metric_path',dest='metric_path',type=str,default="metrics.csv",
-        help='Path to file with CV metrics + information.')
-    parser.add_argument(
-        '--early_stopping',dest='early_stopping',type=int,default=None,
-        help="No. of checks before early stop (defaults to no early stop).")
-    parser.add_argument(
-        '--class_weights',dest='class_weights',type=str,nargs='+',
-        help="Class weights (by alphanumeric order).",default=[1.])
+    parser.add_argument_by_key([
+        "dataset_json",
+        "image_keys","mask_image_keys",
+        "mask_keys",
+        "skip_keys","skip_mask_keys",
+        "feature_keys",
+        "subsample_size","excluded_ids","use_val_as_train",
+        "cache_rate",
+        "adc_keys","t2_keys",
+        "target_spacing","resize_size","resize_keys","pad_size","crop_size",
+        "random_crop_size", "n_crops",
+        "possible_labels","positive_labels",
+        "bottleneck_classification","deep_supervision",
+        "constant_ratio",
+        "config_file","module_path",
+        ("segmentation_net_type","net_type"),
+        "res_config_file","encoder_checkpoint","lr_encoder",
+        "dev","n_workers",
+        "seed",
+        "augment",
+        "loss_gamma","loss_comb","loss_scale",
+        "checkpoint_dir","checkpoint_name","checkpoint","resume_from_last",
+        "project_name","resume","summary_dir","summary_name","monitor",
+        "learning_rate","batch_size",
+        "gradient_clip_val",
+        "max_epochs",
+        "dataset_iterations_per_epoch",
+        "precision",
+        "n_folds","folds",
+        "check_val_every_n_epoch","accumulate_grad_batches",
+        "picai_eval",
+        "metric_path",
+        "early_stopping",
+        ("class_weights","class_weights",{"default":[1.]})
+    ])
 
     args = parser.parse_args(arguments)
 
@@ -475,9 +311,9 @@ def main(arguments):
         if ckpt_callback is not None:
             callbacks.append(ckpt_callback)
 
-        if args.from_checkpoint is not None:
-            if len(args.from_checkpoint) >= (val_fold+1):
-                ckpt_path = args.from_checkpoint[val_fold]
+        if args.checkpoint is not None:
+            if len(args.checkpoint) >= (val_fold+1):
+                ckpt_path = args.checkpoint[val_fold]
                 print("Resuming training from checkpoint in {}".format(ckpt_path))
         
         train_dataset = monai.data.CacheDataset(

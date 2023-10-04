@@ -1,3 +1,4 @@
+from ...entrypoints.assemble_args import Parser
 from ...modules.config_parsing import parse_config_ssl,parse_config_unet
 from ...utils.network_factories import get_ssl_network_no_pl
 from copy import deepcopy
