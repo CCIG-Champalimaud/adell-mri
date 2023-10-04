@@ -35,7 +35,7 @@ def main(arguments):
 
     parser.add_argument_by_key([
         "dataset_json",
-        "image_keys","mask_image_keys","skip_keys","skip_mask_key",
+        "image_keys","mask_image_keys","skip_keys","skip_mask_keys",
         "adc_keys",
         "feature_keys",
         "prediction_ids","excluded_ids",
@@ -67,8 +67,8 @@ def main(arguments):
     
     mask_image_keys = if_none_else(args.mask_image_keys,[])
     adc_keys = if_none_else(args.adc_keys,[])
-    aux_keys = if_none_else(args.skip_key,[])
-    aux_mask_keys = if_none_else(args.skip_mask_key,[])
+    aux_keys = if_none_else(args.skip_keys,[])
+    aux_mask_keys = if_none_else(args.skip_mask_keys,[])
     resize_keys = if_none_else(args.resize_keys,[])
     feature_keys = if_none_else(args.feature_keys,[])
     

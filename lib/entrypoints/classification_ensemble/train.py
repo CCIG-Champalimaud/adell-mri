@@ -36,7 +36,7 @@ from ...utils.parser import get_params,merge_args,parse_ids
 def main(arguments):
     parser = Parser()
 
-    parser.add_argument([
+    parser.add_argument_by_key([
         "params_from",
         "dataset_json",
         "image_keys", "clinical_feature_keys", "label_keys",

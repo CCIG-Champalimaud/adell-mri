@@ -52,7 +52,7 @@ def main(arguments):
         "mask_keys",
         "skip_keys","skip_mask_keys",
         "feature_keys",
-        "subsample_size","excluded_ids","use_val_as_train",
+        "subsample_size","excluded_ids","use_val_as_train_val",
         "cache_rate",
         "adc_keys","t2_keys",
         "target_spacing","resize_size","resize_keys","pad_size","crop_size",
@@ -104,8 +104,8 @@ def main(arguments):
     mask_image_keys = if_none_else(args.mask_image_keys,[])
     adc_keys = if_none_else(args.adc_keys,[])
     t2_keys = if_none_else(args.t2_keys,[])
-    aux_keys = if_none_else(args.skip_key,[])
-    aux_mask_keys = if_none_else(args.skip_mask_key,[])
+    aux_keys = if_none_else(args.skip_keys,[])
+    aux_mask_keys = if_none_else(args.skip_mask_keys,[])
     resize_keys = if_none_else(args.resize_keys,[])
     feature_keys = if_none_else(args.feature_keys,[])
     

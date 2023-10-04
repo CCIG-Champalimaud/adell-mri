@@ -77,7 +77,7 @@ def main(arguments):
         "subsample_size",
         "cache_rate",
         "precision",
-        "net_type",
+        ("ssl_net_type","net_type"),
         "batch_size",
         "max_slices",
         "config_file", "ssl_method", "ema", "stop_gradient",
@@ -87,7 +87,8 @@ def main(arguments):
         "dev","n_workers", "seed",
         "max_epochs",
         "check_val_every_n_epoch", "accumulate_grad_batches","gradient_clip_val",
-        "steps_per_epoch", "warmup_epochs",
+        "steps_per_epoch", 
+        ("warmup_steps","warmup_epochs"),
         "dropout_param"
     ])
     

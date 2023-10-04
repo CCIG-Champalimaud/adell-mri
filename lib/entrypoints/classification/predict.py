@@ -28,7 +28,7 @@ def main(arguments):
         "image_keys", "clinical_feature_keys", "adc_keys",
         "n_classes",
         "filter_on_keys",
-        "target_spacing", "pad_size", "crop_size"
+        "target_spacing", "pad_size", "crop_size",
         "subsample_size",
         "batch_size",
         "cache_rate",

@@ -57,7 +57,7 @@ def main(arguments):
         "mask_keys",
         "skip_keys","skip_mask_keys",
         "feature_keys",
-        "subsample_size","excluded_ids","use_val_as_train",
+        "subsample_size","excluded_ids","use_val_as_train_val",
         "cache_rate",
         "adc_keys","t2_keys",
         "target_spacing","resize_size","resize_keys","pad_size","crop_size",

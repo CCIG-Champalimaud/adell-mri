@@ -32,23 +32,23 @@ def main(arguments):
 
     parser.add_argument_by_key([
         "dataset_json",
-        "image_keys","mask_image_keys","skip_key","skip_mask_key",
+        "image_keys","mask_image_keys","skip_keys","skip_mask_keys",
         "mask_keys",
         "bottleneck_classification",
         "possible_labels","positive_labels",
         "missing_to_empty",
         "adc_keys",
-        "feature_keys"
+        "feature_keys",
         "test_ids",
         "excluded_ids",
         "resize_size","resize_keys",
         "crop_size","target_spacing",
         "sliding_window_size","flip","keep_largest_connected_component",
         "config_file",
-        ("segmentation_unet_model","unet_model"),
+        ("segmentation_net_type","unet_model"),
         "res_config_file","checkpoint",
         "one_to_one","per_sample",
-        "dev","n_devices","n_workers",
+        "dev","n_workers",
         "picai_eval","metric_path"
     ])
     
@@ -64,8 +64,8 @@ def main(arguments):
     
     mask_image_keys = if_none_else(args.mask_image_keys,[])
     adc_keys = if_none_else(args.adc_keys,[])
-    aux_keys = if_none_else(args.skip_key,[])
-    aux_mask_keys = if_none_else(args.skip_mask_key,[])
+    aux_keys = if_none_else(args.skip_keys,[])
+    aux_mask_keys = if_none_else(args.skip_mask_keys,[])
     resize_keys = if_none_else(args.resize_keys,[])
     feature_keys = if_none_else(args.feature_keys,[])
     

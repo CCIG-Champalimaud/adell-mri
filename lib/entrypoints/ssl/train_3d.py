@@ -47,7 +47,8 @@ def main(arguments):
 
     parser.add_argument_by_key([
         "dataset_json",
-        "image_keys","adc_image_keys",
+        "image_keys",
+        ("adc_keys","adc_image_keys"),
         "train_pids",
         "target_spacing",
         "pad_size","crop_size","random_crop_size",
@@ -63,8 +64,7 @@ def main(arguments):
         "seed",
         "max_epochs",
         "accumulate_grad_batches","gradient_clip_val",
-        "dropout_param",
-        "ssl_method"
+        "dropout_param"
     ])
     
     args = parser.parse_args(arguments)

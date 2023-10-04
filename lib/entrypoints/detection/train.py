@@ -43,7 +43,7 @@ def main(arguments):
         "config_file",
         ("detection_net_type","net_type"),
         "dev","n_workers","seed",
-        ("augment","augment",{help: "Augmentations (use rotate with care, not\
+        ("augment","augment",{"help": "Augmentations (use rotate with care, not\
             well defined when objects are close to the border)"}),
         "loss_gamma","loss_comb",
         "max_epochs",

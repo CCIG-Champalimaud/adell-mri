@@ -51,7 +51,7 @@ argument_factory = {
         default=[], 
         nargs="+",
         help="Filters the dataset based on a set of specific key:value pairs."),
-    "possible_keys": dict(
+    "possible_labels": dict(
         type=str,
         nargs='+',
         required=True,
@@ -83,6 +83,9 @@ argument_factory = {
         default=None,type=float,
         help="Uses this fraction of training data as a validation set \
             during training"),
+    "use_val_as_train_val": dict(
+        action="store_true",default=False,
+        help="Use validation set as training validation set."),
     "excluded_ids": dict(
         type=str,
         default=None,
@@ -150,13 +153,17 @@ argument_factory = {
     "warmup_steps": dict(
         type=float,
         default=0.0,
-        help="Number of warmup steps (if SWA is triggered it starts after\
-            this number of steps)."),
+        help="Number of warmup steps/epochs (if SWA is triggered it starts \
+            after this number of steps)."),
     "start_decay": dict(
         type=float,
         default=None,
         help="Step at which decay starts. Defaults to starting right after \
             warmup ends."),
+    "n_classes": dict(
+        type=int,
+        default=2,
+        help="Number of classes"),
     # collects params from yaml files
     "params_from": dict(
         type=str,
@@ -431,14 +438,14 @@ argument_factory = {
         default=1.0,
         type=float,
         help="Loss scale (helpful for 16bit trainign"),
-    # segmentation_specific
-    "skip_key": dict(
+    # segmentation-specific
+    "skip_keys": dict(
         type=str,
         default=None,
         nargs='+',
         help="Key for image in the dataset JSON that is concatenated to the \
             skip connections."),
-    "skip_mask_key": dict(
+    "skip_mask_keys": dict(
         type=str,
         nargs='+',
         default=None,
@@ -517,6 +524,9 @@ argument_factory = {
     "keep_largest_connected_component": dict(
         action="store_true",
         help="Keeps only the largest connected component."),
+    "flip": dict(
+        action="store_true",
+        help="Flips before predicting."),
     "per_sample": dict(
         action="store_true",
         help="Also calculates metrics on a per sample basis."),
@@ -546,6 +556,10 @@ argument_factory = {
     "ssl_net_type": dict(
         choices=["resnet","unet_encoder","convnext","vit"],
         help="Which network should be trained."),
+    "ssl_method": dict(
+        type=str,
+        choices=["simsiam","byol","simclr","vicreg","vicregl","ijepa"],
+        help="SSL method"),
     "unet_encoder": dict(
         action="store_true",
         help="Trains a UNet encoder"),
@@ -588,7 +602,9 @@ class Parser(ArgumentParser):
             if isinstance(key,(tuple,list)):
                 if len(key) > 2:
                     new_kwargs = key[2]
-                real_key, key = key[0],key[1]
+                real_key, key = key[0], key[1]
+            else:
+                real_key = key
             add_arg_kwargs = deepcopy(argument_factory[real_key])
             for k in new_kwargs:
                 add_arg_kwargs[k] = new_kwargs[k]
