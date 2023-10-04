@@ -1,5 +1,4 @@
 import argparse
-import random
 import yaml
 import numpy as np
 import torch
@@ -8,6 +7,7 @@ import json
 
 import sys
 sys.path.append(r"..")
+from ...entrypoints.assemble_args import Parser
 from ...utils import (
     load_anchors)
 from ...monai_transforms import (
@@ -23,53 +23,24 @@ from ...utils.network_factories import get_detection_network
 torch.backends.cudnn.benchmark = True
 
 def main(arguments):
-    parser = argparse.ArgumentParser()
+    parser = Parser()
 
-    # data
-    parser.add_argument(
-        '--sequence_paths',dest='sequence_paths',type=str,nargs="+",
-        help="Path to sequence.",default=None)
-    parser.add_argument(
-        '--dataset_json',dest='dataset_json',type=str,
-        help="JSON containing dataset information",default=None)
-    parser.add_argument(
-        '--image_keys',dest='image_keys',type=str,nargs="+",
-        help="Image keys in dataset JSON",required=True)
-    parser.add_argument(
-        '--target_spacing',dest='target_spacing',type=str,nargs="+",
-        help="Target spacing (if 'infer' then this is inferred from the training\
-            set)")
-    parser.add_argument(
-        '--input_size',dest='input_size',type=float,nargs='+',
-        help="Input size for network (for resize options",required=True)
-    parser.add_argument(
-        '--anchor_csv',dest='anchor_csv',type=str,
-        help="Path to CSV file containing anchors",required=True)
-    parser.add_argument(
-        '--filter_on_keys',dest='filter_on_keys',type=str,default=[],nargs="+",
-        help="Filters the dataset based on a set of specific key:value pairs.")
-    parser.add_argument(
-        '--adc_keys',dest='adc_keys',type=str,nargs="+",
-        help="Image keys corresponding to ADC in dataset JSON")
-    
-    # network
-    parser.add_argument(
-        '--config_file',dest="config_file",
-        help="Path to network configuration file (yaml)",
-        required=True)
-    parser.add_argument(
-        '--net_type',dest="net_type",
-        help="Network type",choices=["yolo"],required=True)
-    
-    # prediction
-    parser.add_argument('--dev',dest='dev',default="cpu",
-        help="Device for PyTorch training",type=str)
-    parser.add_argument(
-        '--checkpoint',dest='checkpoint',type=str,default=None,
-        help='Path to checkpoint.')
-    parser.add_argument(
-        '--iou_threshold',dest='iou_threshold',type=float,
-        help="IoU threshold for pred-gt overlaps.",default=0.5)
+    parser.add_argument_by_key([
+        ("dataset_json","dataset_json",{"default":None,
+                                        "required":False}),
+        "sequence_paths",
+        "image_keys","shape_key","adc_keys",
+        "filter_on_keys",
+        "target_spacing",
+        "pad_size","crop_size",
+        "n_classes",
+        "anchor_csv",
+        "config_file",
+        ("detection_net_type","net_type"),
+        "dev","n_workers","seed",
+        "checkpoint",
+        "iou_threshold"
+    ])
 
     args = parser.parse_args(arguments)
         
@@ -95,7 +66,8 @@ def main(arguments):
         data_dict = filter_dictionary_with_filters(
             data_dict,args.filter_on_keys)
     
-    input_size = [int(i) for i in args.input_size]
+    pad_size = [int(i) for i in args.pad_size]
+    crop_size = [int(i) for i in args.crop_size]
     
     keys = args.image_keys
     adc_keys = args.adc_keys if args.adc_keys else []
@@ -106,14 +78,15 @@ def main(arguments):
     output_example = YOLONet3d(
         n_channels=1,n_c=2,adn_fn=torch.nn.Identity,
         anchor_sizes=anchor_array,dev=args.dev)(
-            torch.ones([1,1,*input_size]))
+            torch.ones([1,1,*crop_size]))
     output_size = output_example[0].shape[2:]
 
     print("Setting up transforms...")
     transform_arguments_pre = {
         "keys":keys,
         "adc_keys":adc_keys,
-        "input_size":input_size,
+        "pad_size":pad_size,
+        "crop_size":crop_size,
         "target_spacing":args.target_spacing,
         "box_class_key":None,
         "shape_key":None,
@@ -124,7 +97,8 @@ def main(arguments):
         "keys":keys,
         "t2_keys":None,
         "anchor_array":anchor_array,
-        "input_size":input_size,
+        "pad_size":pad_size,
+        "crop_size":crop_size,
         "output_size":output_size,
         "iou_threshold":args.iou_threshold,
         "box_class_key":None,

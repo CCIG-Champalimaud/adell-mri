@@ -1,34 +1,35 @@
 import argparse
 import random
+import yaml
 import json
 import numpy as np
 import torch
 import monai
+from ..assemble_args import Parser
+from hydra import compose
 
 from lightning.pytorch import Trainer
 from lightning.pytorch.callbacks import RichProgressBar
 
 import sys
-sys.path.append(r"..")
-from lib.utils import (
+from ...entrypoints.assemble_args import Parser
+from ...utils import (
     safe_collate,
     conditional_parameter_freezing,
     RandomSlices,
     collate_last_slice)
-from lib.utils.pl_utils import (
+from ...utils.pl_utils import (
     get_ckpt_callback,
     get_logger,
     get_devices,
     LogImageFromDiffusionProcess)
-from lib.utils.torch_utils import load_checkpoint_to_model
-from lib.utils.dataset_filters import (
-    filter_dictionary_with_filters,
-    filter_dictionary_with_presence)
-from lib.monai_transforms import (
+from ...utils.torch_utils import load_checkpoint_to_model
+from ...utils.dataset_filters import filter_dictionary
+from ...monai_transforms import (
     get_pre_transforms_generation as get_pre_transforms,
     get_post_transforms_generation as get_post_transforms)
-from lib.utils.network_factories import get_generative_network
-from lib.utils.parser import get_params,merge_args,parse_ids
+from ...utils.network_factories import get_generative_network
+from ...utils.parser import get_params,merge_args,parse_ids
 
 def get_conditional_specification(d: dict, cond_key: str):
     possible_values = []
@@ -45,157 +46,32 @@ def get_size(*size_list):
             return size
 
 def main(arguments):
-    parser = argparse.ArgumentParser()
+    parser = Parser()
 
-    # params
-    parser.add_argument(
-        '--params_from',dest='params_from',type=str,default=None,
-        help="Parameter path used to retrieve values for the CLI (can be a path\
-            to a YAML file or 'dvc' to retrieve dvc params)")
-
-    # data
-    parser.add_argument(
-        '--dataset_json',dest='dataset_json',type=str,
-        help="JSON containing dataset information",required=True)
-    parser.add_argument(
-        '--image_keys',dest='image_keys',type=str,nargs='+',
-        help="Image keys in the dataset JSON.",
-        required=True)
-    parser.add_argument(
-        '--cat_condition_keys',dest='cat_condition_keys', default=None, nargs="+",
-        help="Label keys in the dataset JSON for categorical variables (applied\
-            with classifier-free guidance).")
-    parser.add_argument(
-        '--num_condition_keys',dest='num_condition_keys', default=None, nargs="+",
-        help="Label keys in the dataset JSON for numerical variables (applied\
-            with 'classifier-free guidance').")
-    parser.add_argument(
-        '--filter_on_keys',dest='filter_on_keys',type=str,default=[],nargs="+",
-        help="Filters the dataset based on a set of specific key:value pairs.")
-    parser.add_argument(
-        '--cache_rate',dest='cache_rate',type=float,
-        help="Rate of samples to be cached",default=1.0)
-    parser.add_argument(
-        '--target_spacing',dest='target_spacing',action="store",default=None,
-        help="Resamples all images to target spacing",nargs='+',type=float)
-    parser.add_argument(
-        '--pad_size',dest='pad_size',action="store",
-        default=None,type=float,nargs='+',
-        help="Size of central padded image after resizing (if none is specified\
-            then no padding is performed).")
-    parser.add_argument(
-        '--crop_size',dest='crop_size',action="store",
-        default=None,type=float,nargs='+',
-        help="Size of central crop after resizing (if none is specified then\
-            no cropping is performed).")
-    parser.add_argument(
-        '--subsample_size',dest='subsample_size',type=int,
-        help="Subsamples data to a given size",
-        default=None)
-    parser.add_argument(
-        '--subsample_training_data',dest='subsample_training_data',type=float,
-        help="Subsamples training data by this fraction (for learning curves)",
-        default=None)
-    parser.add_argument(
-        '--val_from_train',dest='val_from_train',default=None,type=float,
-        help="Uses this fraction of training data as a validation set \
-            during training")
-
-    # network + training
-    parser.add_argument(
-        '--config_file',dest="config_file",
-        help="Path to network configuration file (yaml)",
-        required=True)
-    
-    # training
-    parser.add_argument(
-        '--dev',dest='dev',default="cpu",
-        help="Device for PyTorch training",type=str)
-    parser.add_argument(
-        '--seed',dest='seed',help="Random seed",default=42,type=int)
-    parser.add_argument(
-        '--n_workers',dest='n_workers',
-        help="No. of workers",default=0,type=int)
-    parser.add_argument(
-        '--max_epochs',dest="max_epochs",
-        help="Maximum number of training epochs",default=100,type=int)
-    parser.add_argument(
-        '--precision',dest='precision',type=str,default="32",
-        help="Floating point precision")
-    parser.add_argument(
-        '--check_val_every_n_epoch',dest="check_val_every_n_epoch",
-        help="Validation check frequency",default=5,type=int)
-    parser.add_argument(
-        '--excluded_ids',dest='excluded_ids',type=str,default=None,nargs="+",
-        help="Comma separated list of IDs to exclude.")
-    parser.add_argument(
-        '--checkpoint_dir',dest='checkpoint_dir',type=str,default=None,
-        help='Path to directory where checkpoints will be saved.')
-    parser.add_argument(
-        '--checkpoint_name',dest='checkpoint_name',type=str,default=None,
-        help='Checkpoint ID.')
-    parser.add_argument(
-        '--checkpoint',dest='checkpoint',type=str,default=None,
-        nargs="+",help='Resumes training from this checkpoint.')
-    parser.add_argument(
-        '--freeze_regex',dest='freeze_regex',type=str,default=None,nargs="+",
-        help='Matches parameter names and freezes them.')
-    parser.add_argument(
-        '--not_freeze_regex',dest='not_freeze_regex',type=str,default=None,
-        nargs="+",help='Matches parameter names and skips freezing them (\
-            overrides --freeze_regex)')
-    parser.add_argument(
-        '--exclude_from_state_dict',dest='exclude_from_state_dict',type=str,
-        default=None,nargs="+",
-            help='Regex to exclude parameters from state dict in --checkpoint')
-    parser.add_argument(
-        '--monitor',dest='monitor',type=str,default="val_loss",
-        help="Metric that is monitored to determine the best checkpoint.")
-    parser.add_argument(
-        '--resume_from_last',dest='resume_from_last',action="store_true",
-        help="Resumes from the last checkpoint stored for a given fold.")
-    parser.add_argument(
-        '--summary_dir',dest='summary_dir',type=str,default="summaries",
-        help='Path to summary directory (for wandb).')
-    parser.add_argument(
-        '--summary_name',dest='summary_name',type=str,default="model_x",
-        help='Summary name.')
-    parser.add_argument(
-        '--metric_path',dest='metric_path',type=str,default="metrics.csv",
-        help='Path to file with CV metrics + information.')
-    parser.add_argument(
-        '--project_name',dest='project_name',type=str,default=None,
-        help='Wandb project name.')
-    parser.add_argument(
-        '--resume',dest='resume',type=str,default="allow",
-        choices=["allow","must","never","auto","none"],
-        help='Whether wandb project should be resumed (check \
-            https://docs.wandb.ai/ref/python/init for more details).')
-    parser.add_argument(
-        '--warmup_steps',dest='warmup_steps',type=float,default=0.0,
-        help="Number of warmup steps (if SWA is triggered it starts after\
-            this number of steps).")
-    parser.add_argument(
-        '--start_decay',dest='start_decay',type=float,default=None,
-        help="Step at which decay starts. Defaults to starting right after \
-            warmup ends.")
-    parser.add_argument(
-        '--gradient_clip_val',dest="gradient_clip_val",
-        help="Value for gradient clipping",
-        default=0.0,type=float)
-    parser.add_argument(
-        '--dropout_param',dest='dropout_param',type=float,
-        help="Parameter for dropout.",default=0.1)
-    parser.add_argument(
-        '--accumulate_grad_batches',dest="accumulate_grad_batches",
-        help="Number batches to accumulate before backpropgating gradient",
-        default=1,type=int)
-    parser.add_argument(
-        '--batch_size',dest='batch_size',type=int,default=2,
-        help="Overrides batch size in config file")
-    parser.add_argument(
-        '--learning_rate',dest='learning_rate',type=float,default=0.0001,
-        help="Overrides learning rate in config file")
+    parser.add_argument_by_key([
+        'dataset_json', 
+        'params_from', 
+        'image_keys', 'cat_condition_keys', 'num_condition_keys', 
+        'filter_on_keys', 'excluded_ids', 
+        'cache_rate', 
+        'subsample_size','val_from_train', 
+        'target_spacing', 'pad_size', 'crop_size', 
+        'config_file', 'overrides', 
+        'warmup_steps', 'start_decay', 
+        'dev', 'n_workers', 
+        'seed', 
+        'max_epochs', 
+        'precision', 'check_val_every_n_epoch', 
+        'gradient_clip_val', 'accumulate_grad_batches', 
+        'checkpoint_dir', 'checkpoint_name', 'checkpoint', 'resume_from_last', 
+        'exclude_from_state_dict', 
+        'freeze_regex', 'not_freeze_regex', 
+        'project_name', 'monitor', 'summary_dir', 'summary_name', 
+        'metric_path', 'resume', 
+        'dropout_param', 
+        'batch_size', 'learning_rate', 
+        'diffusion_steps'
+    ])
 
     args = parser.parse_args(arguments)
 
@@ -239,11 +115,9 @@ def main(arguments):
         data_dict = {k:data_dict[k] for k in data_dict
                      if k not in args.excluded_ids}
         print("\tRemoved {} IDs".format(prev_len - len(data_dict)))
-    if len(args.filter_on_keys) > 0:
-        data_dict = filter_dictionary_with_filters(
-            data_dict,args.filter_on_keys)
-    data_dict = filter_dictionary_with_presence(
-        data_dict,presence_keys)
+    data_dict = filter_dictionary(data_dict, 
+                                  filters_presence=presence_keys,
+                                  filters=args.filter_on_keys)
     if args.subsample_size is not None and len(data_dict) > args.subsample_size:
         ss = rng.choice(list(data_dict.keys()),size=args.subsample_size)
         data_dict = {k:data_dict[k] for k in ss}
@@ -258,18 +132,11 @@ def main(arguments):
     
     keys = args.image_keys
 
-    network_config = {
-        "spatial_dims": 3,
-        "in_channels": 1,
-        "out_channels": 1,
-        "num_channels": [64, 128, 256],
-        "attention_levels": [False, False, True],
-        "num_head_channels": [0, 0, 256],
-        "num_res_blocks": 2,
-        "with_conditioning": with_conditioning,
-        "cross_attention_dim":256 if with_conditioning else None,
-        "batch_size": args.batch_size,
-        "learning_rate": args.learning_rate}
+    network_config = yaml.load(args.config_file)
+    network_config["batch_size"] = args.batch_size
+    network_config["learning_rate"] = args.learning_rate
+    network_config["with_conditioning"] = with_conditioning
+    network_config["cross_attention_dim"] = 256 if with_conditioning else None
     
     all_pids = [k for k in data_dict]
 
@@ -408,6 +275,8 @@ def main(arguments):
             network,train_loader,ckpt_path=ckpt_key)[0]
         for k in test_metrics:
             out = test_metrics[k]
-            value = float(out.detach().numpy())
-            output_file.write(value+'\n')
-            print(value)
+            if isinstance(out,float) is False:
+                value = float(out.detach().numpy())
+            else:
+                value = out
+            output_file.write(f'{value}\n')

@@ -8,6 +8,7 @@ import monai
 import gc
 from tqdm import trange
 
+from ...entrypoints.assemble_args import Parser
 from ...utils import collate_last_slice,SlicesToFirst,safe_collate
 from ...monai_transforms import get_transforms_unet as get_transforms
 from ...modules.layers import ResNet
@@ -15,6 +16,7 @@ from ...utils.network_factories import get_segmentation_network
 from ...modules.config_parsing import parse_config_unet,parse_config_ssl
 from ...modules.segmentation.pl import get_metric_dict
 from ...utils.inference import SlidingWindowSegmentation,FlippedInference
+from ...utils.parser import parse_ids
 torch.backends.cudnn.benchmark = True
 
 def if_none_else(x,obj):
@@ -26,143 +28,30 @@ def inter_size(a,b):
     return len(set.intersection(set(a),set(b)))
 
 def main(arguments):
-    parser = argparse.ArgumentParser()
+    parser = Parser()
 
-    # data
-    parser.add_argument(
-        '--dataset_json',dest='dataset_json',type=str,
-        help="JSON containing dataset information",required=True)
-    parser.add_argument(
-        '--test_ids',dest='test_ids',type=str,nargs="+",required=True,
-        help="Comma-separated identifiers used in testing (more than one set \
-            of test ids can be specified). Can also be one CSV if set_ids is \
-            specified; in that case, each line is a fold/set and the first value\
-            should be the fold/set identifier.")
-    parser.add_argument(
-        '--set_ids',dest='set_ids',type=str,nargs="+",default=None,
-        help="Specifies substrings to select sets in test_ids")
-    parser.add_argument(
-        '--excluded_ids',dest="excluded_ids",nargs="+",default=None,
-        help="Excludes these IDs from training and testing")
-    parser.add_argument(
-        '--resize_size',dest='resize_size',type=float,nargs='+',default=None,
-        help="Input size for network")
-    parser.add_argument(
-        '--resize_keys',dest='resize_keys',type=str,nargs='+',default=None,
-        help="Keys that will be resized to input size")
-    parser.add_argument(
-        '--crop_size',dest='crop_size',action="store",
-        default=None,type=float,nargs='+',
-        help="Crop size after padding.")
-    parser.add_argument(
-        '--sliding_window_size',dest='sliding_window_size',action="store",
-        default=None,type=int,nargs='+',
-        help="Size of sliding window.")
-    parser.add_argument(
-        '--flip',dest='flip',action="store_true",
-        help="Flips before predicting.")
-    parser.add_argument(
-        '--keep_largest_connected_component',
-        dest='keep_largest_connected_component',action="store_true",
-        help="Keeps only the largest connected component.")
-    parser.add_argument(
-        '--target_spacing',dest='target_spacing',action="store",default=None,
-        help="Resamples all images to target spacing",nargs='+',type=float)
-    parser.add_argument(
-        '--image_keys',dest='image_keys',type=str,nargs='+',
-        help="Image keys in the dataset JSON. First key is used as template",
-        required=True)
-    parser.add_argument(
-        '--skip_key',dest='skip_key',type=str,default=None,
-        nargs='+',
-        help="Key for image in the dataset JSON that is concatenated to the \
-            skip connections.")
-    parser.add_argument(
-        '--skip_mask_key',dest='skip_mask_key',type=str,
-        nargs='+',default=None,
-        help="Key for mask in the dataset JSON that is appended to the skip \
-            connections (can be useful for including prior mask as feature).")
-    parser.add_argument(
-        '--mask_image_keys',dest='mask_image_keys',type=str,nargs='+',
-        help="Keys corresponding to input images which are segmentation masks",
-        default=None)
-    parser.add_argument(
-        '--adc_keys',dest='adc_keys',type=str,nargs='+',
-        help="Keys corresponding to input images which are ADC maps \
-            (normalized differently)",
-        default=None)
-    parser.add_argument(
-        '--feature_keys',dest='feature_keys',type=str,nargs='+',
-        help="Keys corresponding to tabular features in the JSON dataset",
-        default=None)
-    parser.add_argument(
-        '--adc_factor',dest='adc_factor',type=float,default=1/3,
-        help="Multiplies ADC images by this factor.")
-    parser.add_argument(
-        '--mask_keys',dest='mask_keys',type=str,nargs='+',
-        help="Mask key in the dataset JSON.",
-        required=True)
-    parser.add_argument(
-        '--bottleneck_classification',dest='bottleneck_classification',
-        action="store_true",
-        help="Predicts the maximum class in the output using the bottleneck \
-            features.")
-    parser.add_argument(
-        '--possible_labels',dest='possible_labels',type=int,nargs='+',
-        help="All the possible labels in the data.",
-        required=True)
-    parser.add_argument(
-        '--positive_labels',dest='positive_labels',type=int,nargs='+',
-        help="Labels that should be considered positive (binarizes labels)",
-        default=None)
-    parser.add_argument(
-        '--missing_to_empty',dest='missing_to_empty',
-        type=str,nargs="+",choices=["image","mask"],
-        help="If some images or masks are missing, assume they are empty \
-            tensors.")
+    parser.add_argument_by_key([
+        "dataset_json",
+        "image_keys","mask_image_keys","skip_keys","skip_mask_keys",
+        "mask_keys",
+        "bottleneck_classification",
+        "possible_labels","positive_labels",
+        "missing_to_empty",
+        "adc_keys",
+        "feature_keys",
+        "test_ids",
+        "excluded_ids",
+        "resize_size","resize_keys",
+        "crop_size","target_spacing",
+        "sliding_window_size","flip","keep_largest_connected_component",
+        "config_file",
+        ("segmentation_net_type","unet_model"),
+        "res_config_file","checkpoint",
+        "one_to_one","per_sample",
+        "dev","n_workers",
+        "picai_eval","metric_path"
+    ])
     
-    # network + inference
-    parser.add_argument(
-        '--config_file',dest="config_file",
-        help="Path to network configuration file (yaml)",
-        required=True)
-    parser.add_argument(
-        '--unet_model',dest='unet_model',action="store",
-        choices=["unet","unetpp","brunet","unetr","swin"],
-        default="unet",help="Specifies which UNet model is used")
-    parser.add_argument(
-        '--res_config_file',dest='res_config_file',action="store",default=None,
-        help="Uses a ResNet as a backbone (depths are inferred from this). \
-            This config file is then used to parameterise the ResNet.")
-    parser.add_argument(
-        '--checkpoints',dest='checkpoints',action="store",required=True,
-        help="Paths to checkpoints.",nargs="+")
-    parser.add_argument(
-        '--paired',dest='paired',
-        action="store_true",
-        help="Test checkpoints only on the corresponding test_ids.")
-    parser.add_argument(
-        '--per_sample',dest='per_sample',
-        action="store_true",
-        help="Also calculates metrics on a per sample basis.")
-    
-    # network, pipeline
-    parser.add_argument(
-        '--dev',dest='dev',type=str,
-        help="Device for PyTorch training")
-    parser.add_argument(
-        '--n_workers',dest='n_workers',
-        help="Number of workers",default=1,type=int)
-    parser.add_argument(
-        '--n_devices',dest='n_devices',
-        help="Number of devices",default=1,type=int)
-    parser.add_argument(
-        '--picai_eval',dest='picai_eval',action="store_true",
-        help="Validates model using PI-CAI metrics.")
-    parser.add_argument(
-        '--metric_path',dest='metric_path',type=str,default="metrics.csv",
-        help='Path to file with CV metrics + information.')
-
     args = parser.parse_args(arguments)
 
     if args.possible_labels == 2 or args.positive_labels is not None:
@@ -175,8 +64,8 @@ def main(arguments):
     
     mask_image_keys = if_none_else(args.mask_image_keys,[])
     adc_keys = if_none_else(args.adc_keys,[])
-    aux_keys = if_none_else(args.skip_key,[])
-    aux_mask_keys = if_none_else(args.skip_mask_key,[])
+    aux_keys = if_none_else(args.skip_keys,[])
+    aux_mask_keys = if_none_else(args.skip_mask_keys,[])
     resize_keys = if_none_else(args.resize_keys,[])
     feature_keys = if_none_else(args.feature_keys,[])
     
@@ -214,8 +103,9 @@ def main(arguments):
 
     data_dict = json.load(open(args.dataset_json,'r'))
     if args.excluded_ids is not None:
+        excluded_ids = parse_ids(args.excluded_ids,"list")
         data_dict = {k:data_dict[k] for k in data_dict
-                     if k not in args.excluded_ids}
+                     if k not in excluded_ids}
 
     if args.missing_to_empty is None:
         data_dict = {
@@ -256,7 +146,7 @@ def main(arguments):
         "intp_resampling_augmentations": intp_resampling_augmentations,
         "possible_labels": args.possible_labels,
         "positive_labels": args.positive_labels,
-        "adc_factor": args.adc_factor,
+        "adc_factor": 1/3 ,
         "all_aux_keys": all_aux_keys,
         "resize_keys": resize_keys,
         "feature_keys": feature_keys,
@@ -267,7 +157,7 @@ def main(arguments):
         "pad_size":args.sliding_window_size,
         "label_mode": label_mode,
         "fill_missing": args.missing_to_empty is not None,
-        "brunet": args.unet_model == "brunet"}
+        "brunet": args.net_type == "brunet"}
 
     transforms = [
         *get_transforms("pre",**transform_arguments),
@@ -282,13 +172,9 @@ def main(arguments):
 
     torch.cuda.empty_cache()
 
-    # correctly assign devices
     if ":" in args.dev:
-        devices = args.dev.split(":")[-1].split(",")
-        devices = [int(i) for i in devices]
         dev = args.dev.split(":")[0]
     else:
-        devices = args.n_devices
         dev = args.dev
 
     # calculate the mean/std of tabular features
@@ -307,7 +193,7 @@ def main(arguments):
         for k in ['weight_decay','learning_rate','batch_size']:
             if k in network_config_ssl:
                 del network_config_ssl[k]
-        if args.unet_model == "brunet":
+        if args.net_type == "brunet":
             n = len(keys)
             nc = network_config_ssl["backbone_args"]["in_channels"]
             network_config_ssl["backbone_args"]["in_channels"] = nc // n
@@ -339,7 +225,7 @@ def main(arguments):
         encoding_operations = [None]
 
     unet = get_segmentation_network(
-        net_type=args.unet_model,
+        net_type=args.net_type,
         encoding_operations=encoding_operations,
         network_config=network_config,
         loss_params={},
@@ -364,14 +250,7 @@ def main(arguments):
         pad_size=args.sliding_window_size,
         resize_size=args.resize_size)
     
-    if os.path.exists(args.test_ids[0]) and args.set_ids is not None:
-        selected_test_ids = []
-        with open(args.test_ids[0]) as o:
-            for line in o:
-                for set_id in args.set_ids:
-                    if set_id in line:
-                        selected_test_ids.append(line)
-        args.test_ids = selected_test_ids
+    test_ids = parse_ids(args.test_ids)
     n_ckpt = len(args.checkpoints)
     n_data = len(args.test_ids)
     all_metrics = []
@@ -385,7 +264,7 @@ def main(arguments):
             monai.transforms.Compose(transforms),
             num_workers=args.n_workers)
 
-        if args.paired == True:
+        if args.one_to_one == True:
             checkpoint_list = [args.checkpoints[test_idx]]
         else:
             checkpoint_list = args.checkpoints
