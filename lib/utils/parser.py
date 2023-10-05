@@ -10,6 +10,9 @@ import argparse
 import yaml
 import json
 import importlib
+from hydra import compose as hydra_compose
+from hydra import initialize_config_dir
+from omegaconf import OmegaConf
 
 from typing import Dict, Any, List
 
@@ -117,6 +120,19 @@ def merge_args(args:argparse.Namespace,
         else:
             raise KeyError("{} is not an ArgumentParser argument".format(k))
     return args
+
+def compose(path: str, job_name: str, overrides: List[str]=None):
+    config_path, config_name = os.path.dirname(path), os.path.basename(path)
+    config_path = os.path.abspath(config_path)
+    if overrides is None:
+        overrides = []
+    with initialize_config_dir(version_base=None, 
+                               config_dir=config_path, 
+                               job_name=job_name):
+        cfg = hydra_compose(config_name=config_name, overrides=overrides)
+        yaml_config = OmegaConf.to_yaml(cfg)
+        params = yaml.safe_load(yaml_config)
+    return params
 
 def parse_ids(id_list:List[str],
               output_format:str="nested_list"):

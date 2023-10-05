@@ -1,12 +1,9 @@
-import argparse
 import random
-import yaml
 import json
 import numpy as np
 import torch
 import monai
 from ..assemble_args import Parser
-from hydra import compose
 
 from lightning.pytorch import Trainer
 from lightning.pytorch.callbacks import RichProgressBar
@@ -29,7 +26,7 @@ from ...monai_transforms import (
     get_pre_transforms_generation as get_pre_transforms,
     get_post_transforms_generation as get_post_transforms)
 from ...utils.network_factories import get_generative_network
-from ...utils.parser import get_params,merge_args,parse_ids
+from ...utils.parser import get_params,merge_args,parse_ids,compose
 
 def get_conditional_specification(d: dict, cond_key: str):
     possible_values = []
@@ -132,7 +129,7 @@ def main(arguments):
     
     keys = args.image_keys
 
-    network_config = yaml.load(args.config_file)
+    network_config = compose(args.config_file, "diffusion", args.overrides)
     network_config["batch_size"] = args.batch_size
     network_config["learning_rate"] = args.learning_rate
     network_config["with_conditioning"] = with_conditioning
