@@ -225,6 +225,8 @@ def main(arguments):
             monai.transforms.Compose(transforms))
         if args.steps_per_epoch is not None:
             n_samples = args.steps_per_epoch * network_config["batch_size"]
+        elif args.num_samples is not None:
+            n_samples = args.num_samples
         else:
             n_samples = None
         sampler = SliceSampler(

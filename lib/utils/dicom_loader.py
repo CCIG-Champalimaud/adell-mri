@@ -203,7 +203,11 @@ class SliceSampler(torch.utils.data.Sampler):
             self.rng.shuffle(corr_idx)
         
         if self.n_samples is not None:
-            corr_idx = corr_idx[:self.n_samples]
+            if self.n_samples < len(corr_idx):
+                corr_idx = corr_idx[:self.n_samples]
+            else:
+                corr_idx = self.rng.choice(corr_idx,size=self.n_samples,
+                                           replace=True)
         
         for idx in corr_idx:
             element = self.correspondence[idx]
