@@ -32,12 +32,15 @@ def main(arguments):
         "filter_on_keys",
         "possible_labels", "positive_labels", "label_groups",
         "target_spacing", "pad_size", "crop_size",
+        "resize_size",
         "subsample_size", "batch_size",
         "config_file", "mil_method", "module_path",
         "dev", "seed", "n_workers",
         "metric_path",
         "test_ids",
         "one_to_one",
+        "cache_rate",
+        "excluded_ids",
         ("test_checkpoints","checkpoints")
     ])
     
@@ -98,9 +101,7 @@ def main(arguments):
                     args.label_keys()))
     
     keys = args.image_keys
-    t2_keys = args.t2_keys if args.t2_keys is not None else []
     adc_keys = []
-    t2_keys = [k for k in t2_keys if k in keys]
 
     network_config,_ = parse_config_2d_classifier_3d(
         args.config_file,0.0)
@@ -126,7 +127,7 @@ def main(arguments):
         "keys":keys,
         "adc_keys":adc_keys,
         "target_spacing":args.target_spacing,
-        "target_size":args.target_size,
+        "target_size":args.resize_size,
         "crop_size":args.crop_size,
         "pad_size":args.pad_size,
         "possible_labels":args.possible_labels,

@@ -114,7 +114,7 @@ def main(arguments):
         "keys":keys,
         "adc_keys":adc_keys,
         "target_spacing":args.target_spacing,
-        "target_size":args.target_size,
+        "target_size":args.resize_size,
         "crop_size":args.crop_size,
         "pad_size":args.pad_size,
         "possible_labels":None,
