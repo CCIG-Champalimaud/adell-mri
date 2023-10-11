@@ -131,7 +131,7 @@ def main(arguments):
     else:
         roi_size = [int(x) for x in args.random_crop_size]
 
-    is_ijepa = args.ssl_method is "ijepa"
+    is_ijepa = args.ssl_method == "ijepa"
     pre_transform_args = {
         "all_keys":all_keys,
         "copied_keys":copied_keys,
