@@ -553,6 +553,10 @@ argument_factory = {
         nargs='+',
         help="Crops a region with at least a quarter of the specified size \
             and then resizes them image to this size."),
+    "different_crop": dict(
+        default=False,
+        action="store_true",
+        help="Uses different crops to make views."),
     "ssl_net_type": dict(
         choices=["resnet","unet_encoder","convnext","vit"],
         help="Which network should be trained."),

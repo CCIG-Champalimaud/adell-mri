@@ -1,37 +1,32 @@
-import os
-import argparse
 import random
 import json
 import numpy as np
 import torch
 import monai
-import wandb
 from copy import deepcopy
 
 from lightning.pytorch import Trainer
-from lightning.pytorch.loggers import WandbLogger
-from lightning.pytorch.strategies import DDPStrategy
-from lightning.pytorch.callbacks.model_checkpoint import ModelCheckpoint
 from lightning.pytorch.callbacks import RichProgressBar
 
 from ...entrypoints.assemble_args import Parser
 from ...utils import (
-    CopyEntryd,
     collate_last_slice,
     RandomSlices,
-    ConditionalRescalingd,
-    ExposeTransformKeyMetad,
     safe_collate)
 from ...utils.pl_utils import get_ckpt_callback,get_logger,get_devices
-from ...modules.augmentations import (
-    AugmentationWorkhorsed,generic_augments,mri_specific_augments,
-    spatial_augments)
 from ...modules.self_supervised.pl import (
-    SelfSLResNetPL,SelfSLUNetPL,SelfSLConvNeXtPL)
+    SelfSLResNetPL,SelfSLUNetPL)
 from ...utils import ExponentialMovingAverage
 from ...modules.config_parsing import parse_config_ssl,parse_config_unet
+from ...monai_transforms import (
+    get_pre_transforms_ssl,get_post_transforms_ssl,get_augmentations_ssl)
 
 torch.backends.cudnn.benchmark = True
+
+def keep_first_not_none(*args):
+    for arg in args:
+        if arg is not None:
+            return arg
 
 def force_cudnn_initialization():
     """Convenience function to initialise CuDNN (and avoid the lazy loading
@@ -52,6 +47,7 @@ def main(arguments):
         "train_pids",
         "target_spacing",
         "pad_size","crop_size","random_crop_size",
+        "different_crop",
         "subsample_size",
         "cache_rate",
         "precision",
@@ -135,105 +131,48 @@ def main(arguments):
     else:
         roi_size = [int(x) for x in args.random_crop_size]
 
-    def get_transforms(x):
-        if args.target_spacing is not None:
-            rs = [
-                monai.transforms.Spacingd(
-                    keys=all_keys,pixdim=args.target_spacing,
-                    mode=intp_resampling_augmentations)]
-        else:
-            rs = []
-        scaling_ops = []
-        if len(non_adc_keys) > 0:
-            scaling_ops.append(
-                monai.transforms.ScaleIntensityd(non_adc_keys,0,1))
-        if len(args.adc_image_keys) > 0:
-            scaling_ops.append(
-                ConditionalRescalingd(args.adc_image_keys,1000,0.001))
-            scaling_ops.append(
-                monai.transforms.ScaleIntensityd(
-                    args.adc_image_keys,None,None,-(1-1/3)))
-        crop_op = []
-        if args.crop_size is not None:
-            crop_op.append(
-                monai.transforms.CenterSpatialCropd(
-                    all_keys,[int(j) for j in args.crop_size]))
-        if args.pad_size is not None:
-            crop_op.append(
-                monai.transforms.SpatialPadd(
-                    all_keys,[int(j) for j in args.pad_size]))
-        if x == "pre":
-            return [
-                monai.transforms.LoadImaged(
-                    all_keys,ensure_channel_first=True,image_only=True),
-                monai.transforms.Orientationd(all_keys,"RAS"),
-                *rs,
-                *crop_op,
-                *scaling_ops,
-                monai.transforms.EnsureTyped(all_keys),
-                CopyEntryd(all_keys,key_correspondence)]
-        elif x == "post":
-            return [
-                monai.transforms.ConcatItemsd(keys,"augmented_image_1"),
-                monai.transforms.ConcatItemsd(copied_keys,"augmented_image_2"),
-                monai.transforms.ToTensord(
-                    ["augmented_image_1","augmented_image_2"])]
-
-    def get_augmentations():
-        def flatten_box(box):
-            box1 = np.array(box[::2])
-            box2 = np.array(args.crop_size) - np.array(box[1::2])
-            out = np.concatenate([box1,box2]).astype(np.float32)
-            return out
-        
-        transforms_to_remove = [
-            # not super slow but not really a common artefact
-            "gaussian_smooth_x","gaussian_smooth_y","gaussian_smooth_z",
-            # the sharpens are remarkably slow, not worth it imo
-            "gaussian_sharpen_x","gaussian_sharpen_y","gaussian_sharpen_z"]
-        aug_list = generic_augments+mri_specific_augments+spatial_augments
-        aug_list = [x for x in aug_list if x not in transforms_to_remove]
-        
-        if len(roi_size) == 0:
-            cropping_strategy = []
-        if args.ssl_method == "vicregl":
-            cropping_strategy = [
-                monai.transforms.RandSpatialCropd(
-                    all_keys,roi_size=roi_size,random_size=False),
-                monai.transforms.RandSpatialCropd(
-                    copied_keys,roi_size=roi_size,random_size=False),
-                # exposes the value associated with the random crop as a key
-                # in the data element dict
-                ExposeTransformKeyMetad(
-                    all_keys[0],"RandSpatialCrop",
-                    ["extra_info","cropped"],"box_1"),
-                ExposeTransformKeyMetad(
-                    copied_keys[0],"RandSpatialCrop",
-                    ["extra_info","cropped"],"box_2"),
-                # transforms the bounding box into (x1,y1,z1,x2,y2,z2) format
-                monai.transforms.Lambdad(["box_1","box_2"],flatten_box),
-            ]
-        else:
-            cropping_strategy = [
-                monai.transforms.RandSpatialCropd(
-                    all_keys+copied_keys,roi_size=roi_size,random_size=False)
-                ]
-        return [
-            *cropping_strategy,
-            AugmentationWorkhorsed(
-                augmentations=aug_list,
-                keys=all_keys,mask_keys=[],max_mult=0.5,N=2),
-            AugmentationWorkhorsed(
-                augmentations=aug_list,
-                keys=copied_keys,mask_keys=[],max_mult=0.5,N=2),
-            ]
-
-    all_pids = [k for k in data_dict]
+    is_ijepa = args.ssl_method is "ijepa"
+    pre_transform_args = {
+        "all_keys":all_keys,
+        "copied_keys":copied_keys,
+        "adc_keys":[],
+        "non_adc_keys":non_adc_keys,
+        "target_spacing":args.target_spacing,
+        "crop_size":args.crop_size,
+        "pad_size":args.pad_size,
+        "n_channels":1,
+        "n_dim":3,
+        "skip_augmentations":is_ijepa,
+        "jpeg_dataset":False}
     
+    post_transform_args = {
+        "all_keys":all_keys,
+        "copied_keys":copied_keys,
+        "skip_augmentations":is_ijepa}
+    
+    augmentation_args = {
+        "all_keys":all_keys,
+        "copied_keys":copied_keys if is_ijepa is False else [],
+        "scaled_crop_size":args.scaled_crop_size,
+        "roi_size":roi_size,
+        "different_crop":args.different_crop,
+        "vicregl":args.ssl_method == "vicregl",
+        "n_transforms":args.n_transforms,
+        "n_dim":3,
+        "skip_augmentations":is_ijepa}
+    
+    if is_ijepa is True:
+        image_size = keep_first_not_none(
+            args.scaled_crop_size,args.crop_size)
+        patch_size = network_config_correct["backbone_args"]["patch_size"]
+        feature_map_size = [i//pi for i,pi in zip(image_size,patch_size)]
+        network_config_correct["backbone_args"]["image_size"] = image_size
+        network_config_correct["feature_map_dimensions"] = feature_map_size
+
     transforms = [
-        *get_transforms("pre"),
-        *get_augmentations(),
-        *get_transforms("post")]
+        *get_pre_transforms_ssl(**pre_transform_args),
+        *get_augmentations_ssl(**augmentation_args),
+        *get_post_transforms_ssl(**post_transform_args)]
 
     if n_dims == 2:
         transforms.append(

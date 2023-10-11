@@ -692,6 +692,7 @@ def get_augmentations_ssl(all_keys:List[str],
                           scaled_crop_size:List[int],
                           roi_size:List[int],
                           vicregl:bool,
+                          different_crop:bool,
                           n_transforms=3,
                           n_dim:int=3,
                           skip_augmentations:bool=False):
@@ -750,6 +751,13 @@ def get_augmentations_ssl(all_keys:List[str],
                 ["extra_info","cropped"],"box_2"),
             # transforms the bounding box into (x1,y1,z1,x2,y2,z2) format
             monai.transforms.Lambdad(["box_1","box_2"],flatten_box)])
+    elif different_crop == True:
+        cropping_strategy.extend([
+            monai.transforms.RandSpatialCropd(
+                all_keys,roi_size=roi_size,random_size=False),
+            monai.transforms.RandSpatialCropd(
+                copied_keys,roi_size=roi_size,random_size=False)
+        ])
     else:
         cropping_strategy.append(
             monai.transforms.RandSpatialCropd(
