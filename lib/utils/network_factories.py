@@ -34,7 +34,7 @@ from lib.modules.diffusion.embedder import Embedder
 from generative.inferers import DiffusionInferer
 from generative.networks.schedulers import DDPMScheduler
 
-from typing import Dict,Any,List,Callable,Tuple,Union
+from typing import Dict,Any,List,Callable
 
 def get_classification_network(net_type:str,
                                network_config:Dict[str,Any],
