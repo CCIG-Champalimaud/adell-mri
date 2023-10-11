@@ -203,10 +203,14 @@ class SliceSampler(torch.utils.data.Sampler):
             self.rng.shuffle(corr_idx)
         
         if self.n_samples is not None:
-            if self.n_samples < len(corr_idx):
-                corr_idx = corr_idx[:self.n_samples]
+            if self.n_samples < 1.0:
+                n_samples = int(self.n_samples * len(corr_idx))
             else:
-                corr_idx = self.rng.choice(corr_idx,size=self.n_samples,
+                n_samples = int(self.n_samples)
+            if n_samples < len(corr_idx):
+                corr_idx = corr_idx[:n_samples]
+            else:
+                corr_idx = self.rng.choice(corr_idx,size=n_samples,
                                            replace=True)
         
         for idx in corr_idx:
@@ -223,5 +227,7 @@ class SliceSampler(torch.utils.data.Sampler):
             int: number of studies.
         """
         if self.n_samples is not None:
-            return self.n_samples
+            if self.n_samples < 1.0:
+                return self.N * self.n_iterations * self.n_samples
+            return int(self.n_samples)
         return self.N * self.n_iterations
