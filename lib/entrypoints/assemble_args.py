@@ -539,7 +539,7 @@ argument_factory = {
         help="Whether the dataset simply contains a paragraph-separated list of\
             paths. This is helpful to avoid the JSON structure"),
     "num_samples": dict(
-        type=int,default=None,
+        type=float,default=None,
         help="Number of samples per epoch for JPEG dataset (must be specified)\
             if the --jpeg_dataset flag is used"),
     "train_pids": dict(
