@@ -37,7 +37,7 @@ def get_conditional_specification(d: dict, cond_key: str):
                 possible_values.append(d[k][cond_key])
     return possible_values
 
-def get_size(*size_list):
+def return_first_not_none(*size_list):
     for size in size_list:
         if size is not None:
             return size
@@ -130,8 +130,10 @@ def main(arguments):
     keys = args.image_keys
 
     network_config = compose(args.config_file, "diffusion", args.overrides)
-    network_config["batch_size"] = args.batch_size
-    network_config["learning_rate"] = args.learning_rate
+    network_config["batch_size"] = return_first_not_none(
+        args.batch_size,network_config.get("batch_size"))
+    network_config["learning_rate"] = return_first_not_none(
+        args.learning_rate,network_config.get("learning_rate"))
     network_config["with_conditioning"] = with_conditioning
     network_config["cross_attention_dim"] = 256 if with_conditioning else None
     
@@ -164,8 +166,9 @@ def main(arguments):
         val_fold=None,
         monitor=args.monitor,
         metadata={"train_pids":all_pids,
-                  "transform_arguments":{**transform_pre_arguments,
-                                         **transform_post_arguments},
+                  "network_config":network_config,
+                  "transform_arguments":{transform_pre_arguments,
+                                         transform_post_arguments},
                   "categorical_specification": categorical_specification,
                   "numerical_specification": numerical_specification})
     ckpt = ckpt_callback is not None
@@ -240,7 +243,7 @@ def main(arguments):
                         fold=None)
     
     if logger is not None:
-        size = get_size(args.pad_size,args.crop_size)
+        size = return_first_not_none(args.pad_size,args.crop_size)
         callbacks.append(
             LogImageFromDiffusionProcess(
                 n_images=2,
