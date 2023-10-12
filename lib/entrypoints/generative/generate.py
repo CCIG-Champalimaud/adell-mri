@@ -97,24 +97,7 @@ def main(arguments):
         args.learning_rate,network_config.get("learning_rate"))
     network_config["with_conditioning"] = with_conditioning
     network_config["cross_attention_dim"] = 256 if with_conditioning else None
-    
-    n_workers = args.n_workers // n_devices
-    bs = network_config["batch_size"]
-    real_bs = bs * n_devices
-    if len(dataset) < real_bs:
-        new_bs = len(dataset) // n_devices
-        print(
-            f"Batch size changed from {bs} to {new_bs} (dataset too small)")
-        bs = new_bs
-        real_bs = bs * n_devices
-
-    loader = monai.data.ThreadDataLoader(
-        dataset,batch_size=bs,
-        shuffle=True,num_workers=n_workers,generator=g,
-        collate_fn=collate_fn,pin_memory=True,
-        persistent_workers=args.n_workers>0,
-        drop_last=True)
-    
+        
     network = get_generative_network(
         network_config=network_config,
         categorical_specification=categorical_specification,
@@ -197,6 +180,23 @@ def main(arguments):
             pred_list,transforms,
             cache_rate=args.cache_rate,
             num_workers=args.n_workers)
+        
+        n_workers = args.n_workers // n_devices
+        bs = network_config["batch_size"]
+        real_bs = bs * n_devices
+        if len(dataset) < real_bs:
+            new_bs = len(dataset) // n_devices
+            print(
+                f"Batch size changed from {bs} to {new_bs} (dataset too small)")
+            bs = new_bs
+            real_bs = bs * n_devices
+
+        loader = monai.data.ThreadDataLoader(
+            dataset,batch_size=bs,
+            shuffle=True,num_workers=n_workers,generator=g,
+            collate_fn=collate_fn,pin_memory=True,
+            persistent_workers=args.n_workers>0,
+            drop_last=True)
         
         for data in dataset:
             pass
