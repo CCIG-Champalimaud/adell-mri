@@ -593,7 +593,11 @@ argument_factory = {
     "diffusion_steps": dict(
         type=int,
         default=1000,
-        help="Number of diffusion steps")
+        help="Number of diffusion steps"),
+    "n_samples_gen": dict(
+        type=int,
+        default=1000,
+        help="Number of samples to generate.")
 }
 
 class Parser(ArgumentParser):
