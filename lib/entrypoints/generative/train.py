@@ -167,8 +167,8 @@ def main(arguments):
         monitor=args.monitor,
         metadata={"train_pids":all_pids,
                   "network_config":network_config,
-                  "transform_arguments":{transform_pre_arguments,
-                                         transform_post_arguments},
+                  "transform_arguments":{"pre":transform_pre_arguments,
+                                         "post":transform_post_arguments},
                   "categorical_specification": categorical_specification,
                   "numerical_specification": numerical_specification})
     ckpt = ckpt_callback is not None
