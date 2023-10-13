@@ -114,6 +114,9 @@ def main(arguments):
     if "batch_size" not in network_config:
         network_config["batch_size"] = 1
     
+    if network_config["batch_size"] > len(data_dict):
+        network_config["batch_size"] = len(data_dict)
+    
     all_pids = [k for k in data_dict]
 
     print("Setting up transforms...")
@@ -136,7 +139,10 @@ def main(arguments):
         *get_transforms("post",**transform_arguments)])
     transforms_val.set_random_state(args.seed)
 
-    all_test_ids = parse_ids(args.test_ids)
+    if args.test_ids is not None:
+        all_test_ids = parse_ids(args.test_ids)
+    else:
+        all_test_ids = [all_pids]
     for iteration in range(len(all_test_ids)):
         test_ids = all_test_ids[iteration]
         test_list = [data_dict[pid] for pid in test_ids if pid in data_dict]
