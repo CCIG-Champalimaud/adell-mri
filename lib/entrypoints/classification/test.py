@@ -28,6 +28,7 @@ def main(arguments):
         "image_keys", "clinical_feature_keys", "adc_keys", "label_keys",
         "filter_on_keys",
         "possible_labels", "positive_labels", "label_groups",
+        "cache_rate",
         "target_spacing", "pad_size", "crop_size",
         "subsample_size", "batch_size",
         "config_file",
@@ -152,7 +153,9 @@ def main(arguments):
                                   return_counts=True)):
             print(f"\tCases({u}) = {c}")
         
-        test_dataset = monai.data.Dataset(test_list,transforms_val)
+        test_dataset = monai.data.CacheDataset(
+            test_list,transforms_val,num_workers=args.n_workers,
+            cache_rate=args.cache_rate)
         
         # PL sometimes needs a little hint to detect GPUs.
         torch.ones([1]).to("cuda" if "cuda" in args.dev else "cpu")
