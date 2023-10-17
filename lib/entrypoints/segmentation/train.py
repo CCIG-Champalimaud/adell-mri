@@ -26,6 +26,8 @@ from ...utils import (
 from ...utils.pl_utils import get_ckpt_callback,get_logger,get_devices
 from ...monai_transforms import get_transforms_unet as get_transforms
 from ...monai_transforms import get_augmentations_unet as get_augmentations
+from ...utils.dataset_filters import (
+    filter_dictionary)
 from ...modules.layers import ResNet
 from ...utils.network_factories import get_segmentation_network
 from ...modules.config_parsing import parse_config_unet,parse_config_ssl
@@ -51,7 +53,7 @@ def main(arguments):
         "image_keys","mask_image_keys",
         "mask_keys",
         "skip_keys","skip_mask_keys",
-        "feature_keys",
+        "feature_keys","filter_on_keys",
         "subsample_size","excluded_ids","use_val_as_train_val",
         "cache_rate",
         "adc_keys","t2_keys",
@@ -153,6 +155,13 @@ def main(arguments):
         cur_dataset_dict = json.load(open(dataset_json,'r'))
         for k in cur_dataset_dict:
             data_dict[k] = cur_dataset_dict[k]
+    data_dict = filter_dictionary(
+        data_dict,
+        filters_presence=args.image_keys + [args.label_keys],
+        possible_labels=None,
+        label_key=None,
+        filters=args.filter_on_keys)
+
     if args.missing_to_empty is None:
         data_dict = {
             k:data_dict[k] for k in data_dict

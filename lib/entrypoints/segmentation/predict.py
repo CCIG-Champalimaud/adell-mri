@@ -16,6 +16,7 @@ from ...utils import (
     SlicesToFirst,
     safe_collate)
 from ...monai_transforms import get_transforms_unet as get_transforms
+from ...utils.dataset_filters import filter_dictionary
 from ...modules.layers import ResNet
 from ...utils.network_factories import get_segmentation_network
 from ...modules.config_parsing import parse_config_unet,parse_config_ssl
@@ -38,7 +39,7 @@ def main(arguments):
         "image_keys","mask_image_keys","skip_keys","skip_mask_keys",
         "adc_keys",
         "feature_keys",
-        "prediction_ids","excluded_ids",
+        "prediction_ids","excluded_ids","filter_on_keys",
         "target_spacing",
         "resize_size","resize_keys","pad_size","crop_size",
         "bottleneck_classification",
@@ -103,6 +104,12 @@ def main(arguments):
         args.resize_size = [round(x) for x in args.resize_size]
 
     data_dict = json.load(open(args.dataset_json,'r'))
+    data_dict = filter_dictionary(
+        data_dict,
+        filters_presence=args.image_keys,
+        possible_labels=None,
+        label_key=None,
+        filters=args.filter_on_keys)
     if args.excluded_ids is not None:
         data_dict = {k:data_dict[k] for k in data_dict
                      if k not in args.excluded_ids}
@@ -255,7 +262,7 @@ def main(arguments):
         args.preprediction_idsd_ids = parse_ids(args.prediction_ids)
     else:
         args.prediction_ids = [[k for k in data_dict]]
-    n_ckpt = len(args.checkpoints)
+    n_ckpt = len(args.checkpoint)
     n_data = len(args.prediction_ids)
     output = {}
     for pred_idx in range(n_data):
@@ -269,10 +276,10 @@ def main(arguments):
         transforms_postprocess = monai.transforms.Invertd(
             "image",transforms_preprocess)
 
-        if args.paired == True:
-            checkpoint_list = [args.checkpoints[pred_idx]]
+        if args.one_to_one == True:
+            checkpoint_list = [args.checkpoint[pred_idx]]
         else:
-            checkpoint_list = args.checkpoints
+            checkpoint_list = args.checkpoint
         
         networks = []
         for checkpoint in checkpoint_list:

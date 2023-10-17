@@ -251,7 +251,7 @@ def main(arguments):
         resize_size=args.resize_size)
     
     test_ids = parse_ids(args.test_ids)
-    n_ckpt = len(args.checkpoints)
+    n_ckpt = len(args.checkpoint)
     n_data = len(args.test_ids)
     all_metrics = []
     for test_idx in range(n_data):
@@ -265,9 +265,9 @@ def main(arguments):
             num_workers=args.n_workers)
 
         if args.one_to_one == True:
-            checkpoint_list = [args.checkpoints[test_idx]]
+            checkpoint_list = [args.checkpoint[test_idx]]
         else:
-            checkpoint_list = args.checkpoints
+            checkpoint_list = args.checkpoint
         
         for checkpoint in checkpoint_list:
             state_dict = torch.load(checkpoint)["state_dict"]
