@@ -385,6 +385,7 @@ def get_ssl_network_no_pl(ssl_method:str,
 
 def get_generative_network(
         network_config: Dict[str,Any],
+        scheduler_config: Dict[str,Any],
         categorical_specification: List[List[str] | int],
         numerical_specification: int,
         train_loader_call: Callable,
@@ -393,8 +394,7 @@ def get_generative_network(
         start_decay: int,
         diffusion_steps: int)->torch.nn.Module:
     
-    scheduler = DDPMScheduler(diffusion_steps, schedule="scaled_linear_beta", 
-                              beta_start=0.0005, beta_end=0.0195)
+    scheduler = DDPMScheduler(diffusion_steps, **scheduler_config)
     inferer = DiffusionInferer(scheduler)
     if any([categorical_specification is not None,
             numerical_specification is not None]):

@@ -128,7 +128,7 @@ class DiffusionUNetPL(DiffusionModelUNet,pl.LightningModule):
         return self.training_dataloader_call(self.batch_size)
     
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(
+        optimizer = torch.optim.AdamW(
             self.parameters(),
             lr=self.learning_rate,weight_decay=self.weight_decay)
         lr_schedulers = CosineAnnealingWithWarmupLR(

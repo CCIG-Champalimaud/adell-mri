@@ -216,13 +216,14 @@ def main(arguments):
     
     network = get_generative_network(
         network_config=network_config,
+        scheduler_config={"schedule": "cosine"},
         categorical_specification=categorical_specification,
         numerical_specification=numerical_specification,
         train_loader_call=train_loader_call,
         max_epochs=args.max_epochs,
         warmup_steps=args.warmup_steps,
         start_decay=args.start_decay,
-        diffusion_steps=1000)
+        diffusion_steps=args.diffusion_steps)
 
     if args.checkpoint is not None:
         checkpoint = args.checkpoint
