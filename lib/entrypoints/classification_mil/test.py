@@ -61,7 +61,6 @@ def main(arguments):
     accelerator,devices,strategy = get_devices(args.dev)
     
     data_dict = json.load(open(args.dataset_json,'r'))
-    all_test_pids = parse_ids(args.test_ids)
     if args.excluded_ids is not None:
         excluded_ids = parse_ids(args.excluded_ids,output_format="list")
         a = len(data_dict)
@@ -80,6 +79,11 @@ def main(arguments):
         subsample_size=args.subsample_size,
         rng=rng,
         strata_key=args.label_keys)
+
+    if args.test_ids is not None:
+        all_test_pids = parse_ids(args.test_ids)
+    else:
+        all_test_pids = [[key for key in data_dict]]
 
     all_classes = []
     for k in data_dict:
@@ -164,6 +168,7 @@ def main(arguments):
         else:
             checkpoint_list = args.checkpoints
         for checkpoint in checkpoint_list:
+            print(f"Iteration {iteration} with checkpoint {checkpoint}")
             n_slices = int(len(keys) * args.crop_size[-1])
             boilerplate_args = {
                 "n_classes":n_classes,
