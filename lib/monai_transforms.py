@@ -370,7 +370,7 @@ def get_pre_transforms_generation(keys,
                     keys,pixdim=target_spacing,dtype=torch.float32),
             ])
     transforms.append(
-        monai.transforms.ScaleIntensityd(keys,0,1))
+        monai.transforms.ScaleIntensityd(keys))
     if pad_size is not None:
         transforms.append(
             monai.transforms.SpatialPadd(
