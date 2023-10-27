@@ -492,7 +492,7 @@ class SelfSLUNetPL(UNet,SelfSLBasePL):
                 to 0.
             start_decay (int, optional): number of steps after which decay
                 begins. Defaults to None (decay starts after warmup).
-            ema (float, torch.nn.Module): exponential moving decay module 
+            ema (torch.nn.Module, optional): exponential moving decay module 
                 (EMA). Must have an update method that takes model as input 
                 and updates the weights based on this. Defaults to None.
             ssl_method (str, optional): sets the SSL method. Defaults to 
