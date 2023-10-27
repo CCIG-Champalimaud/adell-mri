@@ -216,7 +216,9 @@ def main(arguments):
     
     network = get_generative_network(
         network_config=network_config,
-        scheduler_config={"schedule": "cosine"},
+        scheduler_config={"schedule": "scaled_linear_beta", 
+                          "beta_start": 0.0005, 
+                          "beta_end": 0.0195},
         categorical_specification=categorical_specification,
         numerical_specification=numerical_specification,
         train_loader_call=train_loader_call,
