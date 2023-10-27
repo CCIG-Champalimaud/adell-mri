@@ -3,6 +3,7 @@ import torch
 import monai
 
 from typing import List
+from copy import deepcopy
 from .utils import (
     ConditionalRescalingd,
     CombineBinaryLabelsd,
@@ -16,7 +17,9 @@ from .utils import (
     MasksToBBd,
     RandRotateWithBoxesd,
     SampleChannelDimd,
-    AdjustSizesd)
+    AdjustSizesd,
+    CropFromMaskd,
+    ConvexHulld)
 from .modules.augmentations import (
     generic_augments,mri_specific_augments,spatial_augments,
     AugmentationWorkhorsed)
@@ -280,11 +283,14 @@ def get_transforms_detection_post(keys:List[str],
 
 def get_transforms_classification(x,
                                   keys,
+                                  mask_key,
                                   adc_keys,
                                   clinical_feature_keys,
                                   target_spacing,
                                   crop_size,
                                   pad_size,
+                                  image_masking,
+                                  image_crop_from_mask,
                                   possible_labels=None,
                                   positive_labels=None,
                                   label_groups=None,
@@ -292,10 +298,18 @@ def get_transforms_classification(x,
                                   target_size=None,
                                   label_mode=None):
     non_adc_keys = [k for k in keys if k not in adc_keys]
+    all_keys = [k for k in keys]
+    if mask_key is not None: 
+        all_keys.append(mask_key)
     if x == "pre":
         transforms = [
-            monai.transforms.LoadImaged(keys,ensure_channel_first=True),
-            monai.transforms.Orientationd(keys,"RAS")]
+            monai.transforms.LoadImaged(all_keys,ensure_channel_first=True)]
+        if mask_key is not None:
+            transforms.append(
+                monai.transforms.ResampleToMatchd(
+                    mask_key,key_dst=keys[0],mode="nearest"))
+        transforms.append(monai.transforms.Orientationd(all_keys,"RAS"))
+
         if len(non_adc_keys) > 0:
             transforms.append(
                 monai.transforms.ScaleIntensityd(non_adc_keys,0,1))
@@ -308,33 +322,52 @@ def get_transforms_classification(x,
                 monai.transforms.ScaleIntensityd(adc_keys,None,None,-2/3))
         if target_spacing is not None:
             transforms.extend(
-                [   
+                [
                     monai.transforms.Spacingd(
-                        keys,pixdim=target_spacing,dtype=torch.float32),
+                        all_keys,
+                        pixdim=target_spacing,
+                        dtype=torch.float32,
+                        mode=["bilinear" if k != mask_key else "nearest"
+                              for k in all_keys]),
                 ])
         if target_size is not None:
             transforms.append(
-                monai.transforms.Resized(keys=keys,spatial_size=target_size))
+                monai.transforms.Resized(
+                    keys=all_keys,
+                    spatial_size=target_size,
+                    mode=["bilinear" if k != mask_key else "nearest"
+                          for k in all_keys]))
         if pad_size is not None:
             transforms.append(
                 monai.transforms.SpatialPadd(
-                    keys,[int(j) for j in pad_size]))
+                    all_keys,[int(j)+16 for j in crop_size]))
         # initial crop with margin allows for rotation transforms to not create
         # black pixels around the image (these transforms do not need to applied
         # to the whole image)
-        if crop_size is not None:
+        if image_masking is True:
+            transforms.append(ConvexHulld([mask_key]))
+        if image_crop_from_mask is True:
+            transforms.append(
+                CropFromMaskd(
+                    all_keys,mask_key=mask_key,
+                    output_size=[int(j)+16 for j in crop_size]))
+        elif crop_size is not None:
             transforms.append(
                 monai.transforms.CenterSpatialCropd(
-                    keys,[int(j)+16 for j in crop_size]))
-        transforms.append(monai.transforms.EnsureTyped(keys))
+                    all_keys,[int(j)+16 for j in crop_size]))
+        transforms.append(monai.transforms.EnsureTyped(all_keys))
     elif x == "post":
         transforms = []
         if crop_size is not None:
             transforms.append(
                 monai.transforms.CenterSpatialCropd(
-                    keys,[int(j) for j in crop_size]))
+                    all_keys,[int(j) for j in crop_size]))
+        if image_masking is True:
+            transforms.append(
+                monai.transforms.MaskIntensityd(
+                    keys,mask_key=mask_key))
         transforms.append(
-            monai.transforms.ConcatItemsd(keys,"image"))
+            monai.transforms.ConcatItemsd(all_keys,"image"))
         if len(clinical_feature_keys) > 0:
             transforms.extend(
                 [monai.transforms.EnsureTyped(
@@ -565,12 +598,18 @@ def get_augmentations_unet(augment,
 
 def get_augmentations_class(augment,
                             all_keys,
+                            mask_key,
                             image_keys,
                             t2_keys,
-                            intp_resampling_augmentations,
                             flip_axis=[0]):
     valid_arg_list = ["intensity","noise","rbf","affine","shear","flip",
                       "blur","trivial"]
+    all_keys_with_mask = [k for k in all_keys]
+    if mask_key is not None:
+        all_keys_with_mask.append(mask_key)
+    intp_resampling_augmentations = [
+        "bilinear" if k != mask_key else "nearest" 
+        for k in all_keys_with_mask]
     for a in augment:
         if a not in valid_arg_list:
             raise NotImplementedError(
@@ -598,8 +637,9 @@ def get_augmentations_class(augment,
         
     if "flip" in augment:
         augments.append(
-            monai.transforms.RandFlipd(image_keys,prob=prob,
-                                       spatial_axis=flip_axis))
+            monai.transforms.RandFlipd(
+                all_keys_with_mask,prob=prob,
+                spatial_axis=flip_axis))
 
     if "blur" in augment:
         augments.extend([
@@ -612,7 +652,7 @@ def get_augmentations_class(augment,
     if "affine" in augment:
         augments.append(
             monai.transforms.RandAffined(
-                all_keys,
+                all_keys_with_mask,
                 translate_range=[4,4,1],
                 rotate_range=[np.pi/16],
                 prob=prob,mode=intp_resampling_augmentations,
@@ -621,7 +661,7 @@ def get_augmentations_class(augment,
     if "shear" in augment:
         augments.append(
             monai.transforms.RandAffined(
-                all_keys,
+                all_keys_with_mask,
                 shear_range=((0.9,1.1),(0.9,1.1),(0.9,1.1)),
                 prob=prob,mode=intp_resampling_augmentations,
                 padding_mode="zeros"))

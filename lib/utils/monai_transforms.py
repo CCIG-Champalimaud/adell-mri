@@ -56,6 +56,11 @@ def normalize_along_slice(X:torch.Tensor,
     X = X * (max_value - min_value) + min_value
     return X
 
+def convex_hull_iter(x: np.ndarray):
+    for i in range(x.shape[-1]):
+        x[...,i] = convex_hull_image(x[...,i])
+    return x
+
 class LoadIndividualDICOM(monai.transforms.Transform):
     def __init__(self):
         pass
@@ -1323,7 +1328,10 @@ class ConvexHull(monai.transforms.Transform):
         img = monai.utils.convert_to_tensor(
             img,track_meta=monai.data.meta_obj.get_track_meta())
         img_np, *_ = monai.utils.convert_data_type(img, np.ndarray)
-        out_np = convex_hull_image(img_np)
+        if img_np.shape[0] == 1:
+            out_np = convex_hull_iter(img_np[0])[None]
+        else:
+            out_np = convex_hull_iter(img_np[0])
         out, *_ = monai.utils.type_conversion.convert_to_dst_type(
             out_np, img)
         return out
@@ -1334,9 +1342,8 @@ class ConvexHulld(monai.transforms.MapTransform):
     """
     backend = [monai.utils.TransformBackends.NUMPY]
 
-    def __init__(self,keys:List[str]) -> None:
-        super().__init__()
-        self.keys = keys
+    def __init__(self, keys:List[str]) -> None:
+        super().__init__(keys=keys)
         
         self.transform = ConvexHull()
 
@@ -1838,3 +1845,61 @@ class DbscanAssistedSegmentSelection(monai.transforms.MapTransform):
         if is_tensor:
             output = torch.as_tensor(output)
         return output
+
+class CropFromMaskd(monai.transforms.MapTransform):
+    def __init__(self,
+                 keys: List[str] | str,
+                 mask_key: str,
+                 output_size: List[int]=None):
+        super().__init__(keys=keys)
+        self.mask_key = mask_key
+        self.output_size = output_size
+
+        if isinstance(self.keys,str):
+            self.keys = [self.keys]
+        
+    def get_centre_extremes(self, mask: torch.Tensor):
+        if mask.shape[0] == 1:
+            mask = mask[0]
+        coords = torch.where(mask)
+        if len(coords[0]) > 0:
+            extremes = [(c.min(),c.max()) for c in coords]
+            centre = [(e[1] + e[0])//2 for e in extremes]
+        else:
+            centre = [c // 2 for c in mask.shape]
+            extremes = None
+        return centre, extremes
+
+    def __call__(self,
+                 X: Dict[str, torch.Tensor]):
+        centres, extremes = self.get_centre_extremes(X[self.mask_key])
+        min_shape = np.array(
+            [X[k].shape for k in self.keys]).min(0)[1:]
+        if (self.output_size is not None) or (extremes is None):
+            half_size = [x // 2 for x in self.output_size]
+            extremes = [(c - h, c + (o - h))
+                        for c,h,o in zip(centres,
+                                         half_size,
+                                         self.output_size)]
+            for i in range(len(extremes)):
+                if extremes[i][0] < 0:
+                    extremes[i] = (0,self.output_size[i])
+                if extremes[i][1] > min_shape[i]:
+                    extremes[i] = (min_shape[i] - self.output_size[i],
+                                   min_shape[i])
+
+        for k in self.keys:
+            if len(extremes) == 2:
+                X[k] = X[k][:,
+                            extremes[0][0]:extremes[0][1],
+                            extremes[1][0]:extremes[1][1]]
+            elif len(extremes) == 3:
+                X[k] = X[k][:,
+                            extremes[0][0]:extremes[0][1],
+                            extremes[1][0]:extremes[1][1],
+                            extremes[2][0]:extremes[2][1]]
+            else:
+                raise Exception("mask and image should have same size or \
+                                output_size should have length identical to the \
+                                spatial dimensions of the image")
+        return X

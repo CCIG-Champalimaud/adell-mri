@@ -345,6 +345,14 @@ argument_factory = {
         default="cat",
         choices=["cat","ord","unet","vit","factorized_vit","vgg"],
         help="Classification types"),
+    "image_masking": dict(
+        action="store_true",
+        default=False,
+        help="Uses mask_key to mask the rest of the image."),
+    "image_crop_from_mask": dict(
+        action="store_true",
+        default=False,
+        help="Crops image using mask_key."),
     # testing/prediction specific
     "one_to_one": dict(
         action="store_true",

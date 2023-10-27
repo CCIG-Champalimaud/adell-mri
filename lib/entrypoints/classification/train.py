@@ -1,9 +1,9 @@
-import argparse
 import random
 import json
 import numpy as np
 import torch
 import monai
+from copy import deepcopy
 from sklearn.model_selection import train_test_split,StratifiedKFold
 
 from lightning.pytorch import Trainer
@@ -39,12 +39,14 @@ def main(arguments):
          "params_from",
          "dataset_json",
          "image_keys","clinical_feature_keys","label_keys",
+         "mask_key","image_masking","image_crop_from_mask",
          "t2_keys","adc_keys",
          "possible_labels","positive_labels","label_groups",
          "cache_rate",
          "target_spacing","pad_size","crop_size",
          "subsample_size",
          "subsample_training_data",
+         "filter_on_keys",
          "val_from_train",
          "config_file",
          "dev","n_workers",
@@ -112,9 +114,13 @@ def main(arguments):
     else:
         excluded_ids_from_training_data = []
 
+    presence_keys = args.image_keys + [args.label_keys] + \
+            clinical_feature_keys
+    if args.mask_key is not None:
+        presence_keys.append(args.mask_key)
     data_dict = filter_dictionary(
         data_dict,
-        filters_presence=args.image_keys + [args.label_keys] + clinical_feature_keys,
+        filters_presence=presence_keys,
         possible_labels=args.possible_labels,
         label_key=args.label_keys,
         filters=args.filter_on_keys)
@@ -135,10 +141,13 @@ def main(arguments):
         all_classes.append(str(C))
     
     label_groups = None
+    positive_labels = args.positive_labels
     if args.label_groups is not None:
         n_classes = len(args.label_groups)
         label_groups = [label_group.split(",")
                         for label_group in args.label_groups]
+        if len(label_groups) == 2:
+            positive_labels = label_groups[1]
     elif args.positive_labels is None:
         n_classes = len(args.possible_labels)
     else:
@@ -155,12 +164,16 @@ def main(arguments):
     keys = args.image_keys
     adc_keys = args.adc_keys if args.adc_keys is not None else []
     t2_keys = args.t2_keys if args.t2_keys is not None else []
+    mask_key = args.mask_key
+    input_keys = deepcopy(keys)
+    if mask_key is not None:
+        input_keys.append(mask_key)
     adc_keys = [k for k in adc_keys if k in keys]
     t2_keys = [k for k in t2_keys if k in keys]
 
     if args.net_type == "unet":
         network_config,_ = parse_config_unet(args.config_file,
-                                            len(keys),n_classes)
+                                            len(input_keys),n_classes)
     else:
         network_config = parse_config_cat(args.config_file)
     
@@ -178,6 +191,9 @@ def main(arguments):
     label_mode = "binary" if n_classes == 2 and label_groups is None else "cat"
     transform_arguments = {
         "keys":keys,
+        "mask_key":mask_key,
+        "image_masking":args.image_masking,
+        "image_crop_from_mask":args.image_crop_from_mask,
         "clinical_feature_keys":clinical_feature_keys,
         "adc_keys":adc_keys,
         "target_spacing":args.target_spacing,
@@ -193,7 +209,7 @@ def main(arguments):
         "t2_keys":t2_keys,
         "all_keys":keys,
         "image_keys":keys,
-        "intp_resampling_augmentations":["bilinear" for _ in keys]}
+        "mask_key":mask_key}
 
     transforms_train = monai.transforms.Compose([
         *get_transforms("pre",**transform_arguments),
@@ -330,13 +346,13 @@ def main(arguments):
         # PL needs a little hint to detect GPUs.
         torch.ones([1]).to("cuda" if "cuda" in args.dev else "cpu")
         
-        # get class weights if necessary  
+        # get class weights if necessary
         class_weights = get_class_weights(args.class_weights,
-                                        classes=classes,
-                                        n_classes=n_classes,
-                                        positive_labels=args.positive_labels,
-                                        possible_labels=args.possible_labels,
-                                        label_groups=label_groups)
+                                          classes=classes,
+                                          n_classes=n_classes,
+                                          positive_labels=positive_labels,
+                                          possible_labels=args.possible_labels,
+                                          label_groups=label_groups)
         if class_weights is not None:
             class_weights = torch.as_tensor(
                 np.array(class_weights),device=args.dev.split(":")[0],
@@ -383,7 +399,7 @@ def main(arguments):
             dropout_param=args.dropout_param,
             seed=args.seed,
             n_classes=n_classes,
-            keys=keys,
+            keys=input_keys,
             clinical_feature_keys=clinical_feature_keys,
             train_loader_call=train_loader_call,
             max_epochs=args.max_epochs,
@@ -428,7 +444,7 @@ def main(arguments):
                             fold=val_fold)
         
         if args.correct_classification_bias is True and n_classes == 2:
-            pos = len([x for x in classes if x in args.positive_labels])
+            pos = len([x for x in classes if x in positive_labels])
             neg = len(classes) - pos
             set_classification_layer_bias(pos,neg,network)
         

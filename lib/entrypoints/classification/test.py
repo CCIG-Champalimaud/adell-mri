@@ -4,6 +4,7 @@ import json
 import numpy as np
 import torch
 import monai
+from copy import deepcopy
 
 from lightning.pytorch import Trainer
 
@@ -26,6 +27,7 @@ def main(arguments):
         "params_from",
         "dataset_json",
         "image_keys", "clinical_feature_keys", "adc_keys", "label_keys",
+        "mask_key","image_masking","image_crop_from_mask",
         "filter_on_keys",
         "possible_labels", "positive_labels", "label_groups",
         "cache_rate",
@@ -62,9 +64,13 @@ def main(arguments):
         clinical_feature_keys = args.clinical_feature_keys
 
     data_dict = json.load(open(args.dataset_json,'r'))
+    presence_keys = args.image_keys + [args.label_keys] + \
+            clinical_feature_keys
+    if args.mask_key is not None:
+        presence_keys.append(args.mask_key)
     data_dict = filter_dictionary(
         data_dict,
-        filters_presence=args.image_keys + [args.label_keys] + clinical_feature_keys,
+        filters_presence=presence_keys,
         possible_labels=args.possible_labels,
         label_key=args.label_keys,
         filters=args.filter_on_keys)
@@ -82,10 +88,13 @@ def main(arguments):
         all_classes.append(str(C))
 
     label_groups = None
+    positive_labels = args.positive_labels
     if args.label_groups is not None:
         n_classes = len(args.label_groups)
         label_groups = [label_group.split(",")
                         for label_group in args.label_groups]
+        if len(label_groups) == 2:
+            positive_labels = label_groups[1]
     elif args.positive_labels is None:
         n_classes = len(args.possible_labels)
     else:
@@ -101,11 +110,15 @@ def main(arguments):
     
     keys = args.image_keys
     adc_keys = args.adc_keys if args.adc_keys is not None else []
+    mask_key = args.mask_key
+    input_keys = deepcopy(keys)
+    if mask_key is not None:
+        input_keys.append(mask_key)
     adc_keys = [k for k in adc_keys if k in keys]
 
     if args.net_type == "unet":
         network_config,_ = parse_config_unet(args.config_file,
-                                             len(keys),n_classes)
+                                            len(input_keys),n_classes)
     else:
         network_config = parse_config_cat(args.config_file)
     
@@ -124,6 +137,9 @@ def main(arguments):
     label_mode = "binary" if n_classes == 2 and label_groups is None else "cat"
     transform_arguments = {
         "keys":keys,
+        "mask_key":mask_key,
+        "image_masking":args.image_masking,
+        "image_crop_from_mask":args.image_crop_from_mask,
         "clinical_feature_keys":clinical_feature_keys,
         "adc_keys":adc_keys,
         "target_spacing":args.target_spacing,
@@ -191,7 +207,7 @@ def main(arguments):
                 dropout_param=0,
                 seed=None,
                 n_classes=n_classes,
-                keys=keys,
+                keys=input_keys,
                 clinical_feature_keys=clinical_feature_keys,
                 train_loader_call=None,
                 max_epochs=None,

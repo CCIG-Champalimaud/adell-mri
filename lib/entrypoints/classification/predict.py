@@ -94,12 +94,12 @@ def main(arguments):
         network_config["batch_size"] = 1
 
     transform_arguments = {
-        "keys":keys,
-        "clinical_feature_keys":clinical_feature_keys,
-        "adc_keys":adc_keys,
-        "target_spacing":args.target_spacing,
-        "crop_size":args.crop_size,
-        "pad_size":args.pad_size}
+        "keys": keys,
+        "clinical_feature_keys": clinical_feature_keys,
+        "adc_keys": adc_keys,
+        "target_spacing": args.target_spacing,
+        "crop_size": args.crop_size,
+        "pad_size": args.pad_size}
 
     transforms_prediction = monai.transforms.Compose([
         *get_transforms("pre",**transform_arguments),
