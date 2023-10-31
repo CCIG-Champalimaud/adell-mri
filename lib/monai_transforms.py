@@ -19,7 +19,8 @@ from .utils import (
     SampleChannelDimd,
     AdjustSizesd,
     CropFromMaskd,
-    ConvexHulld)
+    ConvexHulld,
+    PrintShaped)
 from .modules.augmentations import (
     generic_augments,mri_specific_augments,spatial_augments,
     AugmentationWorkhorsed)
@@ -454,7 +455,7 @@ def get_pre_transforms_ssl(all_keys:List[str],
         monai.transforms.LoadImaged(
             all_keys,ensure_channel_first=True,image_only=True),
         SampleChannelDimd(all_keys,n_channels)]
-    if jpeg_dataset is False:
+    if jpeg_dataset is False and n_dim == 2:
         transforms.extend(
             [SampleChannelDimd(all_keys,1,3),
              monai.transforms.SqueezeDimd(all_keys,-1,update_meta=False)])

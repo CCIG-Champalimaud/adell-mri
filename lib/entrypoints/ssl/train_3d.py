@@ -9,17 +9,16 @@ from lightning.pytorch import Trainer
 from lightning.pytorch.callbacks import RichProgressBar
 
 from ...entrypoints.assemble_args import Parser
-from ...utils import (
-    collate_last_slice,
-    RandomSlices,
-    safe_collate)
+from ...utils import safe_collate
 from ...utils.pl_utils import get_ckpt_callback,get_logger,get_devices
-from ...modules.self_supervised.pl import (
-    SelfSLResNetPL,SelfSLUNetPL)
+from ...utils.dataset_filters import filter_dictionary
+from ...utils.network_factories import get_ssl_network
 from ...utils import ExponentialMovingAverage
 from ...modules.config_parsing import parse_config_ssl,parse_config_unet
 from ...monai_transforms import (
-    get_pre_transforms_ssl,get_post_transforms_ssl,get_augmentations_ssl)
+    get_pre_transforms_ssl,
+    get_post_transforms_ssl,
+    get_augmentations_ssl)
 
 torch.backends.cudnn.benchmark = True
 
@@ -44,22 +43,27 @@ def main(arguments):
         "dataset_json",
         "image_keys",
         ("adc_keys","adc_image_keys"),
-        "train_pids",
         "target_spacing",
         "pad_size","crop_size","random_crop_size",
         "different_crop",
         "subsample_size",
+        "filter_on_keys",
         "cache_rate",
         "precision",
-        "unet_encoder",
+        ("ssl_net_type","net_type"),
         "batch_size",
+        "n_transforms",
+        "stop_gradient",
+        "scaled_crop_size",
         "config_file","ssl_method","ema",
         "checkpoint_dir","checkpoint_name","checkpoint","resume_from_last",
         "project_name","resume","summary_name","summary_dir","metric_path",
+        "check_val_every_n_epoch",
         "dev","n_workers",
         "seed",
         "max_epochs",
         "accumulate_grad_batches","gradient_clip_val",
+        ("warmup_steps","warmup_epochs"),
         "dropout_param"
     ])
     
@@ -75,7 +79,6 @@ def main(arguments):
 
     keys = args.image_keys
     copied_keys = [k+"_copy" for k in keys]
-    key_correspondence = {k:kk for k,kk in zip(keys,copied_keys)}
     if args.adc_image_keys is None:
         args.adc_image_keys = []
     args.adc_image_keys = [k for k in args.adc_image_keys if k in keys]
@@ -92,44 +95,51 @@ def main(arguments):
         k:data_dict[k] for k in data_dict
         if len(set.intersection(set(data_dict[k]),
                                 set(all_keys))) == len(all_keys)}
+    data_dict = filter_dictionary(
+        data_dict,
+        filters_presence=all_keys,
+        possible_labels=None,
+        label_key=None,
+        filters=args.filter_on_keys)
+    
+    if len(data_dict) == 0:
+        print("No data in dataset JSON")
+        exit()
+
     if args.subsample_size is not None:
         ss = np.random.choice(
             list(data_dict.keys()),args.subsample_size,replace=False)
         data_dict = {k:data_dict[k] for k in ss}
+
     for k in data_dict:
         data_dict[k]["pid"] = k
 
-    if args.unet_encoder is True:
+    if args.net_type == "unet_encoder":
         network_config,_ = parse_config_unet(
             args.config_file,len(keys),2)
         network_config_correct = deepcopy(network_config)
         for k in network_config:
             if k in ["loss_fn"]:
                 del network_config_correct[k]
-        n_dims = network_config["spatial_dimensions"]
     else:
         network_config,network_config_correct = parse_config_ssl(
-            args.config_file,args.dropout_param,len(keys))
-        n_dims = network_config["backbone_args"]["spatial_dim"]
+            args.config_file,args.dropout_param,len(keys),
+            args.ssl_method=="ijepa")
 
     if (args.batch_size is not None) and (args.batch_size != "tune"):
         network_config["batch_size"] = args.batch_size
         network_config_correct["batch_size"] = args.batch_size
 
-    if args.ema is True:
-        bs = network_config_correct["batch_size"]
-        ema_params = {
-            "decay":0.99,
-            "final_decay":1.0,
-            "n_steps":args.max_epochs*len(data_dict)/bs}
-        ema = ExponentialMovingAverage(**ema_params)
-    else:
-        ema = None
+    if args.batch_size is not None:
+        network_config["batch_size"] = args.batch_size
+        network_config_correct["batch_size"] = args.batch_size
 
     if args.random_crop_size is None:
-        roi_size = [64,64,8]
+        roi_size = [128,128]
     else:
         roi_size = [int(x) for x in args.random_crop_size]
+
+    all_pids = [k for k in data_dict]
 
     is_ijepa = args.ssl_method == "ijepa"
     pre_transform_args = {
@@ -174,64 +184,81 @@ def main(arguments):
         *get_augmentations_ssl(**augmentation_args),
         *get_post_transforms_ssl(**post_transform_args)]
 
-    if n_dims == 2:
-        transforms.append(
-            RandomSlices(["image"],None,8,base=0.001))
-        collate_fn = collate_last_slice
-    else:
-        collate_fn = safe_collate
+    print(f"Training set size: {len(data_dict)}")
 
-    if args.train_pids is not None:
-        train_pids = args.train_pids
-    else:
-        train_pids = [pid for pid in data_dict]
-    train_list = [data_dict[pid] for pid in data_dict
-                  if pid in train_pids]
+    train_pids = list(data_dict.keys())
+    train_list = [value for pid,value in data_dict.items()]
 
     accelerator,devices,strategy = get_devices(args.dev)
 
-    # split workers across cache construction and data loading
-    a = args.n_workers // 2
-    b = args.n_workers - a
     train_dataset = monai.data.CacheDataset(
         train_list,
         monai.transforms.Compose(transforms),
-        cache_rate=args.cache_rate,num_workers=a)
+        cache_rate=args.cache_rate,num_workers=args.n_workers)
+    
+    n_devices = len(devices) if isinstance(devices,list) else 1
+    agb = args.accumulate_grad_batches
+    bs = network_config_correct["batch_size"]
+    steps_per_epoch = len(data_dict) // (bs * n_devices)
+    steps_per_epoch = int(np.ceil(steps_per_epoch / agb))
+    max_epochs = args.max_epochs
+    max_steps = -1
+    max_steps_optim = args.max_epochs * steps_per_epoch
+    warmup_steps = args.warmup_epochs * steps_per_epoch
+    check_val_every_n_epoch = args.check_val_every_n_epoch
+    val_check_interval = None
+    warmup_steps = int(warmup_steps)
+    max_steps_optim = int(max_steps_optim)
+    
+    if args.ema is True:
+        if is_ijepa is True:
+            ema_params = {
+                "decay":0.99,
+                "final_decay":1.0,
+                "n_steps":max_steps_optim}
+        else:
+            ema_params = {
+                "decay":0.996,
+                "final_decay":1.0,
+                "n_steps":max_steps_optim}
+        ema = ExponentialMovingAverage(**ema_params)
+    else:
+        ema = None
 
-    def train_loader_call(batch_size,shuffle=True): 
+    if isinstance(devices,list):
+        n_workers = args.n_workers // len(devices)
+    else:
+        n_workers = args.n_workers // devices
+    def train_loader_call(batch_size,shuffle=True):
         return monai.data.ThreadDataLoader(
             train_dataset,batch_size=batch_size,
-            shuffle=shuffle,num_workers=b,generator=g,
-            collate_fn=collate_fn,pin_memory=True,
-            persistent_workers=True,drop_last=True)
+            num_workers=n_workers,
+            collate_fn=safe_collate,pin_memory=True,
+            persistent_workers=n_workers>1,drop_last=True)
 
     train_loader = train_loader_call(
         network_config_correct["batch_size"],False)
+    val_loader = monai.data.ThreadDataLoader(
+        train_dataset,batch_size=network_config_correct["batch_size"],
+        num_workers=n_workers,collate_fn=safe_collate,drop_last=True)
 
-    if args.unet_encoder is True:
-        ssl = SelfSLUNetPL(
-            training_dataloader_call=train_loader_call,
-            aug_image_key_1="augmented_image_1",
-            aug_image_key_2="augmented_image_2",
-            box_key_1="box_1",
-            box_key_2="box_2",
-            n_epochs=args.max_epochs,
-            vic_reg=args.ssl_method == "vicreg",
-            vic_reg_local=args.ssl_method == "vicregl",
-            ema=ema,
-            **network_config_correct)
-    else:
-        ssl = SelfSLResNetPL(
-            training_dataloader_call=train_loader_call,
-            aug_image_key_1="augmented_image_1",
-            aug_image_key_2="augmented_image_2",
-            box_key_1="box_1",
-            box_key_2="box_2",
-            n_epochs=args.max_epochs,
-            vic_reg=args.ssl_method == "vicreg",
-            vic_reg_local=args.ssl_method == "vicregl",
-            ema=ema,
-            **network_config_correct)
+    ssl = get_ssl_network(train_loader_call=train_loader_call,
+                          max_epochs=max_epochs,
+                          max_steps_optim=max_steps_optim,
+                          warmup_steps=warmup_steps,
+                          ssl_method=args.ssl_method,
+                          ema=ema,
+                          net_type=args.net_type,
+                          network_config_correct=network_config_correct,
+                          stop_gradient=args.stop_gradient)
+
+    if args.checkpoint is not None:
+        state_dict = torch.load(
+            args.checkpoint,map_location=args.dev)['state_dict']
+        inc = ssl.load_state_dict(state_dict)
+    
+    callbacks = [RichProgressBar()]
+
     if "cuda" in args.dev:
         ssl = ssl.to("cuda")
 
@@ -242,10 +269,11 @@ def main(arguments):
     
     callbacks = [RichProgressBar()]
 
+    epochs_ckpt = max_epochs
     ckpt_callback,ckpt_path,status = get_ckpt_callback(
         checkpoint_dir=args.checkpoint_dir,
         checkpoint_name=args.checkpoint_name,
-        max_epochs=args.max_epochs,
+        max_epochs=epochs_ckpt,
         resume_from_last=args.resume_from_last,
         val_fold=None,
         monitor="val_loss")
@@ -262,27 +290,32 @@ def main(arguments):
                         resume=args.resume,
                         fold=None)
 
-    precision = {"16":16,"32":32,"bf16":"bf16"}[args.precision]
+    precision = args.precision
     trainer = Trainer(
-        accelerator="gpu" if "cuda" in args.dev else "cpu",
-        devices=devices,logger=logger,callbacks=callbacks,
-        strategy=strategy,max_epochs=args.max_epochs,
+        accelerator=accelerator,
+        devices=devices,
+        logger=logger,
+        callbacks=callbacks,
+        strategy=strategy,
+        max_epochs=max_epochs,
+        max_steps=max_steps,
         sync_batchnorm=True if strategy is not None else False,
-        enable_checkpointing=ckpt,check_val_every_n_epoch=5,
-        precision=precision,resume_from_checkpoint=ckpt_path,
-        auto_scale_batch_size="power" if args.batch_size == "tune" else None,
+        enable_checkpointing=ckpt,
+        val_check_interval=val_check_interval,
+        check_val_every_n_epoch=check_val_every_n_epoch,
+        precision=precision,
         accumulate_grad_batches=args.accumulate_grad_batches,
-        gradient_clip_val=args.gradient_clip_val)
-    if strategy is None and args.batch_size == "tune":
-        bs = trainer.tune(ssl,scale_batch_size_kwargs={"steps_per_trial":2,
-                                                       "init_val":16})
+        gradient_clip_val=args.gradient_clip_val,
+        limit_train_batches=len(train_loader) // n_devices,
+        limit_val_batches=len(val_loader) // n_devices)
     
     torch.cuda.empty_cache()
     force_cudnn_initialization()
-    trainer.fit(ssl,val_dataloaders=train_loader)
+    
+    trainer.fit(ssl,val_dataloaders=val_loader,ckpt_path=ckpt_path)
     
     print("Validating...")
-    test_metrics = trainer.test(ssl,train_loader)[0]
+    test_metrics = trainer.test(ssl,val_loader)[0]
     for k in test_metrics:
         out = test_metrics[k]
         try:
