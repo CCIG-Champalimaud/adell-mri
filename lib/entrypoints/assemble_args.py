@@ -605,7 +605,12 @@ argument_factory = {
     "n_samples_gen": dict(
         type=int,
         default=1000,
-        help="Number of samples to generate.")
+        help="Number of samples to generate."),
+    "fill_missing_with_placeholder": dict(
+        type=str,
+        default=None,
+        nargs="+",
+        help="Fills missing keys with value (key1:value1, key2:value2)")
 }
 
 class Parser(ArgumentParser):

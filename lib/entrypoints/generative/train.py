@@ -21,10 +21,11 @@ from ...utils.pl_utils import (
     get_devices,
     LogImageFromDiffusionProcess)
 from ...utils.torch_utils import load_checkpoint_to_model
-from ...utils.dataset_filters import filter_dictionary
+from ...utils.dataset_filters import filter_dictionary, fill_missing_with_value
 from ...monai_transforms import (
     get_pre_transforms_generation as get_pre_transforms,
-    get_post_transforms_generation as get_post_transforms)
+    get_post_transforms_generation as get_post_transforms,
+    get_augmentations_class as get_augmentations)
 from ...utils.network_factories import get_generative_network
 from ...utils.parser import get_params,merge_args,parse_ids,compose
 
@@ -50,6 +51,7 @@ def main(arguments):
         'params_from', 
         'image_keys', 'cat_condition_keys', 'num_condition_keys', 
         'filter_on_keys', 'excluded_ids', 
+        'augment',
         'cache_rate', 
         'subsample_size','val_from_train', 
         'target_spacing', 'pad_size', 'crop_size', 
@@ -67,7 +69,7 @@ def main(arguments):
         'metric_path', 'resume', 
         'dropout_param', 
         'batch_size', 'learning_rate', 
-        'diffusion_steps'
+        'diffusion_steps', "fill_missing_with_placeholder"
     ])
 
     args = parser.parse_args(arguments)
@@ -90,6 +92,9 @@ def main(arguments):
     output_file = open(args.metric_path,'w')
 
     data_dict = json.load(open(args.dataset_json,'r'))
+    if args.fill_missing_with_placeholder is not None:
+        fill_missing_with_value(
+            data_dict, args.fill_missing_with_placeholder)
     presence_keys = [*args.image_keys]
     categorical_specification = None
     numerical_specification = None
@@ -147,11 +152,20 @@ def main(arguments):
         "pad_size":args.pad_size}
     transform_post_arguments = {
         "image_keys":keys,
+        "crop_size": args.crop_size,
         "cat_keys": args.cat_condition_keys,
         "num_keys": args.num_condition_keys}
+    augmentation_args = {
+        "augment": [] if args.augment is None else args.augment,
+        "all_keys": keys,
+        "mask_key": None,
+        "image_keys": keys,
+        "t2_keys": keys,
+        "flip_axis": [0]}
 
     transforms_train = [
         *get_pre_transforms(**transform_pre_arguments),
+        *get_augmentations(**augmentation_args).transforms,
         *get_post_transforms(**transform_post_arguments)]
     
     train_list = [data_dict[pid] for pid in all_pids]

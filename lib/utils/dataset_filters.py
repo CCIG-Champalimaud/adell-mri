@@ -2,6 +2,30 @@ import os
 from typing import List
 from ..custom_types import DatasetDict
 
+def fill_missing_with_value(D:DatasetDict,
+                            filters:List[str])->DatasetDict:
+    """Imputes missing values with a given value, both present in filters as a
+    list of strings specified as key:value pairs.
+
+    Args:
+        D (DatasetDict): dataset dictionary.
+        filters (List[str]): list of with key:value pairs.
+
+    Returns:
+        DatasetDict: imputed dataset dictionary.
+    """
+    print(f"Filling keys: {filters}")
+    n = 0
+    filters = [k.split(":") for k in filters]
+    filters = {k[0]:k[1] for k in filters}
+    for key in D:
+        for filter_key in filters:
+            if filter_key not in D[key]:
+                D[key][filter_key] = filters[filter_key]
+                n += 1
+    print(f"\tFilled keys: {n}")
+    return D
+
 def filter_dictionary_with_presence(D:DatasetDict,
                                     filters:List[str])->DatasetDict:
     """Filters a dictionary based on whether a nested dictionary has the keys

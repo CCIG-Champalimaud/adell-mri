@@ -62,14 +62,18 @@ class DiffusionUNetPL(DiffusionModelUNet,pl.LightningModule):
             0, self.noise_steps, (x.shape[0],),
             generator=self.g).to(x.device).long()
 
-    def step(self, x:torch.Tensor, condition:torch.Tensor=None):
-        if condition is not None:
-            condition = torch.round(condition)
+    def step(self, 
+             x: torch.Tensor,
+             timesteps: torch.Tensor=None,
+             context: torch.Tensor=None):
         epsilon = self.randn_like(x)
-        timesteps = self.timesteps_like(x)
+        if timesteps is None:
+            timesteps = self.timesteps_like(x)
+        else:
+            timesteps = timesteps.long()
         epsilon_pred = self.inferer(inputs=x, diffusion_model=self, 
                                     noise=epsilon, timesteps=timesteps,
-                                    condition=condition)
+                                    condition=context)
         loss = self.calculate_loss(epsilon_pred, epsilon)
         return loss
 
@@ -85,7 +89,8 @@ class DiffusionUNetPL(DiffusionModelUNet,pl.LightningModule):
             else:
                 num_condition = None
             # expects three dimensions (batch, seq, embedding size)
-            condition = self.embedder(cat_condition, num_condition).unsqueeze(1)
+            condition = self.embedder(cat_condition, num_condition)
+            condition = condition.unsqueeze(1)
         else:
             condition = None
         return x, condition
@@ -95,19 +100,19 @@ class DiffusionUNetPL(DiffusionModelUNet,pl.LightningModule):
 
     def training_step(self,batch:dict, batch_idx:int):
         x,condition = self.unpack_batch(batch)
-        loss = self.step(x, condition)
+        loss = self.step(x, context=condition)
         self.log("loss",loss,on_step=True,prog_bar=True)
         return loss
 
     def validation_step(self,batch:dict, batch_idx:int):
         x,condition = self.unpack_batch(batch)
-        loss = self.step(x, condition)
+        loss = self.step(x, context=condition)
         self.log("val_loss",loss,on_epoch=True,prog_bar=True)
         return loss
 
     def test_step(self,batch:dict, batch_idx:int):
         x,condition= self.unpack_batch(batch)
-        loss = self.step(x, condition)
+        loss = self.step(x, context=condition)
         self.log("test_loss",loss)
         return loss
     
@@ -119,9 +124,14 @@ class DiffusionUNetPL(DiffusionModelUNet,pl.LightningModule):
     def generate_image(self, size=List[int], n=int):
         noise = torch.randn([n,self.in_channels,*size],
                             device=self.device)
+        if self.embedder is not None:
+            conditioning = self.embedder(batch_size=n).unsqueeze(1)
+        else:
+            conditioning = None
         sample = self.inferer.sample(input_noise=noise,
                                      diffusion_model=self,
-                                     scheduler=self.scheduler)
+                                     scheduler=self.scheduler,
+                                     conditioning=conditioning)
         return sample
 
     def train_dataloader(self) -> torch.utils.data.DataLoader:

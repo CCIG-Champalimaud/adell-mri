@@ -411,16 +411,22 @@ def get_pre_transforms_generation(keys,
                 keys,[int(j) for j in pad_size]))
     if crop_size is not None:
         transforms.append(
-            monai.transforms.CenterSpatialCropd(keys,crop_size))
+            monai.transforms.CenterSpatialCropd(
+                keys,[int(j) + 16 for j in crop_size]))
     transforms.append(monai.transforms.EnsureTyped(keys))
     return transforms
 
 def get_post_transforms_generation(image_keys: List[str],
+                                   crop_size: List[int]=None,
                                    cat_keys: List[str]=None,
                                    num_keys: List[str]=None):
     transforms = []
     transforms.append(
         monai.transforms.ConcatItemsd(image_keys,"image"))
+    if crop_size is not None:
+        transforms.append(
+            monai.transforms.CenterSpatialCropd(
+                image_keys,[int(j) for j in crop_size]))
     if cat_keys is not None:
         transforms.append(
             monai.transforms.Lambdad(cat_keys,box,track_meta=False))

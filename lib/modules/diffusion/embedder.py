@@ -1,6 +1,12 @@
+import numpy as np
 import torch
 
 from typing import List, Any
+
+def mode(X: np.ndarray):
+    u,c  = np.unique(X,return_counts=True)
+    out = u[c.argmax()]
+    return out
 
 class CategoricalEmbedder(torch.nn.Module):
     def __init__(self,
@@ -36,7 +42,6 @@ class CategoricalEmbedder(torch.nn.Module):
     def forward(self, X: List[torch.Tensor]):
         if self.convert is True:
             for i in range(len(X)):
-                print(self.conversions)
                 X[i] = [conversion[x] 
                         for x,conversion in zip(X[i],self.conversions)]
             X = torch.as_tensor(X,device=self.device)
@@ -50,13 +55,19 @@ class Embedder(torch.nn.Module):
     def __init__(self,
                  cat_feat: List[int | List[Any]]=None,
                  n_num_feat: int=None,
-                 embedding_size: int=512):
+                 embedding_size: int=512,
+                 max_queue_size: int=512,
+                 device: torch.device=None):
         super().__init__()
         self.cat_feat = cat_feat
         self.n_num_feat = n_num_feat
         self.embedding_size = embedding_size
+        self.max_queue_size = max_queue_size
+        self.device = device
 
         self.init_embeddings()
+        self.cat_distributions = [[] for _ in self.cat_feat]
+        self.num_distributions = [[] for _ in range(n_num_feat)]
 
     def init_embeddings(self):
         self.final_n_features = 0
@@ -72,12 +83,65 @@ class Embedder(torch.nn.Module):
         self.final_embedding = torch.nn.Linear(self.final_n_features,
                                                self.embedding_size)
     
-    def forward(self, 
+    def update_queues(self, 
+                      X_cat: List[torch.LongTensor]=None,
+                      X_num: torch.Tensor=None):
+        if len(self.cat_distributions) > 0:
+            if len(self.cat_distributions[0]) > self.max_queue_size:
+                self.cat_distributions = [
+                    d[-512:] for d in self.cat_distributions[-512:]]
+        if len(self.num_distributions) > 0:
+            if len(self.num_distributions[0]) > self.max_queue_size:
+                self.num_distributions = [
+                    d[-512:] for d in self.num_distributions[-512:]]
+        if X_cat is not None:
+            for i in range(len(self.cat_distributions)):
+                self.cat_distributions[i].extend([x[i] for x in X_cat])
+        if X_num is not None:
+            X_num = X_num.cpu().numpy()
+            for i in range(len(self.num_distributions)):
+                self.num_distributions[i].extend(X_num[:,i])
+
+    def get_expected_cat(self, n: int=1):
+        # returns mode for all categorical features
+        output = [[] for _ in range(n)]
+        for i in range(len(self.cat_distributions)):
+            curr = self.cat_distributions[i]
+            tmp = str(mode(curr))
+            for j in range(n):
+                output[j].append(tmp)
+        output = [np.array(x) for x in output]
+        return output
+
+    def get_expected_num(self, n: int=1):
+        # returns mean for all numerical features
+        output = []
+        for i in range(len(self.num_distributions)):
+            curr = self.num_distributions[i]
+            tmp = np.mean(curr)
+            output.append([tmp for _ in range(n)])
+        output = torch.as_tensor(output, device=self.device).T
+        return output
+
+    def forward(self,
                 X_cat: List[torch.LongTensor]=None,
-                X_num: torch.Tensor=None):
+                X_num: torch.Tensor=None,
+                batch_size: int=1):
+        self.update_queues(X_cat=X_cat, X_num=X_num)
         embeddings = []
         if self.cat_feat is not None:
+            if X_cat is None:
+                X_cat = self.get_expected_cat(batch_size)
             embeddings.append(self.cat_embedder(X_cat))
+            if self.device is None:
+                self.device = embeddings[-1].device
+
         if self.n_num_feat is not None:
+            if X_num is None:
+                X_num = self.get_expected_num(batch_size)
             embeddings.append(self.num_embedder(X_num))
-        return self.final_embedding(torch.cat(embeddings,1))
+            if self.device is None:
+                self.device = embeddings[-1].device
+
+        out = self.final_embedding(torch.cat(embeddings,1))
+        return out
