@@ -297,7 +297,9 @@ def get_transforms_classification(x,
                                   label_groups=None,
                                   label_key=None,
                                   target_size=None,
-                                  label_mode=None):
+                                  label_mode=None,
+                                  cat_confounder_keys=None,
+                                  cont_confounder_keys=None):
     non_adc_keys = [k for k in keys if k not in adc_keys]
     all_keys = [k for k in keys]
     if mask_key is not None: 
@@ -387,6 +389,17 @@ def get_transforms_classification(x,
                     mode=label_mode,positive_labels=positive_labels,
                     label_groups=label_groups,
                     output_keys={label_key:"label"}))
+        if cat_confounder_keys is not None:
+            transforms.append(
+                monai.transforms.Lambdad(cat_confounder_keys,
+                                         box,track_meta=False))
+            transforms.append(
+                monai.transforms.ConcatItemsd(cat_confounder_keys,"cat_confounder"))
+        if cont_confounder_keys is not None:
+            transforms.append(
+                monai.transforms.Lambdad(cont_confounder_keys,box))
+            transforms.append(
+                monai.transforms.ConcatItemsd(cont_confounder_keys,"cont_confounder"))
     return transforms
 
 def get_pre_transforms_generation(keys,

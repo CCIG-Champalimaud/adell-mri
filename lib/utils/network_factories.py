@@ -11,6 +11,10 @@ from ..modules.classification.pl import (
     ViTClassifierPL,
     FactorizedViTClassifierPL,
     HybridClassifierPL)
+# confounder-free classification
+from ..modules.classification.pl import DeconfoundedNetPL
+from ..modules.classification.classification.deconfounded_classification import (
+    CategoricalConversion)
 # detection
 from ..modules.object_detection.losses import complete_iou_loss
 from ..modules.object_detection.pl import YOLONet3dPL
@@ -132,6 +136,56 @@ def get_classification_network(net_type:str,
             tabular_module=tab_network,
             **boilerplate_args_hybrid)
 
+    return network
+
+def get_deconfounded_classification_network(network_config:Dict[str,Any],
+                                            dropout_param:float,
+                                            seed:int,
+                                            n_classes:int,
+                                            keys:List[str],
+                                            cat_confounder_key:List[str],
+                                            cont_confounder_key:List[str],
+                                            cat_vars: List[List[str]],
+                                            cont_vars: int,
+                                            train_loader_call:Callable,
+                                            max_epochs:int,
+                                            warmup_steps:int,
+                                            start_decay:int,
+                                            label_smoothing=None,
+                                            mixup_alpha=None,
+                                            partial_mixup=None)->torch.nn.Module:
+    act_fn = "swish"
+    adn_fn = get_adn_fn(3,"identity",act_fn=act_fn,
+                        dropout_param=dropout_param)
+    batch_preprocessing = BatchPreprocessing(
+        label_smoothing,mixup_alpha,partial_mixup,seed)
+    if cat_vars is not None:
+        cat_conv = CategoricalConversion(cat_vars)
+    else:
+        cat_conv = None
+    boilerplate_args = {
+        "n_channels":len(keys),
+        "n_classes":n_classes,
+        "training_dataloader_call":train_loader_call,
+        "image_key":"image",
+        "label_key":"label",
+        "n_epochs":max_epochs,
+        "warmup_steps":warmup_steps,
+        "training_batch_preproc":batch_preprocessing,
+        "start_decay":start_decay}
+    n_cat_deconfounder = [
+        len(x) for x in cat_vars] if cat_vars is not None else None
+    network = DeconfoundedNetPL(
+        adn_fn=adn_fn,
+        embedder=cat_conv,
+        n_features_deconfounder=128,
+        n_cat_deconfounder=n_cat_deconfounder,
+        n_cont_deconfounder=cont_vars,
+        cat_confounder_key=cat_confounder_key,
+        cont_confounder_key=cont_confounder_key,
+        **boilerplate_args,
+        **network_config)
+    
     return network
 
 def get_detection_network(net_type:str,

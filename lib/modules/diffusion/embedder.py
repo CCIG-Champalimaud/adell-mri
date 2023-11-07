@@ -34,7 +34,7 @@ class CategoricalEmbedder(torch.nn.Module):
                 self.embedders.append(
                     torch.nn.Embedding(len(cat_feat), self.embedding_size))
                 self.convert = True
-    
+
     @property
     def device(self):
         return next(self.embedders[-1].parameters()).device

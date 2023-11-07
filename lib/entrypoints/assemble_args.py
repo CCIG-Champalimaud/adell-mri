@@ -610,7 +610,18 @@ argument_factory = {
         type=str,
         default=None,
         nargs="+",
-        help="Fills missing keys with value (key1:value1, key2:value2)")
+        help="Fills missing keys with value (key1:value1, key2:value2)"),
+    # deconfounded classifier-specific
+    "cat_confounder_keys": dict(
+        type=str,
+        default=None,
+        nargs="+",
+        help="Keys corresponding to categorical confounder."),
+    "cont_confounder_keys": dict(
+        type=str,
+        default=None,
+        nargs="+",
+        help="Keys corresponding to continuous confounder."),
 }
 
 class Parser(ArgumentParser):

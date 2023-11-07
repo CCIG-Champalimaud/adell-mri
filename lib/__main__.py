@@ -2,6 +2,7 @@ import sys
 
 supported_modes = [
     "classification",
+    "classification_deconfounder",
     "classification_mil",
     "classification_ensemble",
     "generative",
@@ -22,6 +23,9 @@ def main():
     # classification modes
     elif arguments[0] == "classification":
         from .entrypoints.classification.__main__ import main
+        main(arguments[1:])
+    elif arguments[0] == "classification_deconfounder":
+        from .entrypoints.classification_deconfounder.__main__ import main
         main(arguments[1:])
     elif arguments[0] == "classification_mil":
         from .entrypoints.classification_mil.__main__ import main

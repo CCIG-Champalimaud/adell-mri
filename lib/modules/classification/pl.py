@@ -12,7 +12,8 @@ from abc import ABC
 from .classification import (
     CatNet,OrdNet,ordinal_prediction_to_class,SegCatNet,
     UNetEncoder,GenericEnsemble,ViTClassifier,FactorizedViTClassifier,
-    TransformableTransformer,MultipleInstanceClassifier,HybridClassifier, VGG)
+    TransformableTransformer,MultipleInstanceClassifier,HybridClassifier,VGG)
+from .classification.deconfounded_classification import DeconfoundedNet
 from ..conformal_prediction import AdaptivePredictionSets
 from ..learning_rate import CosineAnnealingWithWarmupLR
 
@@ -1206,3 +1207,188 @@ class HybridClassifierPL(HybridClassifier,ClassPLABC):
                  batch_size=x_conv.shape[0],sync_dist=True)        
         self.update_metrics(prediction,y,self.test_metrics)
         return loss
+
+class DeconfoundedNetPL(DeconfoundedNet,ClassPLABC):
+    """
+    Feature deconfounder net for PyTorch Lightning.
+    """
+    def __init__(
+        self,
+        image_key: str="image",
+        label_key: str="label",
+        embedder: torch.nn.Module=None,
+        cat_confounder_key: str=None,
+        cont_confounder_key: str=None,
+        learning_rate: float=0.001,
+        batch_size: int=4,
+        weight_decay: float=0.0,
+        training_dataloader_call: Callable=None,
+        loss_fn: Callable=F.binary_cross_entropy,
+        loss_params: dict={},
+        n_epochs: int=100,
+        warmup_steps: int=0,
+        start_decay: int=None,
+        training_batch_preproc: Callable=None,
+        *args,**kwargs) -> torch.nn.Module:
+        """
+        Args:
+            image_key (str): key corresponding to the key from the train
+                dataloader.
+            label_key (str): key corresponding to the label key from the train
+                dataloader.
+            embedder (torch.nn.Module, optional): embedder for categorical
+                confounders. Defaults to None but necessary if 
+                cat_confounder_key is specified.
+            cat_confounder_key (str, optional): key for categorical confounder.
+                Defaults to None.
+            cont_confounder_key (str, optional): key for continuous confounder.
+                Defaults to None.
+            learning_rate (float, optional): learning rate. Defaults to 0.001.
+                batch_size (int, optional): batch size. Defaults to 4.
+            weight_decay (float, optional): weight decay for optimizer. Defaults 
+                to 0.005.
+            training_dataloader_call (Callable, optional): call for the 
+                training dataloader. Defaults to None.
+            loss_fn (Callable, optional): loss function. Defaults to 
+                F.binary_cross_entropy
+            loss_params (dict, optional): classification loss parameters. 
+                Defaults to {}.
+            n_epochs (int, optional): number of epochs. Defaults to 100.
+            warmup_steps (int, optional): number of warmup steps. Defaults 
+                to 0.
+            start_decay (int, optional): number of steps after which decay
+                begins. Defaults to None (decay starts after warmup).
+            training_batch_preproc (Callable): function to be applied to the
+                entire batch before feeding it to the model during training.
+                Can contain transformations such as mixup, which require access
+                to the entire training batch.
+            args: arguments for classification network class.
+            kwargs: keyword arguments for classification network class.
+
+        Returns:
+            pl.LightningModule: a classification network module.
+        """
+        
+        super().__init__(*args, **kwargs)
+
+        self.image_key = image_key
+        self.label_key = label_key
+        self.embedder = embedder
+        self.cat_confounder_key = cat_confounder_key
+        self.cont_confounder_key = cont_confounder_key
+        self.learning_rate = learning_rate
+        self.batch_size = batch_size
+        self.weight_decay = weight_decay
+        self.training_dataloader_call = training_dataloader_call
+        self.loss_fn = loss_fn
+        self.loss_params = loss_params
+        self.n_epochs = n_epochs
+        self.warmup_steps = warmup_steps
+        self.start_decay = start_decay
+        self.training_batch_preproc = training_batch_preproc
+        self.args = args
+        self.kwargs = kwargs
+
+        self.loss_str = ["cl_loss",
+                         "cat_loss",
+                         "cont_loss",
+                         "feat_loss"]
+        
+        self.conf_mult = 0.1
+
+        self.setup_metrics()
+           
+    def loss_cat_confounder(self, pred: torch.Tensor, y: torch.Tensor):
+        y = self.embedder(y)
+        d = pred[0].device
+        return sum([F.cross_entropy(p,y_.to(d)) 
+                    for p,y_ in zip(pred, y)]) * self.conf_mult
+    
+    def loss_cont_confounder(self, pred: torch.Tensor, y: torch.Tensor):
+        return F.mse_loss(pred, y.to(pred)) * self.conf_mult
+    
+    def loss_features(self, features: torch.Tensor):
+        if self.n_features_deconfounder > 0:
+            conf_f = features[:,:self.n_features_deconfounder,None]
+            deconf_f = features[:,None,self.n_features_deconfounder:]
+            conf_f_mean = conf_f.mean(0, keepdim=True)
+            deconf_f_mean = deconf_f.mean(0, keepdim=True)
+            n = (conf_f - conf_f_mean) * (deconf_f - deconf_f_mean)
+            n = n.sum(0)
+            d = torch.multiply(
+                torch.square(conf_f - conf_f_mean).sum(0),
+                torch.square(deconf_f - deconf_f_mean).sum(0)).sqrt()
+            return torch.mean(torch.square(n / d))
+
+    def step(self,
+             batch: Dict[str, torch.Tensor],
+             with_params: bool):
+        x,y = batch[self.image_key],batch[self.label_key]
+        if hasattr(self, 'training_batch_preproc'):
+            if self.training_batch_preproc is not None:
+                x,y = self.training_batch_preproc(x,y)
+        prediction = self.forward(x)
+        classification = prediction[0]
+        confounder_classification = prediction[1]
+        confounder_regression = prediction[2]
+        features = prediction[3]
+        cat_conf_loss = None
+        cont_conf_loss = None
+        if self.cat_confounder_key is not None:
+            y_cat_confounder = batch[self.cat_confounder_key]
+            cat_conf_loss = self.loss_cat_confounder(
+                confounder_classification, y_cat_confounder)
+        if self.cont_confounder_key is not None:
+            y_cont_confounder = batch[self.cont_confounder_key]
+            cont_conf_loss = self.loss_cat_confounder(
+                confounder_regression, y_cont_confounder)
+        feature_loss = self.loss_features(features)
+        classification_loss = self.calculate_loss(
+            classification.squeeze(1), y, with_params=with_params)
+        return (classification_loss, cat_conf_loss, 
+                cont_conf_loss, feature_loss,
+                classification, y)
+
+    def log_losses(self, 
+                   losses: List[torch.Tensor],
+                   prefix: str):
+        for l,s in zip(losses,self.loss_str):
+            if l is not None:
+                self.log(f"{prefix}_{s}", l, prog_bar=True)
+
+    def training_step(self,batch,batch_idx):
+        output = self.step(batch, with_params=True)
+        losses, pred_y = output[:4], output[4:]
+        losses = [l.mean() if l is not None else None for l in losses]
+        self.log_losses(losses, "tr")
+        return sum([l for l in losses if l is not None])
+
+    def validation_step(self,batch,batch_idx):
+        output = self.step(batch, with_params=False)
+        losses, pred_y = output[:4], output[4:]
+        losses = [l.mean() if l is not None else None for l in losses]
+        self.log_losses(losses, "val")
+        self.update_metrics(
+            self.val_metrics,pred_y[0],pred_y[1],
+            on_epoch=True,prog_bar=True)
+        return sum([l for l in losses if l is not None])
+
+    def test_step(self,batch,batch_idx):
+        output = self.step(batch, with_params=False)
+        losses, pred_y = output[:4], output[4:]
+        losses = [l.mean() if l is not None else None for l in losses]
+        self.log_losses(losses, "test")
+        self.update_metrics(
+            self.test_metrics,pred_y[0],pred_y[1],
+            on_epoch=True,prog_bar=True)
+        return sum([l for l in losses if l is not None])
+
+    def update_metrics(self,metrics,pred,y,**kwargs):
+        y = y.long()
+        if self.n_classes == 2:
+            pred = torch.sigmoid(pred).squeeze(1)
+        else:
+            pred = F.softmax(pred,-1)
+        for k in metrics:
+            metrics[k](pred,y)
+            self.log(k,metrics[k],**kwargs)
