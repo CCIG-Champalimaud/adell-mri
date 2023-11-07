@@ -19,5 +19,3 @@ def test_convnext_backbone_2d():
     o = convnext(i)
     d = 4*2**len(maxpool_structure)
     assert list(o.shape) == [1,structure[-1][0],h//d,w//d]
-
-test_convnext_backbone_2d()
