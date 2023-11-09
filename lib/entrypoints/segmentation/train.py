@@ -1,7 +1,5 @@
-import argparse
 import random
 import json
-import os
 import numpy as np
 import torch
 import monai
@@ -12,6 +10,7 @@ from tqdm import tqdm
 from lightning.pytorch import Trainer
 from lightning.pytorch.callbacks import EarlyStopping
 from lightning.pytorch.callbacks import RichProgressBar
+from lightning.pytorch.utilities.combined_loader import CombinedLoader
 
 from ...entrypoints.assemble_args import Parser
 from ...utils import (
@@ -21,8 +20,12 @@ from ...utils import (
     collate_last_slice,
     RandomSlices,
     SlicesToFirst,
+    CopyEntryd,
     safe_collate,
     safe_collate_crops)
+from ...modules.semi_supervised_segmentation.utils import (
+    convert_arguments_post,
+    convert_arguments_augment)
 from ...utils.pl_utils import get_ckpt_callback,get_logger,get_devices
 from ...monai_transforms import get_transforms_unet as get_transforms
 from ...monai_transforms import get_augmentations_unet as get_augmentations
@@ -81,7 +84,8 @@ def main(arguments):
         "picai_eval",
         "metric_path",
         "early_stopping",
-        ("class_weights","class_weights",{"default":[1.]})
+        ("class_weights","class_weights",{"default":[1.]}),
+        "semi_supervised"
     ])
 
     args = parser.parse_args(arguments)
@@ -132,12 +136,14 @@ def main(arguments):
             intp.append("area")
             intp_resampling_augmentations.append("bilinear")
     non_adc_keys = [k for k in keys if k not in adc_keys]
-    intp.extend(["nearest"]*len(label_keys))
-    intp.extend(["area"]*len(aux_keys))
-    intp.extend(["nearest"]*len(aux_mask_keys))
-    intp_resampling_augmentations.extend(["nearest"]*len(label_keys))
-    intp_resampling_augmentations.extend(["bilinear"]*len(aux_keys))
-    intp_resampling_augmentations.extend(["nearest"]*len(aux_mask_keys))
+    intp.extend(
+        [*["nearest"]*len(label_keys),
+         *["area"]*len(aux_keys),
+         *["nearest"]*len(aux_mask_keys)])
+    intp_resampling_augmentations.extend(
+        [*["nearest"]*len(label_keys),
+         *["bilinear"]*len(aux_keys),
+         *["nearest"]*len(aux_mask_keys)])
     all_keys = [*keys,*label_keys,*aux_keys,*aux_mask_keys]
     all_keys_t = [*all_keys,*feature_keys]
     if args.resize_size is not None:
@@ -155,6 +161,13 @@ def main(arguments):
         cur_dataset_dict = json.load(open(dataset_json,'r'))
         for k in cur_dataset_dict:
             data_dict[k] = cur_dataset_dict[k]
+    if args.semi_supervised is True:
+        data_dict_ssl = filter_dictionary(
+            data_dict,
+            filters_presence=args.image_keys,
+            possible_labels=None,
+            label_key=None,
+            filters=args.filter_on_keys)
     data_dict = filter_dictionary(
         data_dict,
         filters_presence=args.image_keys + [args.label_keys],
@@ -189,6 +202,11 @@ def main(arguments):
         ss = np.random.choice(
             sorted(list(data_dict.keys())),args.subsample_size,replace=False)
         data_dict = {k:data_dict[k] for k in ss}
+        if args.semi_supervised is True:
+            ss = np.random.choice(
+                sorted(list(data_dict_ssl.keys())),args.subsample_size,
+                replace=False)
+            data_dict_ssl = {k:data_dict_ssl[k] for k in ss}
 
     if args.excluded_ids is not None:
         args.excluded_ids = parse_ids(args.excluded_ids,
@@ -198,6 +216,12 @@ def main(arguments):
         data_dict = {k:data_dict[k] for k in data_dict
                      if k not in args.excluded_ids}
         print("\tRemoved {} IDs".format(prev_len - len(data_dict)))
+        if args.semi_supervised is True:
+            print("Removing IDs specified in --excluded_ids from semi-supervision")
+            prev_len = len(data_dict_ssl)
+            data_dict_ssl = {k:data_dict_ssl[k] for k in data_dict_ssl
+                             if k not in args.excluded_ids}
+            print("\tRemoved {} IDs".format(prev_len - len(data_dict_ssl)))
 
     if args.target_spacing[0] == "infer":
         target_spacing_dict = spacing_values_from_dataset_json(
@@ -251,6 +275,9 @@ def main(arguments):
         train_list = [data_dict[pid] for pid in train_pids]
         train_val_list = [data_dict[pid] for pid in train_val_pids]
         val_list = [data_dict[pid] for pid in val_pids]
+
+        if args.semi_supervised is True:
+            train_semi_sl_list = [data_dict_ssl[pid] for pid in train_pids]
 
         if args.target_spacing[0] == "infer":
             target_spacing = get_spacing_quantile(
@@ -312,6 +339,28 @@ def main(arguments):
             *get_transforms("pre",**transform_arguments_val),
             *get_transforms("post",**transform_arguments_val)]
 
+        if args.semi_supervised is True:
+            transform_arguments_semi_sl = {
+                k:transform_arguments[k] for k in transform_arguments
+                if k != "label_keys"}
+            transform_arguments_semi_sl_post_1 = convert_arguments_post(
+                transform_arguments,1)
+            transform_arguments_semi_sl_post_2 = convert_arguments_post(
+                transform_arguments,2)
+            augment_arguments_semi_sl_1 = convert_arguments_augment(
+                transform_arguments,1)
+            augment_arguments_semi_sl_2 = convert_arguments_augment(
+                transform_arguments,2)
+            
+            transforms_train_semi_sl = [
+                *get_transforms("pre",**transform_arguments_semi_sl),
+                CopyEntryd(keys,{k:f"{k}_aug_1" for k in keys}),
+                CopyEntryd(keys,{k:f"{k}_aug_2" for k in keys}),
+                get_augmentations(**augment_arguments_semi_sl_1),
+                get_augmentations(**augment_arguments_semi_sl_2),
+                *get_transforms("post",**transform_arguments_semi_sl_post_1),
+                *get_transforms("post",**transform_arguments_semi_sl_post_2)]
+
         if network_config["spatial_dimensions"] == 2:
             transforms_train.append(
                 RandomSlices(["image","mask"],"mask",n=8,base=0.05))
@@ -361,6 +410,13 @@ def main(arguments):
         validation_dataset = monai.data.Dataset(
             val_list,
             monai.transforms.Compose(transforms_val))
+        
+        if args.semi_supervised is True:
+            train_semi_sl_dataset = monai.data.CacheDataset(
+                train_semi_sl_list,
+                monai.transforms.Compose(transforms_train_semi_sl),
+                num_workers=args.n_workers,
+                cache_rate=args.cache_rate)
 
         # calculate the mean/std of tabular features
         if feature_keys is not None:
@@ -443,12 +499,24 @@ def main(arguments):
         else:
             nw = args.n_workers
 
-        def train_loader_call(batch_size): 
-            return monai.data.ThreadDataLoader(
+        def train_loader_call(batch_size):
+            train_loader = monai.data.ThreadDataLoader(
                 dataset=train_dataset,batch_size=batch_size, # noqa: F821
                 num_workers=nw,generator=g,sampler=sampler,
                 collate_fn=collate_fn_train,pin_memory=True,
                 persistent_workers=True,drop_last=True)
+            if args.semi_supervised is True:
+                train_semi_sl_loader = monai.data.ThreadDataLoader(
+                    dataset=train_semi_sl_dataset,
+                    batch_size=batch_size, # noqa: F821
+                    num_workers=nw,generator=g,sampler=sampler,
+                    collate_fn=collate_fn_train,pin_memory=True,
+                    persistent_workers=True,drop_last=True)
+                train_loader = CombinedLoader(
+                    {"supervised": train_loader,
+                     "self_supervised": train_semi_sl_loader},
+                    "min_size")
+            return train_loader
 
         train_loader = train_loader_call(network_config["batch_size"])
         train_val_loader = monai.data.ThreadDataLoader(
@@ -541,7 +609,8 @@ def main(arguments):
             random_crop_size=args.random_crop_size,
             crop_size=args.crop_size,
             pad_size=args.pad_size,
-            resize_size=args.resize_size)
+            resize_size=args.resize_size,
+            semi_supervised=args.semi_supervised)
 
         if args.early_stopping is not None:
             early_stopping = EarlyStopping(
@@ -564,7 +633,10 @@ def main(arguments):
             gradient_clip_val=args.gradient_clip_val,
             detect_anomaly=False)
 
-        trainer.fit(unet,train_loader,train_val_loader,ckpt_path=ckpt_path)
+        trainer.fit(unet,
+                    train_loader,
+                    train_val_loader,
+                    ckpt_path=ckpt_path)
         
         print("Validating...")
         if ckpt is True:

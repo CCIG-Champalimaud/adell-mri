@@ -622,6 +622,11 @@ argument_factory = {
         default=None,
         nargs="+",
         help="Keys corresponding to continuous confounder."),
+    # semi-supervised segmentation
+    "semi_supervised": dict(
+        action="store_true",
+        default=False,
+        help="Uses images without annotations for self-supervision.")
 }
 
 class Parser(ArgumentParser):

@@ -1,5 +1,6 @@
 import os
 from typing import List
+from copy import deepcopy
 from ..custom_types import DatasetDict
 
 def fill_missing_with_value(D:DatasetDict,
@@ -193,6 +194,7 @@ def filter_dictionary(D:DatasetDict,
     Returns:
         DatasetDict: filtered dictionary.
     """
+    D = deepcopy(D)
     if filters_presence is not None:
         D = filter_dictionary_with_presence(D,filters_presence)
     if filters_existence is not None:

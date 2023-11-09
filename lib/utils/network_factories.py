@@ -25,8 +25,9 @@ from lib.modules.segmentation.pl import (
     UNetPlusPlusPL,
     BrUNetPL,
     UNETRPL,
-    SWINUNetPL
-    )
+    SWINUNetPL)
+# semi-supervised segmentation
+from lib.modules.semi_supervised_segmentation.pl import UNetContrastiveSemiSL
 # self-supervised learning
 from lib.modules.self_supervised.pl import (
     SelfSLResNetPL,SelfSLUNetPL,
@@ -283,7 +284,8 @@ def get_segmentation_network(net_type:str,
                              random_crop_size:List[int],
                              crop_size:List[int],
                              pad_size:List[int],
-                             resize_size:List[int])->torch.nn.Module:
+                             resize_size:List[int],
+                             semi_supervised:bool)->torch.nn.Module:
     
     def get_size(*size_list):
         for size in size_list:
@@ -312,7 +314,18 @@ def get_segmentation_network(net_type:str,
         cosine_decay=cosine_decay
     )
 
-    if net_type == "brunet":
+    if net_type == "unet" and semi_supervised is True:
+        encoding_operations = encoding_operations[0]
+        unet = UNetContrastiveSemiSL(
+            encoding_operations=encoding_operations,
+            image_key="image",
+            semi_sl_image_key_1="semi_sl_image_1",
+            semi_sl_image_key_2="semi_sl_image_2",
+            deep_supervision=deep_supervision,
+            **boilerplate,
+            **network_config)
+
+    elif net_type == "brunet":
         nc = network_config["n_channels"]
         network_config["n_channels"] = nc // len(keys)
         unet = BrUNetPL(

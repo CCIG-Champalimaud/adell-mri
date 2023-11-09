@@ -93,6 +93,7 @@ def get_transforms_unet(x,
                         target_spacing: List[float],
                         intp: List[str],
                         intp_resampling_augmentations: List[str],
+                        output_image_key: str="image",
                         possible_labels: List[str]=[0,1],
                         positive_labels: List[str]=[1],
                         adc_factor: float=1.0,
@@ -173,7 +174,7 @@ def get_transforms_unet(x,
         transforms = []
         if brunet is False:
             transforms.append(
-                monai.transforms.ConcatItemsd(image_keys,"image"))
+                monai.transforms.ConcatItemsd(image_keys,output_image_key))
             
         if len(all_aux_keys) > 0:
             keys.append(all_aux_keys)
@@ -195,9 +196,9 @@ def get_transforms_unet(x,
             mask_key = []
         if convert_to_tensor == True:
             if brunet is False:
-                keys.append("image")
+                keys.append(output_image_key)
                 transforms.append(monai.transforms.ToTensord(
-                    ["image"] + mask_key,track_meta=track_meta))
+                    [output_image_key] + mask_key,track_meta=track_meta))
             else:
                 keys.extend(image_keys)
                 transforms.append(monai.transforms.ToTensord(
