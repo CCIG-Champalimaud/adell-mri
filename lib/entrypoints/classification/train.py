@@ -456,8 +456,7 @@ def main(arguments):
             gradient_clip_val=args.gradient_clip_val,
             strategy=strategy,
             accumulate_grad_batches=args.accumulate_grad_batches,
-            check_val_every_n_epoch=1,
-            deterministic="warn")
+            check_val_every_n_epoch=1)
 
         trainer.fit(network,train_loader,train_val_loader,ckpt_path=ckpt_path)
 

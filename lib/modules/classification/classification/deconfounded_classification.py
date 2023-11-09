@@ -1,10 +1,11 @@
 import torch
-from .classification import CatNet
+from .classification import VGG
 from ...layers.linear_blocks import MLP
+from ...layers.standard_blocks import GlobalPooling
 
 from typing import List, Tuple
 
-class DeconfoundedNet(CatNet):
+class DeconfoundedNet(VGG):
     """
     Feature deconfounder net. The base workings of this are relatively simple:
     a subset of the complete set of bottleneck features is used to 
@@ -43,15 +44,7 @@ class DeconfoundedNet(CatNet):
             self.n_cont_deconfounder = 0
 
         self.init_deconfounding_layers()
-        self.init_feature_transformer()
-
-    def init_feature_transformer(self):
-        if self.spatial_dim == 2:
-            self.feature_transformer = torch.nn.Conv2d(
-                self.last_size,self.last_size,1)
-        elif self.spatial_dim == 3:
-            self.feature_transformer = torch.nn.Conv3d(
-                self.last_size,self.last_size,1)
+        self.gp = GlobalPooling()
 
     def init_deconfounding_layers(self):
         self.confound_classifiers = None
@@ -69,11 +62,10 @@ class DeconfoundedNet(CatNet):
                     self.n_cont_deconfounder,[])
 
     def forward(self,X:torch.Tensor,
-                return_features:bool=False,
-                *args,**kwargs)->Tuple[torch.Tensor,
-                                       torch.Tensor,
-                                       torch.Tensor,
-                                       torch.Tensor] | torch.Tensor:
+                return_features:bool=False)->Tuple[torch.Tensor,
+                                                   torch.Tensor,
+                                                   torch.Tensor,
+                                                   torch.Tensor] | torch.Tensor:
         """Forward method.
 
         Args:
@@ -90,9 +82,8 @@ class DeconfoundedNet(CatNet):
                 specified) and the bottleneck features. If return_features is
                 True, only the bottleneck features are returned.
         """
-        features = self.gp(
-            self.feature_transformer(
-                self.feature_extraction(X,*args,**kwargs)))
+        features = self.conv3(self.conv2(self.conv1(X)))
+        features = self.gp(features)
         if return_features is True:
             return features
         classification = self.classification_layer(features)

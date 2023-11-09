@@ -452,14 +452,16 @@ def main(arguments):
         
         trainer = Trainer(
             accelerator=accelerator,
-            devices=devices,logger=logger,callbacks=callbacks,
+            devices=devices,
+            logger=logger,
+            callbacks=callbacks,
             max_epochs=args.max_epochs,
             enable_checkpointing=ckpt,
             gradient_clip_val=args.gradient_clip_val,
             strategy=strategy,
             accumulate_grad_batches=args.accumulate_grad_batches,
-            check_val_every_n_epoch=1,
-            deterministic="warn")
+            sync_batchnorm=True if strategy is not None else None,
+            check_val_every_n_epoch=1)
 
         trainer.fit(network,train_loader,train_val_loader,ckpt_path=ckpt_path)
 

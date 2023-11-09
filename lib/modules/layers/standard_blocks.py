@@ -26,9 +26,10 @@ class GlobalPooling(torch.nn.Module):
             raise "mode must be one of [average,max]"
 
     def forward(self,X):
-        X = self.op(X.flatten(start_dim=2),-1)
-        if self.mode == "max":
-            X = X.values
+        if len(X.shape) > 2:
+            X = self.op(X.flatten(start_dim=2),-1)
+            if self.mode == "max":
+                X = X.values
         return X
 
 class DepthWiseSeparableConvolution2d(torch.nn.Module):
@@ -119,8 +120,10 @@ class DepthWiseSeparableConvolution3d(torch.nn.Module):
 
 class ConvolutionalBlock2d(torch.nn.Module):
     def __init__(self,in_channels:List[int],out_channels:List[int],
-                 kernel_size:List[int],adn_fn:torch.nn.Module=torch.nn.Identity,
-                 adn_args:dict={},stride:int=1,
+                 kernel_size:List[int],
+                 adn_fn:torch.nn.Module=torch.nn.Identity,
+                 adn_args:dict={},
+                 stride:int=1,
                  padding:str="valid"):
         """Assembles a set of blocks containing convolutions followed by 
         adn_fn operations. Used to quickly build convolutional neural
@@ -176,9 +179,12 @@ class ConvolutionalBlock2d(torch.nn.Module):
         return self.op(X)
 
 class ConvolutionalBlock3d(torch.nn.Module):
-    def __init__(self,in_channels:List[int],out_channels:List[int],
-                 kernel_size:List[int],adn_fn:torch.nn.Module=torch.nn.Identity,
-                 adn_args:dict={},stride:int=1,
+    def __init__(self,in_channels:List[int],
+                 out_channels:List[int],
+                 kernel_size:List[int],
+                 adn_fn:torch.nn.Module=torch.nn.Identity,
+                 adn_args:dict={},
+                 stride:int=1,
                  padding:str="valid"):
         """Assembles a set of blocks containing convolutions followed by 
         adn_fn operations. Used to quickly build convolutional neural

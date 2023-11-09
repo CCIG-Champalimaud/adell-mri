@@ -1301,7 +1301,7 @@ class DeconfoundedNetPL(DeconfoundedNet,ClassPLABC):
     def loss_cat_confounder(self, pred: torch.Tensor, y: torch.Tensor):
         y = self.embedder(y)
         d = pred[0].device
-        return sum([F.cross_entropy(p,y_.to(d)) 
+        return sum([F.cross_entropy(p,y_.to(d)) / len(pred)
                     for p,y_ in zip(pred, y)]) * self.conf_mult
     
     def loss_cont_confounder(self, pred: torch.Tensor, y: torch.Tensor):

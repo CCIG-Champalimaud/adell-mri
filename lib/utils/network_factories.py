@@ -60,9 +60,19 @@ def get_classification_network(net_type:str,
                                partial_mixup=None)->torch.nn.Module:
     if net_type == "unet":
         act_fn = network_config["activation_fn"]
+        norm_fn = "batch"
     else:
-        act_fn = "swish"
-    adn_fn = get_adn_fn(3,"identity",act_fn=act_fn,
+        if "act_fn" in network_config:
+            act_fn = network_config["act_fn"]
+            del network_config["act_fn"]
+        else:
+            act_fn = "swish"
+        if "norm_fn" in network_config:
+            norm_fn = network_config["norm_fn"]
+            del network_config["norm_fn"]
+        else:
+            norm_fn = "batch"
+    adn_fn = get_adn_fn(3,norm_fn,act_fn=act_fn,
                         dropout_param=dropout_param)
     batch_preprocessing = BatchPreprocessing(
         label_smoothing,mixup_alpha,partial_mixup,seed)
@@ -81,7 +91,7 @@ def get_classification_network(net_type:str,
             head_structure=[
                 network_config["depth"][-1] for _ in range(3)],
             head_adn_fn=get_adn_fn(
-                1,"batch",act_fn="gelu",
+                1,norm_fn,act_fn="gelu",
                 dropout_param=dropout_param),
             **boilerplate_args,
             **network_config)
@@ -152,12 +162,21 @@ def get_deconfounded_classification_network(network_config:Dict[str,Any],
                                             max_epochs:int,
                                             warmup_steps:int,
                                             start_decay:int,
+                                            n_features_deconfounder:int=64,
                                             label_smoothing=None,
                                             mixup_alpha=None,
                                             partial_mixup=None)->torch.nn.Module:
-    act_fn = "swish"
-    adn_fn = get_adn_fn(3,"identity",act_fn=act_fn,
-                        dropout_param=dropout_param)
+    if "act_fn" in network_config:
+        act_fn = network_config["act_fn"]
+        del network_config["act_fn"]
+    else:
+        act_fn = "relu"
+    if "norm_fn" in network_config:
+        norm_fn = network_config["norm_fn"]
+        del network_config["norm_fn"]
+    else:
+        norm_fn = "batch"
+    adn_fn = get_adn_fn(3, norm_fn, act_fn=act_fn, dropout_param=dropout_param)
     batch_preprocessing = BatchPreprocessing(
         label_smoothing,mixup_alpha,partial_mixup,seed)
     if cat_vars is not None:
@@ -179,7 +198,7 @@ def get_deconfounded_classification_network(network_config:Dict[str,Any],
     network = DeconfoundedNetPL(
         adn_fn=adn_fn,
         embedder=cat_conv,
-        n_features_deconfounder=128,
+        n_features_deconfounder=n_features_deconfounder,
         n_cat_deconfounder=n_cat_deconfounder,
         n_cont_deconfounder=cont_vars,
         cat_confounder_key=cat_confounder_key,

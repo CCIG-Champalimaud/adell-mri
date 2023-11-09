@@ -145,8 +145,10 @@ class ResidualBlock3d(torch.nn.Module):
 
         self.adn_op = self.adn_fn(self.out_channels)
     
-    def forward(self,X):
-        out = self.adn_op(self.final_op(self.op(X) + X))
+    def forward(self, X: torch.Tensor, skip_activation: bool=False):
+        out = self.final_op(self.op(X) + X)
+        if skip_activation is not True:
+            out = self.adn_op(out)
         return out
 
 class ParallelOperationsAndSum(torch.nn.Module):

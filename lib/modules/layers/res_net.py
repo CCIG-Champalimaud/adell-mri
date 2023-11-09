@@ -5,6 +5,8 @@ from .res_blocks import ResNeXtBlock2d
 from .res_blocks import ResNeXtBlock3d
 from .res_blocks import ConvNeXtBlock2d
 from .res_blocks import ConvNeXtBlock3d
+from .standard_blocks import ConvolutionalBlock2d
+from .standard_blocks import ConvolutionalBlock3d
 from typing import OrderedDict
 from .batch_ensemble import BatchEnsembleWrapper
 from ...custom_types import List,ModuleList,Tuple,Union
@@ -90,6 +92,8 @@ class ResNetBackbone(torch.nn.Module):
                 self.res_op = ResNeXtBlock2d
             elif self.res_type == "convnext":
                 self.res_op = ConvNeXtBlock2d
+            elif self.res_type == "none":
+                self.res_op = self.conv_wrapper_2d
             self.conv_op = torch.nn.Conv2d
             self.max_pool_op = torch.nn.MaxPool2d
         elif self.spatial_dim == 3:
@@ -99,8 +103,30 @@ class ResNetBackbone(torch.nn.Module):
                 self.res_op = ResNeXtBlock3d
             elif self.res_type == "convnext":
                 self.res_op = ConvNeXtBlock3d
+            elif self.res_type == "none":
+                self.res_op = self.conv_wrapper_3d
             self.conv_op = torch.nn.Conv3d
             self.max_pool_op = torch.nn.MaxPool3d
+
+    def conv_wrapper_2d(self,
+                        in_channels: int,
+                        kernel_size: int,
+                        inter_channels: int,
+                        out_channels: int,
+                        adn_fn: callable):
+        return ConvolutionalBlock2d(
+            in_channels=[in_channels], out_channels=[out_channels],
+            kernel_size=[kernel_size], adn_fn=adn_fn, padding="same")
+
+    def conv_wrapper_3d(self,
+                        in_channels: int,
+                        kernel_size: int,
+                        inter_channels: int,
+                        out_channels: int,
+                        adn_fn: callable):
+        return ConvolutionalBlock3d(
+            in_channels=[in_channels], out_channels=[out_channels],
+            kernel_size=[kernel_size], adn_fn=adn_fn, padding="same")
 
     def init_layers(self):
         f = self.structure[0][0]
