@@ -67,7 +67,8 @@ class VGG(torch.nn.Module):
     """
     Very simple and naive VGG net for standard categorical classification.
     """
-    def __init__(self, spatial_dimensions: int=3,
+    def __init__(self, 
+                 spatial_dimensions: int=3,
                  n_channels: int=1,
                  n_classes: int=2,
                  feature_extraction=None,
