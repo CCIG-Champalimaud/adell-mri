@@ -22,4 +22,4 @@ def test_deconfounder_net():
     assert list(classification.shape) == [2,1]
     assert [list(x.shape) == [2,2] for x in conf_class]
     assert list(reg_class.shape) == [2,5]
-    assert list(features.shape) == [2,128]
+    assert list(features.shape) == [2,512]
