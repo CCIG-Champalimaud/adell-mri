@@ -48,6 +48,7 @@ def main(arguments):
         "subsample_size", "subsample_training_data", "val_from_train",
         "config_files", "ensemble_config_file", "branched",
         ("classification_net_types","net_types"),
+        "module_paths",
         "dev", "n_workers", "seed",
         "augment",
         "label_smoothing", "mixup_alpha", "partial_mixup", "dropout_param",
@@ -80,11 +81,6 @@ def main(arguments):
     g = torch.Generator()
     g.manual_seed(args.seed)
     rng = np.random.default_rng(args.seed)
-
-    if len(args.config_files) == 1:
-        config_files = [args.config_files[0] for _ in args.net_types]
-    else:
-        config_files = args.config_files
 
     accelerator,devices,strategy = get_devices(args.dev)
     n_devices = len(devices) if isinstance(devices,list) else devices
@@ -157,15 +153,23 @@ def main(arguments):
     adc_keys = [k for k in adc_keys if k in keys]
     t2_keys = [k for k in t2_keys if k in keys]
 
-
     ensemble_config = parse_config_ensemble(
         args.ensemble_config_file,n_classes)
     
-    network_configs = [
-        parse_config_unet(config_file,len(keys),n_classes) 
-        if net_type == "unet"
-        else parse_config_cat(config_file)
-        for config_file,net_type in zip(config_files,args.net_types)]
+    if args.module_paths is not None:
+        config_files = None
+        module_paths = args.module_paths
+        network_configs = None
+    else:
+        network_configs = [
+            parse_config_unet(config_file,len(keys),n_classes) 
+            if net_type == "unet"
+            else parse_config_cat(config_file)
+            for config_file,net_type in zip(config_files,args.net_types)]
+        if len(args.config_files) == 1:
+            config_files = [args.config_files[0] for _ in args.net_types]
+        else:
+            config_files = args.config_files
     
     if args.batch_size is not None:
         ensemble_config["batch_size"] = args.batch_size
@@ -380,25 +384,34 @@ def main(arguments):
             shuffle=False,num_workers=n_workers,
             collate_fn=safe_collate)
 
-        networks = [get_classification_network(
-            net_type=net_type,
-            network_config=network_config,
-            dropout_param=args.dropout_param,
-            seed=args.seed,
-            n_classes=n_classes,
-            keys=keys,
-            clinical_feature_keys=clinical_feature_keys,
-            train_loader_call=train_loader_call,
-            max_epochs=args.max_epochs,
-            warmup_steps=args.warmup_steps,
-            start_decay=args.start_decay,
-            crop_size=args.crop_size,
-            clinical_feature_means=clinical_feature_means,
-            clinical_feature_stds=clinical_feature_stds,
-            label_smoothing=args.label_smoothing,
-            mixup_alpha=args.mixup_alpha,
-            partial_mixup=args.partial_mixup)
-            for net_type,network_config in zip(args.net_types,network_configs)]
+        if network_configs is not None:
+            networks = [get_classification_network(
+                net_type=net_type,
+                network_config=network_config,
+                dropout_param=args.dropout_param,
+                seed=args.seed,
+                n_classes=n_classes,
+                keys=keys,
+                clinical_feature_keys=clinical_feature_keys,
+                train_loader_call=train_loader_call,
+                max_epochs=args.max_epochs,
+                warmup_steps=args.warmup_steps,
+                start_decay=args.start_decay,
+                crop_size=args.crop_size,
+                clinical_feature_means=clinical_feature_means,
+                clinical_feature_stds=clinical_feature_stds,
+                label_smoothing=args.label_smoothing,
+                mixup_alpha=args.mixup_alpha,
+                partial_mixup=args.partial_mixup)
+                for net_type,network_config in zip(args.net_types,network_configs)]
+        else:
+            networks = []
+            for module_path in module_paths:
+                network = torch.jit.load(module_path)
+                network.requires_grad = False
+                network.eval()
+                network = torch.jit.freeze(network)
+                networks.append(network)
 
         if args.checkpoint is not None:
             if len(args.checkpoint) > 1:

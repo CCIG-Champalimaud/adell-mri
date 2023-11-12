@@ -31,6 +31,7 @@ def main(arguments):
         "target_spacing", "pad_size", "crop_size",
         "config_files", "ensemble_config_file", 
         ("classification_net_types","net_types"),
+        "module_paths",
         "prediction_ids", "one_to_one",
         "dev","n_workers",
         ("prediction_type","type"),
@@ -44,11 +45,6 @@ def main(arguments):
     if args.params_from is not None:
         param_dict = get_params(args.params_from)
         args = merge_args(args,param_dict,sys.argv[1:])
-
-    if len(args.config_files) == 1:
-        config_files = [args.config_files[0] for _ in args.net_types]
-    else:
-        config_files = args.config_files
 
     data_dict = json.load(open(args.dataset_json,'r'))
     
@@ -89,12 +85,21 @@ def main(arguments):
     ensemble_config = parse_config_ensemble(
         args.ensemble_config_file,args.n_classes)
     
-    network_configs = [
-        parse_config_unet(config_file,len(keys),args.n_classes) 
-        if net_type == "unet"
-        else parse_config_cat(config_file)
-        for config_file,net_type in zip(config_files,args.net_types)]
-    
+    if args.module_paths is not None:
+        config_files = None
+        module_paths = args.module_paths
+        network_configs = None
+    else:
+        network_configs = [
+            parse_config_unet(config_file,len(keys),args.n_classes) 
+            if net_type == "unet"
+            else parse_config_cat(config_file)
+            for config_file,net_type in zip(config_files,args.net_types)]
+        if len(args.config_files) == 1:
+            config_files = [args.config_files[0] for _ in args.net_types]
+        else:
+            config_files = args.config_files
+
     if args.batch_size is not None:
         ensemble_config["batch_size"] = args.batch_size
     if "batch_size" not in ensemble_config:
@@ -162,26 +167,35 @@ def main(arguments):
         else:
             checkpoint_list = args.checkpoints
         for checkpoint_idx,checkpoint in enumerate(checkpoint_list):
-            networks = [get_classification_network(
-                net_type=net_type,
-                network_config=network_config,
-                dropout_param=0.0,
-                seed=42,
-                n_classes=args.n_classes,
-                keys=keys,
-                clinical_feature_keys=clinical_feature_keys,
-                train_loader_call=None,
-                max_epochs=None,
-                warmup_steps=None,
-                start_decay=None,
-                crop_size=args.crop_size,
-                clinical_feature_means=None,
-                clinical_feature_stds=None,
-                label_smoothing=None,
-                mixup_alpha=None,
-                partial_mixup=None)
-                for net_type,network_config in zip(args.net_types,network_configs)]
-            
+            if network_configs is not None:
+                networks = [get_classification_network(
+                    net_type=net_type,
+                    network_config=network_config,
+                    dropout_param=0.0,
+                    seed=42,
+                    n_classes=args.n_classes,
+                    keys=keys,
+                    clinical_feature_keys=clinical_feature_keys,
+                    train_loader_call=None,
+                    max_epochs=None,
+                    warmup_steps=None,
+                    start_decay=None,
+                    crop_size=args.crop_size,
+                    clinical_feature_means=None,
+                    clinical_feature_stds=None,
+                    label_smoothing=None,
+                    mixup_alpha=None,
+                    partial_mixup=None)
+                    for net_type,network_config in zip(args.net_types,network_configs)]
+            else:
+                networks = []
+                for module_path in module_paths:
+                    network = torch.jit.load(module_path)
+                    network.requires_grad = False
+                    network.eval()
+                    network = torch.jit.freeze(network)
+                    networks.append(network)
+
             ensemble = GenericEnsemblePL(
                 image_keys=["image"],
                 label_key="label",

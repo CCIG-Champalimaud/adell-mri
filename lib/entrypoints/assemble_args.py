@@ -140,7 +140,7 @@ argument_factory = {
         required=True),
     "config_files": dict(
         type=str,
-        required=True,
+        required=False,
         help="Paths to network configuration file (yaml; size 1 or same size as\
             net types)"),
     "ensemble_config_file": dict(
@@ -393,6 +393,9 @@ argument_factory = {
     "module_path": dict(
         required=True,
         help="Path to torchscript module"),
+    "module_paths": dict(
+        required=False,
+        help="Paths to torchscript modules"),
     # detection-specific 
     "box_key": dict(
         type=str,

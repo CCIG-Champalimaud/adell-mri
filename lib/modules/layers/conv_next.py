@@ -161,7 +161,7 @@ class ConvNeXtBackbone(torch.nn.Module):
         if isinstance(m, (torch.nn.Conv3d, torch.nn.Linear)):
             torch.nn.init.trunc_normal_(m.weight, std=0.02)
             torch.nn.init.constant_(m.bias, 0)
-    
+
     def forward_with_intermediate(self,X,after_pool=False):
         X = self.input_layer(X)
         output_list = []
