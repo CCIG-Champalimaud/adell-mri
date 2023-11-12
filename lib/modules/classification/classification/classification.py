@@ -510,7 +510,8 @@ class GenericEnsemble(torch.nn.Module):
                          X:Union[torch.Tensor,List[torch.Tensor]])->torch.Tensor:
         return self.forward(X,return_features=True)
 
-    def forward(self,X:Union[torch.Tensor,List[torch.Tensor]],
+    def forward(self,
+                X:torch.Tensor | List[torch.Tensor],
                 return_features:bool=False)->torch.Tensor:
         if isinstance(X,(torch.Tensor)):
             X = [X]

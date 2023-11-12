@@ -626,7 +626,12 @@ argument_factory = {
     "semi_supervised": dict(
         action="store_true",
         default=False,
-        help="Uses images without annotations for self-supervision.")
+        help="Uses images without annotations for self-supervision."),
+    # classification ensemble
+    "branched": dict(
+        action="store_true",
+        default=False,
+        help="One backbone for each input image.")
 }
 
 class Parser(ArgumentParser):

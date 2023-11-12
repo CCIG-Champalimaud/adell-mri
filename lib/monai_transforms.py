@@ -284,23 +284,24 @@ def get_transforms_detection_post(keys:List[str],
     return transforms
 
 def get_transforms_classification(x,
-                                  keys,
-                                  mask_key,
-                                  adc_keys,
-                                  clinical_feature_keys,
-                                  target_spacing,
-                                  crop_size,
-                                  pad_size,
-                                  image_masking,
-                                  image_crop_from_mask,
-                                  possible_labels=None,
-                                  positive_labels=None,
-                                  label_groups=None,
-                                  label_key=None,
-                                  target_size=None,
-                                  label_mode=None,
-                                  cat_confounder_keys=None,
-                                  cont_confounder_keys=None):
+                                  keys: List[str],
+                                  mask_key: str,
+                                  adc_keys: List[str],
+                                  clinical_feature_keys: List[str],
+                                  target_spacing: List[float],
+                                  crop_size: List[int],
+                                  pad_size: List[int],
+                                  image_masking: bool,
+                                  image_crop_from_mask: bool,
+                                  branched: bool=False,
+                                  possible_labels: List[int]=None,
+                                  positive_labels: List[int]=None,
+                                  label_groups: List[int | List[int]]=None,
+                                  label_key: str=None,
+                                  target_size: List[int]=None,
+                                  label_mode: str=None,
+                                  cat_confounder_keys: List[str]=None,
+                                  cont_confounder_keys: List[str]=None):
     non_adc_keys = [k for k in keys if k not in adc_keys]
     all_keys = [k for k in keys]
     if mask_key is not None: 
@@ -370,8 +371,9 @@ def get_transforms_classification(x,
             transforms.append(
                 monai.transforms.MaskIntensityd(
                     keys,mask_key=mask_key))
-        transforms.append(
-            monai.transforms.ConcatItemsd(all_keys,"image"))
+        if branched is not True:
+            transforms.append(
+                monai.transforms.ConcatItemsd(all_keys,"image"))
         if len(clinical_feature_keys) > 0:
             transforms.extend(
                 [monai.transforms.EnsureTyped(

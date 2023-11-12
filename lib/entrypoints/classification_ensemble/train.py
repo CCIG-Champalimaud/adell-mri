@@ -46,7 +46,7 @@ def main(arguments):
         "cache_rate",
         "target_spacing", "pad_size", "crop_size", 
         "subsample_size", "subsample_training_data", "val_from_train",
-        "config_files", "ensemble_config_file", 
+        "config_files", "ensemble_config_file", "branched",
         ("classification_net_types","net_types"),
         "dev", "n_workers", "seed",
         "augment",
@@ -179,23 +179,24 @@ def main(arguments):
     print("Setting up transforms...")
     label_mode = "binary" if n_classes == 2 and label_groups is None else "cat"
     transform_arguments = {
-        "keys":keys,
-        "clinical_feature_keys":clinical_feature_keys,
-        "adc_keys":adc_keys,
-        "target_spacing":args.target_spacing,
-        "crop_size":args.crop_size,
-        "pad_size":args.pad_size,
-        "possible_labels":args.possible_labels,
-        "positive_labels":args.positive_labels,
-        "label_groups":label_groups,
-        "label_key":args.label_keys,
-        "label_mode":label_mode}
+        "keys": keys,
+        "clinical_feature_keys": clinical_feature_keys,
+        "adc_keys": adc_keys,
+        "target_spacing": args.target_spacing,
+        "crop_size": args.crop_size,
+        "pad_size": args.pad_size,
+        "possible_labels": args.possible_labels,
+        "positive_labels": args.positive_labels,
+        "label_groups": label_groups,
+        "label_key": args.label_keys,
+        "label_mode": label_mode,
+        "branched": args.branched}
     augment_arguments = {
-        "augment":args.augment,
-        "t2_keys":t2_keys,
-        "all_keys":keys,
-        "image_keys":keys,
-        "intp_resampling_augmentations":["bilinear" for _ in keys]}
+        "augment": args.augment,
+        "t2_keys": t2_keys,
+        "all_keys": keys,
+        "image_keys": keys,
+        "intp_resampling_augmentations": ["bilinear" for _ in keys]}
 
     transforms_train = monai.transforms.Compose([
         *get_transforms("pre",**transform_arguments),
@@ -421,11 +422,8 @@ def main(arguments):
                     neg = len(classes) - pos
                     set_classification_layer_bias(pos,neg,network)
         
-        boilerplate_args = {
-            "image_keys":["image"],
-            "label_key":"label"}
         ensemble = GenericEnsemblePL(
-            image_keys=["image"],
+            image_keys=args.image_keys if args.branched is False else ["image"],
             label_key="label",
             networks=networks,
             n_classes=n_classes,
