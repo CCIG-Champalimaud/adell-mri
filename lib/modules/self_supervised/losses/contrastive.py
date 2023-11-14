@@ -4,35 +4,37 @@ from .functional import cos_dist
 
 from copy import deepcopy
 
+
 class KLDivergence(torch.nn.Module):
     """
-    Implementation of the KL divergence method suggested in "Bootstrapping 
+    Implementation of the KL divergence method suggested in "Bootstrapping
     Semi-supervised Medical Image Segmentation with Anatomical-aware Contrastive
     Distillation". Allow for both local and global KL divergence calculation.
     """
-    def __init__(self,
-                 mode: str="global"):
+
+    def __init__(self, mode: str = "global"):
         """
         Args:
-            mode (str, optional): whether the input feature maps should be 
+            mode (str, optional): whether the input feature maps should be
             reduced to their global average ("global") or simply flattened to
             calculate local differences ("local"). Defaults to "global".
         """
         super().__init__()
         self.mode = mode
 
-        assert mode in ["global","local"], \
-            f"mode {mode} not supported. available options: 'global', 'local'"
+        assert mode in [
+            "global",
+            "local",
+        ], f"mode {mode} not supported. available options: 'global', 'local'"
 
-    def average_pooling(self,X: torch.Tensor):
+    def average_pooling(self, X: torch.Tensor):
         if len(X.shape) > 2:
             return X.flatten(start_dim=2).mean(-1)
         return X
 
-    def forward(self,
-                X_1: torch.Tensor,
-                X_2: torch.Tensor,
-                anchors: torch.Tensor):
+    def forward(
+        self, X_1: torch.Tensor, X_2: torch.Tensor, anchors: torch.Tensor
+    ):
         if self.mode == "global":
             X_1 = self.average_pooling(X_1)
             X_2 = self.average_pooling(X_2)
@@ -42,14 +44,22 @@ class KLDivergence(torch.nn.Module):
             X_2 = X_2.flatten(start_dim=2)
             anchors = anchors.flatten(start_dim=2)
 
-        p_1 = F.softmax(F.cosine_similarity(X_1[:,None],anchors),dim=1)
-        p_2 = F.softmax(F.cosine_similarity(X_2[None,:],anchors),dim=1)
+        p_1 = F.softmax(F.cosine_similarity(X_1[:, None], anchors), dim=1)
+        p_2 = F.softmax(F.cosine_similarity(X_2[None, :], anchors), dim=1)
         kl_div = torch.sum(p_1 * (torch.log(p_1) - torch.log(p_2)))
         return kl_div
 
+
 class ContrastiveDistanceLoss(torch.nn.Module):
-    def __init__(self,dist_p=2,random_sample=False,margin=1,
-                 dev="cpu",loss_type="pairwise",dist_type="euclidean"):
+    def __init__(
+        self,
+        dist_p=2,
+        random_sample=False,
+        margin=1,
+        dev="cpu",
+        loss_type="pairwise",
+        dist_type="euclidean",
+    ):
         super().__init__()
         self.dist_p = dist_p
         self.random_sample = random_sample
@@ -57,78 +67,94 @@ class ContrastiveDistanceLoss(torch.nn.Module):
         self.dev = dev
         self.loss_type = loss_type
         self.dist_type = dist_type
-        
-        self.loss_options = ["pairwise","triplet"]
-        self.dist_options = ["euclidean","cosine"]
+
+        self.loss_options = ["pairwise", "triplet"]
+        self.dist_options = ["euclidean", "cosine"]
         self.torch_margin = torch.as_tensor(
-            [self.margin],dtype=torch.float32,device=self.dev)
+            [self.margin], dtype=torch.float32, device=self.dev
+        )
 
         if self.loss_type not in self.loss_options:
-            raise Exception("Loss `{}` not in `{}`".format(
-                self.loss_type,self.loss_options))
-        
+            raise Exception(
+                "Loss `{}` not in `{}`".format(
+                    self.loss_type, self.loss_options
+                )
+            )
+
         if self.dist_type not in self.dist_options:
-            raise Exception("dist_type `{}` not in `{}`".format(
-                self.loss_type,self.dist_options))
+            raise Exception(
+                "dist_type `{}` not in `{}`".format(
+                    self.loss_type, self.dist_options
+                )
+            )
 
-    def dist(self,x:torch.Tensor,y:torch.Tensor):
+    def dist(self, x: torch.Tensor, y: torch.Tensor):
         if self.dist_type == "euclidean":
-            return torch.cdist(x,y,self.dist_p)
+            return torch.cdist(x, y, self.dist_p)
         elif self.dist_type == "cosine":
-            return cos_dist(x,y)
+            return cos_dist(x, y)
 
-    def pairwise_distance(self,X1,X2,is_same):
+    def pairwise_distance(self, X1, X2, is_same):
         X1 = X1.flatten(start_dim=1)
         X2 = X2.flatten(start_dim=1)
-        dist = self.dist(X1,X2)
+        dist = self.dist(X1, X2)
         dist = torch.add(
-            is_same*dist,
-            (1-is_same.float())*torch.maximum(
-                torch.zeros_like(dist),
-                self.torch_margin - dist))
+            is_same * dist,
+            (1 - is_same.float())
+            * torch.maximum(torch.zeros_like(dist), self.torch_margin - dist),
+        )
         if self.random_sample is True:
             # randomly samples one entry for each element
             n = dist.shape[0]
-            x_idx = torch.arange(0,n,1,dtype=torch.int32)
-            y_idx = torch.randint(0,n,size=[n])
-            dist = dist[x_idx,y_idx]
+            x_idx = torch.arange(0, n, 1, dtype=torch.int32)
+            y_idx = torch.randint(0, n, size=[n])
+            dist = dist[x_idx, y_idx]
         else:
-            dist = dist.sum(-1)/(dist.shape[-1]-1)
+            dist = dist.sum(-1) / (dist.shape[-1] - 1)
         return dist
-    
-    def triplet_distance(self,X1,X2,is_same):
+
+    def triplet_distance(self, X1, X2, is_same):
         X1 = X1.flatten(start_dim=1)
         X2 = X2.flatten(start_dim=1)
-        dist = self.dist(X1,X2)
-        # retrieve negative examples with the lowest distance to 
+        dist = self.dist(X1, X2)
+        # retrieve negative examples with the lowest distance to
         # each anchor
-        hard_negatives = torch.where(
-            is_same,
-            torch.ones_like(dist)*torch.inf,
-            dist).min(1).values
+        hard_negatives = (
+            torch.where(is_same, torch.ones_like(dist) * torch.inf, dist)
+            .min(1)
+            .values
+        )
         # retrieve positive examples with the highest distance to
         # each anchor
-        hard_positives = torch.where(
-            torch.logical_not(is_same),
-            -torch.ones_like(dist)*torch.inf,
-            dist).max(1).values
+        hard_positives = (
+            torch.where(
+                torch.logical_not(is_same),
+                -torch.ones_like(dist) * torch.inf,
+                dist,
+            )
+            .max(1)
+            .values
+        )
         # calculates loss given both hard negatives and positives
         triplet_loss = torch.maximum(
             torch.zeros_like(hard_negatives),
-            self.margin + hard_positives - hard_negatives)
+            self.margin + hard_positives - hard_negatives,
+        )
         return triplet_loss
 
-    def forward(self,X1:torch.Tensor,X2:torch.Tensor=None,y:torch.Tensor=None):
-        if isinstance(X1,list):
-            X1,X2 = X1
+    def forward(
+        self, X1: torch.Tensor, X2: torch.Tensor = None, y: torch.Tensor = None
+    ):
+        if isinstance(X1, list):
+            X1, X2 = X1
         if X2 is None:
             X2 = deepcopy(X1)
         if y is None:
             y = torch.ones([X1.shape[0]])
-        y1,y2 = y.unsqueeze(0),y.unsqueeze(1)
+        y1, y2 = y.unsqueeze(0), y.unsqueeze(1)
         is_same = y1 == y2
         if self.loss_type == "pairwise":
-            loss = self.pairwise_distance(X1,X2,is_same)
+            loss = self.pairwise_distance(X1, X2, is_same)
         elif self.loss_type == "triplet":
-            loss = self.triplet_distance(X1,X2,is_same)
+            loss = self.triplet_distance(X1, X2, is_same)
         return loss.mean()

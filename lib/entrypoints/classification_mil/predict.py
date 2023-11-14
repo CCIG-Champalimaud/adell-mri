@@ -10,46 +10,64 @@ from tqdm import tqdm
 import sys
 from ...entrypoints.assemble_args import Parser
 from ...utils import (
-    safe_collate,ScaleIntensityAlongDimd,EinopsRearranged,
-    subsample_dataset)
+    safe_collate,
+    ScaleIntensityAlongDimd,
+    EinopsRearranged,
+    subsample_dataset,
+)
 from ...utils.pl_utils import get_devices
 from ...utils.dataset_filters import filter_dictionary
 from ...monai_transforms import get_transforms_classification as get_transforms
 from ...modules.classification.pl import (
-    TransformableTransformerPL,MultipleInstanceClassifierPL)
+    TransformableTransformerPL,
+    MultipleInstanceClassifierPL,
+)
 from ...modules.config_parsing import parse_config_2d_classifier_3d
 from ...utils.parser import parse_ids
-from ...utils.parser import get_params,merge_args
+from ...utils.parser import get_params, merge_args
+
 
 def main(arguments):
     parser = Parser()
 
-    parser.add_argument_by_key([
-        "params_from",
-        "dataset_json",
-        "image_keys", "clinical_feature_keys", "adc_keys",
-        "n_classes",
-        "filter_on_keys",
-        "target_spacing", "pad_size", "crop_size",
-        "subsample_size",
-        "batch_size",
-        "cache_rate",
-        "config_file","mil_method","module_path",
-        "dev","n_workers","seed",
-        "one_to_one",
-        "prediction_ids",
-        ("prediction_type","type",{"choices":["probability",
-                                              "logit",
-                                              "attention"]}),
-        ("prediction_checkpoints", "checkpoints"),
-        "output_path"
-    ])
+    parser.add_argument_by_key(
+        [
+            "params_from",
+            "dataset_json",
+            "image_keys",
+            "clinical_feature_keys",
+            "adc_keys",
+            "n_classes",
+            "filter_on_keys",
+            "target_spacing",
+            "pad_size",
+            "crop_size",
+            "subsample_size",
+            "batch_size",
+            "cache_rate",
+            "config_file",
+            "mil_method",
+            "module_path",
+            "dev",
+            "n_workers",
+            "seed",
+            "one_to_one",
+            "prediction_ids",
+            (
+                "prediction_type",
+                "type",
+                {"choices": ["probability", "logit", "attention"]},
+            ),
+            ("prediction_checkpoints", "checkpoints"),
+            "output_path",
+        ]
+    )
 
     args = parser.parse_args(arguments)
 
     if args.params_from is not None:
         param_dict = get_params(args.params_from)
-        args = merge_args(args,param_dict,sys.argv[1:])
+        args = merge_args(args, param_dict, sys.argv[1:])
 
     torch.manual_seed(args.seed)
     random.seed(args.seed)
@@ -58,94 +76,105 @@ def main(arguments):
     g.manual_seed(args.seed)
     rng = np.random.default_rng(args.seed)
 
-    accelerator,devices,strategy = get_devices(args.dev)
-    
-    data_dict = json.load(open(args.dataset_json,'r'))
+    accelerator, devices, strategy = get_devices(args.dev)
+
+    data_dict = json.load(open(args.dataset_json, "r"))
     all_prediction_pids = parse_ids(args.prediction_ids)
     if args.excluded_ids is not None:
-        excluded_ids = parse_ids(args.excluded_ids,output_format="list")
+        excluded_ids = parse_ids(args.excluded_ids, output_format="list")
         a = len(data_dict)
-        data_dict = {k:data_dict[k] for k in data_dict
-                     if k not in excluded_ids}
-        print("Excluded {} cases with --excluded_ids".format(a - len(data_dict)))
-    
+        data_dict = {
+            k: data_dict[k] for k in data_dict if k not in excluded_ids
+        }
+        print(
+            "Excluded {} cases with --excluded_ids".format(a - len(data_dict))
+        )
+
     data_dict = filter_dictionary(
         data_dict,
         filters_presence=args.image_keys,
-        filters=args.filter_on_keys)
+        filters=args.filter_on_keys,
+    )
     data_dict = subsample_dataset(
-        data_dict=data_dict,
-        subsample_size=args.subsample_size,
-        rng=rng)
+        data_dict=data_dict, subsample_size=args.subsample_size, rng=rng
+    )
 
     if len(data_dict) == 0:
         raise Exception(
             "No data available for training \
                 (dataset={}; keys={})".format(
-                    args.dataset_json,
-                    args.image_keys))
-    
+                args.dataset_json, args.image_keys
+            )
+        )
+
     keys = args.image_keys
     t2_keys = args.t2_keys if args.t2_keys is not None else []
     adc_keys = []
     t2_keys = [k for k in t2_keys if k in keys]
 
-    network_config,_ = parse_config_2d_classifier_3d(
-        args.config_file,0.0)
-    
+    network_config, _ = parse_config_2d_classifier_3d(args.config_file, 0.0)
+
     if args.n_classes == 2:
-        network_config["loss_fn"] = torch.nn.BCEWithLogitsLoss(
-            torch.ones([]))
+        network_config["loss_fn"] = torch.nn.BCEWithLogitsLoss(torch.ones([]))
     else:
         network_config["loss_fn"] = torch.nn.CrossEntropy(
-            torch.ones([args.n_classes]))
-    
+            torch.ones([args.n_classes])
+        )
+
     if args.batch_size is not None:
         network_config["batch_size"] = args.batch_size
 
     if "batch_size" not in network_config:
         network_config["batch_size"] = 1
-    
+
     all_pids = [k for k in data_dict]
 
     print("Setting up transforms...")
     label_mode = "binary" if args.n_classes == 2 else "cat"
     transform_arguments = {
-        "keys":keys,
-        "adc_keys":adc_keys,
-        "target_spacing":args.target_spacing,
-        "target_size":args.resize_size,
-        "crop_size":args.crop_size,
-        "pad_size":args.pad_size,
-        "possible_labels":None,
-        "positive_labels":None,
-        "label_key":None,
-        "clinical_feature_keys":[],
-        "label_mode":label_mode}
+        "keys": keys,
+        "adc_keys": adc_keys,
+        "target_spacing": args.target_spacing,
+        "target_size": args.resize_size,
+        "crop_size": args.crop_size,
+        "pad_size": args.pad_size,
+        "possible_labels": None,
+        "positive_labels": None,
+        "label_key": None,
+        "clinical_feature_keys": [],
+        "label_mode": label_mode,
+    }
 
-    transforms = monai.transforms.Compose([
-        *get_transforms("pre",**transform_arguments),
-        *get_transforms("post",**transform_arguments),
-        EinopsRearranged("image","c h w d -> 1 h w (d c)"),
-        ScaleIntensityAlongDimd("image",dim=-1)])
-    
+    transforms = monai.transforms.Compose(
+        [
+            *get_transforms("pre", **transform_arguments),
+            *get_transforms("post", **transform_arguments),
+            EinopsRearranged("image", "c h w d -> 1 h w (d c)"),
+            ScaleIntensityAlongDimd("image", dim=-1),
+        ]
+    )
+
     all_metrics = []
-    for iteration,prediction_pids in enumerate(all_prediction_pids):
-        prediction_pids = [pid for pid in prediction_pids
-                           if pid in data_dict]
+    for iteration, prediction_pids in enumerate(all_prediction_pids):
+        prediction_pids = [pid for pid in prediction_pids if pid in data_dict]
         prediction_list = [data_dict[pid] for pid in prediction_pids]
         prediction_dataset = monai.data.CacheDataset(
-            prediction_list,transforms,
+            prediction_list,
+            transforms,
             cache_rate=args.cache_rate,
-            num_workers=args.n_workers)
-        
+            num_workers=args.n_workers,
+        )
+
         # PL sometimes needs a little hint to detect GPUs.
         torch.ones([1]).to("cuda" if "cuda" in args.dev else "cpu")
 
         prediction_loader = monai.data.ThreadDataLoader(
-            prediction_dataset,batch_size=network_config["batch_size"],
-            shuffle=False,num_workers=args.n_workers,
-            collate_fn=safe_collate)
+            prediction_dataset,
+            batch_size=network_config["batch_size"],
+            shuffle=False,
+            num_workers=args.n_workers,
+            collate_fn=safe_collate,
+        )
 
         if args.one_to_one is True:
             checkpoint_list = [args.checkpoints[iteration]]
@@ -154,37 +183,45 @@ def main(arguments):
         for checkpoint in checkpoint_list:
             n_slices = int(len(keys) * args.crop_size[-1])
             boilerplate_args = {
-                "n_classes":args.n_classes,
-                "training_dataloader_call":None,
-                "image_key":"image",
-                "label_key":None,
-                "n_epochs":0,
-                "warmup_steps":0,
-                "training_batch_preproc":None,
-                "start_decay":0,
-                "n_slices":n_slices}
+                "n_classes": args.n_classes,
+                "training_dataloader_call": None,
+                "image_key": "image",
+                "label_key": None,
+                "n_epochs": 0,
+                "warmup_steps": 0,
+                "training_batch_preproc": None,
+                "start_decay": 0,
+                "n_slices": n_slices,
+            }
 
-            network_config["module"] = torch.jit.load(args.module_path).to(args.dev)
+            network_config["module"] = torch.jit.load(args.module_path).to(
+                args.dev
+            )
             network_config["module"].requires_grad = False
             network_config["module"] = network_config["module"].eval()
-            network_config["module"] = torch.jit.freeze(network_config["module"])
+            network_config["module"] = torch.jit.freeze(
+                network_config["module"]
+            )
             if "module_out_dim" not in network_config:
                 print("2D module output size not specified, inferring...")
                 input_example = torch.rand(
-                    1,1,*[int(x) for x in args.crop_size][:2]).to(
-                        args.dev.split(":")[0])
+                    1, 1, *[int(x) for x in args.crop_size][:2]
+                ).to(args.dev.split(":")[0])
                 output = network_config["module"](input_example)
                 network_config["module_out_dim"] = int(output.shape[1])
-                print("2D module output size={}".format(
-                    network_config["module_out_dim"]))
+                print(
+                    "2D module output size={}".format(
+                        network_config["module_out_dim"]
+                    )
+                )
             if args.mil_method == "transformer":
                 network = TransformableTransformerPL(
-                    **boilerplate_args,
-                    **network_config)
+                    **boilerplate_args, **network_config
+                )
             elif args.mil_method == "standard":
                 network = MultipleInstanceClassifierPL(
-                    **boilerplate_args,
-                    **network_config)
+                    **boilerplate_args, **network_config
+                )
 
             state_dict = torch.load(checkpoint)["state_dict"]
             network.load_state_dict(state_dict)
@@ -193,35 +230,46 @@ def main(arguments):
             if args.type == "attention":
                 kwargs["return_attention"] = True
             prediction_output = []
-            with tqdm(prediction_loader,total=len(prediction_loader)) as pbar:
-                for idx,batch in enumerate(pbar):
-                    batch = {k:batch[k].to(args.dev) for k in batch
-                             if isinstance(batch[k],torch.Tensor)}
-                    prediction_output.append(network.predict_step(batch,idx,**kwargs))
+            with tqdm(prediction_loader, total=len(prediction_loader)) as pbar:
+                for idx, batch in enumerate(pbar):
+                    batch = {
+                        k: batch[k].to(args.dev)
+                        for k in batch
+                        if isinstance(batch[k], torch.Tensor)
+                    }
+                    prediction_output.append(
+                        network.predict_step(batch, idx, **kwargs)
+                    )
             attention = None
             if args.type == "probability":
                 if args.n_classes == 2:
-                    prediction_output = [torch.nn.functional.sigmoid(x)[0]
-                                         for x in prediction_output]
+                    prediction_output = [
+                        torch.nn.functional.sigmoid(x)[0]
+                        for x in prediction_output
+                    ]
                 else:
-                    prediction_output = [torch.nn.functional.softmax(x,axis=-1)[0]
-                                         for x in prediction_output]
+                    prediction_output = [
+                        torch.nn.functional.softmax(x, axis=-1)[0]
+                        for x in prediction_output
+                    ]
             elif args.type == "logit":
                 prediction_output = [x[0] for x in prediction_output]
             elif args.type == "attention":
                 attention = [x[1][0] for x in prediction_output]
                 prediction_output = [x[0][0] for x in prediction_output]
             prediction_output = {
-                k:x.detach().cpu().numpy().tolist() 
-                for x,k in zip(prediction_output,prediction_pids)}
-            prediction_output = {"prediction":prediction_output}
+                k: x.detach().cpu().numpy().tolist()
+                for x, k in zip(prediction_output, prediction_pids)
+            }
+            prediction_output = {"prediction": prediction_output}
             if attention is not None:
                 prediction_output["attention"] = {
-                    k:x.detach().cpu().numpy().tolist() 
-                    for x,k in zip(attention,prediction_pids)}
+                    k: x.detach().cpu().numpy().tolist()
+                    for x, k in zip(attention, prediction_pids)
+                }
             prediction_output["checkpoint"] = checkpoint
             all_metrics.append(prediction_output)
-    
-    Path(args.output_path).parent.mkdir(exist_ok=True,parents=True)
-    with open(args.output_path,"w") as o:
-        json.dump(all_metrics,o)
+
+    Path(args.output_path).parent.mkdir(exist_ok=True, parents=True)
+    with open(args.output_path, "w") as o:
+        json.dump(all_metrics, o)

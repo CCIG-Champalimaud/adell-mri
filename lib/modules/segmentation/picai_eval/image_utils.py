@@ -24,14 +24,16 @@ except ImportError:  # pragma: no cover
 
 from .data_utils import PathLike
 
+
 def resize_image_with_crop_or_pad(image, img_size=(64, 64, 64), **kwargs):
     """
     Resize images (scans/predictions/labels) by cropping and/or padding
     Adapted from: https://github.com/DLTK/DLTK]
     """
     assert isinstance(image, np.ndarray)
-    assert (image.ndim - 1 == len(img_size) or image.ndim == len(img_size)), \
-        "Target size doesn't fit image size"
+    assert image.ndim - 1 == len(img_size) or image.ndim == len(
+        img_size
+    ), "Target size doesn't fit image size"
 
     rank = len(img_size)  # image dimensions
 
@@ -46,7 +48,9 @@ def resize_image_with_crop_or_pad(image, img_size=(64, 64, 64), **kwargs):
             to_padding[i][0] = (img_size[i] - image.shape[i]) // 2
             to_padding[i][1] = img_size[i] - image.shape[i] - to_padding[i][0]
         else:
-            from_indices[i][0] = int(np.floor((image.shape[i] - img_size[i]) / 2.))
+            from_indices[i][0] = int(
+                np.floor((image.shape[i] - img_size[i]) / 2.0)
+            )
             from_indices[i][1] = from_indices[i][0] + img_size[i]
 
         # create slicer object to crop/leave each dimension
@@ -61,22 +65,28 @@ def read_image(path: PathLike):
     if isinstance(path, Path):
         path = path.as_posix()
     else:
-        assert isinstance(path, str), f"Unexpected path type: {type(path)}. Please provide a Path or str."
+        assert isinstance(
+            path, str
+        ), f"Unexpected path type: {type(path)}. Please provide a Path or str."
 
-    if '.npy' in path:
+    if ".npy" in path:
         return np.load(path)
-    elif '.nii' in path or '.mha' in path or 'mhd' in path:
+    elif ".nii" in path or ".mha" in path or "mhd" in path:
         return sitk.GetArrayFromImage(sitk.ReadImage(path))
-    elif '.npz' in path:
-        return np.load(path)['softmax'].astype('float32')[1]  # nnUnet format
+    elif ".npz" in path:
+        return np.load(path)["softmax"].astype("float32")[1]  # nnUnet format
     else:
-        raise ValueError(f"Unexpected file path. Supported file formats: .nii(.gz), .mha, .npy and .npz. Got: {path}.")
+        raise ValueError(
+            f"Unexpected file path. Supported file formats: .nii(.gz), .mha, .npy and .npz. Got: {path}."
+        )
 
 
 def read_prediction(path: PathLike) -> "npt.NDArray[np.float32]":
     """Read prediction, given a filepath"""
     # read prediction and ensure correct dtype
-    pred: "npt.NDArray[np.float32]" = np.array(read_image(path), dtype=np.float32)
+    pred: "npt.NDArray[np.float32]" = np.array(
+        read_image(path), dtype=np.float32
+    )
     return pred
 
 

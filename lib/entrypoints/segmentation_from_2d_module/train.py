@@ -6,7 +6,7 @@ import torch
 import monai
 import gc
 from copy import deepcopy
-from sklearn.model_selection import KFold,train_test_split
+from sklearn.model_selection import KFold, train_test_split
 from tqdm import tqdm
 
 from lightning.pytorch import Trainer
@@ -22,8 +22,9 @@ from ...utils import (
     RandomSlices,
     SlicesToFirst,
     safe_collate,
-    safe_collate_crops)
-from ...utils.pl_utils import get_ckpt_callback,get_logger,get_devices
+    safe_collate_crops,
+)
+from ...utils.pl_utils import get_ckpt_callback, get_logger, get_devices
 from ...monai_transforms import get_transforms_unet as get_transforms
 from ...monai_transforms import get_augmentations_unet as get_augmentations
 from ...modules.layers.adn_fn import get_adn_fn
@@ -31,61 +32,97 @@ from ...modules.segmentation.pl import MIMUNetPL
 from ...modules.config_parsing import parse_config_unet
 from ...utils.parser import parse_ids
 from ...utils.sitk_utils import (
-    spacing_values_from_dataset_json,get_spacing_quantile)
+    spacing_values_from_dataset_json,
+    get_spacing_quantile,
+)
 
 torch.backends.cudnn.benchmark = True
 
-def if_none_else(x,obj):
+
+def if_none_else(x, obj):
     if x is None:
         return obj
     return x
 
-def inter_size(a,b):
-    return len(set.intersection(set(a),set(b)))
+
+def inter_size(a, b):
+    return len(set.intersection(set(a), set(b)))
+
 
 def get_first(*lists):
     for l in lists:
         if l is not None:
             return l
 
+
 def main(arguments):
     parser = Parser()
 
-    parser.add_argument_by_key([
-        "dataset_json",
-        "image_keys","mask_image_keys",
-        "mask_keys",
-        "skip_keys","skip_mask_keys",
-        "feature_keys",
-        "subsample_size","excluded_ids","use_val_as_train_val",
-        "cache_rate",
-        "adc_keys","t2_keys",
-        "target_spacing","resize_size","resize_keys","pad_size","crop_size",
-        "random_crop_size", "n_crops",
-        "possible_labels","positive_labels",
-        "bottleneck_classification","deep_supervision",
-        "constant_ratio",
-        "config_file","module_path",
-        ("segmentation_net_type","net_type"),
-        "res_config_file","encoder_checkpoint","lr_encoder",
-        "dev","n_workers",
-        "seed",
-        "augment",
-        "loss_gamma","loss_comb","loss_scale",
-        "checkpoint_dir","checkpoint_name","checkpoint","resume_from_last",
-        "project_name","resume","summary_dir","summary_name","monitor",
-        "learning_rate","batch_size",
-        "gradient_clip_val",
-        "max_epochs",
-        "dataset_iterations_per_epoch",
-        "precision",
-        "n_folds","folds",
-        "check_val_every_n_epoch","accumulate_grad_batches",
-        "picai_eval",
-        "metric_path",
-        "early_stopping",
-        ("class_weights","class_weights",{"default":[1.]})
-    ])
+    parser.add_argument_by_key(
+        [
+            "dataset_json",
+            "image_keys",
+            "mask_image_keys",
+            "mask_keys",
+            "skip_keys",
+            "skip_mask_keys",
+            "feature_keys",
+            "subsample_size",
+            "excluded_ids",
+            "use_val_as_train_val",
+            "cache_rate",
+            "adc_keys",
+            "t2_keys",
+            "target_spacing",
+            "resize_size",
+            "resize_keys",
+            "pad_size",
+            "crop_size",
+            "random_crop_size",
+            "n_crops",
+            "possible_labels",
+            "positive_labels",
+            "bottleneck_classification",
+            "deep_supervision",
+            "constant_ratio",
+            "config_file",
+            "module_path",
+            ("segmentation_net_type", "net_type"),
+            "res_config_file",
+            "encoder_checkpoint",
+            "lr_encoder",
+            "dev",
+            "n_workers",
+            "seed",
+            "augment",
+            "loss_gamma",
+            "loss_comb",
+            "loss_scale",
+            "checkpoint_dir",
+            "checkpoint_name",
+            "checkpoint",
+            "resume_from_last",
+            "project_name",
+            "resume",
+            "summary_dir",
+            "summary_name",
+            "monitor",
+            "learning_rate",
+            "batch_size",
+            "gradient_clip_val",
+            "max_epochs",
+            "dataset_iterations_per_epoch",
+            "precision",
+            "n_folds",
+            "folds",
+            "check_val_every_n_epoch",
+            "accumulate_grad_batches",
+            "picai_eval",
+            "metric_path",
+            "early_stopping",
+            ("class_weights", "class_weights", {"default": [1.0]}),
+        ]
+    )
 
     args = parser.parse_args(arguments)
 
@@ -94,8 +131,8 @@ def main(arguments):
     np.random.seed(args.seed)
     g = torch.Generator()
     g.manual_seed(args.seed)
-    
-    accelerator,devices,strategy = get_devices(args.dev)
+
+    accelerator, devices, strategy = get_devices(args.dev)
     dev = args.dev.split(":")[0]
 
     if args.possible_labels == 2 or args.positive_labels is not None:
@@ -105,11 +142,11 @@ def main(arguments):
 
     keys = args.image_keys
     label_keys = args.mask_keys
-    
-    mask_image_keys = if_none_else(args.mask_image_keys,[])
-    adc_keys = if_none_else(args.adc_keys,[])
-    t2_keys = if_none_else(args.t2_keys,[])
-    resize_keys = if_none_else(args.resize_keys,[])
+
+    mask_image_keys = if_none_else(args.mask_image_keys, [])
+    adc_keys = if_none_else(args.adc_keys, [])
+    t2_keys = if_none_else(args.t2_keys, [])
+    resize_keys = if_none_else(args.resize_keys, [])
 
     adc_keys = [k for k in adc_keys if k in keys]
     intp = []
@@ -122,9 +159,9 @@ def main(arguments):
             intp.append("area")
             intp_resampling_augmentations.append("bilinear")
     non_adc_keys = [k for k in keys if k not in adc_keys]
-    intp.extend(["nearest"]*len(label_keys))
-    intp_resampling_augmentations.extend(["nearest"]*len(label_keys))
-    all_keys = [*keys,*label_keys]
+    intp.extend(["nearest"] * len(label_keys))
+    intp_resampling_augmentations.extend(["nearest"] * len(label_keys))
+    all_keys = [*keys, *label_keys]
     all_keys_t = [*all_keys]
     if args.resize_size is not None:
         args.resize_size = [round(x) for x in args.resize_size]
@@ -138,77 +175,90 @@ def main(arguments):
 
     data_dict = {}
     for dataset_json in args.dataset_json:
-        cur_dataset_dict = json.load(open(dataset_json,'r'))
+        cur_dataset_dict = json.load(open(dataset_json, "r"))
         for k in cur_dataset_dict:
             data_dict[k] = cur_dataset_dict[k]
     if args.missing_to_empty is None:
         data_dict = {
-            k:data_dict[k] for k in data_dict
-            if inter_size(data_dict[k],set(all_keys_t)) == len(all_keys_t)}
+            k: data_dict[k]
+            for k in data_dict
+            if inter_size(data_dict[k], set(all_keys_t)) == len(all_keys_t)
+        }
     else:
         if "mask" in args.missing_to_empty:
             data_dict = {
-                k:data_dict[k] for k in data_dict
-                if inter_size(data_dict[k],set(mask_image_keys)) >= 0}
+                k: data_dict[k]
+                for k in data_dict
+                if inter_size(data_dict[k], set(mask_image_keys)) >= 0
+            }
 
     if args.subsample_size is not None:
         ss = np.random.choice(
-            sorted(list(data_dict.keys())),args.subsample_size,replace=False)
-        data_dict = {k:data_dict[k] for k in ss}
+            sorted(list(data_dict.keys())), args.subsample_size, replace=False
+        )
+        data_dict = {k: data_dict[k] for k in ss}
 
     if args.excluded_ids is not None:
-        args.excluded_ids = parse_ids(args.excluded_ids,
-                                      output_format="list")
+        args.excluded_ids = parse_ids(args.excluded_ids, output_format="list")
         print("Removing IDs specified in --excluded_ids")
         prev_len = len(data_dict)
-        data_dict = {k:data_dict[k] for k in data_dict
-                     if k not in args.excluded_ids}
+        data_dict = {
+            k: data_dict[k] for k in data_dict if k not in args.excluded_ids
+        }
         print("\tRemoved {} IDs".format(prev_len - len(data_dict)))
 
     if args.target_spacing[0] == "infer":
         target_spacing_dict = spacing_values_from_dataset_json(
-            data_dict,key=keys[0],n_workers=args.n_workers)
+            data_dict, key=keys[0], n_workers=args.n_workers
+        )
 
     all_pids = [k for k in data_dict]
 
-    network_config,loss_key = parse_config_unet(
-        args.config_file,len(keys),n_classes)
+    network_config, loss_key = parse_config_unet(
+        args.config_file, len(keys), n_classes
+    )
     if args.learning_rate is not None:
         network_config["learning_rate"] = args.learning_rate
     if args.batch_size is not None:
         network_config["batch_size"] = args.batch_size
-    
+
     if args.folds is None:
         if args.n_folds > 1:
             fold_generator = KFold(
-                args.n_folds,shuffle=True,random_state=args.seed).split(all_pids)
+                args.n_folds, shuffle=True, random_state=args.seed
+            ).split(all_pids)
         else:
             fold_generator = iter(
-                [train_test_split(range(len(all_pids)),test_size=0.2)])
+                [train_test_split(range(len(all_pids)), test_size=0.2)]
+            )
     else:
         args.folds = parse_ids(args.folds)
         folds = []
-        for fold_idx,val_ids in enumerate(args.folds):
-            train_idxs = [i for i,x in enumerate(all_pids) if x not in val_ids]
-            val_idxs = [i for i,x in enumerate(all_pids) if x in val_ids]
+        for fold_idx, val_ids in enumerate(args.folds):
+            train_idxs = [
+                i for i, x in enumerate(all_pids) if x not in val_ids
+            ]
+            val_idxs = [i for i, x in enumerate(all_pids) if x in val_ids]
             if len(train_idxs) == 0:
                 print("No train samples in fold {}".format(fold_idx))
                 continue
             if len(val_idxs) == 0:
                 print("No val samples in fold {}".format(fold_idx))
                 continue
-            folds.append([train_idxs,val_idxs])
+            folds.append([train_idxs, val_idxs])
         args.n_folds = len(folds)
         fold_generator = iter(folds)
-    
-    output_file = open(args.metric_path,'w')
+
+    output_file = open(args.metric_path, "w")
     for val_fold in range(args.n_folds):
-        print("="*80)
+        print("=" * 80)
         print("Starting fold={}".format(val_fold))
-        
-        train_idxs,val_idxs = next(fold_generator)
+
+        train_idxs, val_idxs = next(fold_generator)
         if args.use_val_as_train_val is False:
-            train_idxs,train_val_idxs = train_test_split(train_idxs,test_size=0.15)
+            train_idxs, train_val_idxs = train_test_split(
+                train_idxs, test_size=0.15
+            )
         else:
             train_val_idxs = val_idxs
         train_pids = [all_pids[i] for i in train_idxs]
@@ -220,7 +270,8 @@ def main(arguments):
 
         if args.target_spacing[0] == "infer":
             target_spacing = get_spacing_quantile(
-                {k:target_spacing_dict[k] for k in train_pids})
+                {k: target_spacing_dict[k] for k in train_pids}
+            )
         else:
             target_spacing = [float(x) for x in args.target_spacing]
 
@@ -247,44 +298,50 @@ def main(arguments):
             "random_crop_size": args.random_crop_size,
             "label_mode": label_mode,
             "fill_missing": args.missing_to_empty is not None,
-            "brunet": False}
-        transform_arguments_val = {k:transform_arguments[k]
-                                for k in transform_arguments}
+            "brunet": False,
+        }
+        transform_arguments_val = {
+            k: transform_arguments[k] for k in transform_arguments
+        }
         transform_arguments_val["random_crop_size"] = None
         transform_arguments_val["crop_size"] = None
         augment_arguments = {
-            "augment":args.augment,
-            "all_keys":all_keys,
-            "image_keys":keys,
-            "t2_keys":t2_keys,
-            "random_crop_size":args.random_crop_size,
-            "n_crops":args.n_crops}
+            "augment": args.augment,
+            "all_keys": all_keys,
+            "image_keys": keys,
+            "t2_keys": t2_keys,
+            "random_crop_size": args.random_crop_size,
+            "n_crops": args.n_crops,
+        }
         if args.random_crop_size:
-            get_all_crops_transform = [GetAllCropsd(
-                args.image_keys + ["mask"],args.random_crop_size)]
+            get_all_crops_transform = [
+                GetAllCropsd(args.image_keys + ["mask"], args.random_crop_size)
+            ]
         else:
             get_all_crops_transform = []
         transforms_train = [
-            *get_transforms("pre",**transform_arguments),
+            *get_transforms("pre", **transform_arguments),
             get_augmentations(**augment_arguments),
-            *get_transforms("post",**transform_arguments)]
+            *get_transforms("post", **transform_arguments),
+        ]
 
         transforms_train_val = [
-            *get_transforms("pre",**transform_arguments_val),
+            *get_transforms("pre", **transform_arguments_val),
             *get_all_crops_transform,
-            *get_transforms("post",**transform_arguments_val)]
+            *get_transforms("post", **transform_arguments_val),
+        ]
 
         transforms_val = [
-            *get_transforms("pre",**transform_arguments_val),
-            *get_transforms("post",**transform_arguments_val)]
+            *get_transforms("pre", **transform_arguments_val),
+            *get_transforms("post", **transform_arguments_val),
+        ]
 
         if network_config["spatial_dimensions"] == 2:
             transforms_train.append(
-                RandomSlices(["image","mask"],"mask",n=8,base=0.05))
-            transforms_train_val.append(
-                SlicesToFirst(["image","mask"]))
-            transforms_val.append(
-                SlicesToFirst(["image","mask"]))
+                RandomSlices(["image", "mask"], "mask", n=8, base=0.05)
+            )
+            transforms_train_val.append(SlicesToFirst(["image", "mask"]))
+            transforms_val.append(SlicesToFirst(["image", "mask"]))
             collate_fn_train = collate_last_slice
             collate_fn_val = collate_last_slice
         elif args.random_crop_size is not None:
@@ -293,18 +350,19 @@ def main(arguments):
         else:
             collate_fn_train = safe_collate
             collate_fn_val = safe_collate
-            
+
         callbacks = [RichProgressBar()]
         ckpt_path = None
 
-        ckpt_callback,ckpt_path,status = get_ckpt_callback(
+        ckpt_callback, ckpt_path, status = get_ckpt_callback(
             checkpoint_dir=args.checkpoint_dir,
             checkpoint_name=args.checkpoint_name,
             max_epochs=args.max_epochs,
             resume_from_last=args.resume_from_last,
             val_fold=val_fold,
             monitor=args.monitor,
-            metadata={"transform_arguments":transform_arguments})
+            metadata={"transform_arguments": transform_arguments},
+        )
         ckpt = ckpt_callback is not None
         if status == "finished":
             continue
@@ -312,29 +370,35 @@ def main(arguments):
             callbacks.append(ckpt_callback)
 
         if args.checkpoint is not None:
-            if len(args.checkpoint) >= (val_fold+1):
+            if len(args.checkpoint) >= (val_fold + 1):
                 ckpt_path = args.checkpoint[val_fold]
-                print("Resuming training from checkpoint in {}".format(ckpt_path))
-        
+                print(
+                    "Resuming training from checkpoint in {}".format(ckpt_path)
+                )
+
         train_dataset = monai.data.CacheDataset(
             train_list,
             monai.transforms.Compose(transforms_train),
-            num_workers=args.n_workers,cache_rate=args.cache_rate)
+            num_workers=args.n_workers,
+            cache_rate=args.cache_rate,
+        )
         train_dataset_val = monai.data.CacheDataset(
             train_val_list,
             monai.transforms.Compose(transforms_train_val),
-            num_workers=args.n_workers)
+            num_workers=args.n_workers,
+        )
         validation_dataset = monai.data.Dataset(
-            val_list,
-            monai.transforms.Compose(transforms_val))
-            
+            val_list, monai.transforms.Compose(transforms_val)
+        )
+
         n_samples = int(len(train_dataset) * args.dataset_iterations_per_epoch)
         sampler = torch.utils.data.RandomSampler(
             ["element" for _ in train_idxs],
             num_samples=n_samples,
             replacement=len(train_dataset) < n_samples,
-            generator=g)
-        if isinstance(args.class_weights[0],str):
+            generator=g,
+        )
+        if isinstance(args.class_weights[0], str):
             ad = "adaptive" in args.class_weights[0]
         else:
             ad = False
@@ -345,15 +409,21 @@ def main(arguments):
             total_pixel_sum = 0
             with tqdm(train_list) as t:
                 t.set_description(
-                    "Setting up partially random sampler/adaptive weights")
+                    "Setting up partially random sampler/adaptive weights"
+                )
                 for x in t:
-                    intersection = set.intersection(set(label_keys),set(x.keys()))
+                    intersection = set.intersection(
+                        set(label_keys), set(x.keys())
+                    )
                     if len(intersection) > 0:
                         masks = monai.transforms.LoadImaged(
-                            keys=label_keys,allow_missing_keys=True)(x)
+                            keys=label_keys, allow_missing_keys=True
+                        )(x)
                         total = []
                         for k in intersection:
-                            for u,c in zip(*np.unique(masks[k],return_counts=True)):
+                            for u, c in zip(
+                                *np.unique(masks[k], return_counts=True)
+                            ):
                                 if u not in total:
                                     total.append(u)
                                 if u != 0:
@@ -365,11 +435,12 @@ def main(arguments):
                             cl.append(0)
                     else:
                         cl.append(0)
-            adaptive_weights = len(cl)/np.sum(cl)
+            adaptive_weights = len(cl) / np.sum(cl)
             adaptive_pixel_weights = total_pixel_sum / pos_pixel_sum
             if args.constant_ratio is not None:
                 sampler = PartiallyRandomSampler(
-                    cl,non_keep_ratio=args.constant_ratio,seed=args.seed)
+                    cl, non_keep_ratio=args.constant_ratio, seed=args.seed
+                )
                 if args.class_weights[0] == "adaptive":
                     adaptive_weights = 1 + args.constant_ratio
         # weights to tensor
@@ -379,39 +450,58 @@ def main(arguments):
             weights = adaptive_pixel_weights
         else:
             weights = torch.as_tensor(
-                np.float32(np.array(args.class_weights)),dtype=torch.float32,
-                device=dev)
-        print("Weights set to:",weights)
-        
+                np.float32(np.array(args.class_weights)),
+                dtype=torch.float32,
+                device=dev,
+            )
+        print("Weights set to:", weights)
+
         # get loss function parameters
         loss_params = get_loss_param_dict(
-            weights=weights,gamma=args.loss_gamma,
-            comb=args.loss_comb,scale=args.loss_scale)[loss_key]
+            weights=weights,
+            gamma=args.loss_gamma,
+            comb=args.loss_comb,
+            scale=args.loss_scale,
+        )[loss_key]
         if "eps" in loss_params and args.precision != "32":
             if loss_params["eps"] < 1e-4:
                 loss_params["eps"] = 1e-4
 
-        if isinstance(devices,list):
+        if isinstance(devices, list):
             nw = args.n_workers // len(devices)
         else:
             nw = args.n_workers
 
-        def train_loader_call(batch_size): 
+        def train_loader_call(batch_size):
             return monai.data.ThreadDataLoader(
-                dataset=train_dataset,batch_size=batch_size, # noqa: F821
-                num_workers=nw,generator=g,sampler=sampler,
-                collate_fn=collate_fn_train,pin_memory=True,
-                persistent_workers=True,drop_last=True)
+                dataset=train_dataset,
+                batch_size=batch_size,  # noqa: F821
+                num_workers=nw,
+                generator=g,
+                sampler=sampler,
+                collate_fn=collate_fn_train,
+                pin_memory=True,
+                persistent_workers=True,
+                drop_last=True,
+            )
 
         train_loader = train_loader_call(network_config["batch_size"])
         train_val_loader = monai.data.ThreadDataLoader(
-            train_dataset_val,batch_size=1,
-            shuffle=False,num_workers=nw,
-            collate_fn=collate_fn_train,persistent_workers=True)
+            train_dataset_val,
+            batch_size=1,
+            shuffle=False,
+            num_workers=nw,
+            collate_fn=collate_fn_train,
+            persistent_workers=True,
+        )
         validation_loader = monai.data.ThreadDataLoader(
-            validation_dataset,batch_size=1,
-            shuffle=False,num_workers=args.n_workers,
-            collate_fn=collate_fn_val,persistent_workers=True)
+            validation_dataset,
+            batch_size=1,
+            shuffle=False,
+            num_workers=args.n_workers,
+            collate_fn=collate_fn_val,
+            persistent_workers=True,
+        )
 
         # make other network configurations compatible with mimunet
         network_config_corr = deepcopy(network_config)
@@ -419,7 +509,8 @@ def main(arguments):
             "spatial_dim": 3,
             "norm_fn": "batch",
             "act_fn": "swish",
-            "dropout_param": 0.1}
+            "dropout_param": 0.1,
+        }
         if "norm_type" in network_config_corr:
             adn_fn_args["norm_fn"] = network_config_corr["norm_type"]
         if "activation_fn" in network_config_corr:
@@ -427,63 +518,87 @@ def main(arguments):
         if "dropout_param" in network_config_corr:
             adn_fn_args["dropout_param"] = network_config_corr["dropout_param"]
         network_config_corr["adn_fn"] = get_adn_fn(**adn_fn_args)
-        network_config_corr = {k:network_config_corr[k] 
-                               for k in network_config_corr
-                               if k not in ["depth","spatial_dimensions",
-                                            "conv_type","norm_type",
-                                            "interpolation","dropout_param",
-                                            "activation_fn","kernel_sizes",
-                                            "strides","padding"]}
-        module_2d = torch.jit.load(args.module_path,
-                                   map_location=args.dev)
+        network_config_corr = {
+            k: network_config_corr[k]
+            for k in network_config_corr
+            if k
+            not in [
+                "depth",
+                "spatial_dimensions",
+                "conv_type",
+                "norm_type",
+                "interpolation",
+                "dropout_param",
+                "activation_fn",
+                "kernel_sizes",
+                "strides",
+                "padding",
+            ]
+        }
+        module_2d = torch.jit.load(args.module_path, map_location=args.dev)
         module_2d.requires_grad = False
         module_2d = module_2d.eval()
-        size = get_first(args.random_crop_size,args.crop_size,args.pad_size)
-        unet = MIMUNetPL(module=module_2d,
-                         n_classes=n_classes,
-                         n_slices=size[-1],
-                         image_key="image",
-                         label_key="mask",
-                         cosine_decay=args.cosine_decay,
-                         n_epochs=args.max_epochs,
-                         training_dataloader_call=train_loader_call,
-                         deep_supervision=args.deep_supervision,
-                         loss_params=loss_params,
-                         **network_config_corr)
+        size = get_first(args.random_crop_size, args.crop_size, args.pad_size)
+        unet = MIMUNetPL(
+            module=module_2d,
+            n_classes=n_classes,
+            n_slices=size[-1],
+            image_key="image",
+            label_key="mask",
+            cosine_decay=args.cosine_decay,
+            n_epochs=args.max_epochs,
+            training_dataloader_call=train_loader_call,
+            deep_supervision=args.deep_supervision,
+            loss_params=loss_params,
+            **network_config_corr
+        )
         unet.module = torch.jit.freeze(unet.module)
 
         if args.early_stopping is not None:
             early_stopping = EarlyStopping(
-                'val_loss',patience=args.early_stopping,
-                strict=True,mode="min")
+                "val_loss",
+                patience=args.early_stopping,
+                strict=True,
+                mode="min",
+            )
             callbacks.append(early_stopping)
-                
-        logger = get_logger(args.summary_name,args.summary_dir,
-                            args.project_name,args.resume,
-                            fold=val_fold)
 
-        precision = {"32":32,"16":16,"bf16":"bf16"}[args.precision]
+        logger = get_logger(
+            args.summary_name,
+            args.summary_dir,
+            args.project_name,
+            args.resume,
+            fold=val_fold,
+        )
+
+        precision = {"32": 32, "16": 16, "bf16": "bf16"}[args.precision]
         trainer = Trainer(
             accelerator=dev,
-            devices=devices,logger=logger,callbacks=callbacks,
-            strategy=strategy,max_epochs=args.max_epochs,
+            devices=devices,
+            logger=logger,
+            callbacks=callbacks,
+            strategy=strategy,
+            max_epochs=args.max_epochs,
             enable_checkpointing=ckpt,
             accumulate_grad_batches=args.accumulate_grad_batches,
             check_val_every_n_epoch=args.check_val_every_n_epoch,
-            log_every_n_steps=10,precision=precision,
+            log_every_n_steps=10,
+            precision=precision,
             gradient_clip_val=args.gradient_clip_val,
-            detect_anomaly=False)
+            detect_anomaly=False,
+        )
 
-        trainer.fit(unet,train_loader,train_val_loader,ckpt_path=ckpt_path)
-        
+        trainer.fit(unet, train_loader, train_val_loader, ckpt_path=ckpt_path)
+
         print("Validating...")
         if ckpt is True:
-            ckpt_list = ["last","best"]
+            ckpt_list = ["last", "best"]
         else:
             ckpt_list = ["last"]
         for ckpt_key in ckpt_list:
             test_metrics = trainer.test(
-                unet,validation_loader,ckpt_path=ckpt_key)[0]
+                unet, validation_loader, ckpt_path=ckpt_key
+            )[0]
             for k in test_metrics:
                 out = test_metrics[k]
                 if n_classes == 2:
@@ -491,18 +606,22 @@ def main(arguments):
                         value = float(out.detach().numpy())
                     except Exception:
                         value = float(out)
-                    x = "{},{},{},{},{}".format(k,ckpt_key,val_fold,0,value)
-                    output_file.write(x+'\n')
+                    x = "{},{},{},{},{}".format(
+                        k, ckpt_key, val_fold, 0, value
+                    )
+                    output_file.write(x + "\n")
                     print(x)
                 else:
-                    for i,v in enumerate(out):
-                        x = "{},{},{},{},{}".format(k,ckpt_key,val_fold,i,v)
-                        output_file.write(x+'\n')
+                    for i, v in enumerate(out):
+                        x = "{},{},{},{},{}".format(
+                            k, ckpt_key, val_fold, i, v
+                        )
+                        output_file.write(x + "\n")
                         print(x)
 
-        print("="*80)
+        print("=" * 80)
         gc.collect()
-        
+
         # just for safety
         del trainer
         del train_dataset

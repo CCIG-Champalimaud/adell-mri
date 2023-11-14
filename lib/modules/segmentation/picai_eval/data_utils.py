@@ -28,8 +28,8 @@ def save_metrics(metrics, file_path: PathLike):
     save_metrics = sterilize(metrics)
 
     # save metrics using safe file write
-    file_path_tmp = str(file_path) + '.tmp'
-    with open(file_path_tmp, 'w') as fp:
+    file_path_tmp = str(file_path) + ".tmp"
+    with open(file_path_tmp, "w") as fp:
         json.dump(save_metrics, fp, indent=4)
     os.rename(file_path_tmp, file_path)
 
@@ -86,7 +86,7 @@ def get_dataset_config(
     if split is None:
         split = "all"
 
-    if split in ['test', 'all']:
+    if split in ["test", "all"]:
         postfix = ""
     else:
         postfix = f"-fold-{fold}" if fold is not None else ""
@@ -103,18 +103,25 @@ def get_subject_list(
     split: Optional[str] = None,
     fold: Optional[int] = None,
     config_root: str = "/input/dataset-configs",
-    construct_all_from_train=True
+    construct_all_from_train=True,
 ) -> Dict[str, Any]:
     """Get subject list from a dataset configuration"""
     try:
-        dataset_config = get_dataset_config(name=name, split=split, fold=fold, config_root=config_root)
-        return dataset_config['subject_list']
+        dataset_config = get_dataset_config(
+            name=name, split=split, fold=fold, config_root=config_root
+        )
+        return dataset_config["subject_list"]
     except FileNotFoundError:
         # if trying to read 'all', construct from train & val splits (assuming 5-fold cross-validation)
-        if split == 'all' and construct_all_from_train:
+        if split == "all" and construct_all_from_train:
             subject_list_all = []
             for fold in range(5):
-                subject_list_all += get_subject_list(name=name, split='train', fold=fold, config_root=config_root)
+                subject_list_all += get_subject_list(
+                    name=name,
+                    split="train",
+                    fold=fold,
+                    config_root=config_root,
+                )
             subject_list_all = sorted(list(set(subject_list_all)))
             return subject_list_all
         else:

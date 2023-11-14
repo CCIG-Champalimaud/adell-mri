@@ -5,23 +5,26 @@ import torch.nn.functional as F
 
 from ...layers.standard_blocks import VGGConvolution3d, VGGDeconvolution3d
 
-from typing import Union,Dict,List,Tuple,Callable
-
+from typing import Union, Dict, List, Tuple, Callable
 
 
 class VGGAutoencoder(torch.nn.Module):
     """
     Very simple and naive VGG-like autoencoder.
     """
-    def __init__(self, spatial_dimensions: int=3,
-                 n_channels: int=1,
-                 feature_extraction=None,
-                 resnet_structure=None,
-                 maxpool_structure=None,
-                 adn_fn=None,
-                 res_type=None,
-                 classification_structure:List[int]=[512,512,512],
-                 batch_ensemble:int=0):
+
+    def __init__(
+        self,
+        spatial_dimensions: int = 3,
+        n_channels: int = 1,
+        feature_extraction=None,
+        resnet_structure=None,
+        maxpool_structure=None,
+        adn_fn=None,
+        res_type=None,
+        classification_structure: List[int] = [512, 512, 512],
+        batch_ensemble: int = 0,
+    ):
         """
         Args:
             spatial_dimensions (int, optional): number of spatial dimensions.
@@ -42,28 +45,29 @@ class VGGAutoencoder(torch.nn.Module):
 
     def encoder(self, in_channels):
         encoder = torch.nn.Sequential(
-            VGGConvolution3d(
-                input_channels=in_channels, first_depth=64),
-            VGGConvolution3d(
-                input_channels=128, first_depth=128),
-            VGGConvolution3d(
-                input_channels=256, first_depth=256),
+            VGGConvolution3d(input_channels=in_channels, first_depth=64),
+            VGGConvolution3d(input_channels=128, first_depth=128),
+            VGGConvolution3d(input_channels=256, first_depth=256),
         )
         return encoder
 
     def decoder(self, in_channels):
         decoder = torch.nn.Sequential(
+            VGGDeconvolution3d(input_channels=512, first_depth=256),
+            VGGDeconvolution3d(input_channels=256, first_depth=128),
             VGGDeconvolution3d(
-                input_channels=512, first_depth=256),
-            VGGDeconvolution3d(
-                input_channels=256, first_depth=128),
-            VGGDeconvolution3d(
-                input_channels=128, first_depth=64, last=True, last_channels=in_channels),
+                input_channels=128,
+                first_depth=64,
+                last=True,
+                last_channels=in_channels,
+            ),
         )
         return decoder
 
-    def forward_features(self,X: torch.Tensor,
-                         )->torch.Tensor:
+    def forward_features(
+        self,
+        X: torch.Tensor,
+    ) -> torch.Tensor:
         """Forward method for features only.
 
         Args:
@@ -74,11 +78,13 @@ class VGGAutoencoder(torch.nn.Module):
         Returns:
             torch.Tensor: output (latent features)
         """
-        return self.forward(X,return_features=True)
+        return self.forward(X, return_features=True)
 
-    def forward(self,X: torch.Tensor,
-                return_features: bool=False,
-                )->torch.Tensor:
+    def forward(
+        self,
+        X: torch.Tensor,
+        return_features: bool = False,
+    ) -> torch.Tensor:
         """Forward method.
 
         Args:

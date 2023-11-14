@@ -1,25 +1,38 @@
 import itertools
-import os 
+import os
 import json
 import numpy as np
 import SimpleITK as sitk
 import concurrent.futures
 from scipy import ndimage
 from scipy.optimize import linear_sum_assignment
-from sklearn.metrics import precision_recall_curve,roc_curve,auc
+from sklearn.metrics import precision_recall_curve, roc_curve, auc
 from concurrent.futures import ThreadPoolExecutor
 from tqdm import tqdm
 
 import numpy.typing as npt
 from typing import (
-    Iterable,Path,PathLike,Union,Optional,
-    Hashable,Callable,Dict,List,
-    Tuple,Any,Sized)
+    Iterable,
+    Path,
+    PathLike,
+    Union,
+    Optional,
+    Hashable,
+    Callable,
+    Dict,
+    List,
+    Tuple,
+    Any,
+    Sized,
+)
 
 label_structure = np.ones((3, 3, 3))
 
+
 class Metrics:
-    lesion_results: Union[Dict[Hashable, List[Tuple[int, float, float]]], PathLike]
+    lesion_results: Union[
+        Dict[Hashable, List[Tuple[int, float, float]]], PathLike
+    ]
     case_target: Optional[Dict[Hashable, int]] = None
     case_pred: Optional[Dict[Hashable, float]] = None
     case_weight: Optional[Union[Dict[Hashable, float], List[float]]] = None
@@ -39,14 +52,18 @@ class Metrics:
         if self.case_target is None:
             # derive case-level targets as the maximum lesion-level target
             self.case_target = {
-                idx: max([is_lesion for is_lesion, _, _ in case_y_list]) if len(case_y_list) else 0
+                idx: max([is_lesion for is_lesion, _, _ in case_y_list])
+                if len(case_y_list)
+                else 0
                 for idx, case_y_list in self.lesion_results.items()
             }
 
         if self.case_pred is None:
             # derive case-level predictions as the maximum lesion-level prediction
             self.case_pred = {
-                idx: max([confidence for _, confidence, _ in case_y_list]) if len(case_y_list) else 0
+                idx: max([confidence for _, confidence, _ in case_y_list])
+                if len(case_y_list)
+                else 0
                 for idx, case_y_list in self.lesion_results.items()
             }
 
@@ -55,25 +72,39 @@ class Metrics:
             if self.case_weight is None:
                 self.case_weight = {idx: 1 for idx in subject_list}
             else:
-                self.case_weight = {idx: weight for idx, weight in zip(subject_list, self.case_weight)}
+                self.case_weight = {
+                    idx: weight
+                    for idx, weight in zip(subject_list, self.case_weight)
+                }
 
         if self.lesion_weight is None:
             subject_list = sorted(list(self.lesion_results))
-            self.lesion_weight = {idx: [1]*len(case_y_list) for idx, case_y_list in self.lesion_results.items()}
+            self.lesion_weight = {
+                idx: [1] * len(case_y_list)
+                for idx, case_y_list in self.lesion_results.items()
+            }
 
         if self.sort:
             # sort dictionaries
             subject_list = sorted(list(self.lesion_results))
-            self.lesion_results = {idx: self.lesion_results[idx] for idx in subject_list}
-            self.lesion_weight = {idx: self.lesion_weight[idx] for idx in subject_list}
-            self.case_target = {idx: self.case_target[idx] for idx in subject_list}
+            self.lesion_results = {
+                idx: self.lesion_results[idx] for idx in subject_list
+            }
+            self.lesion_weight = {
+                idx: self.lesion_weight[idx] for idx in subject_list
+            }
+            self.case_target = {
+                idx: self.case_target[idx] for idx in subject_list
+            }
             self.case_pred = {idx: self.case_pred[idx] for idx in subject_list}
-            self.case_weight = {idx: self.case_weight[idx] for idx in subject_list}
+            self.case_weight = {
+                idx: self.case_weight[idx] for idx in subject_list
+            }
 
     # aggregates
     def calc_auroc(self, subject_list: Optional[List[str]] = None) -> float:
         """Calculate case-level Area Under the Receiver Operating Characteristic curve (AUROC)"""
-        return self.calculate_ROC(subject_list=subject_list)['AUROC']
+        return self.calculate_ROC(subject_list=subject_list)["AUROC"]
 
     @property
     def auroc(self) -> float:
@@ -82,7 +113,7 @@ class Metrics:
 
     def calc_AP(self, subject_list: Optional[List[str]] = None) -> float:
         """Calculate Average Precision"""
-        return self.calculate_precision_recall(subject_list=subject_list)['AP']
+        return self.calculate_precision_recall(subject_list=subject_list)["AP"]
 
     @property
     def AP(self) -> float:
@@ -105,7 +136,9 @@ class Metrics:
         return (self.auroc + self.AP) / 2
 
     # lesion-level results
-    def get_lesion_results_flat(self, subject_list: Optional[List[str]] = None):
+    def get_lesion_results_flat(
+        self, subject_list: Optional[List[str]] = None
+    ):
         """Flatten the per-case lesion evaluation results into a single list"""
         if subject_list is None:
             subject_list = self.subject_list
@@ -113,7 +146,9 @@ class Metrics:
         return [
             (is_lesion, confidence, overlap)
             for subject_id in subject_list
-            for is_lesion, confidence, overlap in self.lesion_results[subject_id]
+            for is_lesion, confidence, overlap in self.lesion_results[
+                subject_id
+            ]
         ]
 
     @property
@@ -121,13 +156,19 @@ class Metrics:
         """Flatten the per-case y_list"""
         return self.get_lesion_results_flat()
 
-    def get_lesion_weight_flat(self, subject_list: Optional[List[str]] = None) -> List[float]:
+    def get_lesion_weight_flat(
+        self, subject_list: Optional[List[str]] = None
+    ) -> List[float]:
         """Retrieve lesion-wise sample weights (for a given subset of cases)"""
         if subject_list is None:
             subject_list = self.subject_list
 
         # collect lesion weights (and flatten)
-        return [weight for subject_id in subject_list for weight in self.lesion_weight[subject_id]]
+        return [
+            weight
+            for subject_id in subject_list
+            for weight in self.lesion_weight[subject_id]
+        ]
 
     @property
     def lesion_weight_flat(self) -> List[float]:
@@ -137,22 +178,22 @@ class Metrics:
     @property
     def precision(self) -> "npt.NDArray[np.float64]":
         """Calculate lesion-level precision at each threshold"""
-        return self.calculate_precision_recall()['precision']
+        return self.calculate_precision_recall()["precision"]
 
     @property
     def recall(self) -> "npt.NDArray[np.float64]":
         """Calculate lesion-level recall at each threshold"""
-        return self.calculate_precision_recall()['recall']
+        return self.calculate_precision_recall()["recall"]
 
     @property
     def lesion_TP(self) -> "npt.NDArray[np.float64]":
         """Calculate number of true positive lesion detections at each threshold"""
-        return self.calculate_counts()['TP']
+        return self.calculate_counts()["TP"]
 
     @property
     def lesion_FP(self) -> "npt.NDArray[np.float64]":
         """Calculate number of false positive lesion detections at each threshold"""
-        return self.calculate_counts()['FP']
+        return self.calculate_counts()["FP"]
 
     @property
     def lesion_TPR(self) -> "npt.NDArray[np.float64]":
@@ -168,18 +209,22 @@ class Metrics:
         return self.lesion_FP / self.num_cases
 
     # case-level results
-    def calc_case_TPR(self, subject_list: Optional[List[str]] = None) -> "npt.NDArray[np.float64]":
+    def calc_case_TPR(
+        self, subject_list: Optional[List[str]] = None
+    ) -> "npt.NDArray[np.float64]":
         """Calculate case-level true positive rate (sensitivity) at each threshold"""
-        return self.calculate_ROC(subject_list=subject_list)['TPR']
+        return self.calculate_ROC(subject_list=subject_list)["TPR"]
 
     @property
     def case_TPR(self) -> "npt.NDArray[np.float64]":
         """Calculate case-level true positive rate (sensitivity) at each threshold"""
         return self.calc_case_TPR()
 
-    def calc_case_FPR(self, subject_list: Optional[List[str]] = None) -> "npt.NDArray[np.float64]":
+    def calc_case_FPR(
+        self, subject_list: Optional[List[str]] = None
+    ) -> "npt.NDArray[np.float64]":
         """Calculate case-level false positive rate (1 - specificity) at each threshold"""
-        return self.calculate_ROC(subject_list=subject_list)['FPR']
+        return self.calculate_ROC(subject_list=subject_list)["FPR"]
 
     @property
     def case_FPR(self) -> "npt.NDArray[np.float64]":
@@ -187,7 +232,9 @@ class Metrics:
         return self.calc_case_FPR()
 
     # supporting functions
-    def calculate_counts(self, subject_list: Optional[List[str]] = None) -> "Dict[str, npt.NDArray[np.float32]]":
+    def calculate_counts(
+        self, subject_list: Optional[List[str]] = None
+    ) -> "Dict[str, npt.NDArray[np.float32]]":
         """
         Calculate lesion-level true positive (TP) detections and false positive (FP) detections as each threshold.
         """
@@ -195,31 +242,52 @@ class Metrics:
         lesion_y_list = self.get_lesion_results_flat(subject_list=subject_list)
 
         # collect targets and predictions
-        y_true: "npt.NDArray[np.float64]" = np.array([target for target, *_ in lesion_y_list])
-        y_pred: "npt.NDArray[np.float64]" = np.array([pred for _, pred, *_ in lesion_y_list])
+        y_true: "npt.NDArray[np.float64]" = np.array(
+            [target for target, *_ in lesion_y_list]
+        )
+        y_pred: "npt.NDArray[np.float64]" = np.array(
+            [pred for _, pred, *_ in lesion_y_list]
+        )
 
         if self.thresholds is None:
             # collect thresholds for lesion-based analysis
             self.thresholds = np.unique(y_pred)
-            self.thresholds[::-1].sort()  # sort thresholds in descending order (inplace)
+            self.thresholds[
+                ::-1
+            ].sort()  # sort thresholds in descending order (inplace)
 
             # for >10,000 thresholds: resample to 10,000 unique thresholds, while also
             # keeping all thresholds higher than 0.8 and the first 20 thresholds
             if len(self.thresholds) > 10_000:
-                rng = np.arange(1, len(self.thresholds), len(self.thresholds)/10_000, dtype=np.int32)
+                rng = np.arange(
+                    1,
+                    len(self.thresholds),
+                    len(self.thresholds) / 10_000,
+                    dtype=np.int32,
+                )
                 st = [self.thresholds[i] for i in rng]
                 low_thresholds = self.thresholds[-20:]
-                self.thresholds = np.array([t for t in self.thresholds if t > 0.8 or t in st or t in low_thresholds])
+                self.thresholds = np.array(
+                    [
+                        t
+                        for t in self.thresholds
+                        if t > 0.8 or t in st or t in low_thresholds
+                    ]
+                )
 
         # define placeholders
-        FP: "npt.NDArray[np.float32]" = np.zeros_like(self.thresholds, dtype=np.float32)
-        TP: "npt.NDArray[np.float32]" = np.zeros_like(self.thresholds, dtype=np.float32)
+        FP: "npt.NDArray[np.float32]" = np.zeros_like(
+            self.thresholds, dtype=np.float32
+        )
+        TP: "npt.NDArray[np.float32]" = np.zeros_like(
+            self.thresholds, dtype=np.float32
+        )
 
         # for each threshold: count FPs and TPs
         for i, th in enumerate(self.thresholds):
             y_pred_thresholded = (y_pred >= th).astype(int)
-            tp = np.sum(y_true*y_pred_thresholded)
-            fp = np.sum(y_pred_thresholded - y_true*y_pred_thresholded)
+            tp = np.sum(y_true * y_pred_thresholded)
+            fp = np.sum(y_pred_thresholded - y_true * y_pred_thresholded)
 
             # update with new point
             FP[i] = fp
@@ -230,11 +298,13 @@ class Metrics:
         FP[-1] = np.inf
 
         return {
-            'TP': TP,
-            'FP': FP,
+            "TP": TP,
+            "FP": FP,
         }
 
-    def calculate_precision_recall(self, subject_list: Optional[List[str]] = None) -> Dict[str, Any]:
+    def calculate_precision_recall(
+        self, subject_list: Optional[List[str]] = None
+    ) -> Dict[str, Any]:
         """
         Generate Precision-Recall curve and calculate average precision (AP).
         """
@@ -242,14 +312,20 @@ class Metrics:
         lesion_y_list = self.get_lesion_results_flat(subject_list=subject_list)
 
         # collect targets and predictions
-        y_true: "npt.NDArray[np.float64]" = np.array([target for target, *_ in lesion_y_list])
-        y_pred: "npt.NDArray[np.float64]" = np.array([pred for _, pred, *_ in lesion_y_list])
+        y_true: "npt.NDArray[np.float64]" = np.array(
+            [target for target, *_ in lesion_y_list]
+        )
+        y_pred: "npt.NDArray[np.float64]" = np.array(
+            [pred for _, pred, *_ in lesion_y_list]
+        )
 
         # calculate precision-recall curve
         precision, recall, thresholds = precision_recall_curve(
             y_true=y_true,
             probas_pred=y_pred,
-            sample_weight=self.get_lesion_weight_flat(subject_list=subject_list)
+            sample_weight=self.get_lesion_weight_flat(
+                subject_list=subject_list
+            ),
         )
 
         # set precision to zero at a threshold of "zero", as those lesion
@@ -265,12 +341,14 @@ class Metrics:
         AP = -np.sum(np.diff(recall) * np.array(precision)[:-1])
 
         return {
-            'AP': AP,
-            'precision': precision,
-            'recall': recall,
+            "AP": AP,
+            "precision": precision,
+            "recall": recall,
         }
 
-    def calculate_ROC(self, subject_list: Optional[List[str]] = None) -> Dict[str, Any]:
+    def calculate_ROC(
+        self, subject_list: Optional[List[str]] = None
+    ) -> Dict[str, Any]:
         """
         Generate Receiver Operating Characteristic curve for case-level risk stratification.
         """
@@ -286,9 +364,9 @@ class Metrics:
         auroc = auc(fpr, tpr)
 
         return {
-            'FPR': fpr,
-            'TPR': tpr,
-            'AUROC': auroc,
+            "FPR": fpr,
+            "TPR": tpr,
+            "AUROC": auroc,
         }
 
     @property
@@ -303,11 +381,9 @@ class Metrics:
             "num_cases": self.num_cases,
             "num_lesions": self.num_lesions,
             "picai_eval_version": self.version,
-
             # lesion-level results
             "lesion_results": self.lesion_results,
             "lesion_weight": self.lesion_weight,
-
             # case-level results
             "case_pred": self.case_pred,
             "case_target": self.case_target,
@@ -322,16 +398,14 @@ class Metrics:
             "num_cases": self.num_cases,
             "num_lesions": self.num_lesions,
             "picai_eval_version": self.version,
-
             # lesion-level results
             "lesion_results": self.lesion_results,
             "lesion_weight": self.lesion_weight,
             "precision": self.precision,
             "recall": self.recall,
-            'lesion_TPR': self.lesion_TPR,
-            'lesion_FPR': self.lesion_FPR,
+            "lesion_TPR": self.lesion_TPR,
+            "lesion_FPR": self.lesion_FPR,
             "thresholds": self.thresholds,
-
             # case-level results
             "case_pred": self.case_pred,
             "case_target": self.case_target,
@@ -343,14 +417,13 @@ class Metrics:
             # lesion-level results
             "lesion_results": self.lesion_results,
             "lesion_weight": self.lesion_weight,
-
             # case-level results
             "case_pred": self.case_pred,
             "case_target": self.case_target,
             "case_weight": self.case_weight,
         }
 
-    def load_metrics(self,file_path: PathLike):
+    def load_metrics(self, file_path: PathLike):
         """Read metrics from disk"""
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"Metrics not found at {file_path}!")
@@ -365,16 +438,25 @@ class Metrics:
         metrics = self.load_metrics(path)
 
         # parse metrics
-        self.case_target = {idx: int(float(val)) for idx, val in metrics['case_target'].items()}
-        self.case_pred = {idx: float(val) for idx, val in metrics['case_pred'].items()}
-        self.case_weight = {idx: float(val) for idx, val in metrics['case_weight'].items()}
-        self.lesion_weight = {idx: [float(val) for val in weights] for idx, weights in metrics['lesion_weight'].items()}
+        self.case_target = {
+            idx: int(float(val)) for idx, val in metrics["case_target"].items()
+        }
+        self.case_pred = {
+            idx: float(val) for idx, val in metrics["case_pred"].items()
+        }
+        self.case_weight = {
+            idx: float(val) for idx, val in metrics["case_weight"].items()
+        }
+        self.lesion_weight = {
+            idx: [float(val) for val in weights]
+            for idx, weights in metrics["lesion_weight"].items()
+        }
         self.lesion_results = {
             idx: [
                 (int(float(is_lesion)), float(confidence), float(overlap))
                 for (is_lesion, confidence, overlap) in lesion_results_case
             ]
-            for idx, lesion_results_case in metrics['lesion_results'].items()
+            for idx, lesion_results_case in metrics["lesion_results"].items()
         }
 
     def __str__(self) -> str:
@@ -383,44 +465,54 @@ class Metrics:
     def __repr__(self) -> str:
         return self.__str__()
 
+
 def read_label(path: PathLike) -> "npt.NDArray[np.int32]":
     """Read label, given a filepath"""
     # read label and ensure correct dtype
     lbl: "npt.NDArray[np.int32]" = np.array(read_image(path), dtype=np.int32)
     return lbl
 
+
 def read_image(path: PathLike):
     """Read image, given a filepath"""
     if isinstance(path, Path):
         path = path.as_posix()
     else:
-        assert isinstance(path, str), f"Unexpected path type: {type(path)}. Please provide a Path or str."
+        assert isinstance(
+            path, str
+        ), f"Unexpected path type: {type(path)}. Please provide a Path or str."
 
-    if '.npy' in path:
+    if ".npy" in path:
         return np.load(path)
-    elif '.nii' in path or '.mha' in path or 'mhd' in path:
+    elif ".nii" in path or ".mha" in path or "mhd" in path:
         return sitk.GetArrayFromImage(sitk.ReadImage(path))
-    elif '.npz' in path:
-        return np.load(path)['softmax'].astype('float32')[1]  # nnUnet format
+    elif ".npz" in path:
+        return np.load(path)["softmax"].astype("float32")[1]  # nnUnet format
     else:
-        raise ValueError(f"Unexpected file path. Supported file formats: .nii(.gz), .mha, .npy and .npz. Got: {path}.")
+        raise ValueError(
+            f"Unexpected file path. Supported file formats: .nii(.gz), .mha, .npy and .npz. Got: {path}."
+        )
 
-def calculate_dsc(y_det: "npt.NDArray[np.float32]", y_true: "npt.NDArray[np.int32]") -> float:
+
+def calculate_dsc(
+    y_det: "npt.NDArray[np.float32]", y_true: "npt.NDArray[np.int32]"
+) -> float:
     """Calculate Dice similarity coefficient (DSC) for N-D Arrays"""
     epsilon = 1e-8
     dsc_num = np.sum(y_det[y_true == 1]) * 2.0
     dsc_denom = np.sum(y_det) + np.sum(y_true)
     return float((dsc_num + epsilon) / (dsc_denom + epsilon))
 
+
 def parse_detection_map(
-    y_det: "npt.NDArray[np.float32]"
+    y_det: "npt.NDArray[np.float32]",
 ) -> "Tuple[Dict[int, float], npt.NDArray[np.int32]]":
     """Extract confidence scores per lesion candidate"""
     # label all non-connected components in the detection map
     blobs_index, num_blobs = ndimage.label(y_det, structure=label_structure)
 
     # input verification
-    if num_blobs < len(set(np.unique(y_det))-{0}):
+    if num_blobs < len(set(np.unique(y_det)) - {0}):
         raise ValueError(
             "It looks like the provided detection map is a softmax volume. If this is indeed the case, convert "
             "the softmax volumes to detection maps. Check the documentation how to incorporate this: "
@@ -430,23 +522,30 @@ def parse_detection_map(
     # extract confidence per lesion candidate
     confidences = {}
     for lesion_candidate_id in range(num_blobs):
-        max_prob = y_det[blobs_index == (1+lesion_candidate_id)].max()
+        max_prob = y_det[blobs_index == (1 + lesion_candidate_id)].max()
         confidences[lesion_candidate_id] = float(max_prob)
 
     return confidences, blobs_index
 
-def calculate_iou(y_det: "npt.NDArray[np.float32]", y_true: "npt.NDArray[np.int32]") -> float:
+
+def calculate_iou(
+    y_det: "npt.NDArray[np.float32]", y_true: "npt.NDArray[np.int32]"
+) -> float:
     """Calculate Intersection over Union (IoU) for N-D Arrays"""
     epsilon = 1e-8
     iou_num = np.sum(y_det[y_true == 1])
     iou_denom = np.sum(y_det) + np.sum(y_true) - iou_num
     return float((iou_num + epsilon) / (iou_denom + epsilon))
 
+
 def read_prediction(path: PathLike) -> "npt.NDArray[np.float32]":
     """Read prediction, given a filepath"""
     # read prediction and ensure correct dtype
-    pred: "npt.NDArray[np.float32]" = np.array(read_image(path), dtype=np.float32)
+    pred: "npt.NDArray[np.float32]" = np.array(
+        read_image(path), dtype=np.float32
+    )
     return pred
+
 
 def resize_image_with_crop_or_pad(image, img_size=(64, 64, 64), **kwargs):
     """
@@ -454,8 +553,9 @@ def resize_image_with_crop_or_pad(image, img_size=(64, 64, 64), **kwargs):
     Adapted from: https://github.com/DLTK/DLTK]
     """
     assert isinstance(image, np.ndarray)
-    assert (image.ndim - 1 == len(img_size) or image.ndim == len(img_size)), \
-        "Target size doesn't fit image size"
+    assert image.ndim - 1 == len(img_size) or image.ndim == len(
+        img_size
+    ), "Target size doesn't fit image size"
 
     rank = len(img_size)  # image dimensions
 
@@ -470,7 +570,9 @@ def resize_image_with_crop_or_pad(image, img_size=(64, 64, 64), **kwargs):
             to_padding[i][0] = (img_size[i] - image.shape[i]) // 2
             to_padding[i][1] = img_size[i] - image.shape[i] - to_padding[i][0]
         else:
-            from_indices[i][0] = int(np.floor((image.shape[i] - img_size[i]) / 2.))
+            from_indices[i][0] = int(
+                np.floor((image.shape[i] - img_size[i]) / 2.0)
+            )
             from_indices[i][1] = from_indices[i][0] + img_size[i]
 
         # create slicer object to crop/leave each dimension
@@ -479,12 +581,13 @@ def resize_image_with_crop_or_pad(image, img_size=(64, 64, 64), **kwargs):
     # pad cropped image to extend missing dimension
     return np.pad(image[tuple(slicer)], to_padding, **kwargs)
 
+
 def evaluate_case(
     y_det: "Union[npt.NDArray[np.float32], str, Path]",
     y_true: "Union[npt.NDArray[np.int32], str, Path]",
     min_overlap: float = 0.10,
-    overlap_func: "Union[str, Callable[[npt.NDArray[np.float32], npt.NDArray[np.int32]], float]]" = 'IoU',
-    case_confidence_func: "Union[str, Callable[[npt.NDArray[np.float32]], float]]" = 'max',
+    overlap_func: "Union[str, Callable[[npt.NDArray[np.float32], npt.NDArray[np.int32]], float]]" = "IoU",
+    case_confidence_func: "Union[str, Callable[[npt.NDArray[np.float32]], float]]" = "max",
     allow_unmatched_candidates_with_minimal_overlap: bool = True,
     y_det_postprocess_func: "Optional[Callable[[npt.NDArray[np.float32]], npt.NDArray[np.float32]]]" = None,
     y_true_postprocess_func: "Optional[Callable[[npt.NDArray[np.int32]], npt.NDArray[np.int32]]]" = None,
@@ -525,16 +628,18 @@ def evaluate_case(
         y_true = read_label(y_true)
     if isinstance(y_det, (str, Path)):
         y_det = read_prediction(y_det)
-    if overlap_func == 'IoU':
+    if overlap_func == "IoU":
         overlap_func = calculate_iou
-    elif overlap_func == 'DSC':
+    elif overlap_func == "DSC":
         overlap_func = calculate_dsc
     elif isinstance(overlap_func, str):
-        raise ValueError(f"Overlap function with name {overlap_func} not recognized. Supported are 'IoU' and 'DSC'")
+        raise ValueError(
+            f"Overlap function with name {overlap_func} not recognized. Supported are 'IoU' and 'DSC'"
+        )
 
     # convert dtype to float32
-    y_true = y_true.astype('int32')
-    y_det = y_det.astype('float32')
+    y_true = y_true.astype("int32")
+    y_det = y_det.astype("float32")
 
     # if specified, apply postprocessing functions
     if y_det_postprocess_func is not None:
@@ -556,21 +661,23 @@ def evaluate_case(
     if not y_true.any():
         # benign case, all predictions are FPs
         for lesion_confidence in confidences.values():
-            y_list.append((0, lesion_confidence, 0.))
+            y_list.append((0, lesion_confidence, 0.0))
     else:
         # malignant case, collect overlap between each prediction and ground truth lesion
-        labeled_gt, num_gt_lesions = ndimage.label(y_true, structure=label_structure)
+        labeled_gt, num_gt_lesions = ndimage.label(
+            y_true, structure=label_structure
+        )
         gt_lesion_ids = np.arange(num_gt_lesions)
         overlap_matrix = np.zeros((num_gt_lesions, len(confidences)))
 
         for lesion_id in gt_lesion_ids:
             # for each lesion in ground-truth (GT) label
-            gt_lesion_mask = (labeled_gt == (1+lesion_id))
+            gt_lesion_mask = labeled_gt == (1 + lesion_id)
 
             # calculate overlap between each lesion candidate and the current GT lesion
             for lesion_candidate_id in lesion_candidate_ids:
                 # calculate overlap between lesion candidate and GT mask
-                lesion_pred_mask = (indexed_pred == (1+lesion_candidate_id))
+                lesion_pred_mask = indexed_pred == (1 + lesion_candidate_id)
                 overlap_score = overlap_func(lesion_pred_mask, gt_lesion_mask)
 
                 # store overlap
@@ -578,42 +685,69 @@ def evaluate_case(
 
         # match lesion candidates to ground truth lesion (for documentation on how this works, please see
         # https://docs.scipy.org/doc/scipy-0.18.1/reference/generated/scipy.optimize.linear_sum_assignment.html)
-        overlap_matrix[overlap_matrix < min_overlap] = 0  # don't match lesions with insufficient overlap
-        overlap_matrix[overlap_matrix > 0] += 1  # prioritize matching over the amount of overlap
-        matched_lesion_indices, matched_lesion_candidate_indices = linear_sum_assignment(overlap_matrix, maximize=True)
+        overlap_matrix[
+            overlap_matrix < min_overlap
+        ] = 0  # don't match lesions with insufficient overlap
+        overlap_matrix[
+            overlap_matrix > 0
+        ] += 1  # prioritize matching over the amount of overlap
+        (
+            matched_lesion_indices,
+            matched_lesion_candidate_indices,
+        ) = linear_sum_assignment(overlap_matrix, maximize=True)
 
         # remove indices where overlap is zero
-        mask = (overlap_matrix[matched_lesion_indices, matched_lesion_candidate_indices] > 0)
+        mask = (
+            overlap_matrix[
+                matched_lesion_indices, matched_lesion_candidate_indices
+            ]
+            > 0
+        )
         matched_lesion_indices = matched_lesion_indices[mask]
-        matched_lesion_candidate_indices = matched_lesion_candidate_indices[mask]
+        matched_lesion_candidate_indices = matched_lesion_candidate_indices[
+            mask
+        ]
 
         # all lesion candidates that are matched are TPs
-        for lesion_id, lesion_candidate_id in zip(matched_lesion_indices, matched_lesion_candidate_indices):
+        for lesion_id, lesion_candidate_id in zip(
+            matched_lesion_indices, matched_lesion_candidate_indices
+        ):
             lesion_confidence = confidences[lesion_candidate_id]
             overlap = overlap_matrix[lesion_id, lesion_candidate_id]
             overlap -= 1  # return overlap to [0, 1]
 
-            assert overlap > min_overlap, "Overlap must be greater than min_overlap!"
+            assert (
+                overlap > min_overlap
+            ), "Overlap must be greater than min_overlap!"
 
             y_list.append((1, lesion_confidence, overlap))
 
         # all ground truth lesions that are not matched are FNs
         unmatched_gt_lesions = set(gt_lesion_ids) - set(matched_lesion_indices)
-        y_list += [(1, 0., 0.) for _ in unmatched_gt_lesions]
+        y_list += [(1, 0.0, 0.0) for _ in unmatched_gt_lesions]
 
         # all lesion candidates with insufficient overlap/not matched to a gt lesion are FPs
         if allow_unmatched_candidates_with_minimal_overlap:
-            candidates_sufficient_overlap = lesion_candidate_ids[(overlap_matrix > 0).any(axis=0)]
-            unmatched_candidates = set(lesion_candidate_ids) - set(candidates_sufficient_overlap)
+            candidates_sufficient_overlap = lesion_candidate_ids[
+                (overlap_matrix > 0).any(axis=0)
+            ]
+            unmatched_candidates = set(lesion_candidate_ids) - set(
+                candidates_sufficient_overlap
+            )
         else:
-            unmatched_candidates = set(lesion_candidate_ids) - set(matched_lesion_candidate_indices)
-        y_list += [(0, confidences[lesion_candidate_id], 0.) for lesion_candidate_id in unmatched_candidates]
+            unmatched_candidates = set(lesion_candidate_ids) - set(
+                matched_lesion_candidate_indices
+            )
+        y_list += [
+            (0, confidences[lesion_candidate_id], 0.0)
+            for lesion_candidate_id in unmatched_candidates
+        ]
 
     # determine case-level confidence score
-    if case_confidence_func == 'max':
+    if case_confidence_func == "max":
         # take highest lesion confidence as case-level confidence
         case_confidence = np.max(y_det)
-    elif case_confidence_func == 'bayesian':
+    elif case_confidence_func == "bayesian":
         # if c_i is the probability the i-th lesion is csPCa, then the case-level
         # probability to have one or multiple csPCa lesion is 1 - Π_i{ 1 - c_i}
         case_confidence = 1 - np.prod([(1 - c) for c in confidences.values()])
@@ -623,6 +757,7 @@ def evaluate_case(
 
     return y_list, case_confidence
 
+
 # Evaluate all cases
 def evaluate(
     y_det: "Iterable[Union[npt.NDArray[np.float64], str, Path]]",
@@ -630,8 +765,8 @@ def evaluate(
     sample_weight: "Optional[Iterable[float]]" = None,
     subject_list: Optional[Iterable[Hashable]] = None,
     min_overlap: float = 0.10,
-    overlap_func: "Union[str, Callable[[npt.NDArray[np.float32], npt.NDArray[np.int32]], float]]" = 'IoU',
-    case_confidence_func: "Union[str, Callable[[npt.NDArray[np.float32]], float]]" = 'max',
+    overlap_func: "Union[str, Callable[[npt.NDArray[np.float32], npt.NDArray[np.int32]], float]]" = "IoU",
+    case_confidence_func: "Union[str, Callable[[npt.NDArray[np.float32]], float]]" = "max",
     allow_unmatched_candidates_with_minimal_overlap: bool = True,
     y_det_postprocess_func: "Optional[Callable[[npt.NDArray[np.float32]], npt.NDArray[np.float32]]]" = None,
     y_true_postprocess_func: "Optional[Callable[[npt.NDArray[np.int32]], npt.NDArray[np.int32]]]" = None,
@@ -698,9 +833,11 @@ def evaluate(
                 case_confidence_func=case_confidence_func,
                 allow_unmatched_candidates_with_minimal_overlap=allow_unmatched_candidates_with_minimal_overlap,
                 y_det_postprocess_func=y_det_postprocess_func,
-                y_true_postprocess_func=y_true_postprocess_func
+                y_true_postprocess_func=y_true_postprocess_func,
             ): (idx, weight)
-            for (y_det_case, y_true_case, weight, idx) in zip(y_det, y_true, sample_weight, subject_list)
+            for (y_det_case, y_true_case, weight, idx) in zip(
+                y_det, y_true, sample_weight, subject_list
+            )
         }
 
         # process the cases in parallel
@@ -709,7 +846,7 @@ def evaluate(
             total: Optional[int] = None
             if isinstance(subject_list, Sized):
                 total = len(subject_list)
-            iterator = tqdm(iterator, desc='Evaluating', total=total)
+            iterator = tqdm(iterator, desc="Evaluating", total=total)
 
         for future in iterator:
             idx, weight = future_to_args[future]
@@ -718,7 +855,7 @@ def evaluate(
                 # unpack results
                 lesion_results_case, case_confidence = future.result()
             except Exception as e:
-                print(f'Error for {idx}: {e}')
+                print(f"Error for {idx}: {e}")
                 raise e
 
             # aggregate results
