@@ -69,6 +69,7 @@ class ConvNeXtBackbone(torch.nn.Module):
         in_channels:int,
         structure:List[Tuple[int,int,int,int]],
         maxpool_structure:List[Union[Tuple[int,int],Tuple[int,int,int]]]=None,
+        first_layer_stride:int | List[int]=4,
         padding=None,
         adn_fn:torch.nn.Module=torch.nn.Identity,
         batch_ensemble:int=0):
@@ -88,12 +89,15 @@ class ConvNeXtBackbone(torch.nn.Module):
                 torch.nn.Identity.
             batch_ensemble (int, optional): triggers batch-ensemble layers. 
                 Defines number of batch ensemble modules. Defaults to 0.
+            first_layer_stride (int | List[int], optional): stride for the first
+                layer (a convolution with size 4). Defaults to 4.
         """
         super().__init__()
         self.spatial_dim = spatial_dim
         self.in_channels = in_channels
         self.structure = structure
         self.maxpool_structure = maxpool_structure
+        self.first_layer_stride = first_layer_stride
         if self.maxpool_structure is None:
             self.maxpool_structure = [2 for _ in self.structure]
         self.adn_fn = adn_fn
@@ -116,7 +120,7 @@ class ConvNeXtBackbone(torch.nn.Module):
         f = self.structure[0][0]
         return torch.nn.Sequential(
             self.conv_op(
-                self.in_channels,f,4,stride=4),
+                self.in_channels,f,4,stride=self.first_layer_stride),
             LayerNorm(f,data_format="channels_first"))
 
     def init_layers(self):

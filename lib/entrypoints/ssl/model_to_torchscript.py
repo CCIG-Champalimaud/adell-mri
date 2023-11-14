@@ -1,4 +1,3 @@
-from ...entrypoints.assemble_args import Parser
 from ...modules.config_parsing import parse_config_ssl,parse_config_unet
 from ...utils.network_factories import get_ssl_network_no_pl
 from copy import deepcopy
@@ -116,7 +115,7 @@ def main(arguments):
 
     print("Number of parameters:",sum([np.prod(x.shape) for x in ssl.parameters()]))
 
-    print(f"ssl.{args.forward_method_name}")
+    print(f"Using function: ssl.{args.forward_method_name}")
     ssl.forward = eval(f"ssl.{args.forward_method_name}")
     example = torch.rand(1,*args.input_shape).to(args.dev)
     print(f"For input shape: {example.shape}")
