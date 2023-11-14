@@ -523,7 +523,7 @@ class SlidingWindowSegmentation:
         return output_array,output_denominator
 
     def __call__(self,
-                 X:MultiFormatInput,
+                 X: MultiFormatInput,
                  *args,**kwargs)->TensorOrArray:
         """
         Extracts patches for a given input tensor/array X, predicts the 
