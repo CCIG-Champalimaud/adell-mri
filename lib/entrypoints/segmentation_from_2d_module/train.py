@@ -474,7 +474,7 @@ def main(arguments):
 
         def train_loader_call(batch_size):
             return monai.data.ThreadDataLoader(
-                dataset=train_dataset,
+                dataset=train_dataset,  # noqa: F821
                 batch_size=batch_size,  # noqa: F821
                 num_workers=nw,
                 generator=g,
