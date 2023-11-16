@@ -26,13 +26,23 @@ def zeros_like(X: torch.Tensor, shape: List[int]):
 
 class MIMUNet(torch.nn.Module):
     """
-    Modifiable input module U-Net (MIMU-Net).
+    Modifiable input module U-Net (MIMU-Net) for 2D modules. The point of this
+    module is using a 2D/3D module returning a hierarchical feature
+    representation of the image (with different depths and so forth, typical
+    of a U-Net encoder). To do this, a 3D input with shape [b, c, h, w, d] is
+    converted to a 2D input with shape [(bdc),1,h,w], passed through the 2D
+    module, and all blocks are reconstructed in 3D.
+
+    For the 3D module this is simpler - a 3D input with shape [b,c,h,w,d] is
+    converted to a 3D input with shape [(bc),1,h,w,d], passed through the 3D
+    module and reconstructed back to its original shape.
     """
 
     def __init__(
         self,
         module: torch.nn.Module,
         n_classes: int,
+        module_dim: int = 2,
         depth: List[int] = None,
         padding: List[int] = None,
         adn_fn: Callable = get_adn_fn(3, "instance", "relu", 0.1),
@@ -62,6 +72,7 @@ class MIMUNet(torch.nn.Module):
         super().__init__()
         self.module = module
         self.n_classes = n_classes
+        self.module_dim = module_dim
         self.depth = depth
         self.padding = padding
         self.adn_fn = adn_fn
@@ -76,26 +87,43 @@ class MIMUNet(torch.nn.Module):
             self.depth = is_if_none(self.depth, inf_par[0])
             self.padding = is_if_none(self.padding, inf_par[1])
 
-        self.vol_to_slice = einops.layers.torch.Rearrange(
-            "b c h w s -> (b s c) h w"
-        )
-        self.slice_to_vol = torch.nn.ModuleList(
-            [
-                einops.layers.torch.Rearrange(
-                    "(b s c) D h w -> b (c D) h w s",
-                    s=self.n_slices,
-                    c=self.n_channels,
-                    D=d,
-                )
-                for d in self.depth
-            ]
-        )
-
+        self.init_einops_operations()
         self.init_feature_reduction()
         self.init_upscale_ops()
         self.init_link_ops()
         self.init_decoder()
         self.init_final_layer()
+
+    def init_einops_operations(self):
+        if self.module_dim == 2:
+            self.pre_module_op = einops.layers.torch.Rearrange(
+                "b c h w s -> (b s c) h w"
+            )
+            self.post_module_op = torch.nn.ModuleList(
+                [
+                    einops.layers.torch.Rearrange(
+                        "(b s c) D h w -> b (c D) h w s",
+                        s=self.n_slices,
+                        c=self.n_channels,
+                        D=d,
+                    )
+                    for d in self.depth
+                ]
+            )
+        elif self.module_dim == 3:
+            self.pre_module_op = einops.layers.torch.Rearrange(
+                "b c h w s -> (b c) h w s"
+            )
+            self.post_module_op = torch.nn.ModuleList(
+                [
+                    einops.layers.torch.Rearrange(
+                        "(b c) D h w s -> b c D h w s",
+                        c=self.n_channels,
+                        D=d,
+                    )
+                    for d in self.depth
+                ]
+            )
 
     @staticmethod
     def infer_depth_padding_kernel_size(
@@ -139,15 +167,15 @@ class MIMUNet(torch.nn.Module):
                 ]
             )
 
-    def v_module(self, X: torch.Tensor) -> torch.Tensor:
+    def v_module_2d(self, X: torch.Tensor) -> List[torch.Tensor]:
         n = self.n_slices
         b, c, h, w, n_X = X.shape
         if n_X == self.n_slices:
-            X = self.vol_to_slice(X).unsqueeze(
+            X = self.pre_module_op(X).unsqueeze(
                 1
             )  # unsqueeze a channel dimension
             X = self.module(X)
-            output = [S(x) for x, S in zip(X, self.slice_to_vol)]
+            output = [S(x) for x, S in zip(X, self.post_module_op)]
         else:  # so that inference runs for arbitrarily sized tensors
             output = None
             denominator = []
@@ -157,9 +185,11 @@ class MIMUNet(torch.nn.Module):
             ]
             for sr in slice_ranges:
                 sliced_X = X[..., sr]
-                sliced_X = self.vol_to_slice(sliced_X).unsqueeze(1)
+                sliced_X = self.pre_module_op(sliced_X).unsqueeze(1)
                 sliced_X = self.module(sliced_X)
-                sliced_X = [S(x) for x, S in zip(sliced_X, self.slice_to_vol)]
+                sliced_X = [
+                    S(x) for x, S in zip(sliced_X, self.post_module_op)
+                ]
                 if output is None:
                     output = [
                         zeros_like(sx, [-1, -1, -1, -1, n_X])
@@ -174,6 +204,18 @@ class MIMUNet(torch.nn.Module):
                     denominator[i][..., sr] += 1
             output = [out / den for out, den in zip(output, denominator)]
         return output
+
+    def v_module_3d(self, X: torch.Tensor) -> List[torch.Tensor]:
+        X = self.pre_module_op(X)
+        X = self.module(X)
+        output = [S(x).mean(1) for x, S in zip(X, self.post_module_op)]
+        return output
+
+    def v_module(self, X: torch.Tensor) -> List[torch.Tensor]:
+        if self.module_dim == 2:
+            return self.v_module_2d(X)
+        elif self.module_dim == 3:
+            return self.v_module_3d(X)
 
     def init_link_ops(self):
         """Initializes linking (skip) operations."""
