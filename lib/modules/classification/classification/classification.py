@@ -494,6 +494,7 @@ class GenericEnsemble(torch.nn.Module):
         head_adn_fn: Callable = None,
         sae: bool = False,
         gaussian_process: bool = False,
+        split_input: bool = False,
     ):
         """
         Args:
@@ -509,6 +510,8 @@ class GenericEnsemble(torch.nn.Module):
                 output of each network. Defaults to False.
             gaussian_process (bool, optional): replaces the last layer with a
                 gaussian process layer. Defaults to False.
+            split_input (bool, optional): splits the input by channel and
+                applies each network to each channel. Defaults to False.
         """
         super().__init__()
         self.spatial_dimensions = spatial_dimensions
@@ -519,6 +522,7 @@ class GenericEnsemble(torch.nn.Module):
         self.head_adn_fn = head_adn_fn
         self.sae = sae
         self.gaussian_process = gaussian_process
+        self.split_input = split_input
 
         if isinstance(self.n_features, int):
             self.n_features = [self.n_features for _ in self.networks]

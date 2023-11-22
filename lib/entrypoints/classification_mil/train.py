@@ -1,4 +1,3 @@
-import argparse
 import random
 import json
 import numpy as np
@@ -221,7 +220,6 @@ def main(arguments):
         "t2_keys": t2_keys,
         "all_keys": keys,
         "image_keys": keys,
-        "intp_resampling_augmentations": ["bilinear" for _ in keys],
         "flip_axis": None,
     }
 

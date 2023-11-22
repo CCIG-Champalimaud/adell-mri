@@ -1,10 +1,9 @@
-import argparse
 import random
 import json
 import numpy as np
 import torch
 import monai
-import re
+from copy import deepcopy
 from sklearn.model_selection import train_test_split, StratifiedKFold
 
 from lightning.pytorch import Trainer
@@ -52,6 +51,9 @@ def main(arguments):
             "image_keys",
             "clinical_feature_keys",
             "label_keys",
+            "mask_key",
+            "image_masking",
+            "image_crop_from_mask",
             "t2_keys",
             "adc_keys",
             "filter_on_keys",
@@ -151,11 +153,12 @@ def main(arguments):
     else:
         excluded_ids_from_training_data = []
 
+    presence_keys = args.image_keys + [args.label_keys] + clinical_feature_keys
+    if args.mask_key is not None:
+        presence_keys.append(args.mask_key)
     data_dict = filter_dictionary(
         data_dict,
-        filters_presence=args.image_keys
-        + [args.label_keys]
-        + clinical_feature_keys,
+        filters_presence=presence_keys,
         possible_labels=args.possible_labels,
         label_key=args.label_keys,
         filters=args.filter_on_keys,
@@ -198,6 +201,10 @@ def main(arguments):
     t2_keys = args.t2_keys if args.t2_keys is not None else []
     adc_keys = [k for k in adc_keys if k in keys]
     t2_keys = [k for k in t2_keys if k in keys]
+    mask_key = args.mask_key
+    input_keys = deepcopy(keys)
+    if mask_key is not None:
+        input_keys.append(mask_key)
 
     ensemble_config = parse_config_ensemble(
         args.ensemble_config_file, n_classes
@@ -232,6 +239,9 @@ def main(arguments):
     label_mode = "binary" if n_classes == 2 and label_groups is None else "cat"
     transform_arguments = {
         "keys": keys,
+        "mask_key": mask_key,
+        "image_masking": args.image_masking,
+        "image_crop_from_mask": args.image_crop_from_mask,
         "clinical_feature_keys": clinical_feature_keys,
         "adc_keys": adc_keys,
         "target_spacing": args.target_spacing,
@@ -249,7 +259,7 @@ def main(arguments):
         "t2_keys": t2_keys,
         "all_keys": keys,
         "image_keys": keys,
-        "intp_resampling_augmentations": ["bilinear" for _ in keys],
+        "mask_key": mask_key,
     }
 
     transforms_train = monai.transforms.Compose(
@@ -497,7 +507,7 @@ def main(arguments):
                     dropout_param=args.dropout_param,
                     seed=args.seed,
                     n_classes=n_classes,
-                    keys=keys,
+                    keys=input_keys,
                     clinical_feature_keys=clinical_feature_keys,
                     train_loader_call=train_loader_call,
                     max_epochs=args.max_epochs,

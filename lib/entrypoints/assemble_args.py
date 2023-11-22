@@ -397,7 +397,11 @@ argument_factory = {
         help="Multiple instance learning method name.",
     ),
     "module_path": dict(required=True, help="Path to torchscript module"),
-    "module_paths": dict(required=False, help="Paths to torchscript modules"),
+    "module_paths": dict(
+        required=False,
+        nargs="+",
+        help="Paths to torchscript modules",
+    ),
     # detection-specific
     "box_key": dict(type=str, default="boxes", help="Box key in dataset JSON"),
     "box_class_key": dict(
