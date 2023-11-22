@@ -505,6 +505,7 @@ def main(arguments):
             max_epochs=args.max_epochs,
             warmup_steps=args.warmup_steps,
             start_decay=args.start_decay,
+            n_features_deconfounder=128,
             label_smoothing=args.label_smoothing,
             mixup_alpha=args.mixup_alpha,
             partial_mixup=args.partial_mixup,

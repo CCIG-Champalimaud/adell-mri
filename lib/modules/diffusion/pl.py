@@ -1,6 +1,6 @@
 import torch
 import lightning.pytorch as pl
-from typing import Callable, Dict, List
+from typing import Callable, List
 
 from generative.inferers import DiffusionInferer
 from generative.networks.nets import DiffusionModelUNet
