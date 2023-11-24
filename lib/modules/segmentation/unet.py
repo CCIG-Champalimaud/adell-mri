@@ -238,6 +238,10 @@ class UNet(torch.nn.Module):
         self, in_d, out_d, kernel_size, stride=None, padding=None
     ):
         """Convenience wrapper for 2d convolutional block."""
+        if padding is None:
+            padding = 0
+        if stride is None:
+            stride = 1
         return torch.nn.Sequential(
             torch.nn.Conv2d(in_d, out_d, kernel_size, stride, padding),
             self.adn_fn(out_d),
@@ -248,6 +252,10 @@ class UNet(torch.nn.Module):
         self, in_d, out_d, kernel_size, stride=None, padding=None
     ):
         """Convenience wrapper for 3d convolutional block."""
+        if padding is None:
+            padding = 0
+        if stride is None:
+            stride = 1
         return torch.nn.Sequential(
             torch.nn.Conv3d(in_d, out_d, kernel_size, stride, padding),
             self.adn_fn(out_d),
