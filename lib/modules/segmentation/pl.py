@@ -435,10 +435,9 @@ class UNetBasePL(pl.LightningModule, ABC):
                 {"params": encoder_params, "lr": lr_encoder},
                 {"params": rest_of_params},
             ]
-        optimizer = torch.optim.SGD(
+        optimizer = torch.optim.AdamW(
             parameters,
             lr=self.learning_rate,
-            momentum=0.99,
             weight_decay=self.weight_decay,
         )
 

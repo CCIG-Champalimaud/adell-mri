@@ -30,7 +30,7 @@ class UNetContrastiveSemiSL(UNetSemiSL, UNetBasePL):
         loss_params: dict = {},
         loss_fn_semi_sl: Callable = torch.nn.functional.mse_loss,
         ema: torch.nn.Module = None,
-        stop_grad: bool = True,
+        stop_gradient: bool = True,
         picai_eval: bool = False,
         *args,
         **kwargs
@@ -99,7 +99,7 @@ class UNetContrastiveSemiSL(UNetSemiSL, UNetBasePL):
         self.loss_params = loss_params
         self.loss_fn_semi_sl = loss_fn_semi_sl
         self.ema = ema
-        self.stop_grad = stop_grad
+        self.stop_gradient = stop_gradient
         self.picai_eval = picai_eval
 
         self.loss_fn_class = torch.nn.BCEWithLogitsLoss()
@@ -115,10 +115,26 @@ class UNetContrastiveSemiSL(UNetSemiSL, UNetBasePL):
         self.all_true = []
 
         self.bn_mult = 0.1
+        self.ssl_weight = 0.1
+
+        if (
+            self.semi_sl_image_key_1 is not None
+            and self.semi_sl_image_key_2 is not None
+        ):
+            self.semi_supervised = True
+        else:
+            self.semi_supervised = False
+
+    def unpack_batch(self, batch):
+        if self.semi_supervised is True and "supervised" in batch:
+            batch = batch["supervised"]
+        return super().unpack_batch(batch)
 
     def unpack_batch_semi_sl(self, batch: Dict[str, torch.Tensor]):
-        x_1 = batch(self.semi_sl_image_key_1)
-        x_2 = batch(self.semi_sl_image_key_2)
+        if self.semi_supervised is True:
+            batch = batch["self_supervised"]
+        x_1 = batch[self.semi_sl_image_key_1]
+        x_2 = batch[self.semi_sl_image_key_2]
         if self.skip_conditioning_key is not None:
             x_cond = batch[self.skip_conditioning_key]
         else:
@@ -144,7 +160,7 @@ class UNetContrastiveSemiSL(UNetSemiSL, UNetBasePL):
         self, output_1: torch.Tensor, output_2: torch.Tensor
     ):
         loss = self.loss_fn_semi_sl(output_1, output_2)
-        return loss.mean()
+        return loss.mean() * self.ssl_weight
 
     def loss_wrapper_semi_sl(
         self,
@@ -159,7 +175,7 @@ class UNetContrastiveSemiSL(UNetSemiSL, UNetBasePL):
         output_2 = self.forward_features(
             X=x_2, X_skip_layer=x_cond, X_feature_conditioning=x_fc
         )
-        return self.calculate_loss(output_1, output_2)
+        return self.calculate_loss_semi_sl(output_1, output_2)
 
     def step_semi_sl(
         self,
@@ -280,10 +296,12 @@ class UNetContrastiveSemiSL(UNetSemiSL, UNetBasePL):
             self.log(
                 "val_self_sl_loss",
                 self_sl_loss,
+                prog_bar=True,
                 batch_size=y.shape[0],
                 sync_dist=True,
             )
             output_loss = output_loss + self_sl_loss
+        return output_loss
 
     def test_step(self, batch, batch_idx):
         x, x_cond, x_fc, y, y_class = self.unpack_batch(batch)
@@ -324,3 +342,4 @@ class UNetContrastiveSemiSL(UNetSemiSL, UNetBasePL):
                 on_epoch=True,
                 prog_bar=True,
             )
+        return output_loss

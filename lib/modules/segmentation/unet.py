@@ -209,11 +209,11 @@ class UNet(torch.nn.Module):
         """Retrieves the convolutional operations using `self.conv_type`."""
         if self.spatial_dimensions == 2:
             if self.conv_type == "regular":
-                self.conv_op_enc = torch.nn.Conv2d
-                self.conv_op_dec = torch.nn.Conv2d
+                self.conv_op_enc = self.conv_block_2d
+                self.conv_op_dec = self.conv_block_2d
             elif self.conv_type == "resnet":
                 self.conv_op_enc = self.res_block_conv_2d
-                self.conv_op_dec = torch.nn.Conv2d
+                self.conv_op_dec = self.conv_block_2d
             elif self.conv_type == "sae":
                 self.conv_op_enc = self.sae_2d
                 self.conv_op_dec = self.sae_2d
@@ -222,17 +222,37 @@ class UNet(torch.nn.Module):
                 self.conv_op_dec = self.sae_2d
         if self.spatial_dimensions == 3:
             if self.conv_type == "regular":
-                self.conv_op_enc = torch.nn.Conv3d
-                self.conv_op_dec = torch.nn.Conv3d
+                self.conv_op_enc = self.conv_block_3d
+                self.conv_op_dec = self.conv_block_3d
             elif self.conv_type == "resnet":
                 self.conv_op_enc = self.res_block_conv_3d
-                self.conv_op_dec = torch.nn.Conv3d
+                self.conv_op_dec = self.conv_block_3d
             elif self.conv_type == "sae":
                 self.conv_op_enc = self.sae_3d
                 self.conv_op_dec = self.sae_3d
             elif self.conv_type == "asp":
                 self.conv_op_enc = self.asp_3d
                 self.conv_op_dec = self.sae_3d
+
+    def conv_block_2d(
+        self, in_d, out_d, kernel_size, stride=None, padding=None
+    ):
+        """Convenience wrapper for 2d convolutional block."""
+        return torch.nn.Sequential(
+            torch.nn.Conv2d(in_d, out_d, kernel_size, stride, padding),
+            self.adn_fn(out_d),
+            torch.nn.Conv2d(out_d, out_d, kernel_size, 1, padding),
+        )
+
+    def conv_block_3d(
+        self, in_d, out_d, kernel_size, stride=None, padding=None
+    ):
+        """Convenience wrapper for 3d convolutional block."""
+        return torch.nn.Sequential(
+            torch.nn.Conv3d(in_d, out_d, kernel_size, stride, padding),
+            self.adn_fn(out_d),
+            torch.nn.Conv3d(out_d, out_d, kernel_size, 1, padding),
+        )
 
     def res_block_conv_2d(
         self, in_d, out_d, kernel_size, stride=None, padding=None

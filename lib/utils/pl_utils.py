@@ -51,6 +51,37 @@ def log_image(
         trainer.logger.log_image(key=key, images=images)
 
 
+def allocated_memory_per_gpu() -> Dict[int, int]:
+    """
+    Returns a dictionary with the allocated memory per GPU.
+
+    Returns:
+        Dict: dictionary with GPU ids (0,1,2,...) as keys and the amount of
+            allocated memory as values.
+    """
+    output = {}
+    for i in range(torch.cuda.device_count()):
+        output[i] = torch.cuda.memory_allocated(i)
+    return output
+
+
+def get_emptiest_gpus(n: int = 1) -> List[int]:
+    """
+    Gets the ids for the n emptiest GPUs.
+
+    Args:
+        n (int, optional): number of ids to retrieve. Defaults to 1.
+
+    Returns:
+        int:
+    """
+    mem = allocated_memory_per_gpu()
+    least_mem_gpu = sorted(
+        allocated_memory_per_gpu().keys(), key=lambda i: mem[i]
+    )[:n]
+    return least_mem_gpu
+
+
 class LogImage(Callback):
     def __init__(
         self,
@@ -143,37 +174,6 @@ class LogImageFromDiffusionProcess(Callback):
                 slice_dim=self.slice_dim,
                 n_slices_out=self.slice_dim,
             )
-
-
-def allocated_memory_per_gpu() -> Dict[int, int]:
-    """
-    Returns a dictionary with the allocated memory per GPU.
-
-    Returns:
-        Dict: dictionary with GPU ids (0,1,2,...) as keys and the amount of
-            allocated memory as values.
-    """
-    output = {}
-    for i in range(torch.cuda.device_count()):
-        output[i] = torch.cuda.memory_allocated(i)
-    return output
-
-
-def get_emptiest_gpus(n: int = 1) -> List[int]:
-    """
-    Gets the ids for the n emptiest GPUs.
-
-    Args:
-        n (int, optional): number of ids to retrieve. Defaults to 1.
-
-    Returns:
-        int:
-    """
-    mem = allocated_memory_per_gpu()
-    least_mem_gpu = sorted(
-        allocated_memory_per_gpu().keys(), key=lambda i: mem[i]
-    )[:n]
-    return least_mem_gpu
 
 
 class GPULock:

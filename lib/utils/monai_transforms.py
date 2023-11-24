@@ -1363,9 +1363,17 @@ class CreateImageAndWeightsd(monai.transforms.Transform):
 
     def __call__(self, X):
         for k in self.keys:
-            weight_key = "{}_weight".format(k)
+            shape = (
+                self.shape
+                if isinstance(self.shape, str)
+                else X[self.shape].shape
+            )
+            weight_key = f"{k}_weight"
             if k not in X:
-                X[k] = np.zeros(self.shape, dtype=np.uint8)
+                X[k] = np.zeros(shape, dtype=np.uint8)
+                X[weight_key] = 0
+            elif X[k] == "fill_with_empty":
+                X[k] = np.zeros(shape, dtype=np.uint8)
                 X[weight_key] = 0
             else:
                 X[weight_key] = 1

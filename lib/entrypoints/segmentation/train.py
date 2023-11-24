@@ -4,6 +4,7 @@ import numpy as np
 import torch
 import monai
 import gc
+import warnings
 from sklearn.model_selection import KFold, train_test_split
 from tqdm import tqdm
 
@@ -20,17 +21,17 @@ from ...utils import (
     collate_last_slice,
     RandomSlices,
     SlicesToFirst,
-    CopyEntryd,
     safe_collate,
     safe_collate_crops,
 )
-from ...modules.semi_supervised_segmentation.utils import (
-    convert_arguments_post,
-    convert_arguments_augment,
+from ...utils.pl_utils import (
+    get_ckpt_callback,
+    get_logger,
+    get_devices,
 )
-from ...utils.pl_utils import get_ckpt_callback, get_logger, get_devices
 from ...monai_transforms import get_transforms_unet as get_transforms
 from ...monai_transforms import get_augmentations_unet as get_augmentations
+from ...monai_transforms import get_semi_sl_transforms
 from ...utils.dataset_filters import filter_dictionary
 from ...modules.layers import ResNet
 from ...utils.network_factories import get_segmentation_network
@@ -40,8 +41,14 @@ from ...utils.sitk_utils import (
     spacing_values_from_dataset_json,
     get_spacing_quantile,
 )
+from ...utils.utils import return_classes
 
 torch.backends.cudnn.benchmark = True
+
+warnings.filterwarnings(
+    "ignore",
+    message=".*unable to generate class balanced samples.*",
+)
 
 
 def if_none_else(x, obj):
@@ -59,10 +66,10 @@ def main(arguments):
 
     parser.add_argument_by_key(
         [
-            "dataset_json",
+            ("dataset_json", "dataset_json", {"nargs": "+"}),
             "image_keys",
             "mask_image_keys",
-            "mask_keys",
+            ("mask_keys", "mask_keys", {"nargs": "+"}),
             "skip_keys",
             "skip_mask_keys",
             "feature_keys",
@@ -119,6 +126,7 @@ def main(arguments):
             "picai_eval",
             "metric_path",
             "early_stopping",
+            "cosine_decay",
             ("class_weights", "class_weights", {"default": [1.0]}),
             "semi_supervised",
         ]
@@ -213,38 +221,17 @@ def main(arguments):
         )
     data_dict = filter_dictionary(
         data_dict,
-        filters_presence=args.image_keys + [args.label_keys],
+        filters_presence=args.image_keys + args.mask_keys,
         possible_labels=None,
         label_key=None,
         filters=args.filter_on_keys,
     )
 
-    if args.missing_to_empty is None:
-        data_dict = {
-            k: data_dict[k]
-            for k in data_dict
-            if inter_size(data_dict[k], set(all_keys_t)) == len(all_keys_t)
-        }
-    else:
-        if "image" in args.missing_to_empty:
-            obl_keys = [*aux_keys, *aux_mask_keys, *feature_keys]
-            opt_keys = keys
-            data_dict = {
-                k: data_dict[k]
-                for k in data_dict
-                if inter_size(data_dict[k], obl_keys) == len(obl_keys)
-            }
-            data_dict = {
-                k: data_dict[k]
-                for k in data_dict
-                if inter_size(data_dict[k], opt_keys) > 0
-            }
-        if "mask" in args.missing_to_empty:
-            data_dict = {
-                k: data_dict[k]
-                for k in data_dict
-                if inter_size(data_dict[k], set(mask_image_keys)) >= 0
-            }
+    data_dict = {
+        k: data_dict[k]
+        for k in data_dict
+        if inter_size(data_dict[k], set(all_keys_t)) == len(all_keys_t)
+    }
 
     for kk in feature_keys:
         data_dict = {
@@ -258,11 +245,6 @@ def main(arguments):
         )
         data_dict = {k: data_dict[k] for k in ss}
         if args.semi_supervised is True:
-            ss = np.random.choice(
-                sorted(list(data_dict_ssl.keys())),
-                args.subsample_size,
-                replace=False,
-            )
             data_dict_ssl = {k: data_dict_ssl[k] for k in ss}
 
     if args.excluded_ids is not None:
@@ -347,7 +329,11 @@ def main(arguments):
         val_list = [data_dict[pid] for pid in val_pids]
 
         if args.semi_supervised is True:
-            train_semi_sl_list = [data_dict_ssl[pid] for pid in train_pids]
+            train_semi_sl_list = [
+                data_dict_ssl[pid]
+                for pid in data_dict_ssl
+                if pid not in val_pids
+            ]
 
         if args.target_spacing[0] == "infer":
             target_spacing = get_spacing_quantile(
@@ -378,7 +364,7 @@ def main(arguments):
             "crop_size": args.crop_size,
             "random_crop_size": args.random_crop_size,
             "label_mode": label_mode,
-            "fill_missing": args.missing_to_empty is not None,
+            "fill_missing": False,
             "brunet": args.net_type == "brunet",
         }
         transform_arguments_val = {
@@ -418,33 +404,11 @@ def main(arguments):
         ]
 
         if args.semi_supervised is True:
-            transform_arguments_semi_sl = {
-                k: transform_arguments[k]
-                for k in transform_arguments
-                if k != "label_keys"
-            }
-            transform_arguments_semi_sl_post_1 = convert_arguments_post(
-                transform_arguments, 1
+            transforms_semi_sl = get_semi_sl_transforms(
+                transform_arguments=transform_arguments,
+                augment_arguments=augment_arguments,
+                keys=keys,
             )
-            transform_arguments_semi_sl_post_2 = convert_arguments_post(
-                transform_arguments, 2
-            )
-            augment_arguments_semi_sl_1 = convert_arguments_augment(
-                transform_arguments, 1
-            )
-            augment_arguments_semi_sl_2 = convert_arguments_augment(
-                transform_arguments, 2
-            )
-
-            transforms_train_semi_sl = [
-                *get_transforms("pre", **transform_arguments_semi_sl),
-                CopyEntryd(keys, {k: f"{k}_aug_1" for k in keys}),
-                CopyEntryd(keys, {k: f"{k}_aug_2" for k in keys}),
-                get_augmentations(**augment_arguments_semi_sl_1),
-                get_augmentations(**augment_arguments_semi_sl_2),
-                *get_transforms("post", **transform_arguments_semi_sl_post_1),
-                *get_transforms("post", **transform_arguments_semi_sl_post_2),
-            ]
 
         if network_config["spatial_dimensions"] == 2:
             transforms_train.append(
@@ -453,12 +417,15 @@ def main(arguments):
             transforms_train_val.append(SlicesToFirst(["image", "mask"]))
             transforms_val.append(SlicesToFirst(["image", "mask"]))
             collate_fn_train = collate_last_slice
+            collate_fn_train_semi_sl = collate_last_slice
             collate_fn_val = collate_last_slice
         elif args.random_crop_size is not None:
             collate_fn_train = safe_collate_crops
+            collate_fn_train_semi_sl = safe_collate
             collate_fn_val = safe_collate
         else:
             collate_fn_train = safe_collate
+            collate_fn_train_semi_sl = collate_last_slice
             collate_fn_val = safe_collate
 
         callbacks = [RichProgressBar()]
@@ -504,7 +471,13 @@ def main(arguments):
         if args.semi_supervised is True:
             train_semi_sl_dataset = monai.data.CacheDataset(
                 train_semi_sl_list,
-                monai.transforms.Compose(transforms_train_semi_sl),
+                monai.transforms.Compose(transforms_semi_sl),
+                num_workers=args.n_workers,
+                cache_rate=args.cache_rate,
+            )
+            train_val_semi_sl_dataset = monai.data.CacheDataset(
+                train_val_list,
+                monai.transforms.Compose(transforms_semi_sl),
                 num_workers=args.n_workers,
                 cache_rate=args.cache_rate,
             )
@@ -546,25 +519,21 @@ def main(arguments):
                     "Setting up partially random sampler/adaptive weights"
                 )
                 for x in t:
-                    I = set.intersection(set(label_keys), set(x.keys()))
-                    if len(I) > 0:
-                        masks = monai.transforms.LoadImaged(
-                            keys=label_keys, allow_missing_keys=True
-                        )(x)
-                        total = []
-                        for k in I:
-                            for u, c in zip(
-                                *np.unique(masks[k], return_counts=True)
-                            ):
-                                if u not in total:
-                                    total.append(u)
-                                if u != 0:
-                                    pos_pixel_sum += c
-                                total_pixel_sum += c
-                        if len(total) > 1:
-                            cl.append(1)
-                        else:
-                            cl.append(0)
+                    all_classes = {}
+                    for mask_key in label_keys:
+                        all_classes = {
+                            **all_classes,
+                            **return_classes(x[mask_key]),
+                        }
+                    total = []
+                    for u, c in all_classes.items():
+                        if u not in total:
+                            total.append(u)
+                        if u != 0:
+                            pos_pixel_sum += c
+                        total_pixel_sum += c
+                    if len(total) > 1:
+                        cl.append(1)
                     else:
                         cl.append(0)
             adaptive_weights = len(cl) / np.sum(cl)
@@ -622,8 +591,7 @@ def main(arguments):
                     batch_size=batch_size,  # noqa: F821
                     num_workers=nw,
                     generator=g,
-                    sampler=sampler,
-                    collate_fn=collate_fn_train,
+                    collate_fn=collate_fn_train_semi_sl,
                     pin_memory=True,
                     persistent_workers=True,
                     drop_last=True,
@@ -644,7 +612,6 @@ def main(arguments):
             shuffle=False,
             num_workers=nw,
             collate_fn=collate_fn_train,
-            persistent_workers=True,
         )
         validation_loader = monai.data.ThreadDataLoader(
             validation_dataset,
@@ -652,8 +619,23 @@ def main(arguments):
             shuffle=False,
             num_workers=args.n_workers,
             collate_fn=collate_fn_val,
-            persistent_workers=True,
         )
+
+        if args.semi_supervised is True:
+            train_val_semi_sl_loader = monai.data.ThreadDataLoader(
+                train_val_semi_sl_dataset,
+                batch_size=1,
+                shuffle=False,
+                num_workers=args.n_workers,
+                collate_fn=collate_fn_val,
+            )
+            train_val_loader = CombinedLoader(
+                {
+                    "supervised": train_val_loader,
+                    "self_supervised": train_val_semi_sl_loader,
+                },
+                "min_size",
+            )
 
         if args.res_config_file is not None:
             if args.net_type in ["unetr", "swin"]:

@@ -5,6 +5,7 @@ import numpy as np
 import SimpleITK as sitk
 import torch
 import torch.nn.functional as F
+import monai
 from copy import deepcopy
 from glob import glob
 from collections import OrderedDict
@@ -461,3 +462,9 @@ def subsample_dataset(
             ss = rng.choice(list(data_dict.keys()))
             data_dict = {k: data_dict[k] for k in ss}
     return data_dict
+
+
+def return_classes(path: str):
+    image = monai.transforms.LoadImage()(path)
+    un_cl, counts = np.unique(image, return_counts=True)
+    return {u: c for u, c in zip(un_cl, counts)}

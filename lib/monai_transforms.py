@@ -2,8 +2,7 @@ import numpy as np
 import torch
 import monai
 
-from typing import List
-from copy import deepcopy
+from typing import List, Dict, Any
 from .utils import (
     ConditionalRescalingd,
     CombineBinaryLabelsd,
@@ -27,6 +26,11 @@ from .modules.augmentations import (
     mri_specific_augments,
     spatial_augments,
     AugmentationWorkhorsed,
+)
+from .modules.semi_supervised_segmentation.utils import (
+    convert_arguments_pre,
+    convert_arguments_post,
+    convert_arguments_augment,
 )
 
 
@@ -210,8 +214,13 @@ def get_transforms_unet(
             )
         # sets indices for random crop op
         if random_crop_size is not None:
-            transforms.append(AdjustSizesd([*image_keys, "mask"], mode="crop"))
-            transforms.append(monai.transforms.FgBgToIndicesd("mask"))
+            if label_keys is not None:
+                transforms.append(
+                    AdjustSizesd([*image_keys, "mask"], mode="crop")
+                )
+                transforms.append(monai.transforms.FgBgToIndicesd("mask"))
+            else:
+                transforms.append(AdjustSizesd(image_keys, mode="crop"))
         return transforms
 
     elif x == "post":
@@ -677,6 +686,7 @@ def get_augmentations_unet(
     image_keys,
     t2_keys,
     random_crop_size: List[int] = None,
+    has_label: bool = True,
     n_crops: int = 1,
 ):
     valid_arg_list = [
@@ -774,21 +784,36 @@ def get_augmentations_unet(
         # do a first larger crop that prevents artefacts introduced by
         # affine transforms and then crop the rest
         pre_final_size = [int(i * 1.10) for i in random_crop_size]
+        new_augments = []
+        if has_label is True:
+            new_augments.append(
+                monai.transforms.RandCropByPosNegLabeld(
+                    [*image_keys, "mask"],
+                    "mask",
+                    pre_final_size,
+                    allow_smaller=True,
+                    num_samples=n_crops,
+                    fg_indices_key="mask_fg_indices",
+                    bg_indices_key="mask_bg_indices",
+                )
+            )
+        else:
+            new_augments.append(
+                monai.transforms.RandSpatialCropd(
+                    image_keys,
+                    pre_final_size,
+                )
+            )
+
         augments = [
-            monai.transforms.RandCropByPosNegLabeld(
-                [*image_keys, "mask"],
-                "mask",
-                pre_final_size,
-                allow_smaller=True,
-                num_samples=n_crops,
-                fg_indices_key="mask_fg_indices",
-                bg_indices_key="mask_bg_indices",
-            ),
+            *new_augments,
             augments,
             monai.transforms.CenterSpatialCropd(
-                [*image_keys, "mask"], random_crop_size
+                [*image_keys, "mask"] if has_label else image_keys,
+                random_crop_size,
             ),
         ]
+
         augments = monai.transforms.Compose(augments)
 
     return augments
@@ -1091,3 +1116,33 @@ def get_augmentations_ssl(
         ),
     ]
     return transforms
+
+
+def get_semi_sl_transforms(
+    transform_arguments: Dict[str, Any],
+    augment_arguments: Dict[str, Any],
+    keys: List[str],
+):
+    transform_arguments_semi_sl_pre = convert_arguments_pre(
+        transform_arguments, keys
+    )
+    transform_arguments_semi_sl_post_1 = convert_arguments_post(
+        transform_arguments, 1, keys
+    )
+    transform_arguments_semi_sl_post_2 = convert_arguments_post(
+        transform_arguments, 2, keys
+    )
+    augment_arguments_semi_sl = convert_arguments_augment(
+        augment_arguments, keys
+    )
+
+    transforms_semi_sl = [
+        *get_transforms_unet("pre", **transform_arguments_semi_sl_pre),
+        CopyEntryd(keys, {k: f"{k}_aug_1" for k in keys}),
+        CopyEntryd(keys, {k: f"{k}_aug_2" for k in keys}),
+        get_augmentations_unet(**augment_arguments_semi_sl),
+        *get_transforms_unet("post", **transform_arguments_semi_sl_post_1),
+        *get_transforms_unet("post", **transform_arguments_semi_sl_post_2),
+        monai.transforms.SelectItemsd(["semi_sl_image_1", "semi_sl_image_2"]),
+    ]
+    return transforms_semi_sl

@@ -132,7 +132,7 @@ def filter_dictionary_with_filters(
     """
     print("Filtering on: {}".format(filters))
     print("\tInput size: {}".format(len(D)))
-    processed_filters = {"eq": [], "gt": [], "lt": [], "neq": []}
+    processed_filters = {"eq": [], "gt": [], "lt": [], "neq": [], "in": []}
     for f in filters:
         if "!=" in f:
             processed_filters["neq"].append(f.split("!="))
@@ -142,8 +142,16 @@ def filter_dictionary_with_filters(
             processed_filters["gt"].append(f.split(">"))
         elif "<" in f:
             processed_filters["lt"].append(f.split("<"))
+        elif "(in)" in f:
+            k, v = f.split("(in)")
+            v = v.split(",")
+            processed_filters["in"].append([k, v])
         else:
-            err = "filter {} must have one of ['=','<','>','!='].".format(f)
+            err = (
+                "filter {} must have one of ['=','<','>','!=','(in)'].".format(
+                    f
+                )
+            )
             err += " For example: age>50 or clinical_variable!=true"
             raise NotImplementedError(err)
     out_dict = {}
@@ -170,6 +178,9 @@ def filter_dictionary_with_filters(
                             check = False
                     elif k == "neq":
                         if str(D[pid][kk]) == v:
+                            check = False
+                    elif k == "in":
+                        if str(D[pid][kk]) not in v:
                             check = False
                 else:
                     check = False

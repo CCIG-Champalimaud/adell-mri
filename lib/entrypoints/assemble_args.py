@@ -494,7 +494,7 @@ argument_factory = {
     "missing_to_empty": dict(
         type=str,
         nargs="+",
-        choices=["image", "mask"],
+        choices=["image", "mask", "from_path"],
         help="If some images or masks are missing, assume they are empty \
             tensors.",
     ),

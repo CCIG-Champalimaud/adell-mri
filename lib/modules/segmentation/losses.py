@@ -310,7 +310,7 @@ def combo_loss(
     beta = torch.as_tensor(beta).type_as(pred)
 
     bdl = generalized_dice_loss(pred, target, beta) * scale
-    bce = binary_focal_loss(pred, target, beta, gamma, scale=scale)
+    bce = binary_cross_entropy(pred, target, weight=beta, scale=scale)
     return (alpha) * bce + (1 - alpha) * bdl
 
 
