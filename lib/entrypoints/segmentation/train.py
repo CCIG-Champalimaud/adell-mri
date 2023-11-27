@@ -74,6 +74,7 @@ def main(arguments):
             "skip_mask_keys",
             "feature_keys",
             "filter_on_keys",
+            "filter_is_optional",
             "subsample_size",
             "excluded_ids",
             "use_val_as_train_val",
@@ -101,9 +102,6 @@ def main(arguments):
             "n_workers",
             "seed",
             "augment",
-            "loss_gamma",
-            "loss_comb",
-            "loss_scale",
             "checkpoint_dir",
             "checkpoint_name",
             "checkpoint",
@@ -218,6 +216,7 @@ def main(arguments):
             possible_labels=None,
             label_key=None,
             filters=args.filter_on_keys,
+            filter_is_optional=args.filter_is_optional,
         )
     data_dict = filter_dictionary(
         data_dict,
@@ -225,6 +224,7 @@ def main(arguments):
         possible_labels=None,
         label_key=None,
         filters=args.filter_on_keys,
+        filter_is_optional=args.filter_is_optional,
     )
 
     data_dict = {
@@ -274,7 +274,7 @@ def main(arguments):
 
     all_pids = [k for k in data_dict]
 
-    network_config, loss_key = parse_config_unet(
+    network_config, loss_key, loss_params = parse_config_unet(
         args.config_file, len(keys), n_classes
     )
     if args.learning_rate is not None:
@@ -515,10 +515,11 @@ def main(arguments):
             pos_pixel_sum = 0
             total_pixel_sum = 0
             with tqdm(train_list) as t:
-                t.set_description(
-                    "Setting up partially random sampler/adaptive weights"
-                )
+                base = "Setting up partially random sampler/adaptive weights"
+                t.set_description(base)
+                n, n_nonzero = 0, 0
                 for x in t:
+                    n += 1
                     all_classes = {}
                     for mask_key in label_keys:
                         all_classes = {
@@ -530,12 +531,14 @@ def main(arguments):
                         if u not in total:
                             total.append(u)
                         if u != 0:
+                            n_nonzero += 1
                             pos_pixel_sum += c
                         total_pixel_sum += c
                     if len(total) > 1:
                         cl.append(1)
                     else:
                         cl.append(0)
+                    t.set_description(base + f" ({n_nonzero}/{n})")
             adaptive_weights = len(cl) / np.sum(cl)
             adaptive_pixel_weights = total_pixel_sum / pos_pixel_sum
             if args.constant_ratio is not None:
@@ -546,24 +549,22 @@ def main(arguments):
                     adaptive_weights = 1 + args.constant_ratio
         # weights to tensor
         if args.class_weights[0] == "adaptive":
-            weights = adaptive_weights
+            loss_params["weight"] = adaptive_weights
         elif args.class_weights[0] == "adaptive_pixel":
-            weights = adaptive_pixel_weights
-        else:
-            weights = torch.as_tensor(
+            loss_params["weight"] = adaptive_pixel_weights
+        elif "weight" not in loss_params:
+            loss_params["weight"] = torch.as_tensor(
                 np.float32(np.array(args.class_weights)),
                 dtype=torch.float32,
                 device=dev,
             )
-        print("Weights set to:", weights)
+        print("Weights set to:", loss_params["weight"])
 
         # get loss function parameters
         loss_params = get_loss_param_dict(
-            weights=weights,
-            gamma=args.loss_gamma,
-            comb=args.loss_comb,
-            scale=args.loss_scale,
-        )[loss_key]
+            loss_key=loss_key,
+            **loss_params,
+        )
         if "eps" in loss_params and args.precision != "32":
             if loss_params["eps"] < 1e-4:
                 loss_params["eps"] = 1e-4
