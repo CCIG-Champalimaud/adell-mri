@@ -77,8 +77,14 @@ class Embedder(torch.nn.Module):
         self.device = device
 
         self.init_embeddings()
-        self.cat_distributions = [[] for _ in self.cat_feat]
-        self.num_distributions = [[] for _ in range(n_num_feat)]
+        if self.cat_feat:
+            self.cat_distributions = [[] for _ in self.cat_feat]
+        else:
+            self.cat_distributions = []
+        if self.n_num_feat:
+            self.num_distributions = [[] for _ in range(n_num_feat)]
+        else:
+            self.num_distributions = []
 
     def init_embeddings(self):
         self.final_n_features = 0
