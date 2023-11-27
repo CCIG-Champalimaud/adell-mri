@@ -114,7 +114,7 @@ def filter_dictionary_with_possible_labels(
 
 
 def filter_dictionary_with_filters(
-    D: DatasetDict, filters: List[str]
+    D: DatasetDict, filters: List[str], filter_is_optional: bool = False
 ) -> DatasetDict:
     """Filters a dataset dictionary with custom filters:
     * If "key=value": tests if field key is equal/contains value
@@ -126,6 +126,8 @@ def filter_dictionary_with_filters(
     Args:
         D (DatasetDict): dataset dictionary.
         filters (List[str]): filters.
+        filter_is_optional (bool, optional): considers the filters to be
+            optional. Defaults to False.
 
     Returns:
         DatasetDict: filtered dataset dictionary.
@@ -182,7 +184,7 @@ def filter_dictionary_with_filters(
                     elif k == "in":
                         if str(D[pid][kk]) not in v:
                             check = False
-                else:
+                elif filter_is_optional is False:
                     check = False
         if check == True:
             out_dict[pid] = D[pid]
@@ -197,6 +199,7 @@ def filter_dictionary(
     possible_labels: List[str] = None,
     label_key: str = None,
     filters: List[str] = None,
+    filter_is_optional: bool = False,
 ) -> DatasetDict:
     """
     Wraps all dataset filters in a more convenient function.
@@ -212,6 +215,8 @@ def filter_dictionary(
         label_key (str, optional): label key. Defaults to None.
         filters (List[str], optional): list of filters for
             filter_dictionary_with_filters. Defaults to None.
+        filter_is_optional (bool, optional): considers the filters to be
+            optional. Defaults to False.
 
     Returns:
         DatasetDict: filtered dictionary.
@@ -226,5 +231,7 @@ def filter_dictionary(
             D, possible_labels, label_key
         )
     if filters is not None:
-        D = filter_dictionary_with_filters(D, filters)
+        D = filter_dictionary_with_filters(
+            D, filters, filter_is_optional=filter_is_optional
+        )
     return D
