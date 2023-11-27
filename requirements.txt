@@ -10,7 +10,7 @@ numpy==1.23.5
 omegaconf==2.3.0
 pandas==1.4.2
 panel==1.2.3
-Pillow==10
+Pillow==10.0.1
 pydicom==2.3.0
 pytest==7.2.0
 PyYAML==6.0
