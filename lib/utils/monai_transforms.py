@@ -199,11 +199,16 @@ class PrintRanged(monai.transforms.InvertibleTransform):
     dictionary of tensors. Used for debugging.
     """
 
-    def __init__(self, prefix=""):
+    def __init__(self, prefix="", keys: List[str] = None):
         self.prefix = prefix
+        self.keys = keys
 
     def __call__(self, X):
-        for k in X:
+        if self.keys is not None:
+            keys = self.keys
+        else:
+            keys = X.keys()
+        for k in keys:
             try:
                 print(self.prefix, k, X[k].min(), X[k].max())
             except Exception:
@@ -1002,7 +1007,7 @@ class LabelOperatorSegmentationd(monai.transforms.Transform):
         }
 
     def binary(self, x):
-        return np.isin(x, self.positive_labels).astype(np.float32)
+        return np.isin(x, np.float32(self.positive_labels)).astype(np.float32)
 
     def categorical(self, x):
         output = np.zeros_like(x)
