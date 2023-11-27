@@ -147,25 +147,16 @@ def get_size_spacing_dict(
 
 
 def get_loss_param_dict(
-    weights: torch.Tensor,
-    gamma: FloatOrTensor,
-    comb: FloatOrTensor,
-    threshold: FloatOrTensor = 0.5,
-    scale: FloatOrTensor = 1.0,
+    loss_key: str,
+    **kwargs,
 ) -> Dict[str, Dict[str, FloatOrTensor]]:
     """Constructs a keyword dictionary that can be used with the losses in
     `losses.py`.
 
     Args:
-        weights (torch.Tensor): weights for different classes (or for the
-            positive class).
-        gamma (Union[torch.Tensor,float]): gamma for focal losses.
-        comb (Union[torch.Tensor,float]): relative combination coefficient for
-            combination losses.
-        threshold (Union[torch.Tensor,float],optional): threshold for the
-            positive class in the focal loss. Helpful in cases where one is
-            trying to model the probability explictly. Defaults to 0.5.
-        scale (float, optional): scaling factor for CE and focal losses.
+        loss_key (str): key corresponding to loss name.
+        kwargs (optional): keyword arguments for the loss to which the weights
+            will be appended.
 
     Returns:
         Dict[str,Dict[str,Union[float,torch.Tensor]]]: dictionary where each
@@ -179,49 +170,35 @@ def get_loss_param_dict(
         else:
             return torch.ones_like(w) - w
 
-    weights = torch.as_tensor(weights)
-    gamma = torch.as_tensor(gamma)
-    comb = torch.as_tensor(comb)
-    scale = torch.as_tensor(scale)
-
-    inverted_weights = invert_weights(weights)
-    s = weights + inverted_weights
-    weights_tv = weights / s
-    inverted_weights_tv = inverted_weights / s
-
-    loss_param_dict = {
-        "cross_entropy": {"weight": weights, "scale": scale, "eps": eps},
-        "focal": {
-            "alpha": weights,
-            "gamma": gamma,
-            "scale": scale,
-            "eps": eps,
-        },
-        "focal_alt": {"alpha": weights, "gamma": gamma},
-        "dice": {"weight": weights},
-        "tversky_focal": {
-            "alpha": inverted_weights_tv,
-            "beta": weights_tv,
-            "gamma": gamma,
-            "scale": scale,
-        },
-        "combo": {
-            "alpha": comb,
-            "beta": weights,
-            "gamma": gamma,
-            "scale": scale,
-        },
-        "unified_focal": {
-            "delta": weights,
-            "gamma": gamma,
-            "lam": comb,
-            "threshold": threshold,
-            "scale": scale,
-        },
-        "weighted_mse": {"alpha": weights, "threshold": threshold},
-        "mse": {},
-    }
-    return loss_param_dict
+    kwargs = {k: torch.as_tensor(kwargs[k]) for k in kwargs}
+    if loss_key in ["focal", "focal_alt", "weighted_mse"]:
+        if "weight" in kwargs:
+            weights = kwargs["weight"]
+            del kwargs["weight"]
+            return {"alpha": weights, **kwargs}
+        else:
+            return kwargs
+    elif loss_key in ["cross_entropy", "dice", "combo", "unified_focal"]:
+        if "weight" in kwargs:
+            weights = kwargs["weight"]
+            del kwargs["weight"]
+            return {"weight": weights, **kwargs}
+        else:
+            return kwargs
+    elif loss_key in "tversky_focal":
+        if "weight" in kwargs:
+            inverted_weights = invert_weights(weights)
+            s = weights + inverted_weights
+            weights_tv = weights / s
+            inverted_weights_tv = inverted_weights / s
+            del kwargs["weight"]
+            return {"alpha": inverted_weights_tv, "beta": weights_tv, **kwargs}
+        else:
+            return kwargs
+    elif loss_key == "mse":
+        return kwargs
+    else:
+        raise NotImplemented(f"loss_key {loss_key} not in available loss_keys")
 
 
 def unpack_crops(X: List[TensorIterable]) -> TensorIterable:

@@ -279,13 +279,13 @@ def combo_loss(
     pred: torch.Tensor,
     target: torch.Tensor,
     alpha: float = 0.5,
-    beta: float = 1,
+    weight: float = 1,
     gamma: float = 1.0,
     scale: float = 1.0,
 ) -> torch.Tensor:
     """Combo loss. Simply put, it is a weighted combination of the Dice loss
     and the weighted focal loss [1]. `alpha` is the weight for each loss
-    and beta is the weight for the binary cross entropy.
+    and weight is the weight for the binary cross entropy.
 
     [1] https://arxiv.org/abs/1805.02798
 
@@ -295,7 +295,7 @@ def combo_loss(
         alpha (float, optional): weight term for both losses. Binary cross
             entropy is scaled by `alpha` and the Dice score is scaled by
             `1-alpha`. Defaults to 0.5.
-        beta (float, optional): weight for the cross entropy. Defaults to 1.
+        weight (float, optional): weight for the cross entropy. Defaults to 1.
         gamma (float, optional): focusing parameter. Setting this to 0 leads
             this loss to be the weighted sum of generalized Dice loss and
             BCE. Defaults to 1.0.
@@ -307,10 +307,16 @@ def combo_loss(
             dimension of `pred`).
     """
     alpha = torch.as_tensor(alpha).type_as(pred)
-    beta = torch.as_tensor(beta).type_as(pred)
+    weight = torch.as_tensor(weight).type_as(pred)
 
-    bdl = generalized_dice_loss(pred, target, beta) * scale
-    bce = binary_cross_entropy(pred, target, weight=beta, scale=scale)
+    bdl = generalized_dice_loss(pred, target, weight) * scale
+    bce = binary_focal_loss(
+        pred=pred,
+        target=target,
+        alpha=weight,
+        gamma=gamma,
+        scale=scale,
+    )
     return (alpha) * bce + (1 - alpha) * bdl
 
 
@@ -351,7 +357,7 @@ def hybrid_focal_loss(
 def unified_focal_loss(
     pred: torch.Tensor,
     target: torch.Tensor,
-    delta: float,
+    weight: float,
     gamma: float,
     lam: float = 0.5,
     threshold: float = 0.5,
@@ -360,14 +366,14 @@ def unified_focal_loss(
     """Unified focal loss. A combination of the focal loss and the focal
     Tversky loss. In essence, a weighted sum of both, where `lam` defines
     how both losses are combined but with fewer parameters than the hybrid
-    focal loss (`gamma` and `delta` parametrize different aspects of each
+    focal loss (`gamma` and `weight` parametrize different aspects of each
     loss).
 
     Args:
         pred (torch.Tensor): prediction probabilities.
         target (torch.Tensor): target class.
-        delta (float): equivalent to `alpha` in focal loss
-        and `alpha` and `1-beta` in Tversky focal loss
+        weight (float): equivalent to `alpha` in focal loss
+            and `alpha` and `1-beta` in Tversky focal loss
         gamma (float): equivalent to `gamma` in both
         losses
         lam (float, optional): weight term for both losses. Focal loss is
@@ -382,11 +388,11 @@ def unified_focal_loss(
         torch.Tensor: a tensor with size equal to the batch size (first
         dimension of `pred`).
     """
-    delta = torch.as_tensor(delta).type_as(pred)
+    weight = torch.as_tensor(weight).type_as(pred)
     gamma = torch.as_tensor(gamma).type_as(pred)
 
-    bfl = binary_focal_loss(pred, target, delta, 1 - gamma, threshold, scale)
-    bftl = binary_focal_tversky_loss(pred, target, delta, 1 - delta, gamma)
+    bfl = binary_focal_loss(pred, target, weight, 1 - gamma, threshold, scale)
+    bftl = binary_focal_tversky_loss(pred, target, weight, 1 - weight, gamma)
     return lam * bfl + (1 - lam) * bftl
 
 
@@ -573,12 +579,12 @@ def mc_combo_loss(
     pred: torch.Tensor,
     target: torch.Tensor,
     alpha: float = 0.5,
-    beta: Union[float, torch.Tensor] = 1,
+    weight: Union[float, torch.Tensor] = 1,
     scale: float = 1.0,
 ) -> torch.Tensor:
     """Combo loss. Simply put, it is a weighted combination of the Dice loss
     and the weighted cross entropy [1]. `alpha` is the weight for each loss
-    and beta is the weight for the binary cross entropy.
+    and weights is the weight for the binary cross entropy.
 
     [1] https://arxiv.org/abs/1805.02798
 
@@ -588,7 +594,7 @@ def mc_combo_loss(
         alpha (float, optional): weight term for both losses. Cross
             entropy is scaled by `alpha` and the Dice score is scaled by
             `1-alpha`. Defaults to 0.5.
-        beta (Union[float,torch.Tensor], optional): weight for the cross
+        weight (Union[float,torch.Tensor], optional): weight for the cross
             entropy. Defaults to 1.
         scale (float, optional): factor to scale CE loss before reducing.
 
@@ -597,10 +603,10 @@ def mc_combo_loss(
         dimension of `pred`).
     """
     alpha = torch.as_tensor(alpha).type_as(pred)
-    beta = torch.as_tensor(beta).type_as(pred)
+    weight = torch.as_tensor(weight).type_as(pred)
 
     bdl = generalized_dice_loss(pred, target)
-    bce = cat_cross_entropy(pred, target, beta, scale)
+    bce = cat_cross_entropy(pred, target, weight, scale)
     return (alpha) * bce + (1 - alpha) * bdl
 
 

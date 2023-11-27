@@ -39,6 +39,12 @@ def parse_config_unet(config_file, n_keys, n_classes):
         k = "binary" if n_classes == 2 else "categorical"
         network_config["loss_fn"] = loss_factory[k][network_config["loss_fn"]]
 
+    if "loss_fn_kwargs" in network_config:
+        loss_params = network_config["loss_fn_kwargs"]
+        del network_config["loss_fn_kwargs"]
+    else:
+        loss_params = {}
+
     if "spatial_dimensions" not in network_config:
         network_config["spatial_dimensions"] = 3
 
@@ -46,7 +52,7 @@ def parse_config_unet(config_file, n_keys, n_classes):
         network_config["batch_size"] = 1
 
     network_config["n_channels"] = n_keys * network_config["n_channels"]
-    return network_config, loss_key
+    return network_config, loss_key, loss_params
 
 
 def parse_config_cat(config_file):
