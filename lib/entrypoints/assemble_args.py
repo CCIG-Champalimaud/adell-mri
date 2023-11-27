@@ -56,6 +56,11 @@ argument_factory = {
         nargs="+",
         help="Filters the dataset based on a set of specific key:value pairs.",
     ),
+    "filter_is_optional": dict(
+        default=False,
+        action="store_true",
+        help="Considers the fields in the filter to be optional",
+    ),
     "possible_labels": dict(
         type=str,
         nargs="+",
