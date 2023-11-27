@@ -218,10 +218,13 @@ class UNetBasePL(pl.LightningModule, ABC):
         loss = self.calculate_loss(prediction, y)
         if self.deep_supervision is True:
             t = len(deep_outputs)
+            interp = {3: "linear", 4: "bilinear", 5: "trilinear"}[len(y.shape)]
             additional_losses = torch.zeros_like(loss)
             for i, o in enumerate(deep_outputs):
                 S = o.shape[-self.spatial_dimensions :]
-                y_small = F.interpolate(y, S, mode="nearest")
+                y_small = (
+                    F.interpolate(y, S, mode=interp, align_corners=True) > 0
+                ).float()
                 l = (
                     self.calculate_loss(o, y_small).mean()
                     / (2 ** (t - i))
@@ -301,7 +304,13 @@ class UNetBasePL(pl.LightningModule, ABC):
             x, y, y_class, x_cond, x_fc
         )
 
-        self.log("train_loss", loss, batch_size=y.shape[0], sync_dist=True)
+        self.log(
+            "train_loss",
+            loss,
+            batch_size=y.shape[0],
+            sync_dist=True,
+            prog_bar=True,
+        )
         if class_loss is not None:
             self.log(
                 "train_cl_loss",
