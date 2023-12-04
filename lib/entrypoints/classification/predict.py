@@ -1,9 +1,9 @@
-import argparse
 import random
 import json
 import numpy as np
 import torch
 import monai
+from copy import deepcopy
 from pathlib import Path
 from tqdm import tqdm
 
@@ -30,6 +30,9 @@ def main(arguments):
             "image_keys",
             "clinical_feature_keys",
             "adc_keys",
+            "mask_key",
+            "image_masking",
+            "image_crop_from_mask",
             "n_classes",
             "filter_on_keys",
             "target_spacing",
@@ -69,10 +72,12 @@ def main(arguments):
         clinical_feature_keys = args.clinical_feature_keys
 
     data_dict = json.load(open(args.dataset_json, "r"))
-
+    presence_keys = args.image_keys + clinical_feature_keys
+    if args.mask_key is not None:
+        presence_keys.append(args.mask_key)
     data_dict = filter_dictionary(
         data_dict,
-        filters_presence=args.image_keys + clinical_feature_keys,
+        filters_presence=presence_keys,
         filters=args.filter_on_keys,
     )
     data_dict = subsample_dataset(
@@ -90,6 +95,10 @@ def main(arguments):
     keys = args.image_keys
     adc_keys = args.adc_keys if args.adc_keys is not None else []
     adc_keys = [k for k in adc_keys if k in keys]
+    mask_key = args.mask_key
+    input_keys = deepcopy(keys)
+    if mask_key is not None:
+        input_keys.append(mask_key)
 
     if args.net_type == "unet":
         network_config, _ = parse_config_unet(
@@ -106,6 +115,9 @@ def main(arguments):
 
     transform_arguments = {
         "keys": keys,
+        "mask_key": mask_key,
+        "image_masking": args.image_masking,
+        "image_crop_from_mask": args.image_crop_from_mask,
         "clinical_feature_keys": clinical_feature_keys,
         "adc_keys": adc_keys,
         "target_spacing": args.target_spacing,

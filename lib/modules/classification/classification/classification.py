@@ -112,7 +112,7 @@ class VGG(torch.nn.Module):
             self.last_act = torch.nn.Sigmoid()
         else:
             final_n = self.n_classes
-            self.last_act = torch.nn.Softmax()
+            self.last_act = torch.nn.Softmax(-1)
 
         self.classification_layer = torch.nn.Sequential(
             GlobalPooling(),

@@ -124,20 +124,6 @@ def main(arguments):
     if args.fill_missing_with_placeholder is not None:
         fill_missing_with_value(data_dict, args.fill_missing_with_placeholder)
     presence_keys = [*args.image_keys]
-    categorical_specification = None
-    numerical_specification = None
-    with_conditioning = False
-    if args.cat_condition_keys is not None:
-        categorical_specification = [
-            get_conditional_specification(data_dict, k)
-            for k in args.cat_condition_keys
-        ]
-        presence_keys.extend(args.cat_condition_keys)
-        with_conditioning = True
-    if args.num_condition_keys is not None:
-        numerical_specification = len(args.num_condition_keys)
-        presence_keys.extend(args.num_condition_keys)
-        with_conditioning = True
     if args.excluded_ids is not None:
         args.excluded_ids = parse_ids(args.excluded_ids, output_format="list")
         print("Removing IDs specified in --excluded_ids")
@@ -155,6 +141,21 @@ def main(arguments):
     ):
         ss = rng.choice(list(data_dict.keys()), size=args.subsample_size)
         data_dict = {k: data_dict[k] for k in ss}
+
+    categorical_specification = None
+    numerical_specification = None
+    with_conditioning = False
+    if args.cat_condition_keys is not None:
+        categorical_specification = [
+            get_conditional_specification(data_dict, k)
+            for k in args.cat_condition_keys
+        ]
+        presence_keys.extend(args.cat_condition_keys)
+        with_conditioning = True
+    if args.num_condition_keys is not None:
+        numerical_specification = len(args.num_condition_keys)
+        presence_keys.extend(args.num_condition_keys)
+        with_conditioning = True
 
     if len(data_dict) == 0:
         raise Exception(
