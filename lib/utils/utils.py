@@ -14,13 +14,14 @@ from typing import Dict, List, Tuple
 from ..modules.segmentation.losses import (
     binary_cross_entropy,
     binary_focal_loss,
-    generalized_dice_loss,
+    binary_generalized_dice_loss,
     binary_focal_tversky_loss,
     combo_loss,
     hybrid_focal_loss,
     unified_focal_loss,
     cat_cross_entropy,
     mc_focal_loss,
+    mc_generalized_dice_loss,
     mc_focal_tversky_loss,
     mc_combo_loss,
     mc_hybrid_focal_loss,
@@ -41,7 +42,7 @@ loss_factory = {
     "binary": {
         "cross_entropy": binary_cross_entropy,
         "focal": binary_focal_loss,
-        "dice": generalized_dice_loss,
+        "dice": binary_generalized_dice_loss,
         "tversky_focal": binary_focal_tversky_loss,
         "combo": combo_loss,
         "hybrid_focal": hybrid_focal_loss,
@@ -50,7 +51,7 @@ loss_factory = {
     "categorical": {
         "cross_entropy": cat_cross_entropy,
         "focal": mc_focal_loss,
-        "dice": generalized_dice_loss,
+        "dice": mc_generalized_dice_loss,
         "tversky_focal": mc_focal_tversky_loss,
         "combo": mc_combo_loss,
         "hybrid_focal": mc_hybrid_focal_loss,

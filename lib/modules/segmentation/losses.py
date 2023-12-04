@@ -1,10 +1,52 @@
 import torch
 
-from typing import Union
+from typing import Union, Any
 
 eps = 1e-6
 FOCAL_DEFAULT = {"alpha": None, "gamma": 1}
 TVERSKY_DEFAULT = {"alpha": 1, "beta": 1, "gamma": 1}
+
+
+def generalised_dice_score(
+    pred: torch.Tensor,
+    target: torch.Tensor,
+    weight: torch.Tensor = None,
+    smooth: torch.Tensor = 0.0,
+    scale: torch.Tensor = 1.0,
+    eps: torch.Tensor = eps,
+) -> torch.Tensor:
+    """Calculates the generalised dice score. Assumes pred and target have
+    the same shape.
+
+    Args:
+        pred (torch.Tensor): probabilistic tensor (between 0 and 1).
+        target (torch.Tensor): class tensor (0 or 1).
+        weight (torch.Tensor): weight for the positive classes. Defaults to
+            None (no weight).
+        smooth (torch.Tensor): smoothing factor. Defaults to 0.0 (no
+            smoothing).
+        scale (float, optional): factor to scale result before reducing.
+            Defaults to 1.0.
+
+    Returns:
+        torch.Tensor: generalised dice score.
+    """
+    if weight is None:
+        weight = torch.ones([]).to(pred)
+    elif len(weight.shape) == 1:
+        weight = weight.unsqueeze(0)
+    numerator = torch.sum(
+        weight * torch.clip((target * pred) * scale).sum(-1),
+        -1,
+    )
+    denominator = torch.sum(
+        weight * torch.clip((target + pred + smooth) * scale, eps).sum(-1),
+        -1,
+    )
+    return torch.divide(
+        numerator,
+        denominator,
+    )
 
 
 def pt(
@@ -60,8 +102,8 @@ def binary_cross_entropy(
 def binary_focal_loss(
     pred: torch.Tensor,
     target: torch.Tensor,
-    alpha: float,
     gamma: float,
+    alpha: float = 1.0,
     threshold: float = 0.5,
     scale: float = 1.0,
     eps: float = eps,
@@ -92,24 +134,27 @@ def binary_focal_loss(
     """
     alpha = torch.as_tensor(alpha).type_as(pred)
     gamma = torch.as_tensor(gamma).type_as(pred)
+    eps = torch.as_tensor(eps).type_as(pred)
 
-    p = pt(pred, target, threshold)
-    w = torch.where(target > 0, alpha * torch.ones_like(p), torch.ones_like(p))
-    p = torch.flatten(p, start_dim=1)
-    w = torch.flatten(w, start_dim=1)
-    bce = -torch.log(p + eps)
-
-    x = w * ((1 - p + eps) ** gamma)
-    x = scale * x * bce
-    loss = torch.mean(x, dim=-1)
-    return loss
+    pred = torch.maximum(pred, eps).flatten(start_dim=2)
+    pred_inv = torch.maximum(1 - pred, eps)
+    target = (target > threshold).long().flatten(start_dim=2)
+    return (
+        torch.add(
+            alpha * (pred**gamma) * torch.log(pred) * target,
+            (pred_inv**gamma) * torch.log(pred_inv) * (1 - target),
+        )
+        .negative()
+        .multiply(scale)
+        .mean(-1)
+    )
 
 
 def binary_focal_loss_(
     pred: torch.Tensor,
     target: torch.Tensor,
-    alpha: float,
     gamma: float,
+    alpha: float = 1.0,
     scale: float = 1.0,
     eps: float = eps,
 ) -> torch.Tensor:
@@ -187,16 +232,18 @@ def weighted_mse(
     return positive_mse + negative_mse
 
 
-def generalized_dice_loss(
+def binary_generalized_dice_loss(
     pred: torch.Tensor,
     target: torch.Tensor,
     weight: float = 1.0,
     smooth: float = 1.0,
+    scale: float = 1.0,
+    eps: float = eps,
 ) -> torch.Tensor:
     """Dice loss adapted to cases of very high class imbalance. In essence
     it adds class weights to the calculation of the Dice loss [1]. If
     `weights=1` it defaults to the regular Dice loss. This implementation
-    works for both the binary and categorical cases.
+    works for the binary case.
 
     [1] https://arxiv.org/pdf/1707.03237.pdf
 
@@ -206,13 +253,17 @@ def generalized_dice_loss(
         weight (float, optional): class weights. Defaults to 1.
         smooth (float, optional): term preventing the loss from being
             undefined.
+        scale (float, optional): factor to scale loss before reducing.
+            Defaults to 1.0.
+        eps (float, optional): small constant value used to clamp predictions
+            and targets. Defaults to 1e-8.
 
     Returns:
          torch.Tensor: a tensor with size equal to the batch size (first
         dimension of `pred`).
     """
     weight = torch.as_tensor(weight).type_as(pred)
-    scaling_term = 0.0001
+    eps = torch.as_tensor(eps).type_as(pred)
 
     if pred.shape != target.shape:
         target = classes_to_one_hot(target)
@@ -220,16 +271,9 @@ def generalized_dice_loss(
 
     target = torch.flatten(target, start_dim=2)
     pred = torch.flatten(pred, start_dim=2)
-    smooth = smooth * scaling_term
     # adjusting the values of target and pred to avoid fp16 issues
-    tp = torch.sum(target * pred * scaling_term, 2)
-    fp = torch.sum((1.0 - target) * pred * scaling_term, 2)
-    fn = torch.sum(target * (1.0 - pred) * scaling_term, 2)
-
-    cl_dice = torch.divide(
-        2.0 * (tp * weight) + smooth, 2.0 * (tp * weight) + fp + fn + smooth
-    )
-    return 1 - cl_dice
+    cl_dice = generalised_dice_score(pred, target, weight, smooth, scale, eps)
+    return 1 - 2 * cl_dice
 
 
 def binary_focal_tversky_loss(
@@ -282,6 +326,7 @@ def combo_loss(
     weight: float = 1,
     gamma: float = 1.0,
     scale: float = 1.0,
+    eps: float = eps,
 ) -> torch.Tensor:
     """Combo loss. Simply put, it is a weighted combination of the Dice loss
     and the weighted focal loss [1]. `alpha` is the weight for each loss
@@ -309,7 +354,7 @@ def combo_loss(
     alpha = torch.as_tensor(alpha).type_as(pred)
     weight = torch.as_tensor(weight).type_as(pred)
 
-    bdl = generalized_dice_loss(pred, target, weight) * scale
+    bdl = binary_generalized_dice_loss(pred, target, weight, eps) * scale
     bce = binary_focal_loss(
         pred=pred,
         target=target,
@@ -531,6 +576,51 @@ def mc_focal_loss(
     return torch.mean(out * scale, dim=1)
 
 
+def mc_generalized_dice_loss(
+    pred: torch.Tensor,
+    target: torch.Tensor,
+    weight: float = 1.0,
+    smooth: float = 1.0,
+    scale: float = 1.0,
+    eps: float = eps,
+) -> torch.Tensor:
+    """Dice loss adapted to cases of very high class imbalance. In essence
+    it adds class weights to the calculation of the Dice loss [1]. If
+    `weights=1` it defaults to the regular Dice loss. This implementation
+    works for both the binary and categorical cases.
+
+    [1] https://arxiv.org/pdf/1707.03237.pdf
+
+    Args:
+        pred (torch.Tensor): prediction probabilities.
+        target (torch.Tensor): target class.
+        weight (float, optional): class weights. Defaults to 1.
+        smooth (float, optional): term preventing the loss from being
+            undefined.
+        scale (float, optional): factor to scale loss before reducing.
+            Defaults to 1.0.
+        eps (float, optional): small constant value used to clamp predictions
+            and targets. Defaults to 1e-8.
+
+    Returns:
+         torch.Tensor: a tensor with size equal to the batch size (first
+        dimension of `pred`).
+    """
+    weight = torch.as_tensor(weight).type_as(pred)
+    eps = torch.as_tensor(eps).type_as(pred)
+    scaling_term = 1
+
+    if pred.shape != target.shape:
+        target = classes_to_one_hot(target)
+        weight = unsqueeze_to_shape(weight, [1, 1], 1)
+
+    target = torch.flatten(target, start_dim=2)
+    pred = torch.flatten(pred, start_dim=2)
+    smooth = smooth * scaling_term
+    cl_dice = generalised_dice_score(pred, target, weight, smooth, scale, eps)
+    return 1 - 2 * cl_dice
+
+
 def mc_focal_tversky_loss(
     pred: torch.Tensor,
     target: torch.Tensor,
@@ -605,7 +695,7 @@ def mc_combo_loss(
     alpha = torch.as_tensor(alpha).type_as(pred)
     weight = torch.as_tensor(weight).type_as(pred)
 
-    bdl = generalized_dice_loss(pred, target)
+    bdl = mc_generalized_dice_loss(pred, target, weight, scale)
     bce = cat_cross_entropy(pred, target, weight, scale)
     return (alpha) * bce + (1 - alpha) * bdl
 
@@ -680,3 +770,80 @@ def mc_unified_focal_loss(
     fl = mc_focal_loss(pred, target, delta, 1 - gamma, scale)
     ftl = mc_focal_tversky_loss(pred, target, delta, 1 - delta, gamma)
     return lam * fl + (1 - lam) * ftl
+
+
+class CompoundLoss(torch.nn.Module):
+    """
+    Calculates using the same targets different loss function values. Using
+    loss_fns_and_kwargs.
+    """
+
+    def __init__(
+        self,
+        loss_fns_and_kwargs: list[tuple[callable, list[dict[str, Any]]]],
+        loss_weights: list[float] = None,
+    ) -> list[torch.Tensor]:
+        """
+        Args:
+            loss_fns_and_kwargs (list[tuple[callable, list[dict[str, Any]]]]): a
+                list of tuples containing a loss function and a set of kwargs for
+                it (a dictionary with values).
+            loss_weights (list[float], optional): list containing the relative
+                weights of each loss function. Defaults to None (equal
+                weights).
+        """
+        super().__init__()
+        self.loss_fns_and_kwargs = loss_fns_and_kwargs
+        self.loss_weights = loss_weights
+
+        if self.loss_weights is None:
+            self.loss_weights = [1.0 for _ in self.loss_fns_and_kwargs]
+
+        if len(self.loss_weights) != len(self.loss_fns_and_kwargs):
+            raise Exception(
+                "loss_weights and loss_fns_and_kwargs should have same length"
+            )
+
+        for i in range(len(self.loss_fns_and_kwargs)):
+            loss_fn, kwargs = self.loss_fns_and_kwargs[i]
+            if kwargs is None:
+                kwargs = {}
+            self.loss_fns_and_kwargs[i] = (loss_fn, kwargs)
+
+    def __setitem__(self, key, value):
+        for i in range(len(self.loss_fns_and_kwargs)):
+            self.loss_fns_and_kwargs[i][1][key] = value
+
+    def replace_item(self, key, value):
+        for i in range(len(self.loss_fns_and_kwargs)):
+            if key in self.loss_fns_and_kwargs[i][1]:
+                self.loss_fns_and_kwargs[i][1][key] = value
+
+    def convert_args(self, fn: callable):
+        for i in range(len(self.loss_fns_and_kwargs)):
+            self.loss_fns_and_kwargs[i][1] = fn(self.loss_fns_and_kwargs[i][1])
+
+    def forward(
+        self, pred: torch.Tensor, target: torch.Tensor
+    ) -> list[torch.Tensor]:
+        """
+        Calculates loss function.
+
+        Args:
+            pred (torch.Tensor): prediction probabilities.
+            target (torch.Tensor): target class.
+
+        Returns:
+            torch.Tensor: list of tensors, each containing a value for the
+                loss functions in self.loss_fns_and_kwargs.
+        """
+        loss_values = []
+        for (loss_fn, kwargs), w in zip(
+            self.loss_fns_and_kwargs, self.loss_weights
+        ):
+            if kwargs is None:
+                loss_value = loss_fn(pred, target)
+            else:
+                loss_value = loss_fn(pred, target, **kwargs)
+            loss_values.append(loss_value * w)
+        return loss_values

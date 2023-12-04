@@ -494,13 +494,14 @@ class UNet(torch.nn.Module):
             if isinstance(k, int) is True:
                 k = [k for _ in range(self.spatial_dimensions)]
             p = [int(i // 2) for i in k]
+            p_conv = [self.padding if k_ > 1 else 0 for k_ in k]
             op = torch.nn.Sequential(
                 self.conv_op_enc(
                     previous_d,
                     d,
                     kernel_size=k,
                     stride=1,
-                    padding=self.padding,
+                    padding=p_conv,
                 ),
                 self.adn_fn(d),
             )
@@ -551,9 +552,12 @@ class UNet(torch.nn.Module):
         self.deep_supervision_ops = torch.nn.ModuleList([])
         for i in range(len(depths)):
             d, k = depths[i], kernel_sizes[i]
+            if isinstance(k, int) is True:
+                k = [k for _ in range(self.spatial_dimensions)]
+            p_conv = [self.padding if k_ > 1 else 0 for k_ in k]
             op = torch.nn.Sequential(
                 self.conv_op_dec(
-                    d * 2, d, kernel_size=k, stride=1, padding=self.padding
+                    d * 2, d, kernel_size=k, stride=1, padding=p_conv
                 ),
                 self.adn_fn(d),
             )

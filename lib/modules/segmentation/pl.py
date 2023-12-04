@@ -51,7 +51,7 @@ def update_metrics(
     y: torch.Tensor,
     pred_class: torch.Tensor,
     y_class: torch.Tensor,
-    **kwargs
+    **kwargs,
 ) -> None:
     """Wraper function to update metrics.
 
@@ -143,8 +143,10 @@ class UNetBasePL(pl.LightningModule, ABC):
         self.skip_conditioning_key = None
 
     def calculate_loss(self, prediction, y):
-        loss = self.loss_fn(prediction, y, **self.loss_params)
-        return loss.mean()
+        loss = self.loss_fn(prediction, y)
+        if isinstance(loss, list):
+            loss = torch.stack([l.mean() for l in loss])
+        return loss
 
     def calculate_loss_class(self, prediction, y):
         y = y.type_as(prediction)
@@ -234,12 +236,10 @@ class UNetBasePL(pl.LightningModule, ABC):
             loss = loss + additional_losses
         if self.bottleneck_classification is True:
             class_loss = self.calculate_loss_class(pred_class, y_class)
-            output_loss = loss + class_loss * self.bn_mult
         else:
             class_loss = None
-            output_loss = loss
 
-        return prediction, pred_class, loss, class_loss, output_loss
+        return prediction, pred_class, loss, class_loss
 
     def unpack_batch(self, batch):
         x, y = batch[self.image_key], batch[self.label_key]
@@ -275,7 +275,7 @@ class UNetBasePL(pl.LightningModule, ABC):
         batch_idx=0,
         return_only_segmentation=False,
         *args,
-        **kwargs
+        **kwargs,
     ):
         x, x_cond, x_fc = self.unpack_batch_prediction(batch)
         not_batched = False
@@ -289,7 +289,7 @@ class UNetBasePL(pl.LightningModule, ABC):
             X_skip_layer=x_cond,
             X_feature_conditioning=x_fc,
             *args,
-            **kwargs
+            **kwargs,
         )
         if return_only_segmentation == True:
             output = output[0]
@@ -297,29 +297,33 @@ class UNetBasePL(pl.LightningModule, ABC):
             output = output[0]
         return output
 
+    def log_loss(self, key, loss, **kwargs):
+        for i in range(loss.nelement()):
+            self.log(
+                f"{key}_{i}", loss[i], sync_dist=True, prog_bar=True, **kwargs
+            )
+        self.log(key, loss.mean(), sync_dist=True, prog_bar=True, **kwargs)
+
     def training_step(self, batch, batch_idx):
         x, x_cond, x_fc, y, y_class = self.unpack_batch(batch)
 
-        pred_final, pred_class, loss, class_loss, output_loss = self.step(
+        pred_final, pred_class, loss, class_loss = self.step(
             x, y, y_class, x_cond, x_fc
         )
 
-        self.log(
+        self.log_loss(
             "train_loss",
             loss,
             batch_size=y.shape[0],
-            sync_dist=True,
-            prog_bar=True,
         )
         if class_loss is not None:
             self.log(
                 "train_cl_loss",
                 class_loss,
                 batch_size=y.shape[0],
-                sync_dist=True,
             )
 
-        self.check_loss(x, y, pred_final, output_loss)
+        self.check_loss(x, y, pred_final, loss)
 
         update_metrics(
             self,
@@ -334,6 +338,10 @@ class UNetBasePL(pl.LightningModule, ABC):
         )
 
         self.train_batch_size = x.shape[0]
+
+        output_loss = (
+            loss.mean() if class_loss is None else loss.mean() + class_loss
+        )
 
         return output_loss
 
@@ -354,7 +362,7 @@ class UNetBasePL(pl.LightningModule, ABC):
                 x_cond[m:M] if x_cond is not None else None,
                 x_fc[m:M] if x_cond is not None else None,
             )
-            pred_final, pred_class, loss, class_loss, output_loss = out
+            pred_final, pred_class, loss, class_loss = out
 
             if self.picai_eval is True:
                 for s_p, s_y in zip(
@@ -364,15 +372,19 @@ class UNetBasePL(pl.LightningModule, ABC):
                     self.all_pred.append(s_p)
                     self.all_true.append(s_y)
 
-            self.log(
+            self.log_loss(
                 "val_loss",
-                loss.detach(),
-                prog_bar=True,
+                loss,
                 on_epoch=True,
-                batch_size=M - m,
-                sync_dist=True,
+                batch_size=y.shape[0],
             )
-
+            if class_loss is not None:
+                self.log(
+                    "val_cl_loss",
+                    class_loss,
+                    on_epoch=True,
+                    batch_size=y.shape[0],
+                )
             update_metrics(
                 self,
                 self.val_metrics,
@@ -401,7 +413,7 @@ class UNetBasePL(pl.LightningModule, ABC):
                 x_cond[m:M] if x_cond is not None else None,
                 x_fc[m:M] if x_cond is not None else None,
             )
-            pred_final, pred_class, loss, class_loss, output_loss = out
+            pred_final, pred_class, loss, class_loss = out
 
             if self.picai_eval is True:
                 for s_p, s_y in zip(
@@ -444,10 +456,12 @@ class UNetBasePL(pl.LightningModule, ABC):
                 {"params": encoder_params, "lr": lr_encoder},
                 {"params": rest_of_params},
             ]
-        optimizer = torch.optim.AdamW(
+        optimizer = torch.optim.SGD(
             parameters,
             lr=self.learning_rate,
+            momentum=0.99,
             weight_decay=self.weight_decay,
+            nesterov=True,
         )
 
         if self.cosine_decay == True:
@@ -558,10 +572,9 @@ class UNetPL(UNet, UNetBasePL):
         weight_decay: float = 0.005,
         training_dataloader_call: Callable = None,
         loss_fn: Callable = torch.nn.functional.binary_cross_entropy,
-        loss_params: dict = {},
         picai_eval: bool = False,
         *args,
-        **kwargs
+        **kwargs,
     ) -> torch.nn.Module:
         """
         Args:
@@ -587,8 +600,6 @@ class UNetPL(UNet, UNetBasePL):
             training dataloader. Defaults to None.
             loss_fn (Callable, optional): function to calculate the loss.
                 Defaults to torch.nn.functional.binary_cross_entropy.
-            loss_params (dict, optional): additional parameters for the loss
-                function. Defaults to {}.
             picai_eval (bool, optional): evaluates network using PI-CAI
                 metrics as well (can be a bit long).
             args: arguments for UNet class.
@@ -609,7 +620,6 @@ class UNetPL(UNet, UNetBasePL):
         self.weight_decay = weight_decay
         self.training_dataloader_call = training_dataloader_call
         self.loss_fn = loss_fn
-        self.loss_params = loss_params
         self.picai_eval = picai_eval
 
         self.loss_fn_class = torch.nn.BCEWithLogitsLoss()
@@ -639,10 +649,9 @@ class UNETRPL(UNETR, UNetBasePL):
         weight_decay: float = 0.005,
         training_dataloader_call: Callable = None,
         loss_fn: Callable = torch.nn.functional.binary_cross_entropy,
-        loss_params: dict = {},
         picai_eval: bool = False,
         *args,
-        **kwargs
+        **kwargs,
     ) -> torch.nn.Module:
         """
         Args:
@@ -668,8 +677,6 @@ class UNETRPL(UNETR, UNetBasePL):
             training dataloader. Defaults to None.
             loss_fn (Callable, optional): function to calculate the loss.
                 Defaults to torch.nn.functional.binary_cross_entropy.
-            loss_params (dict, optional): additional parameters for the loss
-                function. Defaults to {}.
             picai_eval (bool, optional): evaluates network using PI-CAI
                 metrics as well (can be a bit long).
             args: arguments for UNet class.
@@ -688,7 +695,6 @@ class UNETRPL(UNETR, UNetBasePL):
         self.weight_decay = weight_decay
         self.training_dataloader_call = training_dataloader_call
         self.loss_fn = loss_fn
-        self.loss_params = loss_params
         self.picai_eval = picai_eval
 
         self.loss_fn_class = torch.nn.BCEWithLogitsLoss()
@@ -718,10 +724,9 @@ class SWINUNetPL(SWINUNet, UNetBasePL):
         weight_decay: float = 0.005,
         training_dataloader_call: Callable = None,
         loss_fn: Callable = torch.nn.functional.binary_cross_entropy,
-        loss_params: dict = {},
         picai_eval: bool = False,
         *args,
-        **kwargs
+        **kwargs,
     ) -> torch.nn.Module:
         """
         Args:
@@ -747,8 +752,6 @@ class SWINUNetPL(SWINUNet, UNetBasePL):
             training dataloader. Defaults to None.
             loss_fn (Callable, optional): function to calculate the loss.
                 Defaults to torch.nn.functional.binary_cross_entropy.
-            loss_params (dict, optional): additional parameters for the loss
-                function. Defaults to {}.
             picai_eval (bool, optional): evaluates network using PI-CAI
                 metrics as well (can be a bit long).
             args: arguments for UNet class.
@@ -768,7 +771,6 @@ class SWINUNetPL(SWINUNet, UNetBasePL):
         self.weight_decay = weight_decay
         self.training_dataloader_call = training_dataloader_call
         self.loss_fn = loss_fn
-        self.loss_params = loss_params
         self.picai_eval = picai_eval
 
         self.loss_fn_class = torch.nn.BCEWithLogitsLoss()
@@ -796,10 +798,9 @@ class UNetPlusPlusPL(UNetPlusPlus, UNetBasePL):
         weight_decay: float = 0.005,
         training_dataloader_call: Callable = None,
         loss_fn: Callable = torch.nn.functional.binary_cross_entropy,
-        loss_params: dict = {},
         picai_eval: bool = False,
         *args,
-        **kwargs
+        **kwargs,
     ) -> torch.nn.Module:
         """Standard U-Net++ [1] implementation for Pytorch Lightning.
 
@@ -823,8 +824,6 @@ class UNetPlusPlusPL(UNetPlusPlus, UNetBasePL):
             training dataloader. Defaults to None.
             loss_fn (Callable, optional): function to calculate the loss.
                 Defaults to torch.nn.functional.binary_cross_entropy.
-            loss_params (dict, optional): additional parameters for the loss
-                function. Defaults to {}.
             picai_eval (bool, optional): evaluates network using PI-CAI
                 metrics as well (can be a bit long).
             args: arguments for UNet class.
@@ -850,7 +849,6 @@ class UNetPlusPlusPL(UNetPlusPlus, UNetBasePL):
         self.weight_decay = weight_decay
         self.training_dataloader_call = training_dataloader_call
         self.loss_fn = loss_fn
-        self.loss_params = loss_params
         self.picai_eval = picai_eval
 
         self.deep_supervision = True
@@ -881,10 +879,9 @@ class MIMUNetPL(MIMUNet, UNetBasePL):
         weight_decay: float = 0.005,
         training_dataloader_call: Callable = None,
         loss_fn: Callable = torch.nn.functional.binary_cross_entropy,
-        loss_params: dict = {},
         picai_eval: bool = False,
         *args,
-        **kwargs
+        **kwargs,
     ) -> torch.nn.Module:
         """
         Args:
@@ -902,8 +899,6 @@ class MIMUNetPL(MIMUNet, UNetBasePL):
             training dataloader. Defaults to None.
             loss_fn (Callable, optional): function to calculate the loss.
                 Defaults to torch.nn.functional.binary_cross_entropy.
-            loss_params (dict, optional): additional parameters for the loss
-                function. Defaults to {}.
             picai_eval (bool, optional): evaluates network using PI-CAI
                 metrics as well (can be a bit long).
             args: arguments for UNet class.
@@ -927,7 +922,6 @@ class MIMUNetPL(MIMUNet, UNetBasePL):
         self.weight_decay = weight_decay
         self.training_dataloader_call = training_dataloader_call
         self.loss_fn = loss_fn
-        self.loss_params = loss_params
         self.picai_eval = picai_eval
 
         self.loss_fn_class = torch.nn.BCEWithLogitsLoss()
@@ -965,11 +959,10 @@ class MIMUNetPL(MIMUNet, UNetBasePL):
                 )
                 additional_losses = additional_losses + l
             loss = loss + additional_losses
-        output_loss = loss
         class_loss = None
         pred_class = None
 
-        return prediction, pred_class, loss, class_loss, output_loss
+        return prediction, pred_class, loss, class_loss
 
 
 class BrUNetPL(BrUNet, UNetBasePL):
@@ -987,10 +980,9 @@ class BrUNetPL(BrUNet, UNetBasePL):
         weight_decay: float = 0.005,
         training_dataloader_call: Callable = None,
         loss_fn: Callable = torch.nn.functional.binary_cross_entropy,
-        loss_params: dict = {},
         picai_eval: bool = False,
         *args,
-        **kwargs
+        **kwargs,
     ) -> torch.nn.Module:
         """Standard U-Net [1] implementation for Pytorch Lightning.
 
@@ -1014,8 +1006,6 @@ class BrUNetPL(BrUNet, UNetBasePL):
             training dataloader. Defaults to None.
             loss_fn (Callable, optional): function to calculate the loss.
                 Defaults to torch.nn.functional.binary_cross_entropy.
-            loss_params (dict, optional): additional parameters for the loss
-                function. Defaults to {}.
             picai_eval (bool, optional): evaluates network using PI-CAI
                 metrics as well (can be a bit long).
             args: arguments for UNet class.
@@ -1041,7 +1031,6 @@ class BrUNetPL(BrUNet, UNetBasePL):
         self.weight_decay = weight_decay
         self.training_dataloader_call = training_dataloader_call
         self.loss_fn = loss_fn
-        self.loss_params = loss_params
         self.picai_eval = picai_eval
 
         self.loss_fn_class = torch.nn.BCEWithLogitsLoss()
@@ -1054,8 +1043,10 @@ class BrUNetPL(BrUNet, UNetBasePL):
         self.bn_mult = 0.1
 
     def calculate_loss(self, prediction, y):
-        loss = self.loss_fn(prediction, y, **self.loss_params)
-        return loss.mean()
+        loss = self.loss_fn(prediction, y)
+        if isinstance(loss, list):
+            loss = torch.stack([l.mean() for l in loss])
+        return loss
 
     def calculate_loss_class(self, prediction, y):
         y = y.type_as(prediction)
@@ -1088,14 +1079,12 @@ class BrUNetPL(BrUNet, UNetBasePL):
             loss = loss + additional_losses
         if self.bottleneck_classification is True:
             class_loss = self.calculate_loss_class(pred_class, y_class)
-            output_loss = loss + class_loss * self.bn_mult
         else:
             class_loss = None
-            output_loss = loss
 
-        self.check_loss(x, y, prediction, output_loss)
+        self.check_loss(x, y, prediction)
 
-        return prediction, pred_class, loss, class_loss, output_loss
+        return prediction, pred_class, loss, class_loss
 
     def unpack_batch(self, batch):
         x, y = [batch[k] for k in self.image_keys], batch[self.label_key]
@@ -1117,17 +1106,20 @@ class BrUNetPL(BrUNet, UNetBasePL):
     def training_step(self, batch, batch_idx):
         x, x_weights, y, x_cond, x_fc, y_class = self.unpack_batch(batch)
 
-        pred_final, pred_class, loss, class_loss, output_loss = self.step(
+        pred_final, pred_class, loss, class_loss = self.step(
             x, x_weights, y, y_class, x_cond, x_fc
         )
 
-        self.log("train_loss", loss, batch_size=y.shape[0], sync_dist=True)
+        self.log_loss(
+            "train_loss",
+            loss,
+            batch_size=y.shape[0],
+        )
         if class_loss is not None:
             self.log(
                 "train_cl_loss",
                 class_loss,
                 batch_size=y.shape[0],
-                sync_dist=True,
             )
 
         update_metrics(
@@ -1141,12 +1133,17 @@ class BrUNetPL(BrUNet, UNetBasePL):
             on_step=False,
             prog_bar=True,
         )
+
+        output_loss = (
+            loss.mean() if class_loss is None else loss.mean() + class_loss
+        )
+
         return output_loss
 
     def validation_step(self, batch, batch_idx):
         x, x_weights, y, x_cond, x_fc, y_class = self.unpack_batch(batch)
 
-        pred_final, pred_class, loss, class_loss, output_loss = self.step(
+        pred_final, pred_class, loss, class_loss = self.step(
             x, x_weights, y, y_class, x_cond, x_fc
         )
 
@@ -1158,20 +1155,18 @@ class BrUNetPL(BrUNet, UNetBasePL):
                 self.all_pred.append(s_p)
                 self.all_true.append(s_y)
 
-        self.log(
+        self.log_loss(
             "val_loss",
             loss.detach(),
-            prog_bar=True,
             on_epoch=True,
             batch_size=y.shape[0],
-            sync_dist=True,
         )
         if class_loss is not None:
-            self.log(
-                "val_cl_loss",
+            self.log_loss(
+                "val_class_loss",
                 class_loss.detach(),
+                on_epoch=True,
                 batch_size=y.shape[0],
-                sync_dist=True,
             )
 
         update_metrics(
@@ -1188,7 +1183,7 @@ class BrUNetPL(BrUNet, UNetBasePL):
     def test_step(self, batch, batch_idx):
         x, x_weights, y, x_cond, x_fc, y_class = self.unpack_batch(batch)
 
-        pred_final, pred_class, loss, class_loss, output_loss = self.step(
+        pred_final, pred_class, loss, class_loss = self.step(
             x, x_weights, y, y_class, x_cond, x_fc
         )
 

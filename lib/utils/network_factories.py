@@ -331,7 +331,6 @@ def get_detection_network(
 def get_segmentation_network(
     net_type: str,
     network_config: Dict[str, Any],
-    loss_params: Dict[str, Any],
     bottleneck_classification: bool,
     clinical_feature_keys: List[str],
     all_aux_keys: List[str],
@@ -365,7 +364,6 @@ def get_segmentation_network(
     boilerplate = dict(
         training_dataloader_call=train_loader_call,
         label_key="mask",
-        loss_params=loss_params,
         n_classes=n_classes,
         bottleneck_classification=bottleneck_classification,
         skip_conditioning=len(all_aux_keys),

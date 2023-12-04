@@ -59,6 +59,7 @@ def test_unet_base(D, sd, conv_type, strides):
     elif sd == 3:
         i = torch.rand(size=[1, c, h, w, d])
         output_size = [1, 1, h, w, d]
+        K[0] = [3, 3, 1]
     a = UNet(
         sd,
         depth=D,

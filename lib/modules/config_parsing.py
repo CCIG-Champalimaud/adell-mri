@@ -1,6 +1,7 @@
 import yaml
 from .layers import get_adn_fn
 from ..modules.activations import activation_factory
+from ..modules.losses import CompoundLoss
 from ..utils import loss_factory
 
 unet_args = [
@@ -34,16 +35,17 @@ def parse_config_unet(config_file, n_keys, n_classes):
             network_config["activation_fn"]
         ]
 
-    if "loss_fn" in network_config:
-        loss_key = network_config["loss_fn"]
-        k = "binary" if n_classes == 2 else "categorical"
-        network_config["loss_fn"] = loss_factory[k][network_config["loss_fn"]]
-
-    if "loss_fn_kwargs" in network_config:
-        loss_params = network_config["loss_fn_kwargs"]
-        del network_config["loss_fn_kwargs"]
-    else:
-        loss_params = {}
+    k = "binary" if n_classes == 2 else "categorical"
+    loss_fns_and_kwargs = []
+    loss_keys = []
+    for key in network_config["loss_fn"]:
+        loss_fn = loss_factory[k][key]
+        loss_params = network_config["loss_fn"][key]
+        loss_fns_and_kwargs.append((loss_fn, loss_params))
+        loss_keys.append(key)
+    network_config["loss_fn"] = CompoundLoss(
+        loss_fns_and_kwargs, network_config.get("loss_weights")
+    )
 
     if "spatial_dimensions" not in network_config:
         network_config["spatial_dimensions"] = 3
@@ -52,7 +54,7 @@ def parse_config_unet(config_file, n_keys, n_classes):
         network_config["batch_size"] = 1
 
     network_config["n_channels"] = n_keys * network_config["n_channels"]
-    return network_config, loss_key, loss_params
+    return network_config, loss_keys
 
 
 def parse_config_cat(config_file):

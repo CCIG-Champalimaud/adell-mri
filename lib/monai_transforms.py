@@ -739,7 +739,7 @@ def get_augmentations_unet(
                     image_keys, std=0.02, prob=prob
                 ),
                 monai.transforms.RandGibbsNoised(
-                    image_keys, alpha=(0.0, 0.6), prob=0.25
+                    image_keys, alpha=(0.3, 0.6), prob=prob
                 ),
             ]
         )
@@ -756,7 +756,6 @@ def get_augmentations_unet(
         augments.append(
             monai.transforms.RandAffined(
                 all_keys,
-                translate_range=[4, 4, 1],
                 rotate_range=[np.pi / 16],
                 prob=prob,
                 mode=interpolation,

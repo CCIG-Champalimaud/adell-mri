@@ -274,7 +274,7 @@ def main(arguments):
 
     all_pids = [k for k in data_dict]
 
-    network_config, loss_key, loss_params = parse_config_unet(
+    network_config, loss_keys = parse_config_unet(
         args.config_file, len(keys), n_classes
     )
     if args.learning_rate is not None:
@@ -549,25 +549,33 @@ def main(arguments):
                     adaptive_weights = 1 + args.constant_ratio
         # weights to tensor
         if args.class_weights[0] == "adaptive":
-            loss_params["weight"] = adaptive_weights
+            network_config["loss_fn"]["weight"] = adaptive_weights
         elif args.class_weights[0] == "adaptive_pixel":
-            loss_params["weight"] = adaptive_pixel_weights
-        elif "weight" not in loss_params:
-            loss_params["weight"] = torch.as_tensor(
+            network_config["loss_fn"]["weight"] = adaptive_pixel_weights
+        else:
+            w = torch.as_tensor(
                 np.float32(np.array(args.class_weights)),
                 dtype=torch.float32,
                 device=dev,
             )
-        print("Weights set to:", loss_params["weight"])
+            network_config["loss_fn"].replace_item("weight", w)
+        print("Loss specification:", network_config["loss_fn"])
 
+        network_config["loss_fn"].loss_fns_and_kwargs = [
+            (
+                loss_fn,
+                get_loss_param_dict(
+                    loss_key=loss_key,
+                    **kwargs,
+                ),
+            )
+            for (loss_fn, kwargs), loss_key in zip(
+                network_config["loss_fn"].loss_fns_and_kwargs, loss_keys
+            )
+        ]
         # get loss function parameters
-        loss_params = get_loss_param_dict(
-            loss_key=loss_key,
-            **loss_params,
-        )
-        if "eps" in loss_params and args.precision != "32":
-            if loss_params["eps"] < 1e-4:
-                loss_params["eps"] = 1e-4
+        if args.precision != "32":
+            network_config["loss_fn"].replace_item("eps", 1e-4)
 
         if isinstance(devices, list):
             nw = args.n_workers // len(devices)
@@ -705,7 +713,6 @@ def main(arguments):
         unet = get_segmentation_network(
             net_type=args.net_type,
             network_config=network_config,
-            loss_params=loss_params,
             bottleneck_classification=args.bottleneck_classification,
             clinical_feature_keys=feature_keys,
             all_aux_keys=aux_keys,
