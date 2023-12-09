@@ -185,17 +185,21 @@ class UNetContrastiveSemiSL(UNetSemiSL, UNetBasePL):
         x_fc: torch.Tensor,
     ):
         loss_a = self.loss_wrapper_semi_sl(x_1, x_2, x_cond, x_fc)
-        loss_b = self.loss_wrapper_semi_sl(x_2, x_1, x_cond, x_fc)
-        loss = loss_a + loss_b
+        # loss_b = self.loss_wrapper_semi_sl(x_2, x_1, x_cond, x_fc)
+        loss = loss_a  # + loss_b
         return loss
 
     def training_step(self, batch, batch_idx):
         # supervised bit
         if self.label_key is not None:
             x, x_cond, x_fc, y, y_class = self.unpack_batch(batch)
-            pred_final, pred_class, loss, class_loss, output_loss = self.step(
+            pred_final, pred_class, loss, class_loss = self.step(
                 x, y, y_class, x_cond, x_fc
             )
+            output_loss = (
+                loss.mean() if class_loss is None else loss.mean() + class_loss
+            )
+            self.log_loss("train_loss", loss, batch_size=y.shape[0])
 
         # self-supervised bit
         if (
@@ -212,7 +216,6 @@ class UNetContrastiveSemiSL(UNetSemiSL, UNetBasePL):
             )
             output_loss = output_loss + self_sl_loss
 
-        self.log("train_loss", loss, batch_size=y.shape[0], sync_dist=True)
         if class_loss is not None:
             self.log(
                 "train_cl_loss",
@@ -240,6 +243,7 @@ class UNetContrastiveSemiSL(UNetSemiSL, UNetBasePL):
         return output_loss
 
     def validation_step(self, batch, batch_idx):
+        output_loss = torch.as_tensor(0.0).to(self.device)
         if self.label_key is not None:
             x, x_cond, x_fc, y, y_class = self.unpack_batch(batch)
 
@@ -257,7 +261,12 @@ class UNetContrastiveSemiSL(UNetSemiSL, UNetBasePL):
                     x_cond[m:M] if x_cond is not None else None,
                     x_fc[m:M] if x_cond is not None else None,
                 )
-                pred_final, pred_class, loss, class_loss, output_loss = out
+                pred_final, pred_class, loss, class_loss = out
+                output_loss += (
+                    loss.mean()
+                    if class_loss is None
+                    else loss.mean() + class_loss
+                ) / (bs // mbs)
 
                 if self.picai_eval is True:
                     for s_p, s_y in zip(
@@ -267,13 +276,11 @@ class UNetContrastiveSemiSL(UNetSemiSL, UNetBasePL):
                         self.all_pred.append(s_p)
                         self.all_true.append(s_y)
 
-                self.log(
+                self.log_loss(
                     "val_loss",
-                    loss.detach(),
-                    prog_bar=True,
+                    loss,
                     on_epoch=True,
-                    batch_size=M - m,
-                    sync_dist=True,
+                    batch_size=y.shape[0],
                 )
 
                 update_metrics(
@@ -300,10 +307,11 @@ class UNetContrastiveSemiSL(UNetSemiSL, UNetBasePL):
                 batch_size=y.shape[0],
                 sync_dist=True,
             )
-            output_loss = output_loss + self_sl_loss
+            output_loss = output_loss + self_sl_loss.mean()
         return output_loss
 
     def test_step(self, batch, batch_idx):
+        output_loss = torch.as_tensor(0.0).to(self.device)
         x, x_cond, x_fc, y, y_class = self.unpack_batch(batch)
 
         bs = x.shape[0]
@@ -320,7 +328,10 @@ class UNetContrastiveSemiSL(UNetSemiSL, UNetBasePL):
                 x_cond[m:M] if x_cond is not None else None,
                 x_fc[m:M] if x_cond is not None else None,
             )
-            pred_final, pred_class, loss, class_loss, output_loss = out
+            pred_final, pred_class, loss, class_loss = out
+            output_loss += (
+                loss.mean() if class_loss is None else loss.mean() + class_loss
+            ) / (bs // mbs)
 
             if self.picai_eval is True:
                 for s_p, s_y in zip(
@@ -342,4 +353,5 @@ class UNetContrastiveSemiSL(UNetSemiSL, UNetBasePL):
                 on_epoch=True,
                 prog_bar=True,
             )
+
         return output_loss

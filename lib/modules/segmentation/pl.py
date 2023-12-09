@@ -142,6 +142,10 @@ class UNetBasePL(pl.LightningModule, ABC):
         self.feature_conditioning_key = None
         self.skip_conditioning_key = None
 
+    @property
+    def device(self):
+        return next(self.parameters()).device
+
     def calculate_loss(self, prediction, y):
         loss = self.loss_fn(prediction, y)
         if isinstance(loss, list):
@@ -347,6 +351,7 @@ class UNetBasePL(pl.LightningModule, ABC):
 
     def validation_step(self, batch, batch_idx):
         x, x_cond, x_fc, y, y_class = self.unpack_batch(batch)
+        output_loss = torch.as_tensor(0.0).to(x)
 
         bs = x.shape[0]
         if self.train_batch_size is None:
@@ -363,6 +368,9 @@ class UNetBasePL(pl.LightningModule, ABC):
                 x_fc[m:M] if x_cond is not None else None,
             )
             pred_final, pred_class, loss, class_loss = out
+            output_loss += (
+                loss.mean() if class_loss is None else loss.mean() + class_loss
+            ) / (bs // mbs)
 
             if self.picai_eval is True:
                 for s_p, s_y in zip(
@@ -396,8 +404,11 @@ class UNetBasePL(pl.LightningModule, ABC):
                 prog_bar=True,
             )
 
+        return output_loss
+
     def test_step(self, batch, batch_idx):
         x, x_cond, x_fc, y, y_class = self.unpack_batch(batch)
+        output_loss = torch.as_tensor(0.0).to(x)
 
         bs = x.shape[0]
         if self.train_batch_size is None:
@@ -414,6 +425,9 @@ class UNetBasePL(pl.LightningModule, ABC):
                 x_fc[m:M] if x_cond is not None else None,
             )
             pred_final, pred_class, loss, class_loss = out
+            output_loss += (
+                loss.mean() if class_loss is None else loss.mean() + class_loss
+            ) / (bs // mbs)
 
             if self.picai_eval is True:
                 for s_p, s_y in zip(
@@ -435,6 +449,8 @@ class UNetBasePL(pl.LightningModule, ABC):
                 on_epoch=True,
                 prog_bar=True,
             )
+
+        return output_loss
 
     def train_dataloader(self) -> torch.utils.data.DataLoader:
         return self.training_dataloader_call(self.batch_size)
