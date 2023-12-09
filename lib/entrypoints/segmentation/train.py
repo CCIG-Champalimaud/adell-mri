@@ -6,6 +6,7 @@ import monai
 import gc
 import warnings
 from sklearn.model_selection import KFold, train_test_split
+from multiprocessing import Pool
 from tqdm import tqdm
 
 from lightning.pytorch import Trainer
@@ -514,31 +515,32 @@ def main(arguments):
             cl = []
             pos_pixel_sum = 0
             total_pixel_sum = 0
-            with tqdm(train_list) as t:
-                base = "Setting up partially random sampler/adaptive weights"
-                t.set_description(base)
-                n, n_nonzero = 0, 0
-                for x in t:
-                    n += 1
-                    all_classes = {}
-                    for mask_key in label_keys:
-                        all_classes = {
-                            **all_classes,
-                            **return_classes(x[mask_key]),
-                        }
-                    total = []
-                    for u, c in all_classes.items():
-                        if u not in total:
-                            total.append(u)
-                        if u != 0:
-                            n_nonzero += 1
-                            pos_pixel_sum += c
-                        total_pixel_sum += c
-                    if len(total) > 1:
-                        cl.append(1)
-                    else:
-                        cl.append(0)
-                    t.set_description(base + f" ({n_nonzero}/{n})")
+            all_masks = [
+                [x[mask_key] for mask_key in label_keys] for x in train_list
+            ]
+            with Pool(args.n_workers) as pool:
+                mapped_fn = pool.imap(return_classes, all_masks)
+                with tqdm(mapped_fn, total=len(all_masks)) as t:
+                    base = "Calculating positive pixel counts"
+                    t.set_description(base)
+                    n, n_nonzero = 0, 0
+                    for x_classes in t:
+                        n += 1
+                        all_classes = {}
+                        all_classes = {**all_classes, **x_classes}
+                        total = []
+                        for u, c in all_classes.items():
+                            if u not in total:
+                                total.append(u)
+                            if u != 0:
+                                n_nonzero += 1
+                                pos_pixel_sum += c
+                            total_pixel_sum += c
+                        if len(total) > 1:
+                            cl.append(1)
+                        else:
+                            cl.append(0)
+                        t.set_description(base + f" ({n_nonzero}/{n})")
             adaptive_weights = len(cl) / np.sum(cl)
             adaptive_pixel_weights = total_pixel_sum / pos_pixel_sum
             if args.constant_ratio is not None:
@@ -574,7 +576,7 @@ def main(arguments):
             )
         ]
         # get loss function parameters
-        if args.precision != "32":
+        if "32" not in args.precision:
             network_config["loss_fn"].replace_item("eps", 1e-4)
 
         if isinstance(devices, list):
@@ -754,6 +756,12 @@ def main(arguments):
             fold=val_fold,
         )
 
+        # add all metadata here
+        if ckpt_callback is not None:
+            ckpt_callback.metadata = {
+                "transform_arguments": transform_arguments,
+                "network_config": network_config,
+            }
         trainer = Trainer(
             accelerator=dev,
             devices=devices,
