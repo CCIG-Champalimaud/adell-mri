@@ -442,7 +442,15 @@ def subsample_dataset(
     return data_dict
 
 
-def return_classes(path: str):
-    image = monai.transforms.LoadImage()(path)
-    un_cl, counts = np.unique(image, return_counts=True)
-    return {u: c for u, c in zip(un_cl, counts)}
+def return_classes(paths: str | list[str]):
+    if isinstance(paths, str):
+        paths = [paths]
+    out = {}
+    for path in paths:
+        image = monai.transforms.LoadImage()(path)
+        un_cl, counts = np.unique(image, return_counts=True)
+        for u, c in zip(un_cl, counts):
+            if u not in out:
+                out[u] = 0
+            out[u] += c
+    return out
