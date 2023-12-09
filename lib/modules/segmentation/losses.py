@@ -36,7 +36,7 @@ def generalised_dice_score(
     elif len(weight.shape) == 1:
         weight = weight.unsqueeze(0)
     numerator = torch.sum(
-        weight * torch.clip((target * pred) * scale).sum(-1),
+        weight * torch.clip((target * pred) * scale, 0).sum(-1),
         -1,
     )
     denominator = torch.sum(
