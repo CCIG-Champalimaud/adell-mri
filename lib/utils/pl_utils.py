@@ -10,7 +10,7 @@ import torch
 import wandb
 from PIL import Image
 from lightning import Trainer
-from lightning.pytorch import LightningModule
+from lightning.pytorch import LightningModule, Trainer
 from lightning.pytorch.callbacks import Callback
 from lightning.pytorch.loggers import WandbLogger
 from lightning.pytorch.callbacks.model_checkpoint import ModelCheckpoint
@@ -240,20 +240,71 @@ class GPULock:
 class ModelCheckpointWithMetadata(ModelCheckpoint):
     """Identifcal to ModelCheckpoint but allows for metadata to be stored."""
 
-    def __init__(self, metadata: Dict[str, Any] = None, *args, **kwargs):
+    def __init__(
+        self,
+        metadata: Dict[str, Any] = None,
+        link_best_as_last: bool = True,
+        *args,
+        **kwargs,
+    ):
         """
         Args:
             metadata (Dict[str,Any], optional): dictionary containing all the
                 relevant metadata. Defaults to None.
+            link_best_as_last (bool, optional):instead of writing, links the
+                last checkpoint to the best saved one. Defaults to True
+                (default Lightning behaviour).
         """
         super().__init__(*args, **kwargs)
         self.metadata = metadata
+        self.link_best_as_last = link_best_as_last
 
     def state_dict(self) -> Dict[str, Any]:
         sd = super().state_dict()
         if self.metadata is not None:
             sd["metadata"] = self.metadata
         return sd
+
+    def _save_last_checkpoint(
+        self, trainer: "Trainer", monitor_candidates: Dict[str, torch.Tensor]
+    ) -> None:
+        if not self.save_last:
+            return
+
+        filepath = self.format_checkpoint_name(
+            monitor_candidates, self.CHECKPOINT_NAME_LAST
+        )
+
+        if self._enable_version_counter:
+            version_cnt = self.STARTING_VERSION
+            while (
+                self.file_exists(filepath, trainer)
+                and filepath != self.last_model_path
+            ):
+                filepath = self.format_checkpoint_name(
+                    monitor_candidates,
+                    self.CHECKPOINT_NAME_LAST,
+                    ver=version_cnt,
+                )
+                version_cnt += 1
+
+        # set the last model path before saving because it will be part of the state.
+        previous, self.last_model_path = self.last_model_path, filepath
+        if (
+            self._fs.protocol == "file"
+            and self._last_checkpoint_saved
+            and self.save_top_k != 0
+            and self.link_best_as_last
+        ):
+            self._link_checkpoint(
+                trainer, self._last_checkpoint_saved, filepath
+            )
+        else:
+            self._save_checkpoint(trainer, filepath)
+        if previous and self._should_remove_checkpoint(
+            trainer, previous, filepath
+        ):
+            self._remove_checkpoint(trainer, previous)
 
 
 def delete_checkpoints(trainer: Trainer) -> None:
@@ -411,6 +462,7 @@ def get_ckpt_callback(
             save_top_k=n_best_ckpts,
             mode=mode,
             metadata=metadata,
+            link_best_as_last=False,
         )
 
         ckpt_last = ckpt_last + "_last"

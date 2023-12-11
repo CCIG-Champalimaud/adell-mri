@@ -30,6 +30,7 @@ from ...utils.pl_utils import (
     get_logger,
     get_devices,
 )
+from ...utils.logging import CSVLogger
 from ...monai_transforms import get_transforms_unet as get_transforms
 from ...monai_transforms import get_augmentations_unet as get_augmentations
 from ...monai_transforms import get_semi_sl_transforms
@@ -310,7 +311,7 @@ def main(arguments):
         args.n_folds = len(folds)
         fold_generator = iter(folds)
 
-    output_file = open(args.metric_path, "w")
+    csv_logger = CSVLogger(args.metric_path, not args.resume_from_last)
     for val_fold in range(args.n_folds):
         print("=" * 80)
         print("Starting fold={}".format(val_fold))
@@ -796,19 +797,28 @@ def main(arguments):
                         value = float(out.detach().numpy())
                     except Exception:
                         value = float(out)
-                    x = "{},{},{},{},{}".format(
-                        k, ckpt_key, val_fold, 0, value
-                    )
-                    output_file.write(x + "\n")
+                    x = {
+                        "metric": k,
+                        "checkpoint": ckpt_key,
+                        "val_fold": val_fold,
+                        "idx": 0,
+                        "value": value,
+                    }
+                    csv_logger.log(x)
                     print(x)
                 else:
                     for i, v in enumerate(out):
-                        x = "{},{},{},{},{}".format(
-                            k, ckpt_key, val_fold, i, v
-                        )
-                        output_file.write(x + "\n")
+                        x = {
+                            "metric": k,
+                            "checkpoint": ckpt_key,
+                            "val_fold": val_fold,
+                            "idx": i,
+                            "value": v,
+                        }
+                        csv_logger.log(x)
                         print(x)
 
+        csv_logger.write()
         print("=" * 80)
         gc.collect()
 
@@ -820,3 +830,6 @@ def main(arguments):
         del validation_loader
         del train_dataset_val
         del train_val_loader
+        if args.semi_supervised:
+            del train_semi_sl_dataset
+            del train_val_semi_sl_loader
