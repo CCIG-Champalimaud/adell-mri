@@ -322,6 +322,7 @@ def main(arguments):
                 train_idxs, test_size=0.15
             )
         else:
+            print("Using validation as training validation")
             train_val_idxs = val_idxs
         train_pids = [all_pids[i] for i in train_idxs]
         train_val_pids = [all_pids[i] for i in train_val_idxs]
@@ -586,7 +587,7 @@ def main(arguments):
             nw = args.n_workers
 
         def train_loader_call(batch_size):
-            train_loader = monai.data.ThreadDataLoader(
+            train_loader = monai.data.DataLoader(
                 dataset=train_dataset,  # noqa: F821
                 batch_size=batch_size,  # noqa: F821
                 num_workers=nw,
@@ -598,7 +599,7 @@ def main(arguments):
                 drop_last=True,
             )
             if args.semi_supervised is True:
-                train_semi_sl_loader = monai.data.ThreadDataLoader(
+                train_semi_sl_loader = monai.data.DataLoader(
                     dataset=train_semi_sl_dataset,
                     batch_size=batch_size,  # noqa: F821
                     num_workers=nw,
@@ -618,14 +619,14 @@ def main(arguments):
             return train_loader
 
         train_loader = train_loader_call(network_config["batch_size"])
-        train_val_loader = monai.data.ThreadDataLoader(
+        train_val_loader = monai.data.DataLoader(
             train_dataset_val,
             batch_size=1,
             shuffle=False,
             num_workers=nw,
             collate_fn=collate_fn_train,
         )
-        validation_loader = monai.data.ThreadDataLoader(
+        validation_loader = monai.data.DataLoader(
             validation_dataset,
             batch_size=1,
             shuffle=False,
@@ -634,7 +635,7 @@ def main(arguments):
         )
 
         if args.semi_supervised is True:
-            train_val_semi_sl_loader = monai.data.ThreadDataLoader(
+            train_val_semi_sl_loader = monai.data.DataLoader(
                 train_val_semi_sl_dataset,
                 batch_size=1,
                 shuffle=False,
@@ -820,7 +821,6 @@ def main(arguments):
 
         csv_logger.write()
         print("=" * 80)
-        gc.collect()
 
         # just for safety
         del trainer
@@ -830,6 +830,8 @@ def main(arguments):
         del validation_loader
         del train_dataset_val
         del train_val_loader
+        del unet
         if args.semi_supervised:
             del train_semi_sl_dataset
             del train_val_semi_sl_loader
+        gc.collect()
