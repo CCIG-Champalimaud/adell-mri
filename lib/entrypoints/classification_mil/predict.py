@@ -42,6 +42,7 @@ def main(arguments):
             "target_spacing",
             "pad_size",
             "crop_size",
+            "resize_size",
             "subsample_size",
             "batch_size",
             "cache_rate",
@@ -58,6 +59,7 @@ def main(arguments):
                 "type",
                 {"choices": ["probability", "logit", "attention"]},
             ),
+            "excluded_ids",
             ("prediction_checkpoints", "checkpoints"),
             "output_path",
         ]
@@ -108,9 +110,7 @@ def main(arguments):
         )
 
     keys = args.image_keys
-    t2_keys = args.t2_keys if args.t2_keys is not None else []
     adc_keys = []
-    t2_keys = [k for k in t2_keys if k in keys]
 
     network_config, _ = parse_config_2d_classifier_3d(args.config_file, 0.0)
 
@@ -230,6 +230,7 @@ def main(arguments):
             if args.type == "attention":
                 kwargs["return_attention"] = True
             prediction_output = []
+            attention_output = []
             with tqdm(prediction_loader, total=len(prediction_loader)) as pbar:
                 for idx, batch in enumerate(pbar):
                     batch = {
@@ -237,35 +238,32 @@ def main(arguments):
                         for k in batch
                         if isinstance(batch[k], torch.Tensor)
                     }
-                    prediction_output.append(
-                        network.predict_step(batch, idx, **kwargs)
-                    )
-            attention = None
-            if args.type == "probability":
-                if args.n_classes == 2:
-                    prediction_output = [
-                        torch.nn.functional.sigmoid(x)[0]
-                        for x in prediction_output
-                    ]
-                else:
-                    prediction_output = [
-                        torch.nn.functional.softmax(x, axis=-1)[0]
-                        for x in prediction_output
-                    ]
-            elif args.type == "logit":
-                prediction_output = [x[0] for x in prediction_output]
-            elif args.type == "attention":
-                attention = [x[1][0] for x in prediction_output]
-                prediction_output = [x[0][0] for x in prediction_output]
+                    prediction = network.predict_step(batch, idx, **kwargs)
+                    if args.type == "probability":
+                        if args.n_classes == 2:
+                            prediction = torch.nn.functional.sigmoid(
+                                prediction
+                            )
+                        else:
+                            prediction = torch.nn.functional.softmax(
+                                prediction, axis=-1
+                            )
+                    elif args.type == "logit":
+                        prediction = prediction
+                    elif args.type == "attention":
+                        prediction, attention = prediction
+                        attention_output.extend(attention)
+                    prediction_output.extend(prediction)
+
             prediction_output = {
                 k: x.detach().cpu().numpy().tolist()
                 for x, k in zip(prediction_output, prediction_pids)
             }
             prediction_output = {"prediction": prediction_output}
-            if attention is not None:
+            if len(attention_output) > 0:
                 prediction_output["attention"] = {
                     k: x.detach().cpu().numpy().tolist()
-                    for x, k in zip(attention, prediction_pids)
+                    for x, k in zip(attention_output, prediction_pids)
                 }
             prediction_output["checkpoint"] = checkpoint
             all_metrics.append(prediction_output)
