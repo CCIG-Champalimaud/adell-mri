@@ -49,6 +49,7 @@ def main(arguments):
             "prediction_ids",
             ("prediction_type", "type"),
             ("prediction_checkpoints", "checkpoints"),
+            "ensemble",
             "output_path",
         ]
     )
@@ -181,7 +182,7 @@ def main(arguments):
             act_fn = "swish"
         batch_preprocessing = None
 
-        if args.one_to_one is True:
+        if args.one_to_one is True and args.ensemble is None:
             checkpoint_list = [args.checkpoints[iteration]]
         else:
             checkpoint_list = args.checkpoints
@@ -232,9 +233,8 @@ def main(arguments):
                         **extra_args,
                     ).detach()
                     if args.type == "features":
-                        output = (
-                            output.flatten(start_dim=2).max(-1).values.cpu()
-                        )
+                        output = output.flatten(start_dim=2)
+                        output = output.max(-1).values.cpu()
                     else:
                         output = output.cpu()
                     output = post_proc_fn(output)
@@ -243,6 +243,32 @@ def main(arguments):
                     pbar.update()
             global_output.append(output_dict)
 
+        if args.ensemble is not None:
+            output_dict_ensemble = output_dict = {
+                "iteration": iteration,
+                "prediction_ids": [],
+                "checkpoint": checkpoint_list,
+                "predictions": {},
+                "n_predictions": {},
+            }
+            for output_dict in global_output:
+                for k in output_dict["predictions"]:
+                    value = np.array(output_dict["predictions"])
+                    if k not in output_dict_ensemble["predictions"]:
+                        output_dict_ensemble["predictions"] = []
+                        output_dict_ensemble["n_predictions"] = 0
+                    output_dict_ensemble["predictions"].append(value)
+                    output_dict_ensemble["n_predictions"] += 1
+                for k in output_dict_ensemble["predictions"]:
+                    n = output_dict_ensemble["predictions"][k]
+                    d = output_dict_ensemble["n_predictions"][k]
+                    if args.ensemble == "mean":
+                        output_dict_ensemble["predictions"][k] = sum(n) / d
+                    elif args.ensemble == "majority":
+                        u, c = np.unique(n, return_counts=True)
+                        maj = u[np.argmax(c)]
+                        output_dict_ensemble["predictions"][k] = maj
+            global_output.append(output_dict_ensemble)
     Path(args.output_path).parent.mkdir(exist_ok=True, parents=True)
     with open(args.output_path, "w") as o:
         o.write(json.dumps(global_output))

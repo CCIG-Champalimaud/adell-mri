@@ -544,7 +544,8 @@ argument_factory = {
         help="Also calculates metrics on a per sample basis.",
     ),
     "segmentation_prediction_mode": dict(
-        choices=["image", "deep_features", "bounding_box"], default="image"
+        choices=["image", "probs", "deep_features", "bounding_box"],
+        default="image",
     ),
     # ssl-specific
     "jpeg_dataset": dict(
@@ -644,6 +645,13 @@ argument_factory = {
         action="store_true",
         default=False,
         help="One backbone for each input image.",
+    ),
+    # ensemble prediction
+    "ensemble": dict(
+        action="store",
+        default=None,
+        help="Ensembles predictions from different checkpoints.",
+        choices=["mean"],
     ),
 }
 

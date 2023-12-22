@@ -692,6 +692,7 @@ class UNet(torch.nn.Module):
         X_feature_conditioning: torch.Tensor = None,
         return_features=False,
         return_bottleneck=False,
+        return_logits=False,
     ) -> torch.Tensor:
         """Forward pass for this class.
 
@@ -755,7 +756,10 @@ class UNet(torch.nn.Module):
 
         final_features = curr
 
-        curr = self.final_layer(curr)
+        if return_logits is True:
+            curr = self.final_layer[:-1](curr)
+        else:
+            curr = self.final_layer(curr)
         if return_features is True:
             return curr, final_features, bottleneck
 
@@ -1056,6 +1060,7 @@ class BrUNet(UNet, torch.nn.Module):
         X_feature_conditioning: torch.Tensor = None,
         return_features=False,
         return_bottleneck=False,
+        return_logits=False,
     ) -> torch.Tensor:
         """Forward pass for this class.
 
@@ -1160,7 +1165,10 @@ class BrUNet(UNet, torch.nn.Module):
 
         final_features = curr
 
-        curr = self.final_layer(curr)
+        if return_logits is True:
+            curr = self.final_layer[:-1](curr)
+        else:
+            curr = self.final_layer(curr)
         if return_features is True:
             return curr, final_features, bottleneck
 

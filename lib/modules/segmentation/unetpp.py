@@ -212,6 +212,7 @@ class UNetPlusPlus(UNet):
         X_skip_layer: torch.Tensor = None,
         X_feature_conditioning: torch.Tensor = None,
         return_features=False,
+        return_logits=False,
     ) -> torch.Tensor:
         """Forward pass for this class.
 
@@ -276,7 +277,8 @@ class UNetPlusPlus(UNet):
         final_features = curr
 
         curr = self.final_layer(curr)
-        curr = self.final_act(curr)
+        if return_logits is False:
+            curr = self.final_act(curr)
         if return_features is True:
             return curr, final_features, bottleneck
 

@@ -15,6 +15,7 @@ from ...utils.dataset_filters import filter_dictionary
 from ...modules.layers import ResNet
 from ...utils.network_factories import get_segmentation_network
 from ...modules.config_parsing import parse_config_unet, parse_config_ssl
+from ...utils.inference import SegmentationInference
 from ...utils.parser import parse_ids
 
 torch.backends.cudnn.benchmark = True
@@ -62,7 +63,9 @@ def main(arguments):
             "one_to_one",
             "dev",
             "n_workers",
-            "picai_eval",
+            "ensemble",
+            "sliding_window_size",
+            "flip",
             (
                 "output_path",
                 "output_path",
@@ -272,7 +275,6 @@ def main(arguments):
         net_type=args.net_type,
         encoding_operations=encoding_operations,
         network_config=network_config,
-        loss_params={},
         bottleneck_classification=args.bottleneck_classification,
         clinical_feature_keys=feature_keys,
         all_aux_keys=aux_keys,
@@ -293,6 +295,7 @@ def main(arguments):
         crop_size=args.crop_size,
         pad_size=args.pad_size,
         resize_size=args.resize_size,
+        semi_supervised=False,
     )
 
     if args.prediction_ids is not None:
@@ -339,10 +342,25 @@ def main(arguments):
                 data_element[k] = data_element[k].to(args.dev).unsqueeze(0)
             pred_id = pred_ids[i]
             pred_mode = args.prediction_mode
-            if pred_mode == "image" or pred_mode == "bounding_box":
+            flips = [(1,), (2,), (3,)]
+            inference_fns = [
+                SegmentationInference(
+                    base_inference_function=network.predict_step,
+                    sliding_window_size=args.sliding_window_size,
+                    stride=0.5,
+                    n_classes=n_classes if n_classes > 2 else 1,
+                    flips=flips,
+                    flip_keys=["image"],
+                    ndim=network_config["spatial_dimensions"],
+                    inference_batch_size=len(flips),
+                )
+                for network in networks
+            ]
+
+            if pred_mode in ["image", "probs", "bounding_box"]:
                 pred = [
-                    network.predict_step(data_element, 0)[0][0]
-                    for network in networks
+                    inference_fn(data_element, 0)[0][0]
+                    for inference_fn in inference_fns
                 ]
                 pred = [
                     transforms_postprocess({"image": p})["image"][0]
@@ -350,14 +368,15 @@ def main(arguments):
                 ]
             elif pred_mode == "deep_features":
                 pred = [
-                    network.predict_step(
-                        data_element, 0, return_bottleneck=True
-                    )[2][0]
-                    for network in networks
+                    inference_fn(data_element, 0, return_bottleneck=True)[2][0]
+                    for inference_fn in inference_fns
                 ]
                 pred = [x.flatten(start_dim=1).max(1).values for x in pred]
 
-            pred = torch.stack(pred).mean(0).detach().cpu()
+            pred = torch.stack(pred, -1)
+            if args.ensemble is not None:
+                pred = pred.mean(-1)
+            pred = networks[0].final_layer[-1](pred).detach().cpu()
             if pred_mode == "image":
                 pred = np.int32(np.round(pred))
                 pred = np.transpose(pred, [2, 1, 0])
@@ -366,6 +385,18 @@ def main(arguments):
                     sitk.ReadImage(curr_dict[pred_id]["image"])
                 )
                 pred_image = sitk.Cast(pred_image, sitk.sitkInt16)
+                output_path = Path(
+                    os.path.join(args.output_path, pred_id + ".nii.gz")
+                )
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+                sitk.WriteImage(pred_image, str(output_path))
+            elif pred_mode == "probs":
+                pred = np.transpose(pred, [2, 1, 0])
+                pred_image = sitk.GetImageFromArray(pred)
+                pred_image.CopyInformation(
+                    sitk.ReadImage(curr_dict[pred_id]["image"])
+                )
+                pred_image = sitk.Cast(pred_image, sitk.sitkFloat32)
                 output_path = Path(
                     os.path.join(args.output_path, pred_id + ".nii.gz")
                 )

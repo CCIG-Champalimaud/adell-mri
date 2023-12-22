@@ -110,8 +110,37 @@ def multi_format_stack_or_cat(
         return multi_format_stack(X, *args, **kwargs)
 
 
+class TensorListReduction:
+    def __init__(
+        self,
+        preproc_fn: callable = None,
+        postproc_fn: callable = None,
+        strategy: str = "mean",
+    ):
+        assert strategy in ["mean"]
+        self.preproc_fn = preproc_fn
+        self.postproc_fn = postproc_fn
+        self.strategy = strategy
+
+    def __call__(self, X: list[torch.Tensor] | torch.Tensor):
+        if isinstance(X, (list, tuple)):
+            if self.preproc_fn is not None:
+                X = [self.preproc_fn(x) for x in X]
+            if self.strategy == "mean":
+                X = torch.cat(X).mean(0)
+        else:
+            if self.preproc_fn is not None:
+                X = self.preproc_fn(X)
+        if self.postproc_fn is not None:
+            X = self.postproc_fn(X)
+        return X
+
+
 class FlippedInference:
-    """ """
+    """
+    Flips the input and runs inference on each flip, reverting the flip after
+    each trial.
+    """
 
     def __init__(
         self,
@@ -122,6 +151,17 @@ class FlippedInference:
         ndim: int = 3,
         inference_batch_size: int = 1,
     ):
+        """
+        Args:
+            inference_function (Callable): base inference function.
+            flips (List[List[int]]): list of dimensions that should be flipped.
+            flip_idx (list[int]): dimension index for flipping. Defaults to None.
+            flip_keys (list[str], optional): list of keys for flipping. Defaults
+                to ["image"].
+            ndim (int, optional): number of spatial dimensions. Defaults to 3.
+            inference_batch_size (int, optional): size of batch size for
+                inference. Defaults to 1.
+        """
         self.inference_function = inference_function
         self.flips = flips
         self.flip_idx = flip_idx
@@ -182,18 +222,25 @@ class FlippedInference:
         batch = []
         batch_flips = []
         output = None
-        original_batch_size = get_shape(X)[0]
+        if (self.ndim + 1) == len(get_shape(X)):
+            original_batch_size = 1
+        else:
+            original_batch_size = get_shape(X)[0]
         for flip in self.flips:
             flipped_X = self.flip(X, flip)
             batch.append(flipped_X)
             batch_flips.append(flip)
             if len(batch) == self.inference_batch_size:
                 batch = multi_format_stack_or_cat(batch, self.ndim)
-                result = self.inference_function(batch, *args, **kwargs)
+                with torch.no_grad():
+                    result = self.inference_function(
+                        batch, *args, **kwargs
+                    ).detach()
                 result = [
-                    self.flip(x, f)
+                    self.flip(x, tuple([ff + 1 for ff in f]))
                     for x, f in zip(
-                        torch.split(result, original_batch_size), batch_flips
+                        torch.split(result, original_batch_size),
+                        batch_flips,
                     )
                 ]
                 result = torch.stack(result, -1).sum(-1)
@@ -206,7 +253,9 @@ class FlippedInference:
         if len(batch) > 0:
             batch = multi_format_stack_or_cat(batch, self.ndim)
             with torch.no_grad():
-                result = self.inference_function(batch, *args, **kwargs)
+                result = self.inference_function(
+                    batch, *args, **kwargs
+                ).detach()
             result = [self.flip(x, f) for x, f in zip(X, batch_flips)]
             result = torch.stack(result, -1).sum(-1)
             # lazy output
@@ -628,3 +677,138 @@ class SlidingWindowSegmentation:
                 )
         output_array = output_array / output_denominator
         return output_array
+
+
+class SegmentationInference:
+    """
+    Coordinates a sliding window inference operator and a flipped inference
+    operator into a single convenient function.
+    """
+
+    def __init__(
+        self,
+        base_inference_function: list[Callable] | Callable,
+        sliding_window_size: list[int] = None,
+        stride: list[int] = None,
+        inference_batch_size: int = 1,
+        n_classes: int = 2,
+        flip: bool = False,
+        flip_idx: List[int] = None,
+        flip_keys: List[str] = ["image"],
+        ndim: int = 3,
+        reduction: callable = None,
+    ):
+        """
+        Args:
+            base_inference_function (list[Callable] | Callable): base inference
+                function. If this is a list, the output is averaged at the end.
+            sliding_window_size (Shape): size of the sliding window. Should be
+                a sequence of integers.
+            n_classes (int): number of channels in the output.
+            stride (Shape | float, optional): stride for the sliding window.
+                Defaults to None (same as sliding_window_size). If float,
+                sliding_window_size is multiplied by stride to obtain the
+                actual stride size.
+
+            flip (bool, optional): triggers flipped prediction. Defaults to False.
+            flip_idx (list[int]): dimension index for flipping. Defaults to None.
+            flip_keys (list[str], optional): list of keys for flipping. Defaults
+                to ["image"].
+            ndim (int, optional): number of spatial dimensions. Defaults to 3.
+
+            inference_batch_size (int, optional): batch size for inference.
+                Defaults to 1.
+
+            reduction (callable, optional): sets strategy for reduction when a
+                list of inference functions are provided. Defaults to None (no
+                reduction)
+        """
+        self.base_inference_function = base_inference_function
+        self.sliding_window_size = sliding_window_size
+        self.n_classes = n_classes
+        self.stride = stride
+        self.flip = flip
+        self.flip_idx = flip_idx
+        self.flip_keys = flip_keys
+        self.ndim = ndim
+        self.inference_batch_size = inference_batch_size
+        self.reduction = reduction
+
+        self.update_base_inference_function(base_inference_function)
+
+    def update_base_inference_function(
+        self, base_inference_function: list[callable]
+    ):
+        if base_inference_function is None:
+            return
+        inference_function = base_inference_function
+        if isinstance(inference_function, (list, tuple)):
+            if self.sliding_window_size is not None:
+                if isinstance(self.stride, float):
+                    self.stride = [
+                        int(x * self.stride) for x in self.sliding_window_size
+                    ]
+                inference_function = [
+                    SlidingWindowSegmentation(
+                        inference_function=fn,
+                        sliding_window_size=self.sliding_window_size,
+                        n_classes=self.n_classes if self.n_classes > 2 else 1,
+                        stride=self.stride,
+                        inference_batch_size=self.inference_batch_size,
+                    )
+                    for fn in inference_function
+                ]
+            if self.flip == True:
+                flips = [(1,), (2,), (3,)]
+                inference_function = [
+                    FlippedInference(
+                        inference_function=fn,
+                        flips=flips,
+                        flip_idx=self.flip_idx,
+                        flip_keys=self.flip_keys,
+                        ndim=self.ndim,
+                        inference_batch_size=self.inference_batch_size,
+                    )
+                    for fn in inference_function
+                ]
+        else:
+            if self.sliding_window_size is not None:
+                if isinstance(self.stride, float):
+                    self.stride = [
+                        int(x * self.stride) for x in self.sliding_window_size
+                    ]
+                inference_function = SlidingWindowSegmentation(
+                    sliding_window_size=self.sliding_window_size,
+                    inference_function=inference_function,
+                    n_classes=self.n_classes if self.n_classes > 2 else 1,
+                    stride=self.stride,
+                    inference_batch_size=self.inference_batch_size,
+                )
+            if self.flip == True:
+                flips = [(1,), (2,), (3,)]
+                inference_function = FlippedInference(
+                    inference_function=inference_function,
+                    flips=flips,
+                    flip_idx=self.flip_idx,
+                    flip_keys=self.flip_keys,
+                    ndim=self.ndim,
+                    inference_batch_size=len(flips),
+                )
+        self.inference_function = inference_function
+
+    def __call__(self, X: MultiFormatInput, *args, **kwargs) -> TensorOrArray:
+        if isinstance(self.inference_function, (list, tuple)):
+            with torch.no_grad():
+                output = [
+                    inference_function(X, *args, **kwargs)
+                    for inference_function in self.inference_function
+                ]
+                if self.reduction is not None:
+                    output = self.reduction(output)
+        else:
+            with torch.no_grad():
+                output = self.inference_function(X, *args, **kwargs)
+                if self.reduction is not None:
+                    output = self.reduction(output)
+
+        return output
