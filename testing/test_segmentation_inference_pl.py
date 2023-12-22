@@ -5,7 +5,10 @@ sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 import torch
 from lib.modules.segmentation.pl import UNetPL
-from lib.utils.inference import SlidingWindowSegmentation
+from lib.utils.inference import (
+    SlidingWindowSegmentation,
+    SegmentationInference,
+)
 
 h, w, d, c = 32, 32, 32, 1
 
@@ -46,6 +49,28 @@ def test_sliding_window_inference_pl():
     input_dictionary = {"image": torch.ones([1, c, h, w, d])}
     sli = SlidingWindowSegmentation(
         [8, 8, 8], lambda x: unet.predict_step(x)[0], n_classes=1
+    )
+    output = sli(input_dictionary)
+    assert list(output.shape) == [1, 1, h, w, d]
+    assert output.max() <= 1
+    assert output.min() > 0
+
+
+def test_segmentation_inference_pl():
+    unet = UNetPL(
+        spatial_dimensions=3,
+        depth=depth,
+        kernel_sizes=kernel_sizes,
+        strides=strides,
+        interpolation="trilinear",
+        padding=1,
+    )
+    input_dictionary = {"image": torch.ones([1, c, h, w, d])}
+    sli = SegmentationInference(
+        base_inference_function=lambda x: unet.predict_step(x)[0],
+        sliding_window_size=[8, 8, 8],
+        n_classes=1,
+        flip=True,
     )
     output = sli(input_dictionary)
     assert list(output.shape) == [1, 1, h, w, d]
