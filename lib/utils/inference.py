@@ -224,8 +224,10 @@ class FlippedInference:
         output = None
         if (self.ndim + 1) == len(get_shape(X)):
             original_batch_size = 1
+            shift = 1
         else:
             original_batch_size = get_shape(X)[0]
+            shift = 0
         for flip in self.flips:
             flipped_X = self.flip(X, flip)
             batch.append(flipped_X)
@@ -237,7 +239,7 @@ class FlippedInference:
                         batch, *args, **kwargs
                     ).detach()
                 result = [
-                    self.flip(x, tuple([ff + 1 for ff in f]))
+                    self.flip(x, tuple([ff + shift for ff in f]))
                     for x, f in zip(
                         torch.split(result, original_batch_size),
                         batch_flips,

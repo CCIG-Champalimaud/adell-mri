@@ -388,6 +388,8 @@ def main(arguments):
                             metrics_dict["metrics"][test_id][k] = v
                             metrics[k].reset()
                             metrics_global[k].update(pred, y)
+                        metrics_dict["metrics"][test_id]["max_prob"] = y.max()
+                        metrics_dict["metrics"][test_id]["min_prob"] = y.min()
                     for k in metrics_global:
                         metrics_global[k].update(pred, y)
                 for k in metrics_global:
