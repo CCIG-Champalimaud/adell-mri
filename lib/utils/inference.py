@@ -127,7 +127,7 @@ class TensorListReduction:
             if self.preproc_fn is not None:
                 X = [self.preproc_fn(x) for x in X]
             if self.strategy == "mean":
-                X = torch.cat(X).mean(0)
+                X = torch.stack(X).mean(0)
         else:
             if self.preproc_fn is not None:
                 X = self.preproc_fn(X)

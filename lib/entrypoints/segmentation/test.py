@@ -329,13 +329,9 @@ def main(arguments):
             }
             unet.load_state_dict(state_dict)
             unet = unet.to(args.dev)
-            unet.eval()
+            unet = unet.eval()
             networks[checkpoint] = unet
 
-        if args.ensemble is not None:
-            postproc_fn = unet.final_layer[-1]
-        else:
-            postproc_fn = None
         inference_function = SegmentationInference(
             base_inference_function=None,
             sliding_window_size=args.sliding_window_size,
@@ -344,7 +340,7 @@ def main(arguments):
             flip=args.flip,
             flip_keys=["image"],
             ndim=network_config["spatial_dimensions"],
-            reduction=TensorListReduction(postproc_fn=postproc_fn),
+            reduction=TensorListReduction(postproc_fn=unet.final_layer[-1]),
         )
         all_pred = []
         all_truth = []
@@ -372,7 +368,10 @@ def main(arguments):
                     }
                     test_id = test_ids[test_idx][i]
                     pred = inference_function(
-                        data_element, 0, return_only_segmentation=True
+                        data_element,
+                        0,
+                        return_only_segmentation=True,
+                        return_logits=True,
                     )
                     pred = pred.squeeze()
                     y = data_element["mask"].round().int().squeeze()
@@ -414,7 +413,7 @@ def main(arguments):
                 all_metrics.append(metrics_dict)
         else:
             inference_function.update_base_inference_function(
-                [networks[checkpoint].predict_step for checkpoint in networks]
+                [networks[k].predict_step for k in networks]
             )
 
             metrics = get_metric_dict(

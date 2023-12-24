@@ -172,7 +172,7 @@ def get_transforms_unet(
         # sets intensity transforms for ADC and other sequence types
         if len(non_adc_keys) > 0:
             transforms.append(
-                monai.transforms.NormalizeIntensityd(non_adc_keys, 0, 1)
+                monai.transforms.NormalizeIntensityd(non_adc_keys)
             )
         if len(adc_keys) > 0:
             transforms.append(ConditionalRescalingd(adc_keys, 500, 0.001))
@@ -744,9 +744,6 @@ def get_augmentations_unet(
             ]
         )
 
-    if "flip" in augment:
-        augments.append(monai.transforms.RandFlipd(all_keys, prob=prob))
-
     if "rbf" in augment and len(t2_keys) > 0:
         augments.append(
             monai.transforms.RandBiasFieldd(t2_keys, degree=3, prob=prob)
@@ -774,10 +771,18 @@ def get_augmentations_unet(
             )
         )
 
-    if "trivial" in augment:
-        augments = monai.transforms.OneOf(augments)
+    # ensures that flips are applied regardless of TrivialAugment trigger
+    if "flip" in augment:
+        flip_transform = [monai.transforms.RandFlipd(all_keys, prob=prob)]
     else:
-        augments = monai.transforms.Compose(augments)
+        flip_transform = []
+
+    if "trivial" in augment:
+        augments = monai.transforms.Compose(
+            [monai.transforms.OneOf(augments), *flip_transform]
+        )
+    else:
+        augments = monai.transforms.Compose([*augments, *flip_transform])
 
     if random_crop_size is not None:
         # do a first larger crop that prevents artefacts introduced by
