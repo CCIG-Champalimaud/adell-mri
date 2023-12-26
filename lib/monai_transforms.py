@@ -33,6 +33,8 @@ from .modules.semi_supervised_segmentation.utils import (
     convert_arguments_augment,
 )
 
+ADC_FACTOR = -2 / 3
+
 
 class TransformWrapper:
     def __init__(self, data_dictionary, transform):
@@ -127,7 +129,6 @@ def get_transforms_unet(
     output_image_key: str = "image",
     possible_labels: List[str] = [0, 1],
     positive_labels: List[str] = [1],
-    adc_factor: float = 1.0,
     all_aux_keys: List[str] = [],
     resize_keys: List[str] = [],
     feature_keys: List[str] = [],
@@ -172,14 +173,16 @@ def get_transforms_unet(
         # sets intensity transforms for ADC and other sequence types
         if len(non_adc_keys) > 0:
             transforms.append(
-                monai.transforms.NormalizeIntensityd(non_adc_keys)
+                monai.transforms.ScaleIntensityd(
+                    non_adc_keys, minv=0.0, maxv=1.0
+                )
             )
         if len(adc_keys) > 0:
             transforms.append(ConditionalRescalingd(adc_keys, 500, 0.001))
             transforms.append(
                 monai.transforms.ScaleIntensityd(
-                    adc_keys, None, None, -(1 - adc_factor)
-                )
+                    adc_keys, None, None, ADC_FACTOR
+                ),
             )
         # sets resize
         if resize_size is not None and len(resize_keys) > 0:
@@ -260,14 +263,18 @@ def get_transforms_unet(
                 keys.append(output_image_key)
                 transforms.append(
                     monai.transforms.ToTensord(
-                        [output_image_key] + mask_key, track_meta=track_meta
+                        [output_image_key] + mask_key,
+                        track_meta=track_meta,
+                        dtype=torch.float32,
                     )
                 )
             else:
                 keys.extend(image_keys)
                 transforms.append(
                     monai.transforms.ToTensord(
-                        image_keys + mask_key, track_meta=track_meta
+                        image_keys + mask_key,
+                        track_meta=track_meta,
+                        dtype=torch.float32,
                     )
                 )
         if track_meta == False:
@@ -314,7 +321,7 @@ def get_transforms_detection_pre(
         transforms.append(ConditionalRescalingd(adc_keys, 500, 0.001))
         transforms.append(Offsetd(adc_keys, None))
         transforms.append(
-            monai.transforms.ScaleIntensityd(adc_keys, None, None, -2 / 3)
+            monai.transforms.ScaleIntensityd(adc_keys, None, None, ADC_FACTOR)
         )
     transforms.extend(
         [
@@ -418,7 +425,9 @@ def get_transforms_classification(
             transforms.append(ConditionalRescalingd(adc_keys, 500, 0.001))
             transforms.append(Offsetd(adc_keys, None))
             transforms.append(
-                monai.transforms.ScaleIntensityd(adc_keys, None, None, -2 / 3)
+                monai.transforms.ScaleIntensityd(
+                    adc_keys, None, None, ADC_FACTOR
+                )
             )
         if target_spacing is not None:
             transforms.extend(
@@ -641,7 +650,9 @@ def get_pre_transforms_ssl(
         transforms.extend(
             [
                 ConditionalRescalingd(adc_keys, 500, 0.001),
-                monai.transforms.ScaleIntensityd(adc_keys, None, None, -2 / 3),
+                monai.transforms.ScaleIntensityd(
+                    adc_keys, None, None, ADC_FACTOR
+                ),
             ]
         )
     if crop_size is not None:
@@ -697,6 +708,7 @@ def get_augmentations_unet(
         "shear",
         "flip",
         "blur",
+        "distort",
         "trivial",
     ]
     interpolation = [
@@ -713,6 +725,16 @@ def get_augmentations_unet(
     if "trivial" in augment:
         augments.append(monai.transforms.Identityd(image_keys))
         prob = 1.0
+
+    if "distort" in augment:
+        augments.append(
+            monai.transforms.RandGridDistortiond(
+                all_keys,
+                distort_limit=0.05,
+                prob=prob,
+                mode=interpolation,
+            )
+        )
 
     if "intensity" in augment:
         augments.extend(
@@ -773,7 +795,7 @@ def get_augmentations_unet(
 
     # ensures that flips are applied regardless of TrivialAugment trigger
     if "flip" in augment:
-        flip_transform = [monai.transforms.RandFlipd(all_keys, prob=prob)]
+        flip_transform = [monai.transforms.RandFlipd(all_keys, prob=0.2)]
     else:
         flip_transform = []
 
