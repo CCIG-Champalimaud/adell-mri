@@ -41,7 +41,7 @@ class UNet(torch.nn.Module):
         interpolation: str = "bilinear",
         norm_type: str = "batch",
         dropout_type: str = "dropout",
-        padding: int = 0,
+        padding: str = "same",
         dropout_param: float = 0.1,
         activation_fn: torch.nn.Module = torch.nn.PReLU,
         n_channels: int = 1,
@@ -83,8 +83,8 @@ class UNet(torch.nn.Module):
         dropout_type (str, optional): type of dropout. Can be either
             regular dropout ("dropout") or U-out [2] ("uout"). Defaults to
             "dropout".
-        padding (int, optional): amount of padding for convolutions.
-            Defaults to 0.
+        padding (str, optional): padding for convolutions. Should be either
+            "same" or "valid". Defaults to "same".
         dropout_param (float, optional): parameter for dropout layers.
             Sets the dropout rate for "dropout" and beta for "uout". Defaults
             to 0.1.
@@ -494,14 +494,13 @@ class UNet(torch.nn.Module):
             if isinstance(k, int) is True:
                 k = [k for _ in range(self.spatial_dimensions)]
             p = [int(i // 2) for i in k]
-            p_conv = [self.padding if k_ > 1 else 0 for k_ in k]
             op = torch.nn.Sequential(
                 self.conv_op_enc(
                     previous_d,
                     d,
                     kernel_size=k,
                     stride=1,
-                    padding=p_conv,
+                    padding=self.padding,
                 ),
                 self.adn_fn(d),
             )
@@ -554,10 +553,10 @@ class UNet(torch.nn.Module):
             d, k = depths[i], kernel_sizes[i]
             if isinstance(k, int) is True:
                 k = [k for _ in range(self.spatial_dimensions)]
-            p_conv = [self.padding if k_ > 1 else 0 for k_ in k]
+            # p_conv = [self.padding if k_ > 1 else 0 for k_ in k]
             op = torch.nn.Sequential(
                 self.conv_op_dec(
-                    d * 2, d, kernel_size=k, stride=1, padding=p_conv
+                    d * 2, d, kernel_size=k, stride=1, padding=self.padding
                 ),
                 self.adn_fn(d),
             )
@@ -806,7 +805,7 @@ class BrUNet(UNet, torch.nn.Module):
         interpolation: str = "bilinear",
         norm_type: str = "batch",
         dropout_type: str = "dropout",
-        padding: int = 0,
+        padding: str = "same",
         dropout_param: float = 0.1,
         activation_fn: torch.nn.Module = torch.nn.PReLU,
         n_channels: int = 1,
@@ -846,8 +845,8 @@ class BrUNet(UNet, torch.nn.Module):
         dropout_type (str, optional): type of dropout. Can be either
             regular dropout ("dropout") or U-out [2] ("uout"). Defaults to
             "dropout".
-        padding (int, optional): amount of padding for convolutions.
-            Defaults to 0.
+        padding (str, optional): padding for convolutions. Should be either
+            "same" or "valid". Defaults to "same".
         dropout_param (float, optional): parameter for dropout layers.
             Sets the dropout rate for "dropout" and beta for "uout". Defaults
             to 0.1.
