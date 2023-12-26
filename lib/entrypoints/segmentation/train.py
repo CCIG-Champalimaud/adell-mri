@@ -356,7 +356,6 @@ def main(arguments):
             "intp_resampling_augmentations": intp_resampling_augmentations,
             "possible_labels": args.possible_labels,
             "positive_labels": args.positive_labels,
-            "adc_factor": 1 / 3,
             "all_aux_keys": all_aux_keys,
             "resize_keys": resize_keys,
             "feature_keys": feature_keys,
@@ -456,9 +455,11 @@ def main(arguments):
                     "Resuming training from checkpoint in {}".format(ckpt_path)
                 )
 
+        transforms_train = monai.transforms.Compose(transforms_train)
+        transforms_train.set_random_state(args.seed)
         train_dataset = monai.data.CacheDataset(
             train_list,
-            monai.transforms.Compose(transforms_train),
+            transforms_train,
             num_workers=args.n_workers,
             cache_rate=args.cache_rate,
         )

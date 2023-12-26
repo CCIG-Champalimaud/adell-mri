@@ -187,7 +187,6 @@ def main(arguments):
         "intp_resampling_augmentations": intp_resampling_augmentations,
         "possible_labels": args.possible_labels,
         "positive_labels": args.positive_labels,
-        "adc_factor": 1 / 3,
         "all_aux_keys": all_aux_keys,
         "resize_keys": resize_keys,
         "feature_keys": feature_keys,
