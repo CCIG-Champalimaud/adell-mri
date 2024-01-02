@@ -230,6 +230,7 @@ def main(arguments):
                     pbar.set_description("Predicting {}".format(identifier))
                     output = network.forward(
                         element["image"].unsqueeze(0).to(args.dev),
+                        element["tabular"].unsqueeze(0).to(args.dev),
                         **extra_args,
                     ).detach()
                     if args.type == "features":
