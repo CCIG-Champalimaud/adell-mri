@@ -20,6 +20,7 @@ class ResidualBlock2d(torch.nn.Module):
         inter_channels: int = None,
         out_channels: int = None,
         adn_fn: torch.nn.Module = torch.nn.Identity,
+        skip_activation: bool = None,
     ):
         """
         Args:
@@ -30,6 +31,8 @@ class ResidualBlock2d(torch.nn.Module):
             out_channels (int): number of output channels. Defaults to None.
             adn_fn (torch.nn.Module, optional): the activation-dropout-normalization
                 module used. Defaults to torch.nn.Identity.
+            skip_activation (bool, optional): skips final activation during forward
+                pass. Defaults to None (False).
         """
         super().__init__()
         self.in_channels = in_channels
@@ -43,6 +46,7 @@ class ResidualBlock2d(torch.nn.Module):
         else:
             self.out_channels = self.in_channels
         self.adn_fn = adn_fn
+        self.skip_activation = skip_activation
 
         self.init_layers()
 
@@ -88,8 +92,16 @@ class ResidualBlock2d(torch.nn.Module):
 
         self.adn_op = self.adn_fn(self.out_channels)
 
-    def forward(self, X):
-        return self.adn_op(self.final_op(self.op(X) + X))
+    def forward(self, X: torch.Tensor, skip_activation: bool = None):
+        out = self.final_op(self.op(X) + X)
+        skip_activation = (
+            skip_activation
+            if skip_activation is not None
+            else self.skip_activation
+        )
+        if skip_activation is not True:
+            out = self.adn_op(out)
+        return out
 
 
 class ResidualBlock3d(torch.nn.Module):
@@ -106,6 +118,7 @@ class ResidualBlock3d(torch.nn.Module):
         inter_channels: int = None,
         out_channels: int = None,
         adn_fn: torch.nn.Module = torch.nn.Identity,
+        skip_activation: bool = None,
     ):
         """
         Args:
@@ -116,6 +129,8 @@ class ResidualBlock3d(torch.nn.Module):
             out_channels (int): number of output channels. Defaults to None.
             adn_fn (torch.nn.Module, optional): the activation-dropout-normalization
                 module used. Defaults to torch.nn.Identity.
+            skip_activation (bool, optional): skips final activation during forward
+                pass. Defaults to None (False).
         """
         super().__init__()
         self.in_channels = in_channels
@@ -129,6 +144,7 @@ class ResidualBlock3d(torch.nn.Module):
         else:
             self.out_channels = self.in_channels
         self.adn_fn = adn_fn
+        self.skip_activation = skip_activation
 
         self.init_layers()
 
@@ -174,8 +190,13 @@ class ResidualBlock3d(torch.nn.Module):
 
         self.adn_op = self.adn_fn(self.out_channels)
 
-    def forward(self, X: torch.Tensor, skip_activation: bool = False):
+    def forward(self, X: torch.Tensor, skip_activation: bool = None):
         out = self.final_op(self.op(X) + X)
+        skip_activation = (
+            skip_activation
+            if skip_activation is not None
+            else self.skip_activation
+        )
         if skip_activation is not True:
             out = self.adn_op(out)
         return out
