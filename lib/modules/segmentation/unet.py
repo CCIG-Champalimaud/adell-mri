@@ -8,6 +8,7 @@ from ..layers.res_blocks import ResidualBlock2d, ResidualBlock3d
 from ..layers.self_attention import (
     ConcurrentSqueezeAndExcite2d,
     ConcurrentSqueezeAndExcite3d,
+    SelfAttentionBlock,
 )
 from ..layers.multi_resolution import (
     AtrousSpatialPyramidPooling2d,
@@ -243,9 +244,9 @@ class UNet(torch.nn.Module):
         if stride is None:
             stride = 1
         return torch.nn.Sequential(
-            torch.nn.Conv2d(in_d, out_d, kernel_size, stride, padding),
-            self.adn_fn(out_d),
-            torch.nn.Conv2d(out_d, out_d, kernel_size, 1, padding),
+            torch.nn.Conv2d(in_d, in_d, kernel_size, stride, padding),
+            self.adn_fn(in_d),
+            torch.nn.Conv2d(in_d, out_d, kernel_size, 1, padding),
         )
 
     def conv_block_3d(
@@ -257,9 +258,9 @@ class UNet(torch.nn.Module):
         if stride is None:
             stride = 1
         return torch.nn.Sequential(
-            torch.nn.Conv3d(in_d, out_d, kernel_size, stride, padding),
-            self.adn_fn(out_d),
-            torch.nn.Conv3d(out_d, out_d, kernel_size, 1, padding),
+            torch.nn.Conv3d(in_d, in_d, kernel_size, stride, padding),
+            self.adn_fn(in_d),
+            torch.nn.Conv3d(in_d, out_d, kernel_size, 1, padding),
         )
 
     def res_block_conv_2d(
@@ -328,7 +329,7 @@ class UNet(torch.nn.Module):
 
     def sae_2d(self, in_d, out_d, kernel_size, stride=1, padding=0):
         return torch.nn.Sequential(
-            torch.nn.Conv2d(
+            self.conv_block_2d(
                 in_d,
                 out_d,
                 kernel_size=kernel_size,
@@ -340,7 +341,7 @@ class UNet(torch.nn.Module):
 
     def sae_3d(self, in_d, out_d, kernel_size, stride=None, padding=None):
         return torch.nn.Sequential(
-            torch.nn.Conv3d(
+            self.conv_block_3d(
                 in_d,
                 out_d,
                 kernel_size=kernel_size,
@@ -421,9 +422,19 @@ class UNet(torch.nn.Module):
             ex = self.skip_conditioning
         else:
             ex = 0
+        rev_depth = self.depth[-2::-1]
         if self.link_type == "identity":
             self.link_ops = torch.nn.ModuleList(
                 [torch.nn.Identity() for _ in self.depth[:-1]]
+            )
+        elif self.link_type == "attention":
+            self.link_ops = torch.nn.ModuleList(
+                [
+                    SelfAttentionBlock(
+                        self.spatial_dimensions, d, d, [16, 16, 1]
+                    )
+                    for d in self.depth[-2::-1]
+                ]
             )
         elif self.link_type == "conv":
             if self.spatial_dimensions == 2:
@@ -435,7 +446,7 @@ class UNet(torch.nn.Module):
                             ),
                             self.adn_fn(d),
                         )
-                        for d in self.depth[-2::-1]
+                        for d in rev_depth
                     ]
                 )
             elif self.spatial_dimensions == 3:
@@ -447,7 +458,7 @@ class UNet(torch.nn.Module):
                             ),
                             self.adn_fn(d),
                         )
-                        for d in self.depth[-2::-1]
+                        for d in rev_depth
                     ]
                 )
         elif self.link_type == "residual":
@@ -455,18 +466,24 @@ class UNet(torch.nn.Module):
                 self.link_ops = torch.nn.ModuleList(
                     [
                         ResidualBlock2d(
-                            d + ex, 3, out_channels=d, adn_fn=self.adn_fn
+                            d + ex,
+                            3,
+                            out_channels=d,
+                            adn_fn=self.adn_fn,
                         )
-                        for d in self.depth[-2::-1]
+                        for d in rev_depth
                     ]
                 )
             elif self.spatial_dimensions == 3:
                 self.link_ops = torch.nn.ModuleList(
                     [
                         ResidualBlock3d(
-                            d + ex, 3, out_channels=d, adn_fn=self.adn_fn
+                            d + ex,
+                            3,
+                            out_channels=d,
+                            adn_fn=self.adn_fn,
                         )
-                        for d in self.depth[-2::-1]
+                        for d in rev_depth
                     ]
                 )
 
@@ -553,7 +570,6 @@ class UNet(torch.nn.Module):
             d, k = depths[i], kernel_sizes[i]
             if isinstance(k, int) is True:
                 k = [k for _ in range(self.spatial_dimensions)]
-            # p_conv = [self.padding if k_ > 1 else 0 for k_ in k]
             op = torch.nn.Sequential(
                 self.conv_op_dec(
                     d * 2, d, kernel_size=k, stride=1, padding=self.padding
@@ -579,7 +595,7 @@ class UNet(torch.nn.Module):
             op = torch.nn.Conv3d
         if self.n_classes > 2:
             return torch.nn.Sequential(
-                op(d, d, 1),
+                op(d, d, 3, padding="same"),
                 self.adn_fn(d),
                 op(d, self.n_classes, 1),
                 torch.nn.Softmax(dim=1),
@@ -588,7 +604,7 @@ class UNet(torch.nn.Module):
             # coherces to a binary classification problem rather than
             # to a multiclass problem with two classes
             return torch.nn.Sequential(
-                op(d, d, 3, padding=1),
+                op(d, d, 3, padding="same"),
                 self.adn_fn(d),
                 op(d, 1, 1),
                 torch.nn.Sigmoid(),
@@ -609,7 +625,7 @@ class UNet(torch.nn.Module):
             op = torch.nn.Conv3d
         if self.n_classes > 2:
             return torch.nn.Sequential(
-                op(d, d, 1),
+                op(d, d, 3),
                 self.adn_fn(d),
                 op(d, self.n_classes, 1),
                 torch.nn.Softmax(dim=1),
@@ -618,7 +634,7 @@ class UNet(torch.nn.Module):
             # coherces to a binary classification problem rather than
             # to a multiclass problem with two classes
             return torch.nn.Sequential(
-                op(d, d, 1), self.adn_fn(d), op(d, 1, 1), torch.nn.Sigmoid()
+                op(d, d, 3), self.adn_fn(d), op(d, 1, 1), torch.nn.Sigmoid()
             )
 
     def init_final_layer(self):

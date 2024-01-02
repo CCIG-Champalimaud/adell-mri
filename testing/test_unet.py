@@ -9,7 +9,7 @@ from lib.modules.segmentation.unet import UNet
 from lib.modules.layers.res_net import ResNet, resnet_to_encoding_ops
 from lib.modules.layers.adn_fn import ActDropNormBuilder
 
-h, w, d, c = 32, 32, 20, 1
+h, w, d, c = 32, 32, 16, 1
 
 depths = [[16, 32, 64], [16, 32, 64, 128]]
 spatial_dims = [2, 3]
@@ -196,6 +196,40 @@ def test_unet_from_encoder(D, sd, strides):
         strides=S,
         kernel_sizes=K,
         link_type="identity",
+    )
+    o, bb = a(i)
+    assert list(o.shape) == output_size
+
+
+@pytest.mark.parametrize("sd", (2, 3))
+def test_unet_attention_link(sd):
+    D = [8, 16, 32]
+    K = [3] + [3 for _ in D]
+    S = [2 for _ in D]
+    # first instantiate resnet
+    resnet_args["backbone_args"]["spatial_dim"] = sd
+    resnet_args["backbone_args"]["structure"] = [[d, d, 3, 1] for d in D]
+    resnet_args["backbone_args"]["maxpool_structure"] = S
+    if sd == 2:
+        resnet_args["backbone_args"]["adn_fn"] = ActDropNormBuilder(
+            norm_fn=torch.nn.BatchNorm2d
+        )
+        i = torch.rand(size=[1, c, h, w])
+        output_size = [1, 1, h, w]
+    if sd == 3:
+        resnet_args["backbone_args"]["adn_fn"] = ActDropNormBuilder(
+            norm_fn=torch.nn.BatchNorm3d
+        )
+        i = torch.rand(size=[1, c, h, w, d])
+        output_size = [1, 1, h, w, d]
+    a = UNet(
+        sd,
+        depth=D,
+        upscale_type="transpose",
+        padding="same",
+        strides=S,
+        kernel_sizes=K,
+        link_type="attention",
     )
     o, bb = a(i)
     assert list(o.shape) == output_size
