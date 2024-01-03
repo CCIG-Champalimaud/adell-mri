@@ -547,6 +547,9 @@ argument_factory = {
         choices=["image", "probs", "deep_features", "bounding_box"],
         default="image",
     ),
+    "threshold": dict(
+        default=0.5, type=float, help="Sets threshold for positive class"
+    ),
     # ssl-specific
     "jpeg_dataset": dict(
         action="store_true",

@@ -68,6 +68,7 @@ def main(arguments):
             "n_workers",
             "ensemble",
             "picai_eval",
+            "threshold",
             "metric_path",
         ]
     )
@@ -377,7 +378,7 @@ def main(arguments):
                     if args.picai_eval is True:
                         all_pred.append(pred.cpu().numpy())
                         all_truth.append(y.cpu().numpy())
-                    pred = pred.round().long()
+                    pred = (pred > args.threshold).long()
                     if args.per_sample is True:
                         metrics_dict["metrics"][test_id] = {}
                         for k in metrics:

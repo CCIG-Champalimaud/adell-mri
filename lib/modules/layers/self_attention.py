@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 import einops
-from .linear_blocks import SelfAttention
+from .linear_blocks import MultiHeadSelfAttention
 
 
 class SpatialSqueezeAndExcite2d(torch.nn.Module):
@@ -168,8 +168,11 @@ class SelfAttentionBlock(torch.nn.Module):
         self.patch_size = patch_size
         self.input_dim_att = np.prod(patch_size[:ndim]) * input_dim
 
-        self.attention_op = SelfAttention(
-            self.input_dim_att, attention_dim, self.input_dim_att
+        self.attention_op = MultiHeadSelfAttention(
+            input_dim=self.input_dim_att,
+            attention_dim=attention_dim,
+            hidden_dim=attention_dim,
+            output_dim=self.input_dim_att,
         )
 
     def get_kwargs_for_rearrange(self, shape: list[int]):
