@@ -1,8 +1,6 @@
 import argparse
 import os
-import nibabel as nib
 import SimpleITK as sitk
-import re
 import numpy as np
 from glob import glob
 from tqdm import tqdm

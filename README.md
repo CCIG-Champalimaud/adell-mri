@@ -10,7 +10,7 @@ entry_1
 |-class: class_for_entry_1
 ```
 
-Then, using some minor JSON manipulation and [`MONAI`](https://monai.io/) we am able to easily construct data ingestion pipelines for training.
+Then, using some minor JSON manipulation and [`MONAI`](https://monai.io/) we are able to easily construct data ingestion pipelines for training.
 
 ## Implemented methods for segmentation
 
