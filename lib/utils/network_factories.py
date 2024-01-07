@@ -26,7 +26,7 @@ from ..modules.object_detection.pl import YOLONet3dPL
 from ..utils import get_loss_param_dict, loss_factory
 
 # segmentation
-from lib.modules.segmentation.pl import (
+from ..modules.segmentation.pl import (
     UNetPL,
     UNetPlusPlusPL,
     BrUNetPL,
@@ -35,10 +35,11 @@ from lib.modules.segmentation.pl import (
 )
 
 # semi-supervised segmentation
-from lib.modules.semi_supervised_segmentation.pl import UNetContrastiveSemiSL
+from ..modules.semi_supervised_segmentation.pl import UNetContrastiveSemiSL
+from ..utils import ExponentialMovingAverage
 
 # self-supervised learning
-from lib.modules.self_supervised.pl import (
+from ..modules.self_supervised.pl import (
     SelfSLResNetPL,
     SelfSLUNetPL,
     SelfSLConvNeXtPL,
@@ -50,8 +51,8 @@ from lib.modules.self_supervised.pl import (
 )
 
 # diffusion
-from lib.modules.diffusion.pl import DiffusionUNetPL
-from lib.modules.diffusion.embedder import Embedder
+from ..modules.diffusion.pl import DiffusionUNetPL
+from ..modules.diffusion.embedder import Embedder
 from generative.inferers import DiffusionInferer
 from generative.networks.schedulers import DDPMScheduler
 
@@ -352,7 +353,8 @@ def get_segmentation_network(
     crop_size: List[int],
     pad_size: List[int],
     resize_size: List[int],
-    semi_supervised: bool,
+    semi_supervised: bool = False,
+    max_steps_optim: int = None,
 ) -> torch.nn.Module:
     def get_size(*size_list):
         for size in size_list:
@@ -378,6 +380,12 @@ def get_segmentation_network(
     )
 
     if net_type == "unet" and semi_supervised is True:
+        ema_params = {
+            "decay": 0.99,
+            "final_decay": 1.0,
+            "n_steps": max_steps_optim,
+        }
+        ema = ExponentialMovingAverage(**ema_params)
         encoding_operations = encoding_operations[0]
         unet = UNetContrastiveSemiSL(
             encoding_operations=encoding_operations,
@@ -385,6 +393,7 @@ def get_segmentation_network(
             semi_sl_image_key_1="semi_sl_image_1",
             semi_sl_image_key_2="semi_sl_image_2",
             deep_supervision=deep_supervision,
+            ema=ema,
             **boilerplate,
             **network_config
         )
