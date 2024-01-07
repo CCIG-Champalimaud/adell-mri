@@ -7,8 +7,14 @@ from pydicom import dcmread
 from pydicom import errors
 from tqdm import tqdm
 
-def process_dicom(dcm):
-    study_uid,series_uid,dcm_root = str(dcm).split(os.sep)[-3:]
+DICOMInformation = tuple[str, str, str, tuple[float, float, float]]
+DICOMDictionary = dict[
+    str, dict[str, dict[str, str | tuple[float, float, float]]]
+]
+
+
+def process_dicom(dcm: str) -> DICOMInformation:
+    study_uid, series_uid, dcm_root = str(dcm).split(os.sep)[-3:]
     if study_uid not in dicom_dict:
         dicom_dict[study_uid] = {}
     if series_uid not in dicom_dict[study_uid]:
@@ -18,10 +24,10 @@ def process_dicom(dcm):
         dcm_file = dcmread(dcm)
     except errors.InvalidDicomError:
         return None
-    # removes cases of segmentation 
-    if dcm_file[0x0008,0x0060].value == "SEG":
+    # removes cases of segmentation
+    if dcm_file[0x0008, 0x0060].value == "SEG":
         return None
-    # in some cases, pixel array data is corrupted, which causes 
+    # in some cases, pixel array data is corrupted, which causes
     # failures when accessing pixel_array; this makes the dataset
     # construction skip these files
     try:
@@ -34,13 +40,21 @@ def process_dicom(dcm):
         orientation = [x for x in orientation]
     else:
         orientation = None
-    return dcm,study_uid,series_uid,orientation
+    return dcm, study_uid, series_uid, orientation
 
-def process_dicom_directory(series_dir):
-    return [process_dicom(str(x))
-            for x in Path(series_dir).rglob("*dcm")]
 
-def update_dict(d,study_uid,series_uid,orientation,dcm,included_ids=[]):
+def process_dicom_directory(series_dir: str) -> list[DICOMInformation]:
+    return [process_dicom(str(x)) for x in Path(series_dir).rglob("*dcm")]
+
+
+def update_dict(
+    d: DICOMDictionary,
+    study_uid: str,
+    series_uid: str,
+    orientation: tuple[float, float, float],
+    dcm: str,
+    included_ids: list[str] = [],
+) -> DICOMDictionary:
     add = False
     if included_ids is not None:
         if study_uid in included_ids:
@@ -53,69 +67,98 @@ def update_dict(d,study_uid,series_uid,orientation,dcm,included_ids=[]):
             d[study_uid] = {}
         if series_uid not in d[study_uid]:
             d[study_uid][series_uid] = []
-        d[study_uid][series_uid].append({
-            "image":dcm,
-            "orientation":orientation})
+        d[study_uid][series_uid].append(
+            {"image": dcm, "orientation": orientation}
+        )
     return d
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Creates JSON file with DICOM paths.")
+        description="Creates JSON file with DICOM paths."
+    )
     parser.add_argument(
-        '--input_path',dest="input_path",required=True,
-        help="Path to folder containing nibabel compatible files")
+        "--input_path",
+        dest="input_path",
+        required=True,
+        help="Path to folder containing nibabel compatible files",
+    )
     parser.add_argument(
-        '--included_ids',dest="included_ids",default=None,
-        help="Study UIDs to be excluded")
+        "--included_ids",
+        dest="included_ids",
+        default=None,
+        help="Study UIDs to be excluded",
+    )
     parser.add_argument(
-        '--patterns',dest="patterns",default=["*/"],nargs="+",
+        "--patterns",
+        dest="patterns",
+        default=["*/"],
+        nargs="+",
         help="Pattern to match for inputs (assumes each pattern corresponds to\
-            a modality).")
+            a modality).",
+    )
     parser.add_argument(
-        '--output_json',dest="output_json",required=True,
-        help="Path for output JSON file")
+        "--output_json",
+        dest="output_json",
+        required=True,
+        help="Path for output JSON file",
+    )
     parser.add_argument(
-        "--n_workers",dest="n_workers",default=0,type=int,
-        help="Number of parallel processes for Pool")
-    
+        "--n_workers",
+        dest="n_workers",
+        default=0,
+        type=int,
+        help="Number of parallel processes for Pool",
+    )
+
     args = parser.parse_args()
 
     path = Path(args.input_path)
-    
+
     if args.included_ids is not None:
         with open(args.included_ids) as o:
-            included_ids = {x.strip():"" for x in o.readlines()}
+            included_ids = {x.strip(): "" for x in o.readlines()}
     else:
         included_ids = None
-        
+
     dicom_dict = {}
     for pattern in args.patterns:
         print("Locating all studies/series...")
         all_dicoms = [str(x) for x in path.glob(pattern)]
         print("Iterating studies/series...")
         with tqdm(all_dicoms) as pbar:
-            if args.n_workers in [0,1]:
+            if args.n_workers in [0, 1]:
                 for dcm in all_dicoms:
                     outs = process_dicom_directory(dcm)
                     for out in outs:
                         if out is not None:
-                            dcm,study_uid,series_uid,orientation = out
+                            dcm, study_uid, series_uid, orientation = out
                             update_dict(
-                                dicom_dict,study_uid,series_uid,orientation,dcm,
-                                included_ids)
+                                dicom_dict,
+                                study_uid,
+                                series_uid,
+                                orientation,
+                                dcm,
+                                included_ids,
+                            )
                     pbar.update()
             else:
                 pool = Pool(args.n_workers)
-                for outs in pool.imap(process_dicom_directory,all_dicoms):
+                for outs in pool.imap(process_dicom_directory, all_dicoms):
                     for out in outs:
                         if out is not None:
-                            dcm,study_uid,series_uid,orientation = out
+                            dcm, study_uid, series_uid, orientation = out
                             update_dict(
-                                dicom_dict,study_uid,series_uid,orientation,dcm,
-                                included_ids)
+                                dicom_dict,
+                                study_uid,
+                                series_uid,
+                                orientation,
+                                dcm,
+                                included_ids,
+                            )
                     pbar.update()
 
-    pretty_dict = json.dumps(dicom_dict,indent=2)
+    pretty_dict = json.dumps(dicom_dict, indent=2)
     Path(args.output_json).parent.mkdir(exist_ok=True)
-    with open(args.output_json,'w') as o:
-        o.write(pretty_dict+"\n")
+    with open(args.output_json, "w") as o:
+        o.write(pretty_dict + "\n")

@@ -6,31 +6,38 @@ from tqdm import tqdm
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Removes empty masks from dataset JSON")
+        description="Removes empty masks from dataset JSON"
+    )
 
     parser.add_argument(
-        "--input_json",dest="input_json",required=True,
-        help="Path to input JSON file")
+        "--input_json",
+        dest="input_json",
+        required=True,
+        help="Path to input JSON file",
+    )
     parser.add_argument(
-        "--mask_keys",dest="mask_keys",required=True,nargs='+',
+        "--mask_keys",
+        dest="mask_keys",
+        required=True,
+        nargs="+",
         help="Mask keys (entries with no mask keys or where the mask has only \
-            one value are removed).")
+            one value are removed).",
+    )
 
     args = parser.parse_args()
 
-    data_dict = json.load(open(args.input_json,'r'))
+    data_dict = json.load(open(args.input_json, "r"))
     all_keys = list(data_dict.keys())
     nc_keys = []
     for k in tqdm(all_keys):
         constant = True
         for kk in args.mask_keys:
             if kk in data_dict[k]:
-                mask = sitk.GetArrayFromImage(
-                    sitk.ReadImage(data_dict[k][kk]))
+                mask = sitk.GetArrayFromImage(sitk.ReadImage(data_dict[k][kk]))
                 if len(np.unique(mask)) > 1:
                     constant = False
         if constant == False:
             nc_keys.append(k)
-    
-    data_dict = {k:data_dict[k] for k in nc_keys}
-    print(json.dumps(data_dict,indent=2))
+
+    data_dict = {k: data_dict[k] for k in nc_keys}
+    print(json.dumps(data_dict, indent=2))

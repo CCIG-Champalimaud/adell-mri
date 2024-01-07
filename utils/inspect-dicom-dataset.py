@@ -4,18 +4,20 @@ import numpy as np
 from pydicom import dcmread
 from tqdm import tqdm
 
-def calculate_parameters(x:np.ndarray):
+
+def calculate_parameters(x: np.ndarray):
     return {
-        "min":x.min(),
+        "min": x.min(),
         "nan count": np.sum(np.isnan(x)),
         "inf count": np.sum(np.isinf(x)),
         "max": x.max(),
     }
 
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--input_path",dest="input_path")
+    parser.add_argument("--input_path", dest="input_path")
 
     args = parser.parse_args()
 
@@ -30,6 +32,6 @@ if __name__ == "__main__":
                 p = calculate_parameters(image)
 
                 if p["nan count"] > 0:
-                    print(image_path,p,"nan")
+                    print(image_path, p, "nan")
                 if p["inf count"] > 0:
-                    print(image_path,p,"inf")
+                    print(image_path, p, "inf")

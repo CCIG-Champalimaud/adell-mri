@@ -1,4 +1,3 @@
-import sys
 import json
 import re
 import argparse
@@ -11,108 +10,177 @@ from tqdm import tqdm
 
 from typing import List
 
-def value_range(x):
-    return x.min(),x.max()
 
-def mask_to_bb(img:np.ndarray)->list:
+def value_range(x: np.ndarray) -> tuple[float, float]:
+    """
+    Retrieves range for array.
+
+    Args:
+        x (np.ndarray): array.
+
+    Returns:
+        tuple[float, float]: the minimum and maximum of x.
+    """
+    return x.min(), x.max()
+
+
+def mask_to_bb(img: np.ndarray) -> tuple[list[np.array], list[int]]:
+    """
+    Converts a mask to a set of bounding boxes and their classes (one bounding
+    box for each connected component).
+
+    Args:
+        img (np.ndarray): a binary image (it will be rounded in any case).
+
+    Returns:
+        tuple[list[np.array], list[int]]: list with bounding boxes with shape
+            [[x1, x2], [y1, y2], ...] and list with classes (median value of
+            each object in the mask).
+    """
     img = np.round(img)
-    labelled_image = measure.label(img,connectivity=3)
+    labelled_image = measure.label(img, connectivity=3)
     uniq = np.unique(labelled_image)
     uniq = uniq[uniq != 0]
-    
+
     bb_vertices = []
     c = []
     for u in uniq:
         C = np.where(labelled_image == u)
         bb = np.array([value_range(c) for c in C])
-        if np.all(bb[:,1] == bb[:,0]) == False:
+        if np.all(bb[:, 1] == bb[:, 0]) == False:
             bb_vertices.append(bb)
             c.append(np.median(img[C]))
 
-    return bb_vertices,c
+    return bb_vertices, c
 
-def search_with_re(all_paths:List[str],re_pattern:str)->list:
+
+def search_with_re(all_paths: List[str], re_pattern: str) -> list[str]:
+    """
+    Filters a list if there is a match with ``re_pattern``.
+
+    Args:
+        all_paths (List[str]): list of strings.
+        re_pattern (str): pattern that will be searched.
+
+    Returns:
+        list[str]: filtered all_paths containing only elements with
+            ``re_pattern``.
+    """
+
     compiled_re_pattern = re.compile(re_pattern)
     output = all_paths
-    output = [x for x in output
-              if compiled_re_pattern.search(x) is not None]
+    output = [x for x in output if compiled_re_pattern.search(x) is not None]
     return output
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Creates JSON file with paths and bounding boxes.")
+        description="Creates JSON file with paths and bounding boxes."
+    )
     parser.add_argument(
-        '--input_path',dest="input_path",required=True,
-        help="Path to folder containing nibabel compatible files")
+        "--input_path",
+        dest="input_path",
+        required=True,
+        help="Path to folder containing nibabel compatible files",
+    )
     parser.add_argument(
-        '--mask_path',dest="mask_path",required=True,
-        help="Path to folder containing nibabel compatible masks")
+        "--mask_path",
+        dest="mask_path",
+        required=True,
+        help="Path to folder containing nibabel compatible masks",
+    )
     parser.add_argument(
-        '--mask_key',dest="mask_key",default="mask",
-        help="Custom key for the mask. Helpful if later merging json files")
+        "--mask_key",
+        dest="mask_key",
+        default="mask",
+        help="Custom key for the mask. Helpful if later merging json files",
+    )
     parser.add_argument(
-        '--class_csv_path',dest="class_csv_path",default=None,
+        "--class_csv_path",
+        dest="class_csv_path",
+        default=None,
         help="Path to CSV with classes. Assumes first column is study ID and \
-            last column is class.")
+            last column is class.",
+    )
     parser.add_argument(
-        '--patterns',dest="patterns",default=["*nii.gz"],nargs="+",
+        "--patterns",
+        dest="patterns",
+        default=["*nii.gz"],
+        nargs="+",
         help="Pattern to match for inputs (assumes each pattern corresponds to\
-            a modality).")
+            a modality).",
+    )
     parser.add_argument(
-        '--mask_pattern',dest="mask_pattern",default="*nii.gz",
-        help="Pattern to match for mask")
+        "--mask_pattern",
+        dest="mask_pattern",
+        default="*nii.gz",
+        help="Pattern to match for mask",
+    )
     parser.add_argument(
-        '--id_pattern',dest="id_pattern",default=".*",type=str,
-        help="Pattern to extract IDs from image files")
+        "--id_pattern",
+        dest="id_pattern",
+        default=".*",
+        type=str,
+        help="Pattern to extract IDs from image files",
+    )
     parser.add_argument(
-        '--output_json',dest="output_json",required=True,
-        help="Path for output JSON file")
+        "--output_json",
+        dest="output_json",
+        required=True,
+        help="Path for output JSON file",
+    )
     parser.add_argument(
-        '--strict',dest="strict",action="store_true",
-        help="Only includes images with a corresponding mask")
+        "--strict",
+        dest="strict",
+        action="store_true",
+        help="Only includes images with a corresponding mask",
+    )
     parser.add_argument(
-        '--skip_detection',dest="skip_detection",action="store_true",
-        help="Skips object detection")
-    
+        "--skip_detection",
+        dest="skip_detection",
+        action="store_true",
+        help="Skips object detection",
+    )
+
     args = parser.parse_args()
 
-    t = monai.transforms.Compose([
-        monai.transforms.LoadImaged(['image'],ensure_channel_first=True),
-        monai.transforms.Orientationd(['image'],"RAS")])
+    t = monai.transforms.Compose(
+        [
+            monai.transforms.LoadImaged(["image"], ensure_channel_first=True),
+            monai.transforms.Orientationd(["image"], "RAS"),
+        ]
+    )
 
     bb_dict = {}
-    all_paths = [
-        str(x) for x in Path(args.input_path).rglob("*")]
-    all_mask_paths = [
-        str(x) for x in Path(args.mask_path).rglob("*")]
-    all_paths = {
-        p:search_with_re(all_paths,p) for p in args.patterns}
+    all_paths = [str(x) for x in Path(args.input_path).rglob("*")]
+    all_mask_paths = [str(x) for x in Path(args.mask_path).rglob("*")]
+    all_paths = {p: search_with_re(all_paths, p) for p in args.patterns}
     class_dict_csv = {}
     if args.class_csv_path:
-        with open(args.class_csv_path,'r') as o:
+        with open(args.class_csv_path, "r") as o:
             for l in o:
-                l = l.strip().split(',')
-                identifier,cl = l[0],l[-1]
+                l = l.strip().split(",")
+                identifier, cl = l[0], l[-1]
                 class_dict_csv[identifier] = cl
-    mask_paths = search_with_re(all_mask_paths,args.mask_pattern)
+    mask_paths = search_with_re(all_mask_paths, args.mask_pattern)
     for file_path in tqdm(all_paths[args.patterns[0]]):
-        image_id = re.search(args.id_pattern,file_path).group()
+        image_id = re.search(args.id_pattern, file_path).group()
         alt_file_paths = []
         for k in args.patterns[1:]:
             paths = all_paths[k]
             for alt_path in paths:
                 if image_id in alt_path:
                     alt_file_paths.append(alt_path)
-        mask_path = [p for p in mask_paths 
-                     if image_id in p.replace(args.mask_path,"")]
+        mask_path = [
+            p for p in mask_paths if image_id in p.replace(args.mask_path, "")
+        ]
         if len(mask_path) == 0 and args.strict == True:
             continue
-        
-        bb_dict[image_id] = {
-            "image":file_path}
+
+        bb_dict[image_id] = {"image": file_path}
         if len(alt_file_paths) > 0:
-            for i,p in enumerate(alt_file_paths):
-                bb_dict[image_id]["image_"+str(i+1)] = p
+            for i, p in enumerate(alt_file_paths):
+                bb_dict[image_id]["image_" + str(i + 1)] = p
 
         if len(mask_path) > 0:
             mask_path = mask_path[0]
@@ -121,10 +189,10 @@ if __name__ == "__main__":
                 bb_dict[image_id]["boxes"] = []
                 bb_dict[image_id]["shape"] = ""
                 bb_dict[image_id]["labels"] = []
-                fdata = t({'image':mask_path})['image'][0]
+                fdata = t({"image": mask_path})["image"][0]
                 sh = np.array(fdata.shape)
                 unique_labels = []
-                for bb,c in zip(*mask_to_bb(fdata)):
+                for bb, c in zip(*mask_to_bb(fdata)):
                     c = int(c)
                     bb = [int(x) for x in bb.flatten("F")]
                     bb_dict[image_id]["boxes"].append(bb)
@@ -137,12 +205,13 @@ if __name__ == "__main__":
                 bb_dict[image_id]["image_labels"] = unique_labels
         elif image_id in class_dict_csv:
             bb_dict[image_id] = {
-                "image":file_path,
-                "image_labels":[int(class_dict_csv[image_id])]}
+                "image": file_path,
+                "image_labels": [int(class_dict_csv[image_id])],
+            }
             if len(alt_file_paths) > 0:
-                for i,p in enumerate(alt_file_paths):
-                    bb_dict[image_id]["image_"+str(i+1)] = p
+                for i, p in enumerate(alt_file_paths):
+                    bb_dict[image_id]["image_" + str(i + 1)] = p
 
-    pretty_dict = json.dumps(bb_dict,indent=2)
-    with open(args.output_json,'w') as o:
-        o.write(pretty_dict+"\n")
+    pretty_dict = json.dumps(bb_dict, indent=2)
+    with open(args.output_json, "w") as o:
+        o.write(pretty_dict + "\n")
