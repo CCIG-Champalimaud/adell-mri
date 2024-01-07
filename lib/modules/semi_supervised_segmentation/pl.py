@@ -215,6 +215,8 @@ class UNetContrastiveSemiSL(UNetSemiSL, UNetBasePL):
                 sync_dist=True,
             )
             output_loss = output_loss + self_sl_loss
+            if self.ema is not None:
+                self.ema.update(self)
 
         if class_loss is not None:
             self.log(

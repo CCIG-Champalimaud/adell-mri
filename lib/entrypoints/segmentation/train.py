@@ -651,6 +651,8 @@ def main(arguments):
                 "min_size",
             )
 
+        max_steps_optim = len(train_loader) * args.max_epochs
+
         if args.res_config_file is not None:
             if args.net_type in ["unetr", "swin"]:
                 raise NotImplementedError(
@@ -740,6 +742,7 @@ def main(arguments):
             pad_size=args.pad_size,
             resize_size=args.resize_size,
             semi_supervised=args.semi_supervised,
+            max_steps_optim=max_steps_optim,
         )
 
         if args.early_stopping is not None:

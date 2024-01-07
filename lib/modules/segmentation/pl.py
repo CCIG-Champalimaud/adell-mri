@@ -482,8 +482,12 @@ class UNetBasePL(pl.LightningModule, ABC):
 
         if self.cosine_decay == True:
             lr_schedulers = CosineAnnealingWithWarmupLR(
-                optimizer, T_max=self.n_epochs, start_decay=0, n_warmup_steps=0
+                optimizer,
+                T_max=self.n_epochs,
+                start_decay=0,
+                n_warmup_steps=0,
             )
+            lr_schedulers.last_epoch = self.current_epoch
 
             return {
                 "optimizer": optimizer,
