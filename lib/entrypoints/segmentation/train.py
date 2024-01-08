@@ -467,6 +467,7 @@ def main(arguments):
             train_val_list,
             monai.transforms.Compose(transforms_train_val),
             num_workers=args.n_workers,
+            cache_rate=args.cache_rate,
         )
         validation_dataset = monai.data.Dataset(
             val_list, monai.transforms.Compose(transforms_val)
@@ -550,6 +551,10 @@ def main(arguments):
                 sampler = PartiallyRandomSampler(
                     cl, non_keep_ratio=args.constant_ratio, seed=args.seed
                 )
+                if args.dataset_iterations_per_epoch != 1.0:
+                    sampler.set_n_samples(
+                        int(sampler.n * args.dataset_iterations_per_epoch)
+                    )
                 if args.class_weights[0] == "adaptive":
                     adaptive_weights = 1 + args.constant_ratio
         # weights to tensor
@@ -651,7 +656,7 @@ def main(arguments):
                 "min_size",
             )
 
-        max_steps_optim = len(train_loader) * args.max_epochs
+        max_steps_optim = len(iter(train_loader)) * args.max_epochs
 
         if args.res_config_file is not None:
             if args.net_type in ["unetr", "swin"]:
