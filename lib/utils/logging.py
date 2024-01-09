@@ -6,6 +6,10 @@ from typing import Any
 
 @dataclass
 class CSVLogger:
+    """
+    CSV logger class.
+    """
+
     file_path: str
     overwrite: bool = False
 

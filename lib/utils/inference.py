@@ -41,6 +41,18 @@ def get_shape(X: MultiFormatInput) -> Shape:
 
 
 def cat_array(X: List[TensorOrArray], *args, **kwargs) -> TensorOrArray:
+    """
+    Concatenates a list of arrays or tensors.
+
+    Args:
+        X (List[TensorOrArray]): List of arrays or tensors to concatenate.
+        *args: Additional positional arguments to pass to concatenate.
+        **kwargs: Additional keyword arguments to pass to concatenate.
+
+    Returns:
+        TensorOrArray: Concatenated array or tensor.
+    """
+
     if isinstance(X[0], np.ndarray):
         return np.concatenate(X, *args, **kwargs)
     elif isinstance(X[0], torch.Tensor):
@@ -48,6 +60,18 @@ def cat_array(X: List[TensorOrArray], *args, **kwargs) -> TensorOrArray:
 
 
 def stack_array(X: List[TensorOrArray], *args, **kwargs) -> TensorOrArray:
+    """
+    Stacks a list of arrays or tensors.
+
+    Args:
+        X (List[TensorOrArray]): List of arrays or tensors to stack.
+        *args: Additional positional arguments to pass to stack.
+        **kwargs: Additional keyword arguments to pass to stack.
+
+    Returns:
+        TensorOrArray: Stacked array or tensor.
+    """
+
     if isinstance(X[0], np.ndarray):
         return np.stack(X, *args, **kwargs)
     elif isinstance(X[0], torch.Tensor):
@@ -57,6 +81,21 @@ def stack_array(X: List[TensorOrArray], *args, **kwargs) -> TensorOrArray:
 def multi_format_cat(
     X: List[MultiFormatInput], *args, **kwargs
 ) -> MultiFormatInput:
+    """
+    Concatenates a list of multi-format inputs (np.ndarray, torch.Tensor, dict,
+    tuple, list).
+
+    Supports concatenation for each input format. Dicts are concatenated by
+    key, tuples/lists are concatenated by index.
+
+    Args:
+        X: List of multi-format inputs to concatenate.
+        *args: Additional args to pass to cat_array or concatenate.
+        **kwargs: Additional kwargs to pass to cat_array or concatenate.
+
+    Returns:
+        Concatenated multi-format input matching X's format.
+    """
     if isinstance(X[0], (np.ndarray, torch.Tensor)):
         return cat_array(X, *args, **kwargs)
     elif isinstance(X[0], dict):
@@ -80,6 +119,21 @@ def multi_format_cat(
 def multi_format_stack(
     X: List[MultiFormatInput], *args, **kwargs
 ) -> MultiFormatInput:
+    """
+    Stacks a list of multi-format inputs (np.ndarray, torch.Tensor, dict,
+    tuple, list).
+
+    Supports stacking for each input format. Dicts are stacked by key,
+    tuples/lists are concatenated by index.
+
+    Args:
+        X: List of multi-format inputs to stack.
+        *args: Additional args to pass to stack_array or stack.
+        **kwargs: Additional kwargs to pass to stack_array or stack.
+
+    Returns:
+        Stacked multi-format input matching X's format.
+    """
     if isinstance(X[0], (np.ndarray, torch.Tensor)):
         return stack_array(X, *args, **kwargs)
     elif isinstance(X[0], dict):
@@ -103,6 +157,26 @@ def multi_format_stack(
 def multi_format_stack_or_cat(
     X: List[MultiFormatInput], ndim: int, *args, **kwargs
 ) -> MultiFormatInput:
+    """
+    Concatenates/stacks a list of multi-format inputs (np.ndarray,
+    torch.Tensor, dict, tuple, list).
+
+    Supports concatenation/stacking for each input format. Dicts are
+    concatenated/stacked by key, tuples/lists are concatenated by index.
+
+    Concatenation is performed when the shape of the tensor in the nested
+    structure is equal to ndim - 2; stacking happens when this is equal to
+    ndim - 1.
+
+    Args:
+        X: List of multi-format inputs to concatenate/stack.
+        *args: Additional args to pass to multi_format_cat/multi_format_stack.
+        **kwargs: Additional kwargs to pass to
+            multi_format_cat/multi_format_stack.
+
+    Returns:
+        Stacked/concatenated multi-format input matching X's format.
+    """
     sh = get_shape(X[0])
     if len(sh) == ndim + 2:
         return multi_format_cat(X, *args, **kwargs)
@@ -111,12 +185,27 @@ def multi_format_stack_or_cat(
 
 
 class TensorListReduction:
+    """
+    Reduces a list of tensors to a single tensor using the given strategy.
+    Applies optional pre- and post-processing functions. Default strategy
+    is to take the mean.
+    """
+
     def __init__(
         self,
         preproc_fn: callable = None,
         postproc_fn: callable = None,
         strategy: str = "mean",
     ):
+        """
+        Args:
+            preproc_fn (callable, optional): preprocessing function (applied to
+                all elements of input when called). Defaults to None.
+            postproc_fn (callable, optional): postprocessing function (applied
+                to reduced output). Defaults to None.
+            strategy (str, optional): strategy for reduction. Defaults to
+                "mean" (only has mean available).
+        """
         assert strategy in ["mean"]
         self.preproc_fn = preproc_fn
         self.postproc_fn = postproc_fn

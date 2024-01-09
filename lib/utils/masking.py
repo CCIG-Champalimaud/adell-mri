@@ -8,6 +8,13 @@ Coords = Union[Tuple[int, int, int, int], Tuple[int, int, int, int, int, int]]
 
 
 class TransformerMasker(torch.nn.Module):
+    """
+    Masks a transformer-style tensor ([batch, n_tokens, embedding_size])
+    such that the output for each token is conditionally replaced by 0
+    as long as it belongs to a group of spatially-related patches. This is
+    performed randomly, and useful for masked auto-encoders.
+    """
+
     def __init__(
         self,
         image_dimensions: List[int],
@@ -17,6 +24,16 @@ class TransformerMasker(torch.nn.Module):
         n_patches: int = 4,
         seed: int = 42,
     ):
+        """
+        Args:
+            image_dimensions (List[int]): Image dimensions.
+            min_patch_size (List[int]): Minimum size of each patch side.
+            max_patch_size (List[int]): Maximum size of each patch side.
+            n_features (int, optional): Number of features. Defaults to None.
+            n_patches (int, optional): Number of patches to sample. Defaults to
+                4.
+            seed (int, optional): Random seed. Defaults to 42.
+        """
         super().__init__()
         self.image_dimensions = image_dimensions
         self.min_patch_size = min_patch_size

@@ -10,7 +10,22 @@ def anchors_from_nested_list(
     bounding_box_key: str,
     shape_key: str,
     iou_threshold: float = 0.5,
-):
+) -> np.ndarray:
+    """
+    Generate anchors from a nested list of bounding boxes.
+
+    Args:
+        nested_list (List[Dict[str, TensorOrNDarray]]): neste list of
+            dictionaries with dictionaries where one of the key corresponds to
+            bounding boxes.
+        bounding_box_key (str): key for bounding boxes.
+        shape_key (str): key for shape.
+        iou_threshold (float, optional): key for IoU threshold. Defaults to 0.5.
+
+    Returns:
+        np.ndarray: anchors obtained from clustering bounding box sizes and IoU
+            values.
+    """
     all_bb = []
     for i, x in enumerate(nested_list):
         if bounding_box_key in x and shape_key in x:

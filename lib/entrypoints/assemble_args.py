@@ -289,7 +289,6 @@ argument_factory = {
             https://docs.wandb.ai/ref/python/init for more details).",
     ),
     "log_model": dict(
-        type=str,
         default=False,
         action="store_true",
         help="Stores models with loggers as artefacts",

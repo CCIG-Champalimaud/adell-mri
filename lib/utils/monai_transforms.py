@@ -67,12 +67,31 @@ def normalize_along_slice(
 
 
 def convex_hull_iter(x: np.ndarray):
+    """
+    Iterates through the last dimension of the input array `x`, replacing
+    each slice with its convex hull using the `convex_hull_image` function.
+
+    Args:
+        x (np.ndarray): Input array to compute convex hulls over.
+
+    Returns:
+        np.ndarray: Array with the same shape as `x`, with the last dimension
+        replaced with convex hulls.
+    """
     for i in range(x.shape[-1]):
         x[..., i] = convex_hull_image(x[..., i])
     return x
 
 
 class LoadIndividualDICOM(monai.transforms.Transform):
+    """
+    LoadIndividualDICOM reads a path to a DICOM file, converts it to an array
+    using pydicom, and reshapes it to have a batch dimension.
+
+    This is a thin wrapper around pydicom's dcmread function to load individual
+    DICOM files and reshape them to NCHW format for batch processing.
+    """
+
     def __init__(self):
         pass
 
@@ -86,6 +105,16 @@ class LoadIndividualDICOM(monai.transforms.Transform):
 
 
 class LoadIndividualDICOMd(monai.transforms.MapTransform):
+    """LoadIndividualDICOMd applies LoadIndividualDICOM transform to multiple keys.
+
+    LoadIndividualDICOMd takes a list of keys as input. For each key, it applies the
+    LoadIndividualDICOM transform to the corresponding value in the input dictionary.
+
+    Args:
+        keys (List[str]): List of keys to apply transform to.
+
+    """
+
     def __init__(self, keys: List[str]):
         self.keys = keys
         self.tr = LoadIndividualDICOM()
@@ -927,7 +956,21 @@ class RandomAffined(monai.transforms.RandomizableTransform):
 
 class LabelOperatord(monai.transforms.Transform):
     """
-    Label operator
+    Label operator that merges labels if necessary.
+
+    It takes as input a dictionary `data` containing a key specified by
+    `keys` pointing to a segmentation mask. It converts the labels in this
+    mask into a different representation specified by `mode`.
+
+    The supported `mode` values are:
+
+    - `'cat'` (default): Convert labels into categorical labels based on
+      `possible_labels`.
+    - `'binary'`: Convert labels into a binary mask based on
+      `positive_labels`.
+
+    The transformed labels are written into `data` with key `out_key`,
+    which defaults to `key` if not specified in `output_keys`.
     """
 
     def __init__(
@@ -939,6 +982,16 @@ class LabelOperatord(monai.transforms.Transform):
         label_groups: List[List[int]] = None,
         output_keys: Dict[str, str] = {},
     ):
+        """
+        Args:
+            keys (str): key for label
+            possible_labels (List[int]): list of possible labels.
+            mode (str, optional): sets the label merging mode between "cat" and
+                "binary". Defaults to "cat".
+            positive_labels (List[int], optional): _description_. Defaults to [1].
+            label_groups (List[List[int]], optional): _description_. Defaults to None.
+            output_keys (Dict[str, str], optional): _description_. Defaults to {}.
+        """
         self.keys = keys
         self.possible_labels = [str(x) for x in possible_labels]
         self.mode = mode

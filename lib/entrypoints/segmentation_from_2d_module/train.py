@@ -567,10 +567,10 @@ def main(arguments):
             callbacks.append(early_stopping)
 
         logger = get_logger(
-            args.summary_name,
-            args.summary_dir,
-            args.project_name,
-            args.resume,
+            summary_name=args.summary_name,
+            summary_dir=args.summary_dir,
+            project_name=args.project_name,
+            resume=args.resume,
             log_model=args.log_model,
             logger_type=args.logger_type,
             tracking_uri=args.tracking_uri,
