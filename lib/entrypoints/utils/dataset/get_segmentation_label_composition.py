@@ -5,11 +5,11 @@ import numpy as np
 from glob import glob
 from tqdm import tqdm
 
-desc = """
-Counts which classes are present in a folder containing segmentation maps.
-"""
+desc = "Counts which classes are present in a folder containing segmentation\
+    maps."
 
-if __name__ == "__main__":
+
+def main(arguments):
     parser = argparse.ArgumentParser(description=desc)
 
     parser.add_argument(
@@ -27,7 +27,7 @@ if __name__ == "__main__":
         help="Pattern to match masks",
     )
 
-    args = parser.parse_args()
+    args = parser.parse_args(arguments)
 
     total_voxels = {}
     for path in tqdm(glob(os.path.join(args.input_path, args.pattern))):

@@ -1,12 +1,12 @@
 import argparse
 import numpy as np
-from scipy.spatial.distance import pdist
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Calculates the minimum distance between bounding \
+desc = "Calculates the minimum distance between bounding \
             boxes in the same image."
-    )
+
+
+def main(arguments):
+    parser = argparse.ArgumentParser(description=desc)
 
     parser.add_argument(
         "--input_path",
@@ -29,7 +29,7 @@ if __name__ == "__main__":
         type=int,
         help="Minimum number of input pixels per output pixel",
     )
-    args = parser.parse_args()
+    args = parser.parse_args(arguments)
 
     all_bb = {}
     all_shapes = {}

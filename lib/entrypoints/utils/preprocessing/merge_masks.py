@@ -6,30 +6,12 @@ import numpy as np
 from glob import glob
 from tqdm import tqdm
 from pathlib import Path
+from ....utils.sitk_utils import resample_image_to_target
 
 from typing import List
 
-desc = """
-Merges two masks keeping pixels which are non-zero in either mask.
-"""
-
-
-def resample_image_to_target(
-    moving: sitk.Image, target: sitk.Image
-) -> sitk.Image:
-    interpolation = sitk.sitkNearestNeighbor
-    output = sitk.Resample(
-        moving,
-        target.GetSize(),
-        sitk.Transform(),
-        interpolation,
-        target.GetOrigin(),
-        target.GetSpacing(),
-        target.GetDirection(),
-        0,
-        moving.GetPixelID(),
-    )
-    return output
+desc = "Merges two masks keeping pixels which are non-zero in either mask (like\
+    an OR operator)."
 
 
 def iou(a: np.ndarray, b: np.ndarray) -> float:
@@ -63,7 +45,7 @@ def merge_masks(path_list: List[str], argmax: bool) -> sitk.Image:
     return image_out
 
 
-if __name__ == "__main__":
+def main(arguments):
     parser = argparse.ArgumentParser(description=desc)
 
     parser.add_argument(
@@ -109,7 +91,7 @@ if __name__ == "__main__":
         help="Stores the images in argmax format.",
     )
 
-    args = parser.parse_args()
+    args = parser.parse_args(arguments)
 
     os.makedirs(args.output_path, exist_ok=True)
 

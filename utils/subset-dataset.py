@@ -11,21 +11,16 @@ from skimage.morphology import remove_small_holes, remove_small_objects
 from scipy import spatial
 
 
-def remove_objects(mask):
-    """Removes all objects from a binary mask except
-    the largest one. (Assuming the largest object has
-    the highest probability of being the correct
+def remove_objects(mask: sitk.Image) -> sitk.Image:
+    """Removes all objects from a binary mask except the largest one. (Assuming
+    the largest object has the highest probability of being the correct
     segmentation)
 
-    Parameters
-    ----------
-    mask : sitk object
-        sitk binary mask.
+    Arguments:
+        mask (sitk.Image): mask in SITK format.
 
-    Returns
-    -------
-    sitk image
-        sitk mask with only the largest object.
+    Returns:
+        sitk.Image: mask containing only the largest object.
     """
     arr = sitk.GetArrayFromImage(mask)
     arr = arr.astype(dtype=bool)

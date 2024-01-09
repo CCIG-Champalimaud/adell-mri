@@ -6,6 +6,8 @@ SimpleITK to do all the heavy lifting.
 import argparse
 import SimpleITK as sitk
 
+desc = "Correct the bias field in MRI scans."
+
 
 def correct_bias_field(image, n_fitting_levels, n_iter, shrink_factor=1):
     image_ = image
@@ -29,10 +31,8 @@ def correct_bias_field(image, n_fitting_levels, n_iter, shrink_factor=1):
     return corrected_input_image
 
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Correct the bias field in MRI scans."
-    )
+def main(arguments):
+    parser = argparse.ArgumentParser(description=desc)
     parser.add_argument(
         "--input_path",
         dest="input_path",
@@ -64,9 +64,9 @@ if __name__ == "__main__":
         dest="shrink_factor",
         type=int,
         default=1,
-        help="shrink factor",
+        help="shrink factor for bias field correction",
     )
-    args = parser.parse_args()
+    args = parser.parse_args(arguments)
 
     input_image = sitk.ReadImage(args.input_path, sitk.sitkFloat32)
     corrected_image = correct_bias_field(

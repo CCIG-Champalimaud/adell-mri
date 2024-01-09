@@ -2,12 +2,11 @@ import argparse
 import json
 import pandas
 
-desc = """
-Converts a CSV into a JSON file.
-"""
+desc = "Converts a CSV into a hierarchical JSON file."
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
+
+def main(arguments):
+    parser = argparse.ArgumentParser(description=desc)
 
     parser.add_argument(
         "--path", dest="path", help="Path to CSV", required=True
@@ -27,11 +26,10 @@ if __name__ == "__main__":
         required=True,
     )
 
-    args = parser.parse_args()
+    args = parser.parse_args(arguments)
 
     data = pandas.read_csv(args.path)
     data_ids = data[args.id_columns].astype(str)
-    print(data.columns)
     data_features = data[args.feature_columns]
     output = {}
 

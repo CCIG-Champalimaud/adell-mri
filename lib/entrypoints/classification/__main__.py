@@ -1,6 +1,6 @@
 import sys
 
-supported_modes = ["train", "test", "predict"]
+supported_modes = ["train", "test", "predict", "model_to_torchscript"]
 
 
 def main(arguments):
@@ -19,6 +19,11 @@ def main(arguments):
         main(arguments[1:])
     elif arguments[0] == "predict":
         from .predict import main
+
+        main(arguments[1:])
+
+    elif arguments[0] == "model_to_torchscript":
+        from .model_to_torchscript import main
 
         main(arguments[1:])
     else:

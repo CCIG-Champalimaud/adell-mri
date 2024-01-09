@@ -7,14 +7,13 @@ import numpy as np
 from glob import glob
 from tqdm import tqdm
 
-desc = """
-Script with very specific utility - given a set of MRI sequences and a set of
-masks, determine which sequence is the most likely to have been used as a 
-template for the mask. Assumes that the size/spacing of the mask will be 
-similar to that of the input.
-"""
+desc = "Script with very specific utility - given a set of MRI sequences and a \
+    set of masks, determine which sequence is the most likely to have been used \
+    as a  template for the mask. Assumes that the size/spacing of the mask \
+    will be  similar to that of the input."
 
-if __name__ == "__main__":
+
+def main(arguments):
     parser = argparse.ArgumentParser(description=desc)
 
     parser.add_argument(
@@ -46,7 +45,7 @@ if __name__ == "__main__":
         help="Pattern to folder containing labels",
     )
 
-    args = parser.parse_args()
+    args = parser.parse_args(arguments)
 
     path_dictionary = {}
     all_sequences = []

@@ -12,13 +12,12 @@ DICOMDictionary = dict[
     str, dict[str, dict[str, str | tuple[float, float, float]]]
 ]
 
+desc = "Creates JSON file with DICOM paths."
+
 
 def process_dicom(dcm: str) -> DICOMInformation:
+    # dicom_dict defined outside of function scope
     study_uid, series_uid, dcm_root = str(dcm).split(os.sep)[-3:]
-    if study_uid not in dicom_dict:
-        dicom_dict[study_uid] = {}
-    if series_uid not in dicom_dict[study_uid]:
-        dicom_dict[study_uid][series_uid] = []
     dcm = str(dcm)
     try:
         dcm_file = dcmread(dcm)
@@ -73,10 +72,8 @@ def update_dict(
     return d
 
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Creates JSON file with DICOM paths."
-    )
+def main(arguments):
+    parser = argparse.ArgumentParser(description=desc)
     parser.add_argument(
         "--input_path",
         dest="input_path",
@@ -111,7 +108,7 @@ if __name__ == "__main__":
         help="Number of parallel processes for Pool",
     )
 
-    args = parser.parse_args()
+    args = parser.parse_args(arguments)
 
     path = Path(args.input_path)
 

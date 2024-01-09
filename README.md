@@ -217,5 +217,5 @@ I have included a few unit tests in `testing`. In them, we confirm that networks
 
 ### To-do
 
-* Change dataset generation to entrypoint
+* <del>Change dataset generation to entrypoint</del>
 * Create minimal installer

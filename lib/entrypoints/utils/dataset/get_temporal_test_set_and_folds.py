@@ -1,61 +1,14 @@
 import argparse
 import json
 import numpy as np
-import os
 from sklearn.model_selection import StratifiedKFold, KFold, train_test_split
 
-from typing import List, Dict
+desc = "Splits JSON dataset entries into prospective test set (according to a \
+    date key) and folds"
 
 
-def parse_ids(id_list: List[str], output_format: str = "nested_list"):
-    def parse_id_file(id_file: str):
-        if ":" in id_file:
-            id_file, id_set = id_file.split(":")
-            id_set = id_set.split(",")
-        else:
-            id_set = None
-        term = id_file.split(".")[-1]
-        if term == "csv" or term == "folds":
-            with open(id_file) as o:
-                out = [x.strip().split(",") for x in o.readlines()]
-            out = {x[0]: x[1:] for x in out}
-        elif term == "json":
-            with open(id_file) as o:
-                out = json.load(o)
-        else:
-            with open(id_file) as o:
-                out = {"id_set": [x.strip() for x in o.readlines()]}
-        if id_set is None:
-            id_set = list(out.keys())
-        return {k: out[k] for k in id_set}
-
-    def merge_dictionary(nested_list: Dict[str, list]):
-        output_list = []
-        for list_tmp in nested_list.values():
-            output_list.extend(list_tmp)
-        return output_list
-
-    output = {}
-    for element in id_list:
-        if os.path.exists(element.split(":")[0]) is True:
-            tmp = parse_id_file(element)
-            for k in tmp:
-                if k not in output:
-                    output[k] = []
-                output[k].extend(tmp[k])
-        else:
-            if "cli" not in output:
-                output["cli"] = []
-            output["cli"].extend([element.split(",")])
-    if output_format == "list":
-        output = merge_dictionary(output)
-    else:
-        output = [output[k] for k in output]
-    return output
-
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
+def main(arguments):
+    parser = argparse.ArgumentParser(description=desc)
 
     # data
     parser.add_argument(
@@ -98,25 +51,11 @@ if __name__ == "__main__":
     parser.add_argument(
         "--seed", dest="seed", help="random seed", default=42, type=int
     )
-    parser.add_argument(
-        "--excluded_ids",
-        dest="excluded_ids",
-        nargs="+",
-        help="ids that will be excluded",
-        default=None,
-        type=str,
-    )
 
-    args = parser.parse_args()
+    args = parser.parse_args(arguments)
 
-    if args.excluded_ids is not None:
-        excluded_ids = parse_ids(args.excluded_ids, "list")
-    else:
-        excluded_ids = []
-
-    strata = []
     data_dict = json.load(open(args.dataset_json, "r"))
-    data_dict = {k: data_dict[k] for k in data_dict if k not in excluded_ids}
+
     if args.all_keys is not None:
         new_dict = {}
         for k in data_dict:
@@ -127,6 +66,10 @@ if __name__ == "__main__":
             if check == True:
                 new_dict[k] = data_dict[k]
         data_dict = new_dict
+
+    data_dict = {
+        k: data_dict[k] for k in data_dict if "study_date" in data_dict[k]
+    }
 
     if args.stratify is not None:
         for s in args.stratify:
@@ -143,18 +86,14 @@ if __name__ == "__main__":
     else:
         strata = None
 
+    data_dict = {
+        k: data_dict[k]
+        for k in sorted(data_dict, key=lambda k: data_dict[k]["study_date"])
+    }
     all_pids = [k for k in data_dict]
-    if args.fraction_test > 0.0:
-        all_train_pids, test_pids = train_test_split(
-            range(len(all_pids)),
-            test_size=args.fraction_test,
-            random_state=args.seed,
-            shuffle=True,
-            stratify=strata,
-        )
-    else:
-        all_train_pids = range(len(all_pids))
-        test_pids = []
+    n = int((1 - args.fraction_test) * len(all_pids))
+    all_idxs = [i for i in range(len(all_pids))]
+    all_train_pids, test_pids = all_idxs[:n], all_idxs[n:]
 
     if args.n_folds > 1:
         if strata is not None:

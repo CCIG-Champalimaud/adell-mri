@@ -3,10 +3,11 @@ import json
 import numpy as np
 from tqdm import tqdm
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Creates individual entries from a hierarchical JSON"
-    )
+desc = "Creates individual entries from a hierarchical JSON"
+
+
+def main(arguments):
+    parser = argparse.ArgumentParser(description=desc)
 
     parser.add_argument(
         "--input_json",
@@ -22,7 +23,7 @@ if __name__ == "__main__":
         help="Keys that are to be kept as individual entries.",
     )
 
-    args = parser.parse_args()
+    args = parser.parse_args(arguments)
 
     data_dict = json.load(open(args.input_json, "r"))
     all_keys = list(data_dict.keys())

@@ -5,10 +5,11 @@ import numpy as np
 import monai
 from pathlib import Path
 from skimage import measure
-from glob import glob
 from tqdm import tqdm
 
 from typing import List
+
+desc = "Creates JSON file with paths and bounding boxes."
 
 
 def value_range(x: np.ndarray) -> tuple[float, float]:
@@ -73,10 +74,8 @@ def search_with_re(all_paths: List[str], re_pattern: str) -> list[str]:
     return output
 
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Creates JSON file with paths and bounding boxes."
-    )
+def main(arguments):
+    parser = argparse.ArgumentParser(description=desc)
     parser.add_argument(
         "--input_path",
         dest="input_path",
@@ -136,13 +135,13 @@ if __name__ == "__main__":
         help="Only includes images with a corresponding mask",
     )
     parser.add_argument(
-        "--skip_detection",
+        "--skip_bb",
         dest="skip_detection",
         action="store_true",
-        help="Skips object detection",
+        help="Skips bounding box calculation from masks",
     )
 
-    args = parser.parse_args()
+    args = parser.parse_args(arguments)
 
     t = monai.transforms.Compose(
         [

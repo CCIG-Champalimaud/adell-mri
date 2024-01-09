@@ -107,3 +107,41 @@ def resample_image(
     sitk_image = resample.Execute(sitk_image)
 
     return sitk_image
+
+
+def resample_image_to_target(
+    moving: sitk.Image, target: sitk.Image
+) -> sitk.Image:
+    interpolation = sitk.sitkNearestNeighbor
+    output = sitk.Resample(
+        moving,
+        target.GetSize(),
+        sitk.Transform(),
+        interpolation,
+        target.GetOrigin(),
+        target.GetSpacing(),
+        target.GetDirection(),
+        0,
+        moving.GetPixelID(),
+    )
+    return output
+
+
+def crop_image(sitk_image: sitk.Image, output_size: list[int]):
+    output_size = np.array(output_size)
+    curr_size = np.array(sitk_image.GetSize())
+    # pad in case image is too small
+    if any(curr_size < output_size):
+        total_padding = np.maximum((0, 0, 0), output_size - curr_size)
+        lower = np.int16(total_padding // 2)
+        upper = np.int16(total_padding - lower)
+        sitk_image = sitk.ConstantPad(
+            sitk_image, lower.tolist(), upper.tolist(), 0.0
+        )
+    curr_size = np.array(sitk_image.GetSize())
+    total_crop = np.maximum((0, 0, 0), curr_size - output_size)
+    lower = np.int16(total_crop // 2)
+    upper = np.int16((total_crop - lower))
+
+    sitk_image = sitk.Crop(sitk_image, lower.tolist(), upper.tolist())
+    return sitk_image

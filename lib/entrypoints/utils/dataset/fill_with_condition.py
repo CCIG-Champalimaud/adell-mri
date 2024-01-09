@@ -4,16 +4,32 @@ import json
 import SimpleITK as sitk
 from tqdm import tqdm
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
+desc = "Creates empty masks for a given image key if a condition is fulfilled"
 
-    parser.add_argument("--json_path")
-    parser.add_argument("--output_json_path")
-    parser.add_argument("--source_key")
-    parser.add_argument("--output_key")
-    parser.add_argument("--condition")
 
-    args = parser.parse_args()
+def main(arguments):
+    parser = argparse.ArgumentParser(description=desc)
+
+    parser.add_argument(
+        "--json_path", required=True, help="Path to dataset JSON"
+    )
+    parser.add_argument(
+        "--output_json_path", required=True, help="Path to output dataset JSON"
+    )
+    parser.add_argument(
+        "--source_key", required=True, help="Key for the source image"
+    )
+    parser.add_argument(
+        "--output_key", required=True, help="key for the output image"
+    )
+    parser.add_argument(
+        "--condition",
+        required=True,
+        help="Condition used to create empty images. Only supports equality \
+            (i.e. key==value)",
+    )
+
+    args = parser.parse_args(arguments)
 
     df = json.load(open(args.json_path))
 

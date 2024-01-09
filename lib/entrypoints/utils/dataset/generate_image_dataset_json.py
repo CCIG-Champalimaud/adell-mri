@@ -8,15 +8,13 @@ from tqdm import tqdm
 ImageInformation = tuple[str, str, str]
 ImageDictionary = dict[str, dict[str, dict[str, str]]]
 
+desc = "Creates JSON file with image paths."
+
 
 def process_image(path: str) -> ImageInformation:
     image_name = str(path).split(os.sep)[-1]
     study_uid = image_name
     series_uid = image_name
-    if study_uid not in dicom_dict:
-        dicom_dict[study_uid] = {}
-    if series_uid not in dicom_dict[study_uid]:
-        dicom_dict[study_uid][series_uid] = []
     path = str(path)
     return path, study_uid, series_uid
 
@@ -32,10 +30,8 @@ def update_dict(
     return d
 
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Creates JSON file with DICOM paths."
-    )
+def main(arguments):
+    parser = argparse.ArgumentParser(description=desc)
     parser.add_argument(
         "--input_path",
         dest="input_path",
@@ -64,11 +60,11 @@ if __name__ == "__main__":
         help="Number of parallel processes for Pool",
     )
 
-    args = parser.parse_args()
+    args = parser.parse_args(arguments)
 
     path = Path(args.input_path)
 
-    dicom_dict = {}
+    image_dict = {}
     for pattern in args.patterns:
         all_dicoms = list(path.rglob(pattern))
         with tqdm(all_dicoms) as pbar:
@@ -77,17 +73,17 @@ if __name__ == "__main__":
                     out = process_image(dcm)
                     if out is not None:
                         dcm, study_uid, series_uid = out
-                        update_dict(dicom_dict, study_uid, series_uid, dcm)
+                        update_dict(image_dict, study_uid, series_uid, dcm)
                     pbar.update()
             else:
                 pool = Pool(args.n_workers)
                 for out in pool.imap(process_image, all_dicoms):
                     if out is not None:
                         dcm, study_uid, series_uid = out
-                        update_dict(dicom_dict, study_uid, series_uid, dcm)
+                        update_dict(image_dict, study_uid, series_uid, dcm)
                     pbar.update()
 
-    pretty_dict = json.dumps(dicom_dict, indent=2)
+    pretty_dict = json.dumps(image_dict, indent=2)
     Path(args.output_json).parent.mkdir(exist_ok=True)
     with open(args.output_json, "w") as o:
         o.write(pretty_dict + "\n")

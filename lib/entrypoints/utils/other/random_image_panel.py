@@ -6,6 +6,8 @@ from tqdm import tqdm
 from skimage.transform import resize
 from skimage.io import imsave
 
+desc = "Generates a panel of random DICOM images in a folder"
+
 
 def normalize(x: np.ndarray):
     return (x - x.min()) / (x.max() - x.min())
@@ -20,15 +22,37 @@ def crop_to_square(x: np.ndarray):
     return x
 
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
+def main(arguments):
+    parser = argparse.ArgumentParser(description=desc)
 
-    parser.add_argument("--path", required=True)
-    parser.add_argument("--structure", nargs=2, type=int, required=True)
-    parser.add_argument("--size", nargs=2, type=int, required=True)
-    parser.add_argument("--output_path", type=str, nargs="+", required=True)
+    parser.add_argument(
+        "--path",
+        required=True,
+        help="Path to folder containing a DICOM dataset",
+    )
+    parser.add_argument(
+        "--structure",
+        nargs=2,
+        type=int,
+        required=True,
+        help="Number of images per row and column",
+    )
+    parser.add_argument(
+        "--size",
+        nargs=2,
+        type=int,
+        required=True,
+        help="Size of each DICOM image in panel",
+    )
+    parser.add_argument(
+        "--output_path",
+        type=str,
+        nargs="+",
+        required=True,
+        help="Output path for the generated panel",
+    )
 
-    args = parser.parse_args()
+    args = parser.parse_args(arguments)
     h, w = args.structure
     n = h * w
 

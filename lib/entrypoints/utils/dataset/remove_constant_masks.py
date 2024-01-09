@@ -4,10 +4,11 @@ import numpy as np
 import SimpleITK as sitk
 from tqdm import tqdm
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Removes empty masks from dataset JSON"
-    )
+desc = "Removes empty masks from dataset JSON"
+
+
+def main(arguments):
+    parser = argparse.ArgumentParser(description=desc)
 
     parser.add_argument(
         "--input_json",
@@ -24,7 +25,7 @@ if __name__ == "__main__":
             one value are removed).",
     )
 
-    args = parser.parse_args()
+    args = parser.parse_args(arguments)
 
     data_dict = json.load(open(args.input_json, "r"))
     all_keys = list(data_dict.keys())

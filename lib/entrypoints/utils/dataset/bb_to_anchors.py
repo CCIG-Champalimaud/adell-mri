@@ -4,11 +4,11 @@ import numpy as np
 from sklearn.cluster import KMeans
 from tqdm import tqdm
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Calculates the minimum distance between bounding \
-            boxes in the same image."
-    )
+desc = "Calculates anchors from a dataset JSON."
+
+
+def main(arguments):
+    parser = argparse.ArgumentParser(description=desc)
 
     parser.add_argument(
         "--input_path",
@@ -34,7 +34,7 @@ if __name__ == "__main__":
         type=float,
         help="IoU threshold for considering an object to be detected",
     )
-    args = parser.parse_args()
+    args = parser.parse_args(arguments)
 
     all_bb = []
     all_sh = []

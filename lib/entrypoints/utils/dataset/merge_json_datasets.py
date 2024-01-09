@@ -2,8 +2,11 @@ import json
 import argparse
 import re
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
+desc = "Merges two JSON datasets. Solves conflicts using suffixes"
+
+
+def main(arguments):
+    parser = argparse.ArgumentParser(description=desc)
 
     parser.add_argument(
         "--input_paths",
@@ -37,7 +40,7 @@ if __name__ == "__main__":
             records (suffixes/indices will be added).",
     )
 
-    args = parser.parse_args()
+    args = parser.parse_args(arguments)
 
     dict_list = [json.load(open(x)) for x in args.input_paths]
     if args.suffixes is None:

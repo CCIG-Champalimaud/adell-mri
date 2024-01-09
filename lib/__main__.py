@@ -10,6 +10,7 @@ supported_modes = [
     "segmentation_from_2d_module",
     "ssl",
     "detection",
+    "utils",
 ]
 
 
@@ -64,6 +65,12 @@ def main():
     # detection modes
     elif arguments[0] == "detection":
         from .entrypoints.detection.__main__ import main
+
+        main(arguments[1:])
+
+    # utils modes
+    elif arguments[0] == "utils":
+        from .entrypoints.utils.__main__ import main
 
         main(arguments[1:])
 

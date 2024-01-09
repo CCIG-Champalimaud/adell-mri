@@ -1,31 +1,14 @@
 import argparse
 import os
-import nibabel as nib
 import SimpleITK as sitk
 import re
 import numpy as np
 from glob import glob
 from tqdm import tqdm
+from ....utils.sitk_utils import resample_image_to_target
 
-desc = """
-Counts which classes are present in a folder containing segmentation maps.
-"""
-
-
-def resample_image_to_target(moving, target):
-    interpolation = sitk.sitkNearestNeighbor
-    output = sitk.Resample(
-        moving,
-        target.GetSize(),
-        sitk.Transform(),
-        interpolation,
-        target.GetOrigin(),
-        target.GetSpacing(),
-        target.GetDirection(),
-        0,
-        moving.GetPixelID(),
-    )
-    return output
+desc = "Calculates IoU of masks in two separate folders corresponding to the \
+    same strcture and with the same identifier."
 
 
 def iou(a, b):
@@ -43,7 +26,7 @@ def iou(a, b):
     return np.mean(result_list)
 
 
-if __name__ == "__main__":
+def main(arguments):
     parser = argparse.ArgumentParser(description=desc)
 
     parser.add_argument(
@@ -73,7 +56,7 @@ if __name__ == "__main__":
         "--binarize", dest="binarize", action="store_true", default=False
     )
 
-    args = parser.parse_args()
+    args = parser.parse_args(arguments)
 
     path_dict = {}
     for input_path, pattern in zip(args.input_paths, args.patterns):
