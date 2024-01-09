@@ -523,15 +523,15 @@ def get_logger(
         Logger:
     """
     logger = None
-    if fold is not None:
-        run_name = run_name + f"_fold{fold}"
     if (summary_name is not None) and (project_name is not None):
+        run_name = summary_name.replace(":", "_")
+        if fold is not None:
+            run_name = run_name + f"_fold{fold}"
         if logger_type == "wandb":
             wandb.finish()
             wandb_resume = resume
             if wandb_resume == "none":
                 wandb_resume = None
-            run_name = summary_name.replace(":", "_")
             logger = WandbLogger(
                 save_dir=summary_dir,
                 project=project_name,
