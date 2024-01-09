@@ -154,13 +154,13 @@ class Diffusion:
         """
         Checks argument types and conditions. Self explanatory.
         """
-        if isinstance(self.noise_steps, int) == False:
+        if isinstance(self.noise_steps, int) is False:
             raise TypeError("noise_steps must be int")
-        if isinstance(self.beta_start, float) == False:
+        if isinstance(self.beta_start, float) is False:
             raise TypeError("beta_start must be float")
-        if isinstance(self.beta_end, float) == False:
+        if isinstance(self.beta_end, float) is False:
             raise TypeError("beta_end must be float")
-        if isinstance(self.img_size, (tuple, list)) == False:
+        if isinstance(self.img_size, (tuple, list)) is False:
             raise TypeError("img_size must be tuple")
         else:
             if len(self.img_size) not in [2, 3]:

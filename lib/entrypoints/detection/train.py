@@ -70,10 +70,13 @@ def main(arguments):
             "checkpoint_dir",
             "checkpoint_name",
             "resume_from_last",
+            "logger_type",
             "project_name",
-            "resume",
+            "log_model",
             "summary_dir",
             "summary_name",
+            "tracking_uri",
+            "resume",
             "monitor",
             "metric_path",
             "class_weights",
@@ -336,7 +339,18 @@ def main(arguments):
             args.summary_dir,
             args.project_name,
             args.resume,
+            log_model=args.log_model,
+            logger_type=args.logger_type,
+            tracking_uri=args.tracking_uri,
             fold=val_fold,
+            tags={
+                "network_config": network_config,
+                "augment_arguments": None,
+                "transform_arguments": {
+                    "pre": transform_arguments_pre,
+                    "post": transform_arguments_post,
+                },
+            },
         )
 
         trainer = Trainer(

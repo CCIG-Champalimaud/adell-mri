@@ -92,11 +92,14 @@ def main(arguments):
             "not_freeze_regex",
             "exclude_from_state_dict",
             "delete_checkpoints",
+            "logger_type",
             "project_name",
-            "resume",
-            "monitor",
+            "log_model",
             "summary_dir",
             "summary_name",
+            "tracking_uri",
+            "resume",
+            "monitor",
             "metric_path",
             "early_stopping",
             "resume_from_last",
@@ -594,7 +597,15 @@ def main(arguments):
             args.summary_dir,
             args.project_name,
             args.resume,
+            log_model=args.log_model,
+            logger_type=args.logger_type,
+            tracking_uri=args.tracking_uri,
             fold=val_fold,
+            tags={
+                "network_config": ensemble_config,
+                "augment_arguments": augment_arguments,
+                "transform_arguments": transform_arguments,
+            },
         )
 
         trainer = Trainer(

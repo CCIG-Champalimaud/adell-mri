@@ -258,7 +258,7 @@ def get_transforms_unet(
             mask_key = ["mask"]
         else:
             mask_key = []
-        if convert_to_tensor == True:
+        if convert_to_tensor is True:
             if brunet is False:
                 keys.append(output_image_key)
                 transforms.append(
@@ -277,7 +277,7 @@ def get_transforms_unet(
                         dtype=torch.float32,
                     )
                 )
-        if track_meta == False:
+        if track_meta is False:
             transforms.append(monai.transforms.SelectItemsd(keys + mask_key))
 
         return transforms
@@ -362,7 +362,7 @@ def get_transforms_detection_post(
             augments, keys, [box_key], t2_keys, intp_resampling
         )
     )
-    if predict == False:
+    if predict is False:
         transforms.append(
             BBToAdjustedAnchorsd(
                 anchor_sizes=anchor_array,
@@ -666,7 +666,7 @@ def get_pre_transforms_ssl(
             monai.transforms.SpatialPadd(all_keys, [int(j) for j in pad_size])
         )
     transforms.append(monai.transforms.EnsureTyped(all_keys))
-    if skip_augmentations == False:
+    if skip_augmentations is False:
         transforms.append(CopyEntryd(all_keys, key_correspondence))
     return transforms
 
@@ -676,7 +676,7 @@ def get_post_transforms_ssl(
     copied_keys: List[str],
     skip_augmentations: bool = False,
 ):
-    if skip_augmentations == False:
+    if skip_augmentations is False:
         return [
             monai.transforms.ConcatItemsd(all_keys, "augmented_image_1"),
             monai.transforms.ConcatItemsd(copied_keys, "augmented_image_2"),
@@ -1040,7 +1040,7 @@ def get_augmentations_ssl(
     roi_size = tuple([int(x) for x in roi_size])
 
     transforms_to_remove = []
-    if vicregl == True:
+    if vicregl is True:
         transforms_to_remove.extend(spatial_augments)
     if n_dim == 2:
         transforms_to_remove.extend(
@@ -1074,10 +1074,10 @@ def get_augmentations_ssl(
             ]
         )
 
-    if skip_augmentations == True:
+    if skip_augmentations is True:
         return cropping_strategy
 
-    if vicregl == True:
+    if vicregl is True:
         cropping_strategy.extend(
             [
                 monai.transforms.RandSpatialCropd(
@@ -1104,7 +1104,7 @@ def get_augmentations_ssl(
                 monai.transforms.Lambdad(["box_1", "box_2"], flatten_box),
             ]
         )
-    elif different_crop == True:
+    elif different_crop is True:
         cropping_strategy.extend(
             [
                 monai.transforms.RandSpatialCropd(

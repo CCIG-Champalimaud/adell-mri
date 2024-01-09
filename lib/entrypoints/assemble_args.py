@@ -244,7 +244,18 @@ argument_factory = {
         help="Deletes checkpoints after training (keeps only metrics).",
     ),
     # logging/summary
-    "project_name": dict(type=str, default=None, help="Wandb project name."),
+    "logger_type": dict(
+        type=str,
+        default="wandb",
+        choices=["wandb", "mlflow"],
+        help="Type of logger that will be used. mlflow requires defining \
+            --tracking_uri.",
+    ),
+    "project_name": dict(
+        type=str,
+        default=None,
+        help="Wandb project name or MLFlow experiment ID.",
+    ),
     "monitor": dict(
         type=str,
         default="val_loss",
@@ -255,7 +266,16 @@ argument_factory = {
         default="summaries",
         help="Path to summary directory (for wandb).",
     ),
-    "summary_name": dict(type=str, default="model_x", help="Summary name."),
+    "summary_name": dict(
+        type=str,
+        default=None,
+        help="Summary name for logging.",
+    ),
+    "tracking_uri": dict(
+        type=str,
+        default=None,
+        help="Tracking URI for MLFlow logging.",
+    ),
     "metric_path": dict(
         type=str,
         default="metrics.csv",
@@ -267,6 +287,12 @@ argument_factory = {
         choices=["allow", "must", "never", "auto", "none"],
         help="Whether wandb project should be resumed (check \
             https://docs.wandb.ai/ref/python/init for more details).",
+    ),
+    "log_model": dict(
+        type=str,
+        default=False,
+        action="store_true",
+        help="Stores models with loggers as artefacts",
     ),
     "output_path": dict(
         type=str, default="output.csv", help="Path to output file."

@@ -88,9 +88,13 @@ def main(arguments):
             "exclude_from_state_dict",
             "resume_from_last",
             "monitor",
+            "logger_type",
             "project_name",
+            "log_model",
+            "log_model",
             "summary_dir",
             "summary_name",
+            "tracking_uri",
             "metric_path",
             "resume",
             "warmup_steps",
@@ -550,7 +554,15 @@ def main(arguments):
             args.summary_dir,
             args.project_name,
             args.resume,
+            log_model=args.log_model,
+            logger_type=args.logger_type,
+            tracking_uri=args.tracking_uri,
             fold=val_fold,
+            tags={
+                "network_config": network_config,
+                "augment_arguments": augment_arguments,
+                "transform_arguments": transform_arguments,
+            },
         )
 
         if args.correct_classification_bias is True and n_classes == 2:

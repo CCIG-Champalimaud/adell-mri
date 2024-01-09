@@ -103,10 +103,13 @@ def main(arguments):
             "checkpoint_name",
             "checkpoint",
             "resume_from_last",
+            "logger_type",
             "project_name",
-            "resume",
+            "log_model",
             "summary_dir",
             "summary_name",
+            "tracking_uri",
+            "resume",
             "metric_path",
             "n_series_iterations",
             "n_transforms",
@@ -193,7 +196,7 @@ def main(arguments):
     all_pids = [k for k in data_dict]
 
     is_ijepa = args.ssl_method == "ijepa"
-    pre_transform_args = {
+    transform_pre_arguments = {
         "all_keys": all_keys,
         "copied_keys": copied_keys,
         "adc_keys": adc_image_keys,
@@ -207,7 +210,7 @@ def main(arguments):
         "jpeg_dataset": args.jpeg_dataset,
     }
 
-    post_transform_args = {
+    transform_post_arguments = {
         "all_keys": all_keys,
         "copied_keys": copied_keys,
         "skip_augmentations": is_ijepa,
@@ -233,9 +236,9 @@ def main(arguments):
         network_config_correct["feature_map_dimensions"] = feature_map_size
 
     transforms = [
-        *get_pre_transforms_ssl(**pre_transform_args),
+        *get_pre_transforms_ssl(**transform_pre_arguments),
         *get_augmentations_ssl(**augmentation_args),
-        *get_post_transforms_ssl(**post_transform_args),
+        *get_post_transforms_ssl(**transform_post_arguments),
     ]
 
     if args.train_pids is not None:
@@ -385,11 +388,22 @@ def main(arguments):
         exit()
 
     logger = get_logger(
-        summary_name=args.summary_name,
-        summary_dir=args.summary_dir,
-        project_name=args.project_name,
-        resume=args.resume,
+        args.summary_name,
+        args.summary_dir,
+        args.project_name,
+        args.resume,
+        log_model=args.log_model,
+        logger_type=args.logger_type,
+        tracking_uri=args.tracking_uri,
         fold=None,
+        tags={
+            "network_config": network_config,
+            "transform_arguments": {
+                "pre": transform_pre_arguments,
+                "post": transform_post_arguments,
+            },
+            "augment_arguments": augmentation_args,
+        },
     )
 
     precision = args.precision

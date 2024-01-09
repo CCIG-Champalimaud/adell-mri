@@ -87,10 +87,13 @@ def main(arguments):
             "exclude_from_state_dict",
             "freeze_regex",
             "not_freeze_regex",
+            "logger_type",
             "project_name",
-            "monitor",
+            "log_model",
             "summary_dir",
             "summary_name",
+            "tracking_uri",
+            "monitor",
             "metric_path",
             "resume",
             "dropout_param",
@@ -314,7 +317,20 @@ def main(arguments):
         args.summary_dir,
         args.project_name,
         args.resume,
+        log_model=args.log_model,
+        logger_type=args.logger_type,
+        tracking_uri=args.tracking_uri,
         fold=None,
+        tags={
+            "network_config": network_config,
+            "augment_arguments": None,
+            "transform_arguments": {
+                "pre": transform_pre_arguments,
+                "post": transform_post_arguments,
+            },
+            "categorical_specification": categorical_specification,
+            "numerical_specification": numerical_specification,
+        },
     )
 
     if logger is not None:

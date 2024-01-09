@@ -81,11 +81,14 @@ def main(arguments):
             "checkpoint_name",
             "checkpoint",
             "resume_from_last",
+            "logger_type",
             "project_name",
-            "resume",
-            "monitor",
+            "log_model",
             "summary_dir",
             "summary_name",
+            "tracking_uri",
+            "resume",
+            "monitor",
             "metric_path",
             "early_stopping",
             "warmup_steps",
@@ -500,12 +503,21 @@ def main(arguments):
         ckpt = ckpt_callback is not None
         if status == "finished":
             continue
+
         logger = get_logger(
             args.summary_name,
             args.summary_dir,
             args.project_name,
             args.resume,
+            log_model=args.log_model,
+            logger_type=args.logger_type,
+            tracking_uri=args.tracking_uri,
             fold=val_fold,
+            tags={
+                "network_config": network_config,
+                "augment_arguments": augment_arguments,
+                "transform_arguments": transform_arguments,
+            },
         )
 
         if is_auto is True:

@@ -71,10 +71,13 @@ def main(arguments):
             "checkpoint_name",
             "checkpoint",
             "resume_from_last",
+            "logger_type",
             "project_name",
-            "resume",
-            "summary_name",
+            "log_model",
             "summary_dir",
+            "summary_name",
+            "tracking_uri",
+            "resume",
             "metric_path",
             "check_val_every_n_epoch",
             "dev",
@@ -334,11 +337,22 @@ def main(arguments):
         exit()
 
     logger = get_logger(
-        summary_name=args.summary_name,
-        summary_dir=args.summary_dir,
-        project_name=args.project_name,
-        resume=args.resume,
+        args.summary_name,
+        args.summary_dir,
+        args.project_name,
+        args.resume,
+        log_model=args.log_model,
+        logger_type=args.logger_type,
+        tracking_uri=args.tracking_uri,
         fold=None,
+        tags={
+            "network_config": network_config,
+            "augment_arguments": augmentation_args,
+            "transform_arguments": {
+                "pre": pre_transform_args,
+                "post": post_transform_args,
+            },
+        },
     )
 
     precision = args.precision

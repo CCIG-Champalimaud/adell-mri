@@ -12,7 +12,7 @@ from PIL import Image
 from lightning import Trainer
 from lightning.pytorch import LightningModule, Trainer
 from lightning.pytorch.callbacks import Callback
-from lightning.pytorch.loggers import WandbLogger
+from lightning.pytorch.loggers import Logger, WandbLogger, MLFlowLogger
 from lightning.pytorch.callbacks.model_checkpoint import ModelCheckpoint
 
 from typing import List, Union, Tuple, Any, Dict
@@ -491,42 +491,69 @@ def get_logger(
     summary_name: str,
     summary_dir: str,
     project_name: str,
-    resume: str,
+    tracking_uri: str = None,
+    resume: str = "allow",
     fold: int = None,
-) -> WandbLogger:
-    """Defines a Wandb logger for PyTorch Lightning. Each run is configured
-    as "{project_name}/{summary_name}_fold{fold}".
+    tags: dict[str, Any] = None,
+    log_model: bool = False,
+    logger_type: str = "wandb",
+) -> Logger:
+    """Defines a Wandb/MLFlow logger for PyTorch Lightning. Each run is
+    configured as "{project_name}/{summary_name}_fold{fold}".
 
     Args:
-        summary_name (str): name of the Wandb run.
-        summary_dir (str): directory where summaries are stored.
-        project_name (str): name of the Wandb project.
+        summary_name (str): name of the run.
+        summary_dir (str): directory where summaries are stored (not used if
+            in MLFlow logging if tracking_uri is specified).
+        project_name (str): name of the project for WandB and experiment for
+            MLFlow.
+        tracking_uri (str, optional): tracking URI for MLFlow logger. Required
+            for any logging. Defaults to None.
         resume (str): how the metric registry in Wandb should be resumed.
             Details in https://docs.wandb.ai/guides/track/advanced/resuming.
         fold (int, optional): ID for the validation fold. Defaults to None.
+        tags (dict[str, Any], optional): tags which will be stored as a part
+            of MLFlow logging.
+        log_model (bool, optional): logs models with loggers as artefacts.
+            Defaults to False.
+        logger_type (str, optional): type of logger. Defaults to wandb (can be
+            one of ['wandb', 'mlflow'])
 
     Returns:
-        WandbLogger: _description_
+        Logger:
     """
+    logger = None
+    if fold is not None:
+        run_name = run_name + f"_fold{fold}"
     if (summary_name is not None) and (project_name is not None):
-        wandb.finish()
-        wandb_resume = resume
-        if wandb_resume == "none":
-            wandb_resume = None
-        run_name = summary_name.replace(":", "_")
-        if fold is not None:
-            run_name = run_name + f"_fold{fold}"
-        logger = WandbLogger(
-            save_dir=summary_dir,
-            project=project_name,
-            name=run_name,
-            version=run_name,
-            reinit=True,
-            resume=wandb_resume,
-            dir=summary_dir,
-        )
-    else:
-        logger = None
+        if logger_type == "wandb":
+            wandb.finish()
+            wandb_resume = resume
+            if wandb_resume == "none":
+                wandb_resume = None
+            run_name = summary_name.replace(":", "_")
+            logger = WandbLogger(
+                save_dir=summary_dir,
+                project=project_name,
+                name=run_name,
+                version=run_name,
+                reinit=True,
+                resume=wandb_resume,
+                log_model=log_model,
+                dir=summary_dir,
+            )
+        elif logger_type == "mlflow":
+            if tracking_uri is None:
+                raise NotImplementedError(
+                    "tracking_uri must be defined for type='mlflow'"
+                )
+            logger = MLFlowLogger(
+                experiment_name=project_name,
+                run_name=run_name,
+                tracking_uri=tracking_uri,
+                tags=tags,
+                log_model=log_model,
+            )
     return logger
 
 
