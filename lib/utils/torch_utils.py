@@ -10,6 +10,27 @@ def load_checkpoint_to_model(
     checkpoint: Union[str, Dict[str, torch.Tensor]],
     exclude_from_state_dict: List[str],
 ) -> torch.nn.Module:
+    """
+    Loads a checkpoint into a PyTorch model.
+
+    Loads state dictionary from a checkpoint file or dict into the model. Can
+    optionally exclude keys from the state dict by regex. Checks that there are
+    no extra keys in state dict not in model.
+
+    Args:
+        model (torch.nn.Module): PyTorch model to load state dict into.
+        checkpoint (Union[str, Dict[str, torch.Tensor]]): Checkpoint file path or
+            dict containing state dict.
+        exclude_from_state_dict (List[str]): List of regex patterns to exclude
+            from state dict.
+
+    Returns:
+      Model with loaded state dict.
+
+    Raises:
+      Exception: If state dict contains keys not in model.
+    """
+
     if isinstance(checkpoint, str):
         sd = torch.load(checkpoint)
     else:
@@ -39,6 +60,25 @@ def get_class_weights(
     possible_labels: List[Any],
     label_groups: List[List[Any]] = None,
 ) -> List[float]:
+    """Computes class weights for imbalanced datasets.
+
+    Supports class weights passed directly, computed adaptively from class
+    frequencies, or computed from label groups.
+
+    Args:
+      class_weights (List[Union[float, str]]): List of weights or "adaptive"
+        string.
+      n_classes (int): Number of classes.
+      classes (List[Any]): List of class labels.
+      positive_labels (List[Any]): Labels treated as the positive class.
+      possible_labels (List[Any]): Superset of labels.
+      label_groups (List[List[Any]]): Groups of labels to compute weights
+        together (merges classes together if they belong to the same
+        label_group).
+
+    Returns:
+      List of class weights, one per class
+    """
     if class_weights is not None:
         if class_weights[0] == "adaptive":
             if n_classes == 2:

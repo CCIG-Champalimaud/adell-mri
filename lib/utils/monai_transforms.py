@@ -1040,6 +1040,11 @@ class LabelOperatord(monai.transforms.Transform):
 
 
 class LabelOperatorSegmentationd(monai.transforms.Transform):
+    """
+    Converts a segmentation mask to categorical or binary labels masks given
+    a set of possible and positive labels.
+    """
+
     def __init__(
         self,
         keys: str,
@@ -1048,6 +1053,17 @@ class LabelOperatorSegmentationd(monai.transforms.Transform):
         positive_labels: List[int] = [1],
         output_keys: Dict[str, str] = {},
     ):
+        """
+        Args:
+            keys (str): Key corresponding to label map in the data dictionary.
+            possible_labels (List[int]): List of possible label values.
+            mode (str): Label encoding mode, either 'cat' for categorical or
+                'binary'.
+            positive_labels (List[int], optional): Labels to map to 1 in
+                binary encoding. Defaults to [1].
+            output_keys (Dict[str, str], optional): Dictionary mapping keys to
+                output keys. Defaults to using the same keys.
+        """
         self.keys = keys
         self.possible_labels = possible_labels
         self.mode = mode
@@ -1085,15 +1101,18 @@ class LabelOperatorSegmentationd(monai.transforms.Transform):
 
 
 class CombineBinaryLabelsd(monai.transforms.Transform):
+    """
+    Combines binary label maps.
+    """
+
     def __init__(
         self, keys: List[str], mode: str = "any", output_key: str = None
     ):
-        """Combines binary label maps.
-
+        """
         Args:
             keys (List[str]): list of keys.
             mode (str, optional): how labels are combined. Defaults to
-                "majority".
+                "any".
             output_key (str, optional): name for the output key. Defaults to
                 the name of the first key in keys.
         """
@@ -1121,7 +1140,12 @@ class ConditionalRescaling(monai.transforms.Transform):
     max_value.
     """
 
-    def __init__(self, max_value, scale):
+    def __init__(self, max_value: float, scale: float):
+        """
+        Args:
+            max_value (float): maximum value for condition.
+            scale (float): scaling factor.
+        """
         self.max_value = max_value
         self.scale = scale
 
@@ -1136,7 +1160,14 @@ class ConditionalRescalingd(monai.transforms.Transform):
     Dictionary version of ConditionalRescaling.
     """
 
-    def __init__(self, keys, max_value, scale):
+    def __init__(self, keys: List[str], max_value: float, scale: float):
+        """
+        Args:
+            keys (List[str]): keys to which conditional rescaling will be
+                applied.
+            max_value (float): maximum value for condition.
+            scale (float): scaling factor.
+        """
         self.keys = keys
         self.max_value = max_value
         self.scale = scale
@@ -1160,6 +1191,10 @@ class Offset(monai.transforms.Transform):
     """
 
     def __init__(self, offset: float = None):
+        """
+        Args:
+            offset (float, optional): value for offset. Defaults to None.
+        """
         self.offset = offset
 
     def __call__(self, data):
@@ -1173,6 +1208,12 @@ class Offsetd(monai.transforms.MapTransform):
     """
 
     def __init__(self, keys: List[str], offset: float = None):
+        """
+        Args:
+            keys (List[str]): keys to offset.
+            offset (float, optional): value for offset. Defaults to None.
+        """
+
         self.keys = keys
         self.offset = offset
         self.tr = {k: Offset(offset) for k in self.keys}
@@ -1188,7 +1229,12 @@ class CopyEntryd(monai.transforms.Transform):
     Transform that copies an entry in a dictionary with a new key.
     """
 
-    def __init__(self, keys, out_keys):
+    def __init__(self, keys: List[str], out_keys: dict[str, str]):
+        """
+        Args:
+            keys (List[str]): list of keys.
+            out_keys (dict[str]): dictionary with input_key:output_key pairs.
+        """
         self.keys = keys
         self.out_keys = out_keys
 
@@ -1201,10 +1247,13 @@ class CopyEntryd(monai.transforms.Transform):
 
 
 class FastResample(monai.transforms.Transform):
-    def __init__(self, target: List[float], keys=List[str], mode=List[str]):
-        """Does what monai.transforms.Spacingd does but fast by getting rid of
-        some unnecessary calculations.
+    """
+    Does what monai.transforms.Spacingd does but fast by getting rid of
+    some unnecessary calculations.
+    """
 
+    def __init__(self, target: List[float], keys=List[str], mode=List[str]):
+        """
         Args:
             target (List[float]): _description_
             keys (_type_, optional): _description_. Defaults to List[str].
@@ -1248,6 +1297,13 @@ class ExposeTransformKeyd(monai.transforms.Transform):
     """
     Exposes metadata keys for a given input dictionary. Deprecated since MONAI
     moved to MetaTensors.
+
+    This transform looks for a specified transform class in the transforms
+    applied to a key in the input dictionary. It then extracts a nested value
+    from that transform's metadata and adds it to the dictionary under a
+    specified output key.
+
+    This is useful for exposing internal transform metadata for downstream use.
     """
 
     def __init__(
@@ -1257,6 +1313,15 @@ class ExposeTransformKeyd(monai.transforms.Transform):
         nested_pattern: List[str],
         output_key: str = None,
     ):
+        """
+        Args:
+            transform_key (str): key corresponding to transform parameters.
+            transform_class (str): string corresponding to the class name.
+            nested_pattern (List[str]): nested pattern of strings to recover
+                value from transform metadata.
+            output_key (str, optional): output key for exposed value. Defaults
+                to None.
+        """
         self.transform_key = transform_key
         self.transform_class = transform_class
         self.nested_pattern = nested_pattern
@@ -1276,7 +1341,14 @@ class ExposeTransformKeyd(monai.transforms.Transform):
 
 class ExposeTransformKeyMetad(monai.transforms.Transform):
     """
-    Exposes metadata transform values for a given input dictionary.
+    Exposes metadata keys for a given transform applied to a MetaTensor.
+
+    This transform looks for a specified transform class in the transforms
+    applied to a key in the input dictionary. It then extracts a nested value
+    from that transform's metadata and adds it to the dictionary under a
+    specified output key.
+
+    This is useful for exposing internal transform metadata for downstream use.
     """
 
     def __init__(
@@ -1286,6 +1358,15 @@ class ExposeTransformKeyMetad(monai.transforms.Transform):
         nested_pattern: List[str],
         output_key: str = None,
     ):
+        """
+        Args:
+            key (str): key corresponding to relevant MetaTensor.
+            transform_class (str): string corresponding to the class name.
+            nested_pattern (List[str]): nested pattern of strings to recover
+                value from transform metadata.
+            output_key (str, optional): output key for exposed value. Defaults
+                to None.
+        """
         self.key = key
         self.transform_class = transform_class
         self.nested_pattern = nested_pattern
@@ -1311,6 +1392,12 @@ class Dropout(monai.transforms.Transform):
     """
 
     def __init__(self, channel: int, dim: int = 0):
+        """
+        Args:
+            channel (int): channel to be dropped.
+            dim (int, optional): dimension where channel is to be dropped.
+                Defaults to 0.
+        """
         self.channel = channel
         self.dim = dim
 
@@ -1334,6 +1421,14 @@ class Dropoutd(monai.transforms.Transform):
         channel: Union[int, List[int]],
         dim: Union[int, List[int]] = 0,
     ):
+        """
+        Args:
+            keys (List[str] | str): keys of the dictionary to apply dropout.
+            channel (Union[int, List[int]]): channels to be dropped (if list
+                has to be one per key).
+            dim (Union[int, List[int]], optional): dimension where channel is
+                to be dropped (if list has to be one per key). Defaults to 0.
+        """
         self.keys = keys
         self.channel = channel
         self.dim = dim
@@ -1360,6 +1455,11 @@ class RandomDropout(monai.transforms.RandomizableTransform):
     """
 
     def __init__(self, dim: int = 0, prob: float = 0.1):
+        """
+        Args:
+            dim (int, optional): dropout dimension. Defaults to 0.
+            prob (float, optional): probability of dropout. Defaults to 0.1.
+        """
         super().__init__(self, prob)
         self.prob = prob
         self.dim = dim
@@ -1391,6 +1491,14 @@ class RandomDropoutd(
         dim: Union[int, List[int]] = 0,
         prob: float = 0.1,
     ):
+        """
+        Args:
+            keys (Union[str, List[str]]): keys of the dictionary to apply
+                dropout.
+            dim (Union[int, List[int]], optional): dropout dimension. Defaults
+                to 0.
+            prob (float, optional): probability of dropout. Defaults to 0.1.
+        """
         super().__init__(self, prob)
         self.keys = keys
         self.dim = dim
@@ -1413,9 +1521,16 @@ class CreateImageAndWeightsd(monai.transforms.Transform):
     """
     Replaces missing keys in the dictionary with empty tensors and creates
     weight variables (0 if the key is absent and 1 if it is present).
+
+    The weight is defined as f"{key}_weight"
     """
 
-    def __init__(self, keys, shape):
+    def __init__(self, keys: list[str], shape: list[int]):
+        """
+        Args:
+            keys (list[str]): keys whose presence is assessed.
+            shape (list[int]): output shape of tensors.
+        """
         self.keys = keys
         self.shape = shape
 
@@ -1447,6 +1562,12 @@ class BiasFieldCorrection(monai.transforms.Transform):
     def __init__(
         self, n_fitting_levels: int, n_iter: int, shrink_factor: float
     ):
+        """
+        Args:
+            n_fitting_levels (int): number of fitting levels.
+            n_iter (int): number of correction iterations.
+            shrink_factor (float): shrink factor.
+        """
         self.n_fitting_levels = n_fitting_levels
         self.n_iter = n_iter
         self.shrink_factor = shrink_factor
@@ -1501,6 +1622,13 @@ class BiasFieldCorrectiond(monai.transforms.MapTransform):
         n_iter: int,
         shrink_factor: int,
     ):
+        """
+        Args:
+            keys (List[str]): keys to apply bias field correction to.
+            n_fitting_levels (int): number of fitting levels.
+            n_iter (int): number of correction iterations.
+            shrink_factor (float): shrink factor.
+        """
         self.keys = keys
         self.n_fitting_levels = n_fitting_levels
         self.n_iter = n_iter
@@ -1650,6 +1778,7 @@ class EinopsRearranged(monai.transforms.Transform):
     def __init__(self, keys: List[str], pattern: str):
         """
         Args:
+            keys (str): keys to apply einops patterns to.
             pattern (str): einops pattern.
         """
         self.keys = keys
@@ -1821,6 +1950,12 @@ class SampleChannelDim(monai.transforms.Transform):
     """
 
     def __init__(self, n_channels: int, channel_dim: int = 0):
+        """
+        Args:
+            n_channels (int): number of channels to be randomly selected.
+            channel_dim (int, optional): dimension for the channels. Defaults
+                to 0.
+        """
         self.n_channels = n_channels
         self.channel_dim = channel_dim
 
@@ -1834,7 +1969,18 @@ class SampleChannelDim(monai.transforms.Transform):
 
 
 class SampleChannelDimd(monai.transforms.MapTransform):
+    """
+    Dictionary version of SampleChannelDim.
+    """
+
     def __init__(self, keys: List[str], n_channels: int, channel_dim: int = 0):
+        """
+        Args:
+            keys (List[str]): Keys to apply channel sampling to.
+            n_channels (int): number of channels to sample.
+            channel_dim (int, optional): dimension for the channels. Defaults
+                to 0.
+        """
         self.keys = keys
         self.n_channels = n_channels
         self.channel_dim = channel_dim
@@ -1856,6 +2002,10 @@ class GetAllCrops(monai.transforms.Transform):
     """
 
     def __init__(self, size: Union[Tuple[int, int], Tuple[int, int, int]]):
+        """
+        Args:
+            size (Union[Tuple[int, int], Tuple[int, int, int]]): crop size.
+        """
         self.size = size
         self.ndim = len(size)
 
@@ -1926,6 +2076,11 @@ class GetAllCropsd(monai.transforms.MapTransform):
         keys: List[str],
         size: Union[Tuple[int, int], Tuple[int, int, int]],
     ):
+        """
+        Args:
+            keys (List[str]): keys to crop.
+            size (Union[Tuple[int, int], Tuple[int, int, int]]): crop size.
+        """
         self.keys = keys
         self.size = size
 
@@ -1956,6 +2111,13 @@ class AdjustSizesd(monai.transforms.MapTransform):
     """
 
     def __init__(self, keys: List[str], ndim: int = 3, mode: str = "pad"):
+        """
+        Args:
+            keys (List[str]): keys to adjust sizes for.
+            ndim (int, optional): number of dimensions. Defaults to 3.
+            mode (str, optional): adjustment mode. Can be either pad or crop.
+                Defaults to "pad".
+        """
         self.keys = keys
         self.ndim = ndim
         self.mode = mode
@@ -2034,6 +2196,17 @@ class DbscanAssistedSegmentSelection(monai.transforms.MapTransform):
         filter_by_dist_to_centre: bool = False,
         keep_n: int = 1,
     ):
+        """
+        Args:
+            min_dist (int, optional): minimum distance in DBSCAN. Defaults to
+                1.
+            filter_by_size (bool, optional): filter lesions by size. Defaults
+                to False.
+            filter_by_dist_to_centre (bool, optional): filters lesions by
+                distance to centre. Defaults to False.
+            keep_n (int, optional): keeps only the keep_n largest lesions when
+                filter_by_size is True. Defaults to 1.
+        """
         self.min_dist = min_dist
         self.filter_by_size = filter_by_size
         self.filter_by_dist_to_centre = filter_by_dist_to_centre
@@ -2098,12 +2271,27 @@ class DbscanAssistedSegmentSelection(monai.transforms.MapTransform):
 
 
 class CropFromMaskd(monai.transforms.MapTransform):
+    """Crops the input image(s) from a binary mask.
+
+    Finds the extremes of the positive class in the binary mask along each
+    dimension. Uses these to crop the image(s) to the smallest box containing
+    the mask.
+    """
+
     def __init__(
         self,
         keys: List[str] | str,
         mask_key: str,
         output_size: List[int] = None,
     ):
+        """
+        Args:
+            keys (List[str] | str): Keys of the input images.
+            mask_key (str): Key of the binary mask.
+            output_size (List[int], optional): output size. If provided, uses
+                this to determine crop region instead of the mask extremes.
+                Defaults to None.
+        """
         super().__init__(keys=keys)
         self.mask_key = mask_key
         self.output_size = output_size

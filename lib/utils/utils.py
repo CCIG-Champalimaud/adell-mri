@@ -1,6 +1,4 @@
 import os
-import re
-import json
 import numpy as np
 import SimpleITK as sitk
 import torch
@@ -27,7 +25,6 @@ from ..modules.segmentation.losses import (
     mc_hybrid_focal_loss,
     mc_unified_focal_loss,
     weighted_mse,
-    eps,
 )
 from ..custom_types import (
     DatasetDict,
@@ -35,7 +32,7 @@ from ..custom_types import (
     SpacingDict,
     FloatOrTensor,
     TensorIterable,
-    BBDict,
+    TensorList,
 )
 
 loss_factory = {
@@ -61,13 +58,25 @@ loss_factory = {
 }
 
 
-def split(x, n_splits, dim):
+def split(x: torch.Tensor, n_splits: int, dim: int) -> TensorIterable:
+    """
+    Splits a tensor into n_splits tensors along dimension dim.
+
+    Args:
+        x: Tensor to split.
+        n_splits: Number of splits.
+        dim: Dimension along which to split the tensor.
+
+    Returns:
+        A tuple containing the splits.
+    """
     size = int(x.shape[dim] // n_splits)
     return torch.split(x, size, dim)
 
 
 def get_prostatex_path_dictionary(base_path: str) -> DatasetDict:
-    """Builds a path dictionary (a dictionary where each key is a patient
+    """
+    Builds a path dictionary (a dictionary where each key is a patient
     ID and each value is a dictionary containing a modality-to-MRI scan path
     mapping). Assumes that the folders "T2WAx", "DWI", "aggregated-labels-gland"
     and "aggregated-labels-lesion" in `base_path`.
@@ -121,7 +130,8 @@ def get_prostatex_path_dictionary(base_path: str) -> DatasetDict:
 def get_size_spacing_dict(
     path_dictionary: DatasetDict, keys: List[str]
 ) -> Tuple[SizeDict, SpacingDict]:
-    """Retrieves the scan sizes and pixel spacings from a path dictionary.
+    """
+    Retrieves the scan sizes and pixel spacings from a path dictionary.
 
     Args:
         path_dictionary (DatasetDict): a path dictionary (see
@@ -151,7 +161,8 @@ def get_loss_param_dict(
     loss_key: str,
     **kwargs,
 ) -> Dict[str, Dict[str, FloatOrTensor]]:
-    """Constructs a keyword dictionary that can be used with the losses in
+    """
+    Constructs a keyword dictionary that can be used with the losses in
     `losses.py`.
 
     Args:
@@ -202,7 +213,16 @@ def get_loss_param_dict(
         raise NotImplemented(f"loss_key {loss_key} not in available loss_keys")
 
 
-def unpack_crops(X: List[TensorIterable]) -> TensorIterable:
+def unpack_crops(X: List[TensorIterable]) -> TensorList:
+    """
+    Unpacks a list of nested tensor list into a single list.
+
+    Args:
+        X (List[TensorIterable]): Outer list of cropped tensor iterables.
+
+    Returns:
+        TensorIterable: Flattened iterable of all innermost elements.
+    """
     output = []
     for x in X:
         for xx in x:
@@ -211,6 +231,21 @@ def unpack_crops(X: List[TensorIterable]) -> TensorIterable:
 
 
 def collate_last_slice(X: List[TensorIterable]) -> TensorIterable:
+    """
+    Collates the last slice of each tensor in a list of tensor interables along
+    the batch dimension. So, given a TensorIterable of type list, where each
+    tensor has shape [b, c, h, w, d], the output will be a TensorIterable of
+    type list with shape [b * d, c, h, w].
+
+    Args:
+        X (List[TensorIterable]): List of tensor iterables, each containing
+            tensors of the same shape.
+
+    Returns:
+        TensorIterable: object of the same type as TensorIterable with tensors
+            with the last dimension contatenated along the batch dimension.
+    """
+
     def swap(x):
         out = x.permute(0, 3, 1, 2)
         return out
@@ -237,7 +272,8 @@ def collate_last_slice(X: List[TensorIterable]) -> TensorIterable:
 
 
 def safe_collate(X: List[TensorIterable]) -> List[TensorIterable]:
-    """Similar to the default collate but going only one level deep and
+    """
+    Similar to the default collate but going only one level deep and
     returning a list if shapes are incompatible (helpful to return bounding
     boxes).
 
@@ -279,7 +315,8 @@ def safe_collate(X: List[TensorIterable]) -> List[TensorIterable]:
 
 
 def safe_collate_crops(X: List[List[TensorIterable]]) -> List[TensorIterable]:
-    """Similar to safe_collate but handles output from MONAI cropping
+    """
+    Similar to safe_collate but handles output from MONAI cropping
     functions.
 
     Args:
@@ -293,53 +330,15 @@ def safe_collate_crops(X: List[List[TensorIterable]]) -> List[TensorIterable]:
     return safe_collate(X)
 
 
-def load_bb(path: str) -> BBDict:
-    with open(path) as o:
-        lines = o.readlines()
-    lines = [x.strip() for x in lines]
-    output = {}
-    for line in lines:
-        line = line.split(",")
-        patient_id = line[0]
-        cl = int(line[-1])
-        ndim = len(line[1:-1]) // 3
-        uc = [int(i) for i in line[1 : (1 + ndim)]]
-        lc = [int(i) for i in line[(1 + ndim) : (4 + ndim)]]
-        sh = [int(i) for i in line[(4 + ndim) : (7 + ndim)]]
-        if patient_id in output:
-            output[patient_id]["boxes"].append([uc, lc])
-            output[patient_id]["labels"].append(cl)
-        else:
-            output[patient_id] = {
-                "boxes": [[uc, lc]],
-                "labels": [cl],
-                "shape": np.array(sh),
-            }
-    for k in output:
-        output[k]["boxes"] = np.array(output[k]["boxes"]).swapaxes(1, 2)
-    return output
-
-
-def load_bb_json(path: str) -> BBDict:
-    with open(path) as o:
-        data_dict = json.load(o)
-    k_del = []
-    for k in data_dict:
-        bb = []
-        for box in data_dict[k]["boxes"]:
-            ndim = len(box) // 2
-            bb.append([box[:ndim], box[ndim:]])
-        if len(bb) > 0:
-            data_dict[k]["boxes"] = np.array(bb).swapaxes(1, 2)
-            data_dict[k]["shape"] = np.array(data_dict[k]["shape"])
-        else:
-            k_del.append(k)
-    for k in k_del:
-        del data_dict[k]
-    return data_dict
-
-
 def load_anchors(path: str) -> np.ndarray:
+    """Loads anchor boxes from a CSV file.
+
+    Args:
+        path (str): Path to the CSV file containing anchor boxes.
+
+    Returns:
+        np.ndarray: A numpy array containing the anchor boxes.
+    """
     with open(path, "r") as o:
         lines = o.readlines()
     lines = [[float(y) for y in x.strip().split(",")] for x in lines]
@@ -415,10 +414,26 @@ class ExponentialMovingAverage(torch.nn.Module):
 
 def subsample_dataset(
     data_dict: DatasetDict,
-    subsample_size: float,
+    subsample_size: int,
     rng: np.random.Generator,
     strata_key: str = None,
-):
+) -> DatasetDict:
+    """
+    Subsamples a DatasetDict by either randomly sampling a subset of keys
+    or by stratifying based on a specified key and sampling from each
+    stratum.
+
+    Args:
+        data_dict (DatasetDict): the data dictionary to subsample from.
+        subsample_size (int): the number of samples to keep.
+        rng (np.random.Generator): a random number generator.
+        strata_key (str): a key to stratify the sampling on. If provided, each
+            stratum will be sampled to match its distribution in the original
+            dict.
+
+    Returns:
+        DatasetDict: the subsampled data dictionary.
+    """
     if subsample_size is not None and len(data_dict) > subsample_size:
         if strata_key is not None:
             strata = {}
@@ -442,7 +457,16 @@ def subsample_dataset(
     return data_dict
 
 
-def return_classes(paths: str | list[str]):
+def return_classes(paths: str | list[str]) -> dict[str | int, str]:
+    """
+    Returns a dictionary with the unique values in the images and their counts.
+
+    Args:
+        paths (str | list[str]): Path or list of paths to images.
+
+    Returns:
+        dict: Dictionary with unique values as keys and counts as values.
+    """
     if isinstance(paths, str):
         paths = [paths]
     out = {}

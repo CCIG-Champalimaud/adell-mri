@@ -10,10 +10,27 @@ from ..custom_types import DatasetDict
 
 @dataclass
 class ReadSpacing:
+    """
+    Reads the spacing for a given key in a dataset dictionary.
+
+    Args:
+        dataset_dict (DatasetDict): Dictionary containing study IDs and paths.
+        image_key (str): Key for the image path value to read spacing from.
+    """
+
     dataset_dict: DatasetDict
     image_key: str
 
     def __call__(self, key: str) -> Tuple[float, float, float]:
+        """
+        Args:
+            key (str): key in `self.dataset_dict`
+
+        Returns:
+            Tuple[str, Tuple[float, float, float]]: Tuple containing the key
+                and spacing for the corresponding image.
+
+        """
         sp = sitk.ReadImage(
             self.dataset_dict[key][self.image_key]
         ).GetSpacing()
@@ -23,6 +40,19 @@ class ReadSpacing:
 def spacing_values_from_dataset_json(
     dataset_dict: DatasetDict, key: str, n_workers: int = 1
 ) -> Dict[str, Tuple[float, float, float]]:
+    """
+    Retrieves spacings for all elements with a given key.
+
+    Args:
+        dataset_dict (DatasetDict): dataset dictionary.
+        key (str): key corresponding to image paths in dataset dictionary
+            (must be SITK-readable).
+        n_workers (int, optional): number of workers. Defaults to 1.
+
+    Returns:
+        Dict[str, Tuple[float, float, float]]: dictionary with study IDs as
+            keys and spacings as values.
+    """
     all_spacings = {}
     read_spacing = ReadSpacing(dataset_dict, key)
     with tqdm(dataset_dict) as pbar:
@@ -40,7 +70,18 @@ def spacing_values_from_dataset_json(
 
 def get_spacing_quantile(
     spacing_dict: Dict[str, Tuple[float, float, float]], quantile: float = 0.5
-):
+) -> List[float]:
+    """
+    Gets the spacing at a specified quantile from a dictionary of spacings.
+
+    Args:
+        spacing_dict: Dictionary with keys corresponding to studies and
+            values containing the spacing for that study.
+        quantile: Quantile at which to return the spacing.
+
+    Returns:
+        List[float]: The spacing at the specified quantile.
+    """
     all_spacings = np.array([spacing_dict[k] for k in spacing_dict])
     output = np.quantile(all_spacings, quantile, axis=0).tolist()
     print("Inferred spacing:", output)
@@ -80,6 +121,19 @@ def resample_image(
     out_size: List[int] = None,
     is_label: bool = False,
 ) -> sitk.Image:
+    """Resamples a SimpleITK image to a specified output spacing and size.
+
+    Args:
+      sitk_image: The SimpleITK image to resample.
+      out_spacing: The desired output spacing.
+      out_size: The desired output size. If None, it will be calculated
+        automatically based on out_spacing.
+      is_label: Whether the image is a label mask.
+
+    Returns:
+      The resampled SimpleITK image.
+    """
+
     spacing = sitk_image.GetSpacing()
     size = sitk_image.GetSize()
 
@@ -110,24 +164,45 @@ def resample_image(
 
 
 def resample_image_to_target(
-    moving: sitk.Image, target: sitk.Image
+    moving: sitk.Image,
+    target: sitk.Image,
+    is_label: bool = False,
 ) -> sitk.Image:
-    interpolation = sitk.sitkNearestNeighbor
-    output = sitk.Resample(
-        moving,
-        target.GetSize(),
-        sitk.Transform(),
-        interpolation,
-        target.GetOrigin(),
-        target.GetSpacing(),
-        target.GetDirection(),
-        0,
-        moving.GetPixelID(),
-    )
+    """
+    Resamples a SimpleITK image to the space of a target image.
+
+    Args:
+      moving: The SimpleITK image to resample.
+      target: The target SimpleITK image to match.
+      is_label (bool): whether the moving image is a label mask.
+
+    Returns:
+      The resampled SimpleITK image matching the target properties.
+    """
+    if is_label:
+        interpolation = sitk.sitkNearestNeighbor
+    else:
+        interpolation = sitk.sitkBSpline
+
+    output = sitk.Resample(moving, target, sitk.Transform(), interpolation, 0)
     return output
 
 
-def crop_image(sitk_image: sitk.Image, output_size: list[int]):
+def crop_image(sitk_image: sitk.Image, output_size: list[int]) -> sitk.Image:
+    """
+    Crops a SimpleITK image to a specified output size.
+
+    Pads the image if it is smaller than the output size before cropping to the
+    center region.
+
+    Args:
+        sitk_image (sitk.Image): SITK image.
+        output_size (list[int]): output size.
+
+    Returns:
+        sitk.Image: cropped/padded SITK image.
+    """
+
     output_size = np.array(output_size)
     curr_size = np.array(sitk_image.GetSize())
     # pad in case image is too small

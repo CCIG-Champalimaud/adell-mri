@@ -18,71 +18,16 @@ from lightning.pytorch.callbacks.model_checkpoint import ModelCheckpoint
 from typing import List, Union, Tuple, Any, Dict
 
 
-def coerce_to_uint8(x: np.ndarray):
-    x = (x - x.min()) / (x.max() - x.min()) * 255
-    return x.astype(np.uint8)
-
-
-def log_image(
-    trainer: Trainer,
-    key: str,
-    images: List[torch.Tensor],
-    slice_dim: int,
-    n_slices_out: int,
-    caption: List[str] = None,
-):
-    images = images.detach().to("cpu")
-    if len(images.shape) == 5:
-        n_slices = images.shape[slice_dim]
-        slice_idxs = np.arange(0, n_slices, n_slices_out + 2)[1:-1]
-        images = torch.index_select(
-            images, slice_dim, torch.as_tensor(slice_idxs)
-        )
-        images = torch.split(images, 1, dim=slice_dim)
-        images = torch.cat(images, -2).squeeze(-1)
-    images = torch.split(images, 1, 0)
-    images = [x.squeeze(0).permute(1, 2, 0).numpy() for x in images]
-    images = [coerce_to_uint8(x).squeeze(-1) for x in images]
-    images = [Image.fromarray(x) for x in images]
-
-    if caption is not None:
-        trainer.logger.log_image(key=key, images=images, caption=caption)
-    else:
-        trainer.logger.log_image(key=key, images=images)
-
-
-def allocated_memory_per_gpu() -> Dict[int, int]:
-    """
-    Returns a dictionary with the allocated memory per GPU.
-
-    Returns:
-        Dict: dictionary with GPU ids (0,1,2,...) as keys and the amount of
-            allocated memory as values.
-    """
-    output = {}
-    for i in range(torch.cuda.device_count()):
-        output[i] = torch.cuda.memory_allocated(i)
-    return output
-
-
-def get_emptiest_gpus(n: int = 1) -> List[int]:
-    """
-    Gets the ids for the n emptiest GPUs.
-
-    Args:
-        n (int, optional): number of ids to retrieve. Defaults to 1.
-
-    Returns:
-        int:
-    """
-    mem = allocated_memory_per_gpu()
-    least_mem_gpu = sorted(
-        allocated_memory_per_gpu().keys(), key=lambda i: mem[i]
-    )[:n]
-    return least_mem_gpu
-
-
 class LogImage(Callback):
+    """
+    Logs image outputs from the validation loop to a Lightning logger.
+
+    This callback logs image outputs during validation by slicing
+    the batch along the slice dimension, logging a subset of slices,
+    and optionally adding captions. It logs after a set number of
+    batches have been processed.
+    """
+
     def __init__(
         self,
         image_keys: List[str] = "image",
@@ -92,6 +37,19 @@ class LogImage(Callback):
         slice_dim: int = 4,
         log_frequency: int = 5,
     ):
+        """
+        Args:
+            image_keys (List[str], optional): keys corresponding to images.
+                Defaults to "image".
+            caption_keys (List[str], optional): keys corresponding to captions.
+                Defaults to None.
+            output_idxs (List[int], optional): indices corresponding to logged
+                images in the output. Defaults to None.
+            n_slices (int, optional): number of logged slices per volume.
+                Defaults to 1.
+            slice_dim (int, optional): dimension for slices. Defaults to 4.
+            log_frequency (int, optional): frequency of logging. Defaults to 5.
+        """
         self.image_keys = image_keys
         self.caption_keys = caption_keys
         self.output_idxs = output_idxs
@@ -107,7 +65,7 @@ class LogImage(Callback):
         batch: Dict[str, Any],
         batch_idx: int,
         dataloader_idx: int = 0,
-    ):
+    ) -> None:
         if batch_idx % self.log_frequency == 0:
             if self.caption_keys is not None:
                 captions = []
@@ -155,6 +113,18 @@ class LogImageFromDiffusionProcess(Callback):
         n_images: int = 2,
         every_n_epochs: int = 1,
     ):
+        """
+        Args:
+            size (List[int]): size of the generated image.
+            output_idxs (List[int], optional): indices corresponding to logged
+                images in the output. Defaults to None.
+            n_slices (int, optional): number of logged slices per volume.
+                Defaults to 1.
+            slice_dim (int, optional): dimension for slices. Defaults to 4.
+            every_n_epochs (int, optional): frequency of logging. Defaults to
+                1.
+        """
+
         self.size = size
         self.n_slices = n_slices
         self.slice_dim = slice_dim
@@ -163,7 +133,7 @@ class LogImageFromDiffusionProcess(Callback):
 
     def on_validation_epoch_end(
         self, trainer: Trainer, pl_module: LightningModule
-    ):
+    ) -> None:
         ep = pl_module.current_epoch
         if ep % self.every_n_epochs == 0 and ep > 0:
             images = pl_module.generate_image(size=self.size, n=self.n_images)
@@ -177,7 +147,20 @@ class LogImageFromDiffusionProcess(Callback):
 
 
 class GPULock:
+    """
+    Manages locking and unlocking GPU devices for exclusive use.
+
+    This class allows locking specific GPU devices to prevent multiple
+    processes from accessing them concurrently. GPU devices can be locked,
+    unlocked, and the first available unlocked GPU can be locked automatically.
+    """
+
     def __init__(self, path: str = ".gpu_lock"):
+        """
+        Args:
+            path (str, optional): path to file containing the GPU lock
+                information. Defaults to ".gpu_lock".
+        """
         self.path = path
 
         self.locked_gpus = []
@@ -186,7 +169,13 @@ class GPULock:
         ]
         atexit.register(self.unlock_all)
 
-    def get_locked_gpus(self):
+    def get_locked_gpus(self) -> list[str]:
+        """
+        Returns locked GPUs
+
+        Returns:
+            list[str]: list with locked GPUs.
+        """
         if os.path.exists(self.path):
             with open(self.path, "r") as o:
                 locked_gpus = [
@@ -196,7 +185,15 @@ class GPULock:
         else:
             return []
 
-    def lock(self, i: int):
+    def lock(self, i: int) -> None:
+        """
+        Locks a GPU with a given index. Raises an exception if `i` does not
+        correspond to any GPU and if `i` corresponds to a GPU which is already
+        locked.
+
+        Args:
+            i (int): GPU index to lock.
+        """
         i = str(i)
         if i not in self.available_devices:
             raise Exception(
@@ -211,13 +208,26 @@ class GPULock:
             o.write("\n".join(locked_gpus))
         self.locked_gpus.append(i)
 
-    def unlock(self, i: int):
+    def unlock(self, i: int) -> None:
+        """
+        Unlocks a GPU with a given index.
+
+        Args:
+            i (int): GPU index to unlock.
+        """
         i = str(i)
         locked_gpus = [x for x in self.get_locked_gpus() if x != i]
         with open(self.path, "w") as o:
             o.write("\n".join(locked_gpus))
 
-    def lock_first_available(self):
+    def lock_first_available(self) -> int:
+        """
+        Identifies an available GPU and locks it. Raises Exception if no GPUs
+        are available.
+
+        Returns:
+            int: index of locked GPU.
+        """
         locked_gpus = self.get_locked_gpus()
         gpu_to_lock = None
         for i in range(torch.cuda.device_count()):
@@ -230,7 +240,10 @@ class GPULock:
         self.lock(gpu_to_lock)
         return gpu_to_lock
 
-    def unlock_all(self):
+    def unlock_all(self) -> None:
+        """
+        Unlocks all locked GPUs.
+        """
         print(f"Unlocking GPUs {self.locked_gpus}")
         locked_gpus = self.get_locked_gpus()
         for locked_gpu in locked_gpus:
@@ -238,7 +251,9 @@ class GPULock:
 
 
 class ModelCheckpointWithMetadata(ModelCheckpoint):
-    """Identifcal to ModelCheckpoint but allows for metadata to be stored."""
+    """
+    Identifcal to ModelCheckpoint but allows for metadata to be stored.
+    """
 
     def __init__(
         self,
@@ -308,7 +323,8 @@ class ModelCheckpointWithMetadata(ModelCheckpoint):
 
 
 def delete_checkpoints(trainer: Trainer) -> None:
-    """Convenience function to delete checkpoints.
+    """
+    Convenience function to delete checkpoints.
 
     Args:
         trainer (Trainer): a Lightning Trainer object.
@@ -330,6 +346,85 @@ def delete_checkpoints(trainer: Trainer) -> None:
                     delete(ckpt_callback.best_model_path)
             if hasattr(ckpt_callback, "last_model_path"):
                 delete(ckpt_callback.last_model_path)
+
+
+def coerce_to_uint8(x: np.ndarray):
+    x = (x - x.min()) / (x.max() - x.min()) * 255
+    return x.astype(np.uint8)
+
+
+def log_image(
+    trainer: Trainer,
+    key: str,
+    images: List[torch.Tensor],
+    slice_dim: int,
+    n_slices_out: int,
+    caption: List[str] = None,
+):
+    """Logs images to the PyTorch Lightning logger.
+
+    This callback takes a batch of images, slices them along the provided
+    slice dimension, converts them to uint8, creates PIL images, and logs
+    them to the PyTorch Lightning logger.
+
+    Args:
+        trainer (Trainer): PyTorch Lightning Trainer instance.
+        key (str): key for the logged images.
+        images (List[torch.Tensor]): list of images to log as a list of torch
+            Tensors.
+        slice_dim (int): dimension to slice the images along (if images are 3D).
+        n_slices_out (int): number of image slices to output.
+        caption (List[str]): Optional list of captions, one for each image.
+    """
+    images = images.detach().to("cpu")
+    if len(images.shape) == 5:
+        n_slices = images.shape[slice_dim]
+        slice_idxs = np.arange(0, n_slices, n_slices_out + 2)[1:-1]
+        images = torch.index_select(
+            images, slice_dim, torch.as_tensor(slice_idxs)
+        )
+        images = torch.split(images, 1, dim=slice_dim)
+        images = torch.cat(images, -2).squeeze(-1)
+    images = torch.split(images, 1, 0)
+    images = [x.squeeze(0).permute(1, 2, 0).numpy() for x in images]
+    images = [coerce_to_uint8(x).squeeze(-1) for x in images]
+    images = [Image.fromarray(x) for x in images]
+
+    if caption is not None:
+        trainer.logger.log_image(key=key, images=images, caption=caption)
+    else:
+        trainer.logger.log_image(key=key, images=images)
+
+
+def allocated_memory_per_gpu() -> Dict[int, int]:
+    """
+    Returns a dictionary with the allocated memory per GPU.
+
+    Returns:
+        Dict: dictionary with GPU ids (0,1,2,...) as keys and the amount of
+            allocated memory as values.
+    """
+    output = {}
+    for i in range(torch.cuda.device_count()):
+        output[i] = torch.cuda.memory_allocated(i)
+    return output
+
+
+def get_emptiest_gpus(n: int = 1) -> List[int]:
+    """
+    Gets the ids for the n emptiest GPUs.
+
+    Args:
+        n (int, optional): number of ids to retrieve. Defaults to 1.
+
+    Returns:
+        int:
+    """
+    mem = allocated_memory_per_gpu()
+    least_mem_gpu = sorted(
+        allocated_memory_per_gpu().keys(), key=lambda i: mem[i]
+    )[:n]
+    return least_mem_gpu
 
 
 def get_step_information(

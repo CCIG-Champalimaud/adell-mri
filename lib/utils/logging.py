@@ -7,7 +7,12 @@ from typing import Any
 @dataclass
 class CSVLogger:
     """
-    CSV logger class.
+    CSV logger class for failure-aware metric logging.
+
+    Args:
+        file_path (str): path to log file.
+        overwrite (bool, optional): whether to overwrite folds in the log CSV
+            file.
     """
 
     file_path: str

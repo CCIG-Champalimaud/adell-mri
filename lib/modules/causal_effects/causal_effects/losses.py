@@ -3,9 +3,6 @@ Implementations of different loss functions for segmentation tasks.
 """
 
 import torch
-import torch.nn.functional as F
-from typing import Union, Tuple
-from itertools import combinations
 
 eps = 1e-6
 
@@ -13,7 +10,8 @@ eps = 1e-6
 def pt(
     pred: torch.Tensor, target: torch.Tensor, threshold: float = 0.5
 ) -> torch.Tensor:
-    """Convenience function to convert probabilities of predicting
+    """
+    Convenience function to convert probabilities of predicting
     the positive class to probability of predicting the corresponding
     target.
 
@@ -38,7 +36,8 @@ def binary_cross_entropy(
     scale: float = 1.0,
     eps: float = eps,
 ) -> torch.Tensor:
-    """Standard implementation of binary cross entropy.
+    """
+    Standard implementation of binary cross entropy.
 
     Args:
         pred (torch.Tensor): prediction probabilities.
@@ -63,7 +62,8 @@ def binary_cross_entropy(
 def mean_squared_error(
     pred: torch.Tensor, target: torch.Tensor
 ) -> torch.Tensor:
-    """Standard implementation of mean squared error.
+    """
+    Standard implementation of mean squared error.
 
     Args:
         pred (torch.Tensor): prediction probabilities.
@@ -81,7 +81,8 @@ def mean_squared_error(
 def root_mean_squared_error(
     pred: torch.Tensor, target: torch.Tensor
 ) -> torch.Tensor:
-    """Standard implementation of root mean squared error.
+    """
+    Standard implementation of root mean squared error.
 
     Args:
         pred (torch.Tensor): prediction probabilities.
@@ -107,7 +108,8 @@ def decorrelation_loss(
     scale: float = 1.0,
     eps: float = eps,
 ) -> torch.Tensor:
-    """Implementation fo the decorrelation loss from https://arxiv.org/abs/2008.09858
+    """
+    Implementation of the decorrelation loss from https://arxiv.org/abs/2008.09858
 
     Args:
         pred (torch.Tensor): prediction probabilities.

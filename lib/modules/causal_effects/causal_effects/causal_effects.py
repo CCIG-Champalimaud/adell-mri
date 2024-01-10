@@ -5,7 +5,7 @@ import torch.nn.functional as F
 
 from ...layers.standard_blocks import VGGConvolution3d, VGGDeconvolution3d
 
-from typing import Union, Dict, List, Tuple, Callable
+from typing import List
 
 
 class VGGAutoencoder(torch.nn.Module):

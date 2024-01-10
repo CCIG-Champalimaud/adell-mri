@@ -32,7 +32,7 @@ def iou(a: np.ndarray, b: np.ndarray) -> float:
 def merge_masks(path_list: List[str], argmax: bool) -> sitk.Image:
     images_ = [sitk.ReadImage(x) for x in path_list]
     images_[1:] = [
-        resample_image_to_target(x, images_[0]) for x in images_[1:]
+        resample_image_to_target(x, images_[0], True) for x in images_[1:]
     ]
     images = [sitk.GetArrayFromImage(x) for x in images_]
     image_out = np.stack([np.zeros_like(images[0]), *images])

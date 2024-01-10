@@ -19,7 +19,6 @@ from .utils import (
     AdjustSizesd,
     CropFromMaskd,
     ConvexHulld,
-    PrintShaped,
 )
 from .modules.augmentations import (
     generic_augments,

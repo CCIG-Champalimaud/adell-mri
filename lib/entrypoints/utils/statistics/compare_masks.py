@@ -72,7 +72,7 @@ def main(arguments):
         if len(path_dict[patient_id]) == 2:
             image_1 = sitk.ReadImage(path_dict[patient_id][0])
             image_2 = sitk.ReadImage(path_dict[patient_id][1])
-            image_2 = resample_image_to_target(image_2, image_1)
+            image_2 = resample_image_to_target(image_2, image_1, True)
             image_1 = sitk.GetArrayFromImage(image_1)
             image_2 = sitk.GetArrayFromImage(image_2)
             if args.binarize == True:

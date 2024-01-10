@@ -1,5 +1,6 @@
 import argparse
 import numpy as np
+import torch
 from pydicom import dcmread
 from pathlib import Path
 from tqdm import tqdm
@@ -9,11 +10,31 @@ from skimage.io import imsave
 desc = "Generates a panel of random DICOM images in a folder"
 
 
-def normalize(x: np.ndarray):
+def normalize(x: np.ndarray | torch.Tensor) -> np.ndarray | torch.Tensor:
+    """
+    Normalise array to range [0, 1].
+
+    Args:
+        x (np.ndarray | torch.Tensor): array.
+
+    Returns:
+        np.ndarray | torch.Tensor: normalised array.
+    """
     return (x - x.min()) / (x.max() - x.min())
 
 
-def crop_to_square(x: np.ndarray):
+def crop_to_square(x: np.ndarray) -> np.ndarray:
+    """Crops the input array x to a square shape.
+
+    Finds the minimum size in the array shape, calculates padding needed on
+    each side to make it square, pads and crops to return a square array.
+
+    Args:
+        x (np.ndarray): array.
+
+    Returns:
+        np.ndarray: square array.
+    """
     sh = x.shape
     ms = np.min(sh)
     A = [(s - ms) // 2 for s in sh]
