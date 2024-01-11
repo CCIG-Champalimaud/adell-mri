@@ -1,6 +1,6 @@
 # ADeLL-MRI - a Deep-Learning Library for MRI
 
-Here we implement and develop methods for **classification**, **segmentation**, **self-supervised learning** and **detection** using different MRI modalities, but these are more generically applicable to other problems - we try to follow a modular design and development, such that networks can be deployed to different problems as necessary. we also do some work with self supervised learning methods, and have recently started to implement some building blocks for continuous learning. we prefer to organize data using `json` files so we have developed a number of scripts that allow us to achieve this (i.e. `python -m lib utils generate_dataset_json`) and generate "dataset JSON files". By a dataset JSON file we merely mean a JSON file with the following format:
+Here we implement and develop methods for **classification**, **segmentation**, **self-supervised learning** and **detection** using different MRI modalities, but these are more generically applicable to other problems - we try to follow a modular design and development, such that networks can be deployed to different problems as necessary. we also do some work with self supervised learning methods, and have recently started to implement some building blocks for continuous learning. we prefer to organize data using `json` files so we have developed a number of scripts that allow us to achieve this (i.e. `python -m adell_mri utils generate_dataset_json`) and generate "dataset JSON files". By a dataset JSON file we merely mean a JSON file with the following format:
 
 ```
 entry_1
@@ -66,27 +66,27 @@ Using these you can run `adell` from your command line as an [entrypoint](#entry
 
 ### Modules and networks
 
-`lib/modules/layers` contains building blocks for 3D and 2D neural networks. The remaining `lib/modules/...` folders contain implementations for different applications.
+`adell_mri/modules/layers` contains building blocks for 3D and 2D neural networks. The remaining `adell_mri/modules/...` folders contain implementations for different applications.
 
 #### Adaptations to PyTorch Lightning
 
-I use PyTorch Lightning to train my models as it offers a very comprehensive set of tools for optimisation. I.e. in `lib/modules/segmentation/pl.py` we have implemented some classes which inherit from the networks implemented in `lib/modules/segmentation` so that they can be trained using PyTorch Lightning. The same has been done for other tasks (classification, detection, segmentation...)
+I use PyTorch Lightning to train my models as it offers a very comprehensive set of tools for optimisation. I.e. in `adell_mri/modules/segmentation/pl.py` we have implemented some classes which inherit from the networks implemented in `adell_mri/modules/segmentation` so that they can be trained using PyTorch Lightning. The same has been done for other tasks (classification, detection, segmentation...)
 
 ### Entrypoints
 
-A generic entrypoint has been created, this can be accessed through `python -m lib` (or `adell` if you have installed this package as described in the [installation](#installation)). Running this produces:
+A generic entrypoint has been created, this can be accessed through `python -m adell_mri` (or `adell` if you have installed this package as described in the [installation](#installation)). Running this produces:
 
 ```
         Supported modes: ['classification', 'classification_deconfounder', 'classification_mil', 'classification_ensemble', 'generative', 'segmentation', 'segmentation_from_2d_module', 'ssl', 'detection', 'utils']
 ```
 
-And specifying different modes leads to (for classification, for example - `python -m lib classification`):
+And specifying different modes leads to (for classification, for example - `python -m adell_mri classification`):
 
 ```
         Supported modes: ['train', 'test', 'predict']
 ```
 
-Finally, upon further specification (`python -m lib classification train`):
+Finally, upon further specification (`python -m adell_mri classification train`):
 
 ```
 usage: __main__.py [-h] [--net_type {cat,ord,unet,vit,factorized_vit,vgg}] [--params_from PARAMS_FROM] --dataset_json DATASET_JSON
@@ -229,7 +229,7 @@ options:
                         Sets the final classification bias to log(pos/neg).
 ```
 
-This creates a consistent way of entering different scripts. All entrypoints are specified in `lib/entrypoints`.
+This creates a consistent way of entering different scripts. All entrypoints are specified in `adell_mri/entrypoints`.
 
 ### Tests
 
