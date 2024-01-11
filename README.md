@@ -14,18 +14,18 @@ Then, using some minor JSON manipulation and [`MONAI`](https://monai.io/) we are
 
 ## Installation
 
-Installing this as package can be done easily through `poetry` in a `conda` environment. This requires `scikit-build` and can be done through the following commands:
+Installing this as package can be done easily through `pdm` in a `conda` environment. This requires `scikit-build` and can be done through the following commands:
 
 ```
 # creates and activates environment
 conda create -n adell_env python=3.11
 conda activate adell_env
 
-# installs poetry and scikit-build
-pip install poetry scikit-build
+# installs pdm and scikit-build
+pip install pdm scikit-build
 
 # installs adell_mri
-poetry install
+pdm install
 ```
 
 Using these you can run `adell` from your command line as an [entrypoint](#entrypoints).
@@ -74,7 +74,7 @@ I use PyTorch Lightning to train my models as it offers a very comprehensive set
 
 ### Entrypoints
 
-A generic entrypoint has been created, this can be accessed through `python -m lib` (or `adell` if you have installed this package). Running this produces:
+A generic entrypoint has been created, this can be accessed through `python -m lib` (or `adell` if you have installed this package as described in the [installation](#installation)). Running this produces:
 
 ```
         Supported modes: ['classification', 'classification_deconfounder', 'classification_mil', 'classification_ensemble', 'generative', 'segmentation', 'segmentation_from_2d_module', 'ssl', 'detection', 'utils']

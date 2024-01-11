@@ -1,19 +1,27 @@
-[tool.poetry]
+[project]
 name = "adell-mri"
 version = "0.1.0"
 description = "A deep-learning library built with torch, lightning and MONAI for medical imaging."
-authors = ["Jose Guilherme de Almeida <jose.almeida@research.fchampalimaud.org>", "Nuno M. Rodrigues"]
-license = "LICENSE"
-packages = [{include = "adell_mri"}]
+authors = [
+  {name = "Jose Guilherme de Almeida", email = "jose.almeida@research.fchampalimaud.org"},
+  {name = "Nuno M. Rodrigues"}
+]
+license = {text = "LICENSE"}
+requires-python = ">=3.11"
 
-[tool.poetry.dependencies]
-python = ">=3.11" 
+[project.scripts]
+adell = "adell_mri.__main__:main"
+
+[tool.pdm.scripts]
+adell = {call = "adell_mri.__main__:main"}
+
+[tool.pdm.dependencies]
 scikit-build = "^0.17.6"
 dvc = "2.45.1"
 einops = "0.7.0"
 hydra-core = "1.3.2"
 itk = ">=5"
-lightning = "2.1.2"
+lightning = "2.1.2"  
 monai = "1.3.0"
 multiprocess = "0.70.13"
 nibabel = "5.1.0"
@@ -23,7 +31,7 @@ pandas = "1.4.2"
 panel = "1.2.3"
 Pillow = "10.0.1"
 pydicom = "2.4.3"
-pytest = "7.2.0"  
+pytest = "7.2.0"   
 PyYAML = "6.0.1"
 scikit-image = "0.20"
 scikit-learn = "1.3.0"
@@ -34,9 +42,6 @@ torchmetrics = "1.2.0"
 tqdm = "4.64.1"
 generative = {git = "https://github.com/Project-MONAI/GenerativeModels.git", rev = "0.2.2"}
 
-[tool.poetry.scripts]
-adell = "adell_mri.__main__:main"
-
 [build-system]
-requires = ["poetry-core>=1.0.0"]
-build-backend = "poetry.core.masonry.api"
+requires = ["pdm-pep517>=1.0.0"]
+build-backend = "pdm.pep517.api"
