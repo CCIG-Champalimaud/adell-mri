@@ -4,7 +4,7 @@ import os
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 import torch
-from lib.modules.layers.linear_blocks import MLP
+from adell_mri.modules.layers.linear_blocks import MLP
 
 
 def test_mlp():

@@ -4,7 +4,7 @@ import os
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 import torch
-from lib.modules.layers.conv_next import ConvNeXtBackbone
+from adell_mri.modules.layers.conv_next import ConvNeXtBackbone
 
 c, h, w = [1, 64, 64]
 inter = 64

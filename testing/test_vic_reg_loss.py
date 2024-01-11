@@ -6,7 +6,7 @@ sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 import numpy as np
 import torch
 
-from lib.modules.self_supervised import VICRegLoss, VICRegLocalLoss
+from adell_mri.modules.self_supervised import VICRegLoss, VICRegLocalLoss
 
 b, c, h, w, d = 4, 512, 4, 4, 2
 

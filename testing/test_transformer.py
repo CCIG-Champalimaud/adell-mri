@@ -4,8 +4,11 @@ import os
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 import torch
-from lib.modules.layers.vit import TransformerBlock, TransformerBlockStack
-from lib.modules.layers.adn_fn import get_adn_fn
+from adell_mri.modules.layers.vit import (
+    TransformerBlock,
+    TransformerBlockStack,
+)
+from adell_mri.modules.layers.adn_fn import get_adn_fn
 
 input_dim_primary = 32
 input_dim_context = 16

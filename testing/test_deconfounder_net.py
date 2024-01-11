@@ -4,7 +4,7 @@ import os
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 import torch
-from lib.modules.classification.classification import (
+from adell_mri.modules.classification.classification import (
     deconfounded_classification,
 )
 

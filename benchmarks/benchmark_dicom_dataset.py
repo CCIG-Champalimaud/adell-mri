@@ -9,10 +9,10 @@ import numpy as np
 import monai
 from tqdm import trange
 
-from lib.utils.dicom_loader import DICOMDataset
-from lib.monai_transforms import get_pre_transforms_ssl
-from lib.monai_transforms import get_post_transforms_ssl
-from lib.monai_transforms import get_augmentations_ssl
+from adell_mri.utils.dicom_loader import DICOMDataset
+from adell_mri.monai_transforms import get_pre_transforms_ssl
+from adell_mri.monai_transforms import get_post_transforms_ssl
+from adell_mri.monai_transforms import get_augmentations_ssl
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

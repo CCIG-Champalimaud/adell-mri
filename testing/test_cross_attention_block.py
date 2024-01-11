@@ -4,7 +4,7 @@ import os
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 import torch
-from lib.modules.layers.self_attention import SelfAttentionBlock
+from adell_mri.modules.layers.self_attention import SelfAttentionBlock
 
 c, h, w, d = [16, 32, 32, 16]
 

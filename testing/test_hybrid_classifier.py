@@ -4,8 +4,11 @@ import os
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 import torch
-from lib.modules.layers.conv_next import ConvNeXt
-from lib.modules.classification import HybridClassifier, TabularClassifier
+from adell_mri.modules.layers.conv_next import ConvNeXt
+from adell_mri.modules.classification import (
+    HybridClassifier,
+    TabularClassifier,
+)
 
 batch_size = 4
 n_features = 10

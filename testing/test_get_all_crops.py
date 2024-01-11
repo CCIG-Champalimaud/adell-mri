@@ -5,8 +5,8 @@ sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 import numpy as np
 import torch
-from lib.utils.monai_transforms import GetAllCrops, GetAllCropsd
-from lib.utils.utils import safe_collate_crops
+from adell_mri.utils.monai_transforms import GetAllCrops, GetAllCropsd
+from adell_mri.utils.utils import safe_collate_crops
 
 input_tensor_size = np.array([1, 128, 128, 16])
 crop_size = np.array([32, 32, 8])

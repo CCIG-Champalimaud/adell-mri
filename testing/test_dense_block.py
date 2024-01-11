@@ -4,8 +4,8 @@ import os
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 import torch
-from lib.modules.layers.standard_blocks import DenseBlock
-from lib.modules.layers.adn_fn import ActDropNorm
+from adell_mri.modules.layers.standard_blocks import DenseBlock
+from adell_mri.modules.layers.adn_fn import ActDropNorm
 
 c, h, w, d = [1, 32, 32, 16]
 adn_fn_2d = ActDropNorm

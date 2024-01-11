@@ -6,7 +6,7 @@ sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 from copy import deepcopy
 import torch
 
-from lib.modules.callbacks import SpectralNorm
+from adell_mri.modules.callbacks import SpectralNorm
 
 
 def test_spectral_norm():

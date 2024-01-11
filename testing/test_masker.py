@@ -7,7 +7,7 @@ from itertools import product
 
 import numpy as np
 import torch
-from lib.utils.masking import get_masker
+from adell_mri.utils.masking import get_masker
 
 n_channels = 16
 mask_vector = torch.zeros(n_channels)

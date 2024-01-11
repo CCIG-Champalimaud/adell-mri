@@ -5,7 +5,7 @@ sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 import pytest
 
 import torch
-from lib.modules.activations import (
+from adell_mri.modules.activations import (
     NormalizedActivation,
     activation_gradient_factory,
 )

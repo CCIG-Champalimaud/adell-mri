@@ -5,11 +5,11 @@ sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 import pytest
 
 import torch
-from lib.modules.layers.vit import (
+from adell_mri.modules.layers.vit import (
     SWINTransformerBlock,
     SWINTransformerBlockStack,
 )
-from lib.modules.layers.adn_fn import get_adn_fn
+from adell_mri.modules.layers.adn_fn import get_adn_fn
 
 image_size = [32, 32, 16]
 patch_size = [4, 4, 2]

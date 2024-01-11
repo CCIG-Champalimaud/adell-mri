@@ -5,8 +5,11 @@ import torch
 import sys
 
 sys.path.append(r"..")
-from lib.modules.config_parsing import parse_config_unet, parse_config_cat
-from lib.utils.network_factories import get_classification_network
+from adell_mri.modules.config_parsing import (
+    parse_config_unet,
+    parse_config_cat,
+)
+from adell_mri.utils.network_factories import get_classification_network
 
 
 def main(arguments):

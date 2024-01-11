@@ -1,6 +1,6 @@
 # ADeLL-MRI - a Deep-Learning Library for MRI
 
-Here we implement and develop methods for **classification**, **segmentation**, **self-supervised learning** and **detection** using different MRI modalities, but these are more generically applicable to other problems - we try to follow a modular design and development, such that networks can be deployed to different problems as necessary. we also do some work with self supervised learning methods, and have recently started to implement some building blocks for continuous learning. we prefer to organize data using `json` files so we have developed a number of scripts that allow us to achieve this (i.e. `utils/generate-dataset-json.py`) and generate "dataset JSON files". By a dataset JSON file we merely mean a JSON file with the following format:
+Here we implement and develop methods for **classification**, **segmentation**, **self-supervised learning** and **detection** using different MRI modalities, but these are more generically applicable to other problems - we try to follow a modular design and development, such that networks can be deployed to different problems as necessary. we also do some work with self supervised learning methods, and have recently started to implement some building blocks for continuous learning. we prefer to organize data using `json` files so we have developed a number of scripts that allow us to achieve this (i.e. `python -m lib utils generate_dataset_json`) and generate "dataset JSON files". By a dataset JSON file we merely mean a JSON file with the following format:
 
 ```
 entry_1
@@ -12,7 +12,27 @@ entry_1
 
 Then, using some minor JSON manipulation and [`MONAI`](https://monai.io/) we are able to easily construct data ingestion pipelines for training.
 
-## Implemented methods for segmentation
+## Installation
+
+Installing this as package can be done easily through `poetry` in a `conda` environment. This requires `scikit-build` and can be done through the following commands:
+
+```
+# creates and activates environment
+conda create -n adell_env python=3.11
+conda activate adell_env
+
+# installs poetry and scikit-build
+pip install poetry scikit-build
+
+# installs adell_mri
+poetry install
+```
+
+Using these you can run `adell` from your command line as an [entrypoint](#entrypoints).
+
+## Implemented methods 
+
+### Segmentation
 
 * [**U-Net**](https://www.nature.com/articles/s41592-018-0261-2) - different versions are required for 2D and 3D, but here we developed a class that is able to coordinate the operations to setup both (this idea was based on the MONAI implementation of the U-Net)
 * [**U-Net++**](https://pubmed.ncbi.nlm.nih.gov/32613207/) - very similar to U-Net but features [DenseNet](https://arxiv.org/abs/1608.06993)-like skip connections and skip connections between different resolutions. Also features deep supervision at the level of intermediate skip connections
@@ -21,12 +41,12 @@ Then, using some minor JSON manipulation and [`MONAI`](https://monai.io/) we are
 * [**UNETR**](https://arxiv.org/abs/2103.10504) - transformer-based U-Net
 * [**SWINUNet**](https://arxiv.org/pdf/2103.14030.pdf) - transformer-based U-Net with shifted windows. Has better performance than UNETR while keeping a relatively similar complexity in terms of flops
 
-## Implemented methods for detection
+### Implemented methods for detection
 
 * YOLO-based network for 3d detection
 * Also implemented a coarse segmentation algorithm, similar to YOLO but outputs only the object probability mask
 
-## Implemented methods for classification
+### Implemented methods for classification
 
 * Regular, VGG-like networks (just simple concatenations of convolution + activation + normalization)
 * ResNet-based methods
@@ -34,7 +54,7 @@ Then, using some minor JSON manipulation and [`MONAI`](https://monai.io/) we are
 * [**Vision transformer**](https://arxiv.org/abs/2010.11929v2) - A transformer, but for images
 * **Factorized vision transformer** - A transformer that first processes information *within* slices (3rd spatial dimension) and only then *between* slices.
 
-## Implemented methods for self-supervised learning
+### Implemented methods for self-supervised learning
 
 * [**BYOL**](https://arxiv.org/abs/2006.07733) - the paper that proposed a student/teacher type of setup where the teacher is nothing more than a exponential moving average of the whole model
 * [**SimSiam**](https://arxiv.org/abs/2011.10566) - the paper that figured out that all you *really* need for self-supervised learning is a stop gradient on one of the encoders
@@ -52,12 +72,12 @@ Then, using some minor JSON manipulation and [`MONAI`](https://monai.io/) we are
 
 I use PyTorch Lightning to train my models as it offers a very comprehensive set of tools for optimisation. I.e. in `lib/modules/segmentation/pl.py` we have implemented some classes which inherit from the networks implemented in `lib/modules/segmentation` so that they can be trained using PyTorch Lightning. The same has been done for other tasks (classification, detection, segmentation...)
 
-### Command line interfaces for training, prediction and testing
+### Entrypoints
 
-A generic entrypoint has been created, this can be accessed through `python -m lib`. Running this produces:
+A generic entrypoint has been created, this can be accessed through `python -m lib` (or `adell` if you have installed this package). Running this produces:
 
 ```
-        Supported modes: ['classification', 'classification_deconfounder', 'classification_mil', 'classification_ensemble', 'generative', 'segmentation', 'segmentation_from_2d_module', 'ssl', 'detection']
+        Supported modes: ['classification', 'classification_deconfounder', 'classification_mil', 'classification_ensemble', 'generative', 'segmentation', 'segmentation_from_2d_module', 'ssl', 'detection', 'utils']
 ```
 
 And specifying different modes leads to (for classification, for example - `python -m lib classification`):
@@ -218,4 +238,4 @@ I have included a few unit tests in `testing`. In them, we confirm that networks
 ### To-do
 
 * <del>Change dataset generation to entrypoint</del>
-* Create minimal installer
+* <del>Create minimal installer</del>

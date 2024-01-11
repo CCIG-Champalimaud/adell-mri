@@ -5,7 +5,7 @@ sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 import pytest
 
 import torch
-from lib.modules.segmentation.unetr import SWINUNet
+from adell_mri.modules.segmentation.unetr import SWINUNet
 
 h, w, d, c = 64, 64, 32, 1
 

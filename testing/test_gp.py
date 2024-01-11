@@ -6,7 +6,7 @@ sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 import torch
 import torch.nn.functional as F
 import numpy as np
-from lib.modules.layers.gaussian_process import GaussianProcessLayer
+from adell_mri.modules.layers.gaussian_process import GaussianProcessLayer
 
 i, o = 128, 8
 a, b, c = 16, 32, 64

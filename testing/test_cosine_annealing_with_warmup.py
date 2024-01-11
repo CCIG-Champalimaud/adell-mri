@@ -5,7 +5,7 @@ sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 from pytest import mark
 
 import torch
-from lib.modules.learning_rate import CosineAnnealingWithWarmupLR
+from adell_mri.modules.learning_rate import CosineAnnealingWithWarmupLR
 
 N_warmup = 5
 N_max = 10

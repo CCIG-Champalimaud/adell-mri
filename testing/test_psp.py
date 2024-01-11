@@ -4,7 +4,7 @@ import os
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 import torch
-from lib.modules.layers.multi_resolution import PyramidSpatialPooling3d
+from adell_mri.modules.layers.multi_resolution import PyramidSpatialPooling3d
 
 
 def test_psp():

@@ -5,10 +5,10 @@ sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 import pytest
 
 import torch
-from lib.modules.segmentation.unet import UNet
-from lib.modules.layers.res_net import ResNet
-from lib.modules.classification.classification import GenericEnsemble
-from lib.modules.layers.adn_fn import get_adn_fn, ActDropNormBuilder
+from adell_mri.modules.segmentation.unet import UNet
+from adell_mri.modules.layers.res_net import ResNet
+from adell_mri.modules.classification.classification import GenericEnsemble
+from adell_mri.modules.layers.adn_fn import get_adn_fn, ActDropNormBuilder
 
 resnet_args = {
     "backbone_args": {

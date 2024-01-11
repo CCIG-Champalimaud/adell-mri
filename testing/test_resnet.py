@@ -5,8 +5,8 @@ sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 import pytest
 
 import torch
-from lib.modules.layers.res_net import ResNet
-from lib.modules.layers.adn_fn import ActDropNormBuilder
+from adell_mri.modules.layers.res_net import ResNet
+from adell_mri.modules.layers.adn_fn import ActDropNormBuilder
 
 h, w, d, c = 32, 32, 20, 1
 

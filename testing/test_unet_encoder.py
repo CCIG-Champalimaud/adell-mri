@@ -5,8 +5,8 @@ sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 import pytest
 
 import torch
-from lib.modules.classification.classification import UNetEncoder
-from lib.modules.layers.adn_fn import ActDropNormBuilder
+from adell_mri.modules.classification.classification import UNetEncoder
+from adell_mri.modules.layers.adn_fn import ActDropNormBuilder
 
 h, w, d, c = 32, 32, 20, 1
 bs = 4

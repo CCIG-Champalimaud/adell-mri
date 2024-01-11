@@ -6,7 +6,7 @@ import pytest
 from itertools import product
 
 import torch
-from lib.modules.classification.classification.multiple_instance_learning import (
+from adell_mri.modules.classification.classification.multiple_instance_learning import (
     MultipleInstanceClassifier,
     get_adn_fn,
 )

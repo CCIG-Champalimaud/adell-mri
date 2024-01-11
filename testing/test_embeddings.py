@@ -6,7 +6,7 @@ import pytest
 
 import torch
 import numpy as np
-from lib.modules.layers.vit import LinearEmbedding
+from adell_mri.modules.layers.vit import LinearEmbedding
 
 image_size = [32, 32, 32]
 patch_size = [4, 4, 4]

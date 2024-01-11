@@ -8,8 +8,8 @@ from pathlib import Path
 from tqdm import tqdm
 
 import sys
-from lib.entrypoints.assemble_args import Parser
-from lib.utils.utils import subsample_dataset
+from adell_mri.entrypoints.assemble_args import Parser
+from adell_mri.utils.utils import subsample_dataset
 from ...monai_transforms import get_transforms_classification as get_transforms
 from ...modules.classification.losses import OrdinalSigmoidalLoss
 from ...modules.config_parsing import parse_config_unet, parse_config_cat

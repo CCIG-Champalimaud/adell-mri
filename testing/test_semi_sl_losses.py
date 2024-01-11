@@ -4,7 +4,7 @@ import os
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 import torch
-from lib.modules.semi_supervised_segmentation.losses import (
+from adell_mri.modules.semi_supervised_segmentation.losses import (
     AnatomicalContrastiveLoss,
     PseudoLabelCrossEntropy,
     NearestNeighbourLoss,

@@ -4,7 +4,10 @@ import os
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 import torch
-from lib.modules.layers.res_blocks import ConvNeXtBlock2d, ConvNeXtBlock3d
+from adell_mri.modules.layers.res_blocks import (
+    ConvNeXtBlock2d,
+    ConvNeXtBlock3d,
+)
 
 c, h, w, d = [1, 32, 32, 16]
 inter = 64

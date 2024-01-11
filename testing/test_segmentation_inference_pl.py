@@ -4,8 +4,8 @@ import os
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 import torch
-from lib.modules.segmentation.pl import UNetPL
-from lib.utils.inference import (
+from adell_mri.modules.segmentation.pl import UNetPL
+from adell_mri.utils.inference import (
     SlidingWindowSegmentation,
     SegmentationInference,
 )

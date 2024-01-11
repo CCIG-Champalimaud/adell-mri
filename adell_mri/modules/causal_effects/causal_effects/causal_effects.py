@@ -1,7 +1,4 @@
-import time
-import numpy as np
 import torch
-import torch.nn.functional as F
 
 from ...layers.standard_blocks import VGGConvolution3d, VGGDeconvolution3d
 
