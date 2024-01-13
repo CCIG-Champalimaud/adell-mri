@@ -4,6 +4,37 @@ import torch.nn.functional as F
 from queue import Queue
 from math import prod
 
+from typing import Any
+
+
+def swap(xs, a, b):
+    xs[a], xs[b] = xs[b], xs[a]
+
+
+def derangement(
+    n: int, rng: np.random.Generator = None, seed: int = 42
+) -> list[int]:
+    """Generate a derangement of n elements.
+
+    A derangement is a permutation of the elements 0..n-1 such that no element
+    appears in its original position.
+
+    Args:
+        n: Number of elements to derange.
+        rng: Random number generator.
+        seed: Seed for random number generator.
+
+    Returns:
+        List of deranged elements.
+    """
+    if rng is None:
+        rng = np.random.default_rng(seed)
+    xs = [i for i in range(n)]
+    for a in range(1, n):
+        b = rng.choice(range(0, a))
+        swap(xs, a, b)
+    return xs
+
 
 class AnatomicalContrastiveLoss(torch.nn.Module):
     """
@@ -249,3 +280,42 @@ class PseudoLabelCrossEntropy(torch.nn.Module):
     def forward(self, pred: torch.Tensor, proba: torch.Tensor):
         pseudo_y = proba > self.threshold
         return self.ce(pred, pseudo_y.float())
+
+
+class LocalContrastiveLoss(torch.nn.Module):
+    """
+    Implements a local contrastive loss function.
+    """
+
+    def __init__(self, temperature: float = 0.1, seed: int = 42):
+        super().__init__()
+        self.temperature = temperature
+        self.seed = seed
+        self.rng = np.random.default_rng(seed)
+
+    def forward(
+        self,
+        X_1: torch.Tensor,
+        X_2: torch.Tensor,
+        anchors: torch.Tensor = None,
+    ) -> torch.Tensor:
+        if anchors is None:
+            # if no anchors are provided, the anchors are a random derangement
+            # of the input
+            anchors = []
+            for idx in derangement(X_1.shape[0], rng=self.rng):
+                anchors.append(
+                    X_1[idx] if self.rng.random() < 0.5 else X_2[idx]
+                )
+            anchors = torch.stack(anchors)
+        X_1 = X_1.flatten(start_dim=2)
+        X_2 = X_2.flatten(start_dim=2)
+        anchors = anchors.flatten(start_dim=2)
+        sim_1 = F.cosine_similarity(X_1, anchors, dim=1) / self.temperature
+        sim_2 = F.cosine_similarity(X_2, anchors, dim=1) / self.temperature
+        print(sim_1.shape, sim_2.shape)
+        return F.kl_div(
+            F.softmax(sim_1, dim=1),
+            F.softmax(sim_2, dim=1),
+            reduction="none",
+        )

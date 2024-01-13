@@ -11,6 +11,14 @@ from typing import List, Dict
 
 
 class UNetPlusPlus(UNet):
+    """
+    Standard U-Net++ [1] implementation. Features some useful additions
+    such as residual links, different upsampling types, normalizations
+    (batch or instance) and ropouts (dropout and U-out). This version of
+    the U-Net has been implemented in such a way that it can be easily
+    expanded.
+    """
+
     def __init__(
         self,
         spatial_dimensions: int = 2,
@@ -34,12 +42,7 @@ class UNetPlusPlus(UNet):
         feature_conditioning: int = None,
         feature_conditioning_params: Dict[str, torch.Tensor] = None,
     ) -> torch.nn.Module:
-        """Standard U-Net++ [1] implementation. Features some useful additions
-        such as residual links, different upsampling types, normalizations
-        (batch or instance) and ropouts (dropout and U-out). This version of
-        the U-Net has been implemented in such a way that it can be easily
-        expanded.
-
+        """
         Args:
             spatial_dimensions (int, optional): number of dimensions for the
                 input (not counting batch or channels). Defaults to 2.
@@ -140,7 +143,8 @@ class UNetPlusPlus(UNet):
             self.init_feature_conditioning_operations()
 
     def init_link_ops(self):
-        """Initializes linking (skip) operations."""
+        """
+        Initializes linking (skip) operations."""
         if self.skip_conditioning is not None:
             ex = self.skip_conditioning
         else:
@@ -165,7 +169,8 @@ class UNetPlusPlus(UNet):
             self.link_ops.append(op)
 
     def init_final_layer(self):
-        """Initializes the classification layer (simple linear layer)."""
+        """
+        Initializes the classification layer (simple linear layer)."""
         if self.skip_conditioning is not None:
             ex = self.skip_conditioning
         else:
@@ -214,7 +219,8 @@ class UNetPlusPlus(UNet):
         return_features=False,
         return_logits=False,
     ) -> torch.Tensor:
-        """Forward pass for this class.
+        """
+        Forward pass for this class.
 
         Args:
             X (torch.Tensor)

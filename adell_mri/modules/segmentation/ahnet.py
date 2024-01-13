@@ -11,6 +11,14 @@ from ..layers.multi_resolution import GCN2d
 
 
 class AHNet(torch.nn.Module):
+    """
+    Implementation of the AHNet (anysotropic hybrid network), which is
+    capable of learning segmentation features in 2D and then learn how to
+    use in 3D images. More details in [1].
+
+    [1] https://arxiv.org/abs/1711.08580
+    """
+
     def __init__(
         self,
         in_channels: int,
@@ -21,12 +29,7 @@ class AHNet(torch.nn.Module):
         adn_fn: torch.nn.Module = ActDropNorm,
         adn_args: dict = {},
     ):
-        """Implementation of the AHNet (anysotropic hybrid network), which is
-        capable of learning segmentation features in 2D and then learn how to
-        use in 3D images. More details in [1].
-
-        [1] https://arxiv.org/abs/1711.08580
-
+        """
         Args:
             in_channels (int): number of input channels.
             out_channels (int): number of output channels.

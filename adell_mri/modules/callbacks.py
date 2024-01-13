@@ -9,7 +9,8 @@ from typing import Sequence
 def reshape_weight_to_matrix(
     weight: torch.Tensor, dim: int = 0
 ) -> torch.Tensor:
-    """Reshapes an n-dimensional tensor into a matrix.
+    """
+    Reshapes an n-dimensional tensor into a matrix.
 
     From https://pytorch.org/docs/stable/_modules/torch/nn/utils/spectral_norm.html
 
@@ -32,7 +33,8 @@ def reshape_weight_to_matrix(
 
 class SpectralNorm(pl.Callback):
     def __init__(self, power_iterations, eps=1e-8, name="weight"):
-        """Callback that performs spectral normalization before each training
+        """
+        Callback that performs spectral normalization before each training
         batch. It uses the same power iteration implementation as specified in
         [1] and is largely based in the PyTorch implementation [2].
 

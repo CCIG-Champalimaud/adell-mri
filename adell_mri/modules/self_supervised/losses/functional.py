@@ -5,7 +5,8 @@ from typing import Tuple
 
 
 def cos_sim(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
-    """Calculates the cosine similarity between x and y (wraps the functional
+    """
+    Calculates the cosine similarity between x and y (wraps the functional
     function for simplicity).
 
     Args:
@@ -19,7 +20,8 @@ def cos_sim(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
 
 
 def cos_dist(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
-    """Calculates the cosine distance between x and y.
+    """
+    Calculates the cosine distance between x and y.
 
     Args:
         x (torch.Tensor): tensor
@@ -34,7 +36,8 @@ def cos_dist(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
 def unravel_index(
     indices: torch.LongTensor, shape: Tuple[int, ...]
 ) -> torch.LongTensor:
-    """Converts flat indices into unraveled coordinates in a target shape.
+    """
+    Converts flat indices into unraveled coordinates in a target shape.
 
     This is a `torch` implementation of `numpy.unravel_index`.
 
@@ -60,7 +63,8 @@ def unravel_index(
 
 
 def standardize(x: torch.Tensor, d: int = 0) -> torch.Tensor:
-    """Standardizes x (subtracts mean and divides by std) according to
+    """
+    Standardizes x (subtracts mean and divides by std) according to
     dimension d.
 
     Args:
@@ -77,7 +81,8 @@ def standardize(x: torch.Tensor, d: int = 0) -> torch.Tensor:
 
 
 def pearson_corr(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
-    """Calculates Pearson correlation between x and y
+    """
+    Calculates Pearson correlation between x and y
 
     Args:
         x (torch.Tensor): tensor
@@ -97,7 +102,8 @@ def pearson_corr(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
 def barlow_twins_loss(
     x: torch.Tensor, y: torch.Tensor, l: float = 0.02
 ) -> torch.Tensor:
-    """Calculates the Barlow twins loss between x and y. This loss is composed
+    """
+        Calculates the Barlow twins loss between x and y. This loss is composed
     of two terms: the invariance term, which maximises the Pearson correlation
     with views belonging to the same image (invariance term) and minimises the
     correlation between different images (reduction term) to promote greater
@@ -125,7 +131,8 @@ def barlow_twins_loss(
 
 
 def simsiam_loss(x1: torch.Tensor, x2: torch.Tensor) -> torch.Tensor:
-    """Loss for the SimSiam protocol.
+    """
+        Loss for the SimSiam protocol.
 
     Args:
         x1 (torch.Tensor): tensor
@@ -139,7 +146,8 @@ def simsiam_loss(x1: torch.Tensor, x2: torch.Tensor) -> torch.Tensor:
 
 
 def byol_loss(x1: torch.Tensor, x2: torch.Tensor) -> torch.Tensor:
-    """Loss for the BYOL (bootstrap your own latent) protocol.
+    """
+    Loss for the BYOL (bootstrap your own latent) protocol.
 
     Args:
         x1 (torch.Tensor): tensor

@@ -367,6 +367,14 @@ class UNETR(UNet, torch.nn.Module):
 
 
 class MonaiUNETR(UNet, torch.nn.Module):
+    """
+    UNETR module. Implementation as close as possible to that presented
+    in the original paper [1] and integrated with other UNet-like
+    architectures in this library.
+
+    [1] https://arxiv.org/abs/2103.10504
+    """
+
     def __init__(
         self,
         # parametrize linear embedding and transformer
@@ -402,12 +410,7 @@ class MonaiUNETR(UNet, torch.nn.Module):
         feature_conditioning_params: Dict[str, torch.Tensor] = None,
         deep_supervision: bool = False,
     ):
-        """UNETR module. Implementation as close as possible to that presented
-        in the original paper [1] and integrated with other UNet-like
-        architectures in this library.
-
-        [1] https://arxiv.org/abs/2103.10504
-
+        """
         Args:
             image_size (Size2dOr3d): size of the input image.
             patch_size (Size2dOr3d): size of the patches.
@@ -554,6 +557,16 @@ class MonaiUNETR(UNet, torch.nn.Module):
 
 
 class SWINUNet(UNet):
+    """
+    SWINUNet module. Implementation as close as possible to that
+    presented in the original paper [1] and integrated with other UNet-like
+    architectures in this library. To make similar architectures with
+    different depths more compliant and easier to implement, I have
+    included 1x1 convolutions *after* each stage of SWINUNet.
+
+    [1] https://arxiv.org/pdf/2103.14030.pdf
+    """
+
     def __init__(
         self,
         # parametrize linear embedding and transformer
@@ -590,14 +603,7 @@ class SWINUNet(UNet):
         feature_conditioning_params: Dict[str, torch.Tensor] = None,
         deep_supervision: bool = False,
     ):
-        """SWINUNet module. Implementation as close as possible to that
-        presented in the original paper [1] and integrated with other UNet-like
-        architectures in this library. To make similar architectures with
-        different depths more compliant and easier to implement, I have
-        included 1x1 convolutions *after* each stage of SWINUNet.
-
-        [1] https://arxiv.org/pdf/2103.14030.pdf
-
+        """
         Args:
             image_size (Size2dOr3d): size of the input image.
             patch_size (Size2dOr3d): size of the patches.

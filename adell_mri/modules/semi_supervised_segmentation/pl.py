@@ -7,7 +7,8 @@ from typing import Callable, Dict
 
 
 class UNetContrastiveSemiSL(UNetSemiSL, UNetBasePL):
-    """Standard supervised U-Net with support for semi-/self-supervision
+    """
+    Standard supervised U-Net with support for semi-/self-supervision
     based on a contrastive scheme.
     """
 
@@ -33,7 +34,7 @@ class UNetContrastiveSemiSL(UNetSemiSL, UNetBasePL):
         stop_gradient: bool = True,
         picai_eval: bool = False,
         *args,
-        **kwargs
+        **kwargs,
     ) -> torch.nn.Module:
         """
         Args:
@@ -212,6 +213,7 @@ class UNetContrastiveSemiSL(UNetSemiSL, UNetBasePL):
                 "train_self_sl_loss",
                 self_sl_loss,
                 batch_size=y.shape[0],
+                prog_bar=True,
                 sync_dist=True,
             )
             output_loss = output_loss + self_sl_loss
@@ -308,6 +310,8 @@ class UNetContrastiveSemiSL(UNetSemiSL, UNetBasePL):
                 prog_bar=True,
                 batch_size=y.shape[0],
                 sync_dist=True,
+                on_epoch=True,
+                on_step=False,
             )
             output_loss = output_loss + self_sl_loss.mean()
         return output_loss

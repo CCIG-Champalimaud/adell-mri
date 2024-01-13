@@ -31,11 +31,33 @@ activation_factory = {
 }
 
 
-def elu_gradient(act_fn, x):
+def elu_gradient(act_fn: torch.nn.ELU, x: torch.Tensor) -> torch.Tensor:
+    """
+    Implementation of the gradient of the ELU activation function.
+
+    Args:
+        act_fn (torch.nn.ELU): ELU activation.
+        x (torch.Tensor): tensor.
+
+    Returns:
+        torch.Tensor: output tensor.
+    """
     return torch.where(x > 0, torch.ones_like(x), act_fn.alpha * np.exp(x))
 
 
-def hard_shrink_gradient(act_fn, x):
+def hard_shrink_gradient(
+    act_fn: torch.nn.Hardshrink, x: torch.Tensor
+) -> torch.Tensor:
+    """
+    Implementation of the gradient of the hard shrink activation function.
+
+    Args:
+        act_fn (torch.nn.Hardshrink): hard shrink activation function.
+        x (torch.Tensor): tensor.
+
+    Returns:
+        torch.Tensor: output tensor.
+    """
     return torch.where(
         torch.logical_and(x > -act_fn.lambd, x < act_fn.lambd),
         torch.zeros_like(x),
@@ -43,7 +65,20 @@ def hard_shrink_gradient(act_fn, x):
     )
 
 
-def hard_tanh_gradient(act_fn, x):
+def hard_tanh_gradient(
+    act_fn: torch.nn.Hardtanh, x: torch.Tensor
+) -> torch.Tensor:
+    """
+    Implementation of the gradient of the hard tanh activation function.
+
+    Args:
+        act_fn (torch.nn.Hardtanh): hard hyperbolic tangent activation function.
+        x (torch.Tensor): tensor.
+
+    Returns:
+        torch.Tensor: output tensor.
+    """
+
     return torch.where(
         torch.logical_and(x > act_fn.min_val, x < act_fn.max_val),
         torch.ones_like(x),
@@ -51,25 +86,79 @@ def hard_tanh_gradient(act_fn, x):
     )
 
 
-def leaky_relu_gradient(act_fn, x):
+def leaky_relu_gradient(
+    act_fn: torch.nn.LeakyReLU, x: torch.Tensor
+) -> torch.Tensor:
+    """
+    Implementation of the gradient of the leaky relu activation function.
+
+    Args:
+        act_fn (torch.nn.LeakyReLU): leaky ReLU activation function.
+        x (torch.Tensor): tensor.
+
+    Returns:
+        torch.Tensor: output tensor.
+    """
     o = torch.ones_like(x)
     return torch.where(x > 0, o, o * act_fn.negative_slope)
 
 
-def logsigmoid_gradient(act_fn, x):
+def logsigmoid_gradient(
+    act_fn: torch.nn.LogSigmoid, x: torch.Tensor
+) -> torch.Tensor:
+    """
+    Implementation of the gradient of the log sigmoid activation function.
+
+    Args:
+        act_fn (torch.nn.LogSigmoid): log sigmoid activation function.
+        x (torch.Tensor): tensor.
+
+    Returns:
+        torch.Tensor: output tensor.
+    """
     return torch.divide(1, torch.exp(x) + 1)
 
 
-def prelu_gradient(act_fn, x):
+def prelu_gradient(act_fn: torch.nn.PReLU, x: torch.Tensor) -> torch.Tensor:
+    """
+    Implementation of the gradient of the PReLU activation function.
+
+    Args:
+        act_fn (torch.nn.PReLU): PreLU activation function.
+        x (torch.Tensor): tensor.
+
+    Returns:
+        torch.Tensor: output tensor.
+    """
     o = torch.ones_like(x)
     return torch.where(x > 0, o, o * act_fn.weight)
 
 
-def relu_gradient(act_fn, x):
+def relu_gradient(act_fn: torch.nn.ReLU, x: torch.Tensor) -> torch.Tensor:
+    """
+    Implementation of the gradient of the ReLU activation function.
+
+    Args:
+        act_fn (torch.nn.ReLU): ReLU activation function.
+        x (torch.Tensor): tensor.
+
+    Returns:
+        torch.Tensor: output tensor.
+    """
     return torch.where(x > 0, torch.ones_like(x), torch.zeros_like(x))
 
 
-def relu6_gradient(act_fn, x):
+def relu6_gradient(act_fn: torch.nn.ReLU6, x: torch.Tensor) -> torch.Tensor:
+    """
+    Implementation of the gradient of the ReLU6 activation function.
+
+    Args:
+        act_fn (torch.nn.ReLU6): ReLU6 activation function.
+        x (torch.Tensor): tensor.
+
+    Returns:
+        torch.Tensor: output tensor.
+    """
     return torch.where(
         torch.logical_and(x > 0, x < 6),
         torch.ones_like(x),
@@ -77,42 +166,143 @@ def relu6_gradient(act_fn, x):
     )
 
 
-def selu_gradient(act_fn, x):
+def selu_gradient(act_fn: torch.nn.SELU, x: torch.Tensor) -> torch.Tensor:
+    """
+    Implementation of the gradient of the SELU activation function.
+
+    Args:
+        act_fn (torch.nn.SELU): SELU activation function.
+        x (torch.Tensor): tensor.
+
+    Returns:
+        torch.Tensor: output tensor.
+    """
     alpha = 1.6732632423543772848170429916717
     lambd = 1.0507009873554804934193349852946
     return lambd * torch.where(x > 0, torch.ones_like(x), alpha * torch.exp(x))
 
 
-def celu_gradient(act_fn, x):
+def celu_gradient(act_fn: torch.nn.CELU, x: torch.Tensor) -> torch.Tensor:
+    """
+    Implementation of the gradient of the CELU activation function.
+
+    Args:
+        act_fn (torch.nn.CELU): CELU activation function.
+        x (torch.Tensor): tensor.
+
+    Returns:
+        torch.Tensor: output tensor.
+    """
     return torch.where(x > 0, torch.ones_like(x), np.exp(x / act_fn.alpha))
 
 
-def sigmoid_gradient(act_fn, x):
+def sigmoid_gradient(
+    act_fn: torch.nn.Sigmoid, x: torch.Tensor
+) -> torch.Tensor:
+    """
+    Implementation of the gradient of the sigmoid activation function.
+
+    Args:
+        act_fn (torch.nn.Sigmoid): sigmoid activation function.
+        x (torch.Tensor): tensor.
+
+    Returns:
+        torch.Tensor: output tensor.
+    """
     sx = torch.sigmoid(x)
     return sx * (1 - sx)
 
 
-def softplus_gradient(act_fn, x):
+def softplus_gradient(
+    act_fn: torch.nn.Softplus, x: torch.Tensor
+) -> torch.Tensor:
+    """
+    Implementation of the gradient of the softplus activation function.
+
+    Args:
+        act_fn (torch.nn.Softplus): softplus activation function.
+        x (torch.Tensor): tensor.
+
+    Returns:
+        torch.Tensor: output tensor.
+    """
     return torch.exp(x) / (1 + torch.exp(x))
 
 
-def soft_shrink_gradient(act_fn, x):
+def soft_shrink_gradient(
+    act_fn: torch.nn.Softshrink, x: torch.Tensor
+) -> torch.Tensor:
+    """
+    Implementation of the gradient of the soft shrink activation function.
+
+    Args:
+        act_fn (torch.nn.Softshrink): soft shrink activation function.
+        x (torch.Tensor): tensor.
+
+    Returns:
+        torch.Tensor: output tensor.
+    """
     return hard_shrink_gradient(act_fn, x)
 
 
-def softsign_gradient(act_fn, x):
+def softsign_gradient(
+    act_fn: torch.nn.Softsign, x: torch.Tensor
+) -> torch.Tensor:
+    """
+    Implementation of the gradient of the softsign activation function.0
+
+    Args:
+        act_fn (torch.nn.Softsign): softsign activation function.
+        x (torch.Tensor): tensor.
+
+    Returns:
+        torch.Tensor: output tensor.
+    """
     return 1 / torch.square(1 + torch.abs(x))
 
 
-def tanh_gradient(act_fn, x):
+def tanh_gradient(act_fn: torch.nn.Tanh, x: torch.Tensor) -> torch.Tensor:
+    """
+    Implementation of the gradient of the tanh activation function.
+
+    Args:
+        act_fn (torch.nn.Tanh): tanh activation function.
+        x (torch.Tensor): tensor.
+
+    Returns:
+        torch.Tensor: output tensor.
+    """
     return 1 - torch.square(act_fn(x))
 
 
-def tanh_shrink_gradient(act_fn, x):
+def tanh_shrink_gradient(
+    act_fn: torch.nn.Tanhshrink, x: torch.Tensor
+) -> torch.Tensor:
+    """
+    Implementation of the gradient of the tanh shrink activation function.
+
+    Args:
+        act_fn (torch.nn.Tanhshrink): hyperbolic tangent shrink activation
+            function.
+        x (torch.Tensor): tensor.
+
+    Returns:
+        torch.Tensor: output tensor.
+    """
     return torch.square(act_fn(x))
 
 
-def swish_gradient(act_fn, x):
+def swish_gradient(act_fn: torch.nn.GELU, x: torch.Tensor) -> torch.Tensor:
+    """
+    Implementation of the gradient of the swish activation function.
+
+    Args:
+        act_fn (torch.nn.GELU): swish (GELU) activation function.
+        x (torch.Tensor): tensor.
+
+    Returns:
+        torch.Tensor: output tensor.
+    """
     s = torch.sigmoid(x)
     return s * (1 + x * (1 - s))
 

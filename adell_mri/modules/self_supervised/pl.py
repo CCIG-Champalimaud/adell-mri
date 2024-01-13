@@ -278,7 +278,8 @@ class SelfSLBasePL(pl.LightningModule, ABC):
 
 
 class SelfSLResNetPL(ResNet, SelfSLBasePL):
-    """Operates a number of non-contrastive self-supervised learning
+    """
+    Operates a number of non-contrastive self-supervised learning
     methods, all of which use non-contrastive approaches to self-supervised
     learning. Included here are:
     * SimSiam (the vanilla version of this class)
@@ -499,7 +500,8 @@ class SelfSLResNetPL(ResNet, SelfSLBasePL):
 
 
 class SelfSLUNetPL(UNet, SelfSLBasePL):
-    """Operates a number of non-contrastive self-supervised learning
+    """
+    Operates a number of non-contrastive self-supervised learning
     methods, all of which use non-contrastive approaches to self-supervised
     learning. Included here are:
     * SimSiam (the vanilla version of this class)
@@ -715,7 +717,8 @@ class SelfSLUNetPL(UNet, SelfSLBasePL):
 
 
 class SelfSLConvNeXtPL(ConvNeXt, SelfSLBasePL):
-    """Operates a number of non-contrastive self-supervised learning
+    """
+    Operates a number of non-contrastive self-supervised learning
     methods, all of which use non-contrastive approaches to self-supervised
     learning. Included here are:
     * SimSiam (the vanilla version of this class)
@@ -938,6 +941,10 @@ class SelfSLConvNeXtPL(ConvNeXt, SelfSLBasePL):
 
 
 class IJEPAPL(IJEPA, SelfSLBasePL):
+    """
+    LightningModule implementation of the IJEPA architecture.
+    """
+
     def __init__(
         self,
         image_key: str = "image",

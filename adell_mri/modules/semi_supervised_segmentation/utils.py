@@ -5,6 +5,22 @@ from itertools import product
 def convert_arguments_pre(
     transform_arguments: Dict[str, Any], image_keys: List[str]
 ):
+    """
+    Converts the transform arguments dictionary for use in semi-supervised learning.
+    Used internally by get_semi_sl_transforms.
+
+    This takes the original transform arguments dict and modifies it for use in
+    semi-supervised learning, where unlabeled images will be augmented. It removes
+    the label keys, sets new image keys for the augmented images, and truncates some
+    augmentation parameters to match the number of input image keys.
+
+    Args:
+        transform_arguments: The original transform arguments dict.
+        image_keys: A list of the image keys that transformations will be applied to.
+
+    Returns:
+        A new dict with modified arguments for semi-supervised learning.
+    """
     transform_arguments_semi_sl = {
         k: transform_arguments[k] for k in transform_arguments
     }
@@ -25,6 +41,24 @@ def convert_arguments_pre(
 def convert_arguments_post(
     transform_arguments: Dict[str, Any], idx: int, image_keys: List[str]
 ):
+    """
+    Converts the transform arguments dictionary for use in semi-supervised learning.
+    Used internally by get_semi_sl_transforms.
+
+    This takes the original transform arguments dict and modifies it
+    for use in semi-supervised learning, where unlabeled images will be
+    augmented. It removes the label keys, sets a new output image key,
+    tracks metadata, and sets new image keys for the augmented images.
+
+    Args:
+        transform_arguments: The original transform arguments dict.
+        idx: The index of the augmentation pass.
+        image_keys: A list of the image keys that transformations will be applied to.
+
+    Returns:
+        A new dict with modified arguments for semi-supervised learning.
+    """
+
     transform_arguments_semi_sl = {
         k: transform_arguments[k] for k in transform_arguments
     }
@@ -41,6 +75,23 @@ def convert_arguments_post(
 def convert_arguments_augment(
     augment_arguments: Dict[str, Any], image_keys: List[str]
 ):
+    """
+    Converts the augmentation transform arguments dictionary for use in semi-
+    supervised learning. Used internally by get_semi_sl_transforms.
+
+    This takes the original transform arguments dict and modifies it
+    for use in semi-supervised learning, where unlabeled images will be
+    augmented. It removes the label keys, sets a new output image key,
+    tracks metadata, and sets new image keys for the augmented images.
+
+    Args:
+        transform_arguments: The original transform arguments dict.
+        idx: The index of the augmentation pass.
+        image_keys: A list of the image keys that transformations will be applied to.
+
+    Returns:
+        A new dict with modified arguments for semi-supervised learning.
+    """
     augment_arguments_semi_sl = {
         k: augment_arguments[k] for k in augment_arguments
     }

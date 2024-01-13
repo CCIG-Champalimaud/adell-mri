@@ -1,3 +1,4 @@
+import gc
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -507,6 +508,7 @@ class UNetBasePL(pl.LightningModule, ABC):
         except:
             last_lr = self.learning_rate
         self.log("lr", last_lr, prog_bar=True, sync_dist=True)
+        gc.collect()
 
     def on_validation_epoch_end(self):
         if self.picai_eval:

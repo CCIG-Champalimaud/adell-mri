@@ -15,7 +15,8 @@ class VICRegLoss(torch.nn.Module):
         mu: float = 25.0,
         nu: float = 0.1,
     ):
-        """Implementation of the VICReg loss from [1].
+        """
+        Implementation of the VICReg loss from [1].
 
         [1] https://arxiv.org/abs/2105.04906
 
@@ -42,7 +43,8 @@ class VICRegLoss(torch.nn.Module):
         return x.flatten()[:-1].view(n - 1, n + 1)[:, 1:].flatten()
 
     def variance_loss(self, X: torch.Tensor) -> torch.Tensor:
-        """Calculates the VICReg variance loss (a Hinge loss for the variance
+        """
+        Calculates the VICReg variance loss (a Hinge loss for the variance
         which keeps it above `self.min_var`)
 
         Args:
@@ -55,7 +57,8 @@ class VICRegLoss(torch.nn.Module):
         return F.relu(self.min_var - reg_std).mean()
 
     def covariance_loss(self, X: torch.Tensor) -> torch.Tensor:
-        """Calculates the covariance loss for VICReg (minimises the L2 norm of
+        """
+        Calculates the covariance loss for VICReg (minimises the L2 norm of
         the off diagonal elements belonging to the covariance matrix of the
         features).
 
@@ -74,7 +77,8 @@ class VICRegLoss(torch.nn.Module):
     def invariance_loss(
         self, X1: torch.Tensor, X2: torch.Tensor
     ) -> torch.Tensor:
-        """Calculates the invariance loss for VICReg (minimises the MSE
+        """
+        Calculates the invariance loss for VICReg (minimises the MSE
         between the features calculated from two views of the same image).
 
         Args:
@@ -91,7 +95,8 @@ class VICRegLoss(torch.nn.Module):
     def vicreg_loss(
         self, X1: torch.Tensor, X2: torch.Tensor, adj: float = 1.0
     ) -> torch.Tensor:
-        """Wrapper for the three components of the VICReg loss.
+        """
+        Wrapper for the three components of the VICReg loss.
 
         Args:
             X1 (torch.Tensor): input tensor from view 1
@@ -122,7 +127,8 @@ class VICRegLoss(torch.nn.Module):
     def forward(
         self, X1: torch.Tensor, X2: torch.Tensor
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        """Forward method for VICReg loss.
+        """
+        Forward method for VICReg loss.
 
         Args:
             X1 (torch.Tensor): (B,C,H,W,(D)) tensor corresponding to the first
@@ -154,7 +160,8 @@ class VICRegLocalLoss(VICRegLoss):
         nu: float = 0.1,
         gamma: int = 10,
     ):
-        """Local VICRegL loss from [2]. This is, in essence, a version of
+        """
+        Local VICRegL loss from [2]. This is, in essence, a version of
         VICReg which leads to better downstream solutions for segmentation
         tasks and other tasks requiring pixel- or superpixel-level inference.
         Default values are according to the paper.
@@ -189,7 +196,8 @@ class VICRegLocalLoss(VICRegLoss):
     def transform_coords(
         self, coords: torch.Tensor, box: torch.Tensor
     ) -> torch.Tensor:
-        """Takes a set of coords and addapts them to a new coordinate space
+        """
+        Takes a set of coords and addapts them to a new coordinate space
         defined by box (0,0 becomes the top left corner of the bounding box).
 
         Args:
@@ -240,7 +248,8 @@ class VICRegLocalLoss(VICRegLoss):
         box_X1: torch.Tensor,
         box_X2: torch.Tensor,
     ) -> torch.Tensor:
-        """Given two views of the same image X1 and X2 and their bounding box
+        """
+        Given two views of the same image X1 and X2 and their bounding box
         coordinates in the original image space (box_X1 and box_X2), this loss
         function minimises the distance between nearby pixels in both images.
         It does not calculate it for *all* pixels but only for the
@@ -265,7 +274,8 @@ class VICRegLocalLoss(VICRegLoss):
         return self.local_loss(X1, X2, all_dists)
 
     def feature_local_loss(self, X1: torch.Tensor, X2: torch.Tensor):
-        """Given two views of the same image X1 and X2, this loss
+        """
+        Given two views of the same image X1 and X2, this loss
         function minimises the distance between the top-self.gamma closest
         pixels in feature space.
 
@@ -291,7 +301,7 @@ class VICRegLocalLoss(VICRegLoss):
                     x.flatten()
                     for x in torch.meshgrid(
                         *[torch.arange(0, i) for i in X.shape[2:]],
-                        indexing="ij"
+                        indexing="ij",
                     )
                 ],
                 axis=1,
@@ -307,7 +317,8 @@ class VICRegLocalLoss(VICRegLoss):
         box_X1: torch.Tensor,
         box_X2: torch.Tensor,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-        """Forward method for local VICReg loss.
+        """
+        Forward method for local VICReg loss.
 
         Args:
             X1 (torch.Tensor): (B,C,H,W,(D)) tensor corresponding to the first

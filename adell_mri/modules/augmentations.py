@@ -178,6 +178,11 @@ def get_transform_d(
 
 
 class AugmentationWorkhorsed(monai.transforms.RandomizableTransform):
+    """
+    Coordinates a dictionary of MONAI transforms. Based on the TrivialAugment
+    method.
+    """
+
     def __init__(
         self,
         augmentations: List[str],
@@ -190,6 +195,23 @@ class AugmentationWorkhorsed(monai.transforms.RandomizableTransform):
         ] = AUG_PARAM_DICT,
         dropout_size: Sequence[int] = (32, 32, 2),
     ):
+        """
+        Args:
+            augmentations (List[str]): list of augmentations to apply.
+                Supported strings are the keys to AUG_DICT_DICT.
+            keys (List[str], optional): keys to which the augmentations will be
+                applied. Defaults to None.
+            mask_keys (List[str], optional): keys corresponding to masks to
+                which the augmentations will be applied. Defaults to [].
+            max_mult (float, optional): the maximum multiplier for
+                augmentations. Defaults to 1.0.
+            N (int, optional): number of augmentations per image. Defaults to
+                5.
+            aug_param_dict (Dict[ str, Dict[str, Union[int, float]] ],
+                optional): parameter dictionary. Defaults to AUG_PARAM_DICT.
+            dropout_size (Sequence[int], optional): size for coarse dropout.
+                Defaults to (32, 32, 2).
+        """
         super().__init__()
         self.augmentations = augmentations
         self.keys = keys

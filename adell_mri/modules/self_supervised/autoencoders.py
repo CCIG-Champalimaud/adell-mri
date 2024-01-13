@@ -7,13 +7,19 @@ from typing import List, Tuple, Dict, Any
 from ...custom_types import Size2dOr3d
 
 
-def random_masking(x, mask_ratio, rng):
+def random_masking(
+    x: torch.Tensor, mask_ratio: float, rng: np.random.RandomState
+) -> torch.Tensor:
     """
     Perform per-sample random masking by per-sample shuffling.
     Per-sample shuffling is done by argsort random noise.
-    x: [N, L, D], sequence
 
-    # adapted from https://github.com/facebookresearch/mae/blob/main/models_mae.py
+    Adapted from https://github.com/facebookresearch/mae/blob/main/models_mae.py
+
+    Args:
+        x (torch.Tensor): tensor with shape [batch, n_tokens, embedding_size].
+        mask_ratio (float): ratio of tokens to mask.
+        rng (np.random.RandomState): random number generator.
     """
     N, L, D = x.shape  # batch, length, dim
     len_keep = int(L * (1 - mask_ratio))
@@ -175,6 +181,10 @@ class ViTAutoEncoder(torch.nn.Module):
 
 
 class ViTMaskedAutoEncoder(ViTAutoEncoder):
+    """
+    A ViT masked autoencoder.
+    """
+
     def __init__(
         self,
         image_size: int,

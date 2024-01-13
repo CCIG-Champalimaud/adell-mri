@@ -19,6 +19,12 @@ predictor_architectures = {
 
 
 class IJEPA(torch.nn.Module):
+    """
+    Implementation of the I-JEPA network from META.
+
+    Based on https://github.com/facebookresearch/ijepa
+    """
+
     def __init__(
         self,
         backbone_args: Dict[str, Any],
@@ -34,6 +40,28 @@ class IJEPA(torch.nn.Module):
         reduce_fn: str = "mean",
         seed: int = 42,
     ):
+        """
+        Args:
+            backbone_args (Dict[str, Any]): arguments for the backbone encoder.
+            projection_head_args (Dict[str, Any]): arguments for the projection
+                head.
+            feature_map_dimensions (List[int]): dimension of the feature map.
+            n_encoder_features (int): number of output features from the
+                encoder.
+            min_patch_size (List[int]): minimum patch size.
+            max_patch_size (List[int]): maximum patch size.
+            n_patches (int, optional): number of patches. Defaults to 4.
+            n_masked_patches (int, optional): number of masked patches.
+                Defaults to 1.
+            encoder_architecture (str, optional): architecture of the encoder
+                (supports "vit" (`ViT`), "resnet" (`ResNet`) and "convnext"
+                (`ConvNeXt`)). Defaults to "vit".
+            predictor_architecture (str, optional): architecture for the
+                predictor (only "vit" is supported). Defaults to "vit".
+            reduce_fn (str, optional): function for reduction before prediction.
+                Defaults to "mean".
+            seed (int, optional): random seed. Defaults to 42.
+        """
         super().__init__()
         self.backbone_args = backbone_args
         self.projection_head_args = projection_head_args

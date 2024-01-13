@@ -6,6 +6,11 @@ from ..segmentation.unet import UNet, crop_to_size
 
 
 class UNetSemiSL(UNet):
+    """
+    Identical to UNet but supports returning features of the last layer through
+    `return_features`.
+    """
+
     def forward(
         self,
         X: torch.Tensor,

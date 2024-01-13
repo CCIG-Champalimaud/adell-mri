@@ -3,7 +3,24 @@ import math
 from torch.optim.lr_scheduler import _LRScheduler
 
 
-def float_to_epochs(v, max_epochs):
+def float_to_epochs(v: float, max_epochs: int) -> int:
+    """
+    Converts a float value v to an integer number of epochs, based on the
+    maximum number of epochs max_epochs.
+
+    If v is >= 1.0, it is converted to an integer directly.
+    If v is < 1.0, it is converted to an integer by multiplying it by max_epochs.
+
+    This allows values like 0.1 or 0.25 to represent a fraction of the
+    maximum number of epochs.
+
+    Args:
+        v (float): fraction or number of epochs.
+        max_epochs (int): maximum number of epochs.
+
+    Returns:
+        int: number of epochs.
+    """
     if isinstance(v, float) == True:
         if v >= 1.0:
             v = int(v)
@@ -13,6 +30,12 @@ def float_to_epochs(v, max_epochs):
 
 
 class _enable_get_lr_call:
+    """Context manager to enable _get_lr_called_within_step.
+
+    This is used within the step() method to determine if _get_lr() was called
+    during the step execution.
+    """
+
     def __init__(self, o):
         self.o = o
 
@@ -78,7 +101,12 @@ class PolynomialLRDecay(_LRScheduler):
 
 
 class CosineAnnealingWithWarmupLR(_LRScheduler):
-    """ """
+    """Implements cosine annealing with warmup learning rate scheduler.
+
+    Initializes the scheduler, sets up cosine annealing and linear/exponential
+    warmup. Calculates learning rates at each step based on the current step,
+    maximum steps, warmup steps, final learning rate and initial learning rate.
+    """
 
     def __init__(
         self,
@@ -90,6 +118,18 @@ class CosineAnnealingWithWarmupLR(_LRScheduler):
         verbose: bool = False,
         start_decay: int = None,
     ):
+        """
+        Args:
+            optimizer (torch.optim.Optimizer): a torch optimizer.
+            T_max (int): the maximum number of epochs.
+            n_warmup_steps (int, optional): number of warmup steps. Defaults
+                to 0.
+            eta_min (int, optional): minimum learning rate. Defaults to 0.
+            last_epoch (int, optional): last epoch. Defaults to -1.
+            verbose (bool, optional): verbosity. Defaults to False.
+            start_decay (int, optional): when to start the decay. Defaults to
+                None.
+        """
         self.T_max = T_max
         self.n_warmup_steps = n_warmup_steps
         self.eta_min = eta_min

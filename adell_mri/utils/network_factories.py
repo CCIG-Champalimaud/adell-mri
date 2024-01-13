@@ -36,6 +36,7 @@ from ..modules.segmentation.pl import (
 
 # semi-supervised segmentation
 from ..modules.semi_supervised_segmentation.pl import UNetContrastiveSemiSL
+from ..modules.semi_supervised_segmentation.losses import LocalContrastiveLoss
 from ..utils import ExponentialMovingAverage
 
 # self-supervised learning
@@ -114,7 +115,7 @@ def get_classification_network(
                 1, norm_fn, act_fn="gelu", dropout_param=dropout_param
             ),
             **boilerplate_args,
-            **network_config
+            **network_config,
         )
     elif "vit" in net_type:
         image_size = [int(x) for x in crop_size]
@@ -125,7 +126,7 @@ def get_classification_network(
                     1, "identity", act_fn="gelu", dropout_param=dropout_param
                 ),
                 **boilerplate_args,
-                **network_config
+                **network_config,
             )
         elif net_type == "factorized_vit":
             for k in ["embed_method"]:
@@ -136,7 +137,7 @@ def get_classification_network(
                     1, "identity", act_fn="gelu", dropout_param=dropout_param
                 ),
                 **boilerplate_args,
-                **network_config
+                **network_config,
             )
 
     else:
@@ -144,7 +145,7 @@ def get_classification_network(
             net_type=net_type,
             adn_fn=adn_fn,
             **boilerplate_args,
-            **network_config
+            **network_config,
         )
 
     if len(clinical_feature_keys) > 0:
@@ -172,7 +173,7 @@ def get_classification_network(
         network = HybridClassifierPL(
             convolutional_module=network,
             tabular_module=tab_network,
-            **boilerplate_args_hybrid
+            **boilerplate_args_hybrid,
         )
 
     return network
@@ -238,7 +239,7 @@ def get_deconfounded_classification_network(
         cat_confounder_key=cat_confounder_key,
         cont_confounder_key=cont_confounder_key,
         **boilerplate_args,
-        **network_config
+        **network_config,
     )
 
     return network
@@ -323,7 +324,7 @@ def get_detection_network(
         n_epochs=n_epochs,
         warmup_steps=warmup_steps,
         n_classes=n_classes,
-        **net_cfg
+        **net_cfg,
     )
 
     return network
@@ -355,6 +356,7 @@ def get_segmentation_network(
     resize_size: List[int],
     semi_supervised: bool = False,
     max_steps_optim: int = None,
+    seed: int = 42,
 ) -> torch.nn.Module:
     def get_size(*size_list):
         for size in size_list:
@@ -394,8 +396,9 @@ def get_segmentation_network(
             semi_sl_image_key_2="semi_sl_image_2",
             deep_supervision=deep_supervision,
             ema=ema,
+            loss_fn_semi_sl=LocalContrastiveLoss(seed=seed),
             **boilerplate,
-            **network_config
+            **network_config,
         )
 
     elif net_type == "brunet":
@@ -407,7 +410,7 @@ def get_segmentation_network(
             n_input_branches=len(keys),
             deep_supervision=deep_supervision,
             **boilerplate,
-            **network_config
+            **network_config,
         )
         if encoder_checkpoint is not None and res_config_file is None:
             for encoder, ckpt in zip(unet.encoders, encoder_checkpoint):
@@ -419,7 +422,7 @@ def get_segmentation_network(
             encoding_operations=encoding_operations,
             image_key="image",
             **boilerplate,
-            **network_config
+            **network_config,
         )
 
     elif net_type == "unet":
@@ -429,7 +432,7 @@ def get_segmentation_network(
             image_key="image",
             deep_supervision=deep_supervision,
             **boilerplate,
-            **network_config
+            **network_config,
         )
 
     elif net_type == "unetr":
@@ -440,7 +443,7 @@ def get_segmentation_network(
             image_key="image",
             deep_supervision=deep_supervision,
             **boilerplate,
-            **network_config
+            **network_config,
         )
 
     elif net_type == "swin":
@@ -450,7 +453,7 @@ def get_segmentation_network(
             image_key="image",
             deep_supervision=deep_supervision,
             **boilerplate,
-            **network_config
+            **network_config,
         )
 
     return unet
@@ -583,7 +586,7 @@ def get_generative_network(
         scheduler=scheduler,
         embedder=embedder,
         **boilerplate_args,
-        **network_config
+        **network_config,
     )
 
     return network

@@ -467,7 +467,7 @@ class ClassNetPL(ClassPLABC):
         else:
             raise Exception(
                 "net_type '{}' not valid, has to be one of \
-                ['ord','cat', 'vgg']".format(
+                ['ord', 'cat', 'vgg']".format(
                     self.net_type
                 )
             )

@@ -51,6 +51,19 @@ class KLDivergence(torch.nn.Module):
 
 
 class ContrastiveDistanceLoss(torch.nn.Module):
+    """
+    Implements contrastive losses for self-supervised representation learning.
+
+    It supports both pairwise and triplet losses, as well as euclidean
+    and cosine distances. The loss encourages positive pairs to have small
+    distances and negative pairs to have large distances in the
+    embedding space.
+
+    At initialization, parameters like margin, distance metric, etc. can be
+    configured. The forward pass takes in two batches of embeddings X1 and X2,
+    and a binary target y indicating whether pairs are from the same class.
+    """
+
     def __init__(
         self,
         dist_p=2,
@@ -60,6 +73,22 @@ class ContrastiveDistanceLoss(torch.nn.Module):
         loss_type="pairwise",
         dist_type="euclidean",
     ):
+        """
+        Args:
+            dist_p (int, optional): p-norm for distance. Defaults to 2.
+            random_sample (bool, optional): whether a elements are randomly
+                sampled. Defaults to False.
+            margin (int, optional): margin for triplet loss. Defaults to 1.
+            dev (str, optional): device. Defaults to "cpu".
+            loss_type (str, optional): type of loss (between "pairwise" and
+                "triplet"). Defaults to "pairwise".
+            dist_type (str, optional): type of distance (between "euclidean"
+                and "cosine"). Defaults to "euclidean".
+
+        Raises:
+            Exception: if `loss_options` is not in `["pairwise", "triplet"]`
+            Exception: if `dist_options` is not in `["euclidean", "cosine"]`
+        """
         super().__init__()
         self.dist_p = dist_p
         self.random_sample = random_sample

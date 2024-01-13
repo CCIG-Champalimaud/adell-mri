@@ -22,7 +22,8 @@ from typing import List, Dict
 
 
 class UNet(torch.nn.Module):
-    """Standard U-Net [1] implementation. Features some useful additions
+    """
+    Standard U-Net [1] implementation. Features some useful additions
     such as residual links, different upsampling types, normalizations
     (batch or instance) and ropouts (dropout and U-out). This version of
     the U-Net has been implemented in such a way that it can be easily
@@ -180,7 +181,8 @@ class UNet(torch.nn.Module):
                 self.init_feature_conditioning_operations()
 
     def get_norm_op(self):
-        """Retrieves the normalization operation using `self.norm_type`."""
+        """
+        Retrieves the normalization operation using `self.norm_type`."""
         if self.norm_type is None:
             self.norm_op = torch.nn.Identity
 
@@ -197,7 +199,8 @@ class UNet(torch.nn.Module):
                 self.norm_op = torch.nn.InstanceNorm3d
 
     def get_drop_op(self):
-        """Retrieves the dropout operations using `self.dropout_type`."""
+        """
+        Retrieves the dropout operations using `self.dropout_type`."""
         if self.dropout_type is None:
             self.drop_op = torch.nn.Identity
 
@@ -207,7 +210,8 @@ class UNet(torch.nn.Module):
             self.drop_op = UOut
 
     def get_conv_op(self):
-        """Retrieves the convolutional operations using `self.conv_type`."""
+        """
+        Retrieves the convolutional operations using `self.conv_type`."""
         if self.spatial_dimensions == 2:
             if self.conv_type == "regular":
                 self.conv_op_enc = self.conv_block_2d
@@ -238,7 +242,8 @@ class UNet(torch.nn.Module):
     def conv_block_2d(
         self, in_d, out_d, kernel_size, stride=None, padding=None
     ):
-        """Convenience wrapper for 2d convolutional block."""
+        """
+        Convenience wrapper for 2d convolutional block."""
         if padding is None:
             padding = 0
         if stride is None:
@@ -252,7 +257,8 @@ class UNet(torch.nn.Module):
     def conv_block_3d(
         self, in_d, out_d, kernel_size, stride=None, padding=None
     ):
-        """Convenience wrapper for 3d convolutional block."""
+        """
+        Convenience wrapper for 3d convolutional block."""
         if padding is None:
             padding = 0
         if stride is None:
@@ -266,7 +272,8 @@ class UNet(torch.nn.Module):
     def res_block_conv_2d(
         self, in_d, out_d, kernel_size, stride=None, padding=None
     ):
-        """Convenience wrapper for ResidualBlock2d."""
+        """
+        Convenience wrapper for ResidualBlock2d."""
         if in_d > 32:
             inter_d = int(in_d // 2)
         else:
@@ -298,7 +305,8 @@ class UNet(torch.nn.Module):
     def res_block_conv_3d(
         self, in_d, out_d, kernel_size, stride=None, padding=None
     ):
-        """Convenience wrapper for ResidualBlock3d."""
+        """
+        Convenience wrapper for ResidualBlock3d."""
         if in_d > 32:
             inter_d = int(in_d // 2)
         else:
@@ -368,7 +376,8 @@ class UNet(torch.nn.Module):
         )
 
     def init_upscale_ops(self):
-        """Initializes upscaling operations."""
+        """
+        Initializes upscaling operations."""
         depths_a = self.depth[:0:-1]
         depths_b = self.depth[-2::-1]
         if self.upscale_type == "upsample":
@@ -417,7 +426,8 @@ class UNet(torch.nn.Module):
         self.upscale_ops = torch.nn.ModuleList(upscale_ops)
 
     def init_link_ops(self):
-        """Initializes linking (skip) operations."""
+        """
+        Initializes linking (skip) operations."""
         if self.skip_conditioning is not None:
             ex = self.skip_conditioning
         else:
@@ -488,7 +498,8 @@ class UNet(torch.nn.Module):
                 )
 
     def interpolate_depths(self, a: int, b: int, n=3) -> List[int]:
-        """Interpolates between two whole numbers. Not really used.
+        """
+                Interpolates between two whole numbers. Not really used.
 
         Args:
             a (int): start integer
@@ -501,7 +512,8 @@ class UNet(torch.nn.Module):
         return list(np.linspace(a, b, n, dtype=np.int32))
 
     def init_encoder(self):
-        """Initializes the encoder operations."""
+        """
+        Initializes the encoder operations."""
         self.encoding_operations = torch.nn.ModuleList([])
         previous_d = self.n_channels
         for i in range(len(self.depth) - 1):
@@ -545,7 +557,8 @@ class UNet(torch.nn.Module):
         )
 
     def init_encoder_backbone(self):
-        """Initializes the encoder operations."""
+        """
+        Initializes the encoder operations."""
         if self.spatial_dimensions == 2:
             mp = torch.nn.MaxPool2d
         elif self.spatial_dimensions == 3:
@@ -561,7 +574,8 @@ class UNet(torch.nn.Module):
         self.encoding_operations[-1][1] = torch.nn.Identity()
 
     def init_decoder(self):
-        """Initializes the decoder operations."""
+        """
+        Initializes the decoder operations."""
         self.decoding_operations = torch.nn.ModuleList([])
         depths = self.depth[-2::-1]
         kernel_sizes = self.kernel_sizes[-2::-1]
@@ -581,7 +595,8 @@ class UNet(torch.nn.Module):
                 self.deep_supervision_ops.append(self.get_ds_final_layer(d))
 
     def get_final_layer(self, d: int) -> torch.nn.Module:
-        """Returns the final layer.
+        """
+                Returns the final layer.
 
         Args:
             d (int): depth.
@@ -611,7 +626,8 @@ class UNet(torch.nn.Module):
             )
 
     def get_ds_final_layer(self, d: int) -> torch.nn.Module:
-        """Returns the final layer for deep supervision.
+        """
+                Returns the final layer for deep supervision.
 
         Args:
             d (int): depth.
@@ -638,17 +654,20 @@ class UNet(torch.nn.Module):
             )
 
     def init_final_layer(self):
-        """Initializes the classification layer (simple linear layer)."""
+        """
+        Initializes the classification layer (simple linear layer)."""
         o = self.depth[0]
         self.final_layer = self.get_final_layer(o)
 
     def init_bottleneck_classifier(self):
-        """Initiates the layers for bottleneck classification."""
+        """
+        Initiates the layers for bottleneck classification."""
         nc = self.n_classes if self.n_classes > 2 else 1
         self.bottleneck_classifier = torch.nn.Linear(self.depth[-1], nc)
 
     def adn_fn(self, s: int) -> torch.Tensor:
-        """Convenience wrapper for ADN function.
+        """
+                Convenience wrapper for ADN function.
 
         Args:
             s (int): number of layers.
@@ -709,7 +728,8 @@ class UNet(torch.nn.Module):
         return_bottleneck=False,
         return_logits=False,
     ) -> torch.Tensor:
-        """Forward pass for this class.
+        """
+                Forward pass for this class.
 
         Args:
             X (torch.Tensor)
@@ -795,7 +815,8 @@ class UNet(torch.nn.Module):
 
 
 class BrUNet(UNet, torch.nn.Module):
-    """BrUNet - UNet module supporting multiple inputs. Rather than
+    """
+    BrUNet - UNet module supporting multiple inputs. Rather than
     constructing a multi-channel input, we process each channel separately
     and merge them before applying link operations and at the end of the
     encoder. This allows us to pre-train different encoders in situations
@@ -945,7 +966,8 @@ class BrUNet(UNet, torch.nn.Module):
                 self.init_feature_conditioning_operations()
 
     def init_encoders(self):
-        """Initializes the encoder operations."""
+        """
+        Initializes the encoder operations."""
         self.encoders = torch.nn.ModuleList([])
         for _ in range(self.n_input_branches):
             encoding_operations = torch.nn.ModuleList([])
@@ -992,7 +1014,8 @@ class BrUNet(UNet, torch.nn.Module):
             self.encoders.append(encoding_operations)
 
     def init_backbone_encoders(self):
-        """Initializes the encoder operations."""
+        """
+        Initializes the encoder operations."""
         l = len(self.encoders)
         assert (
             l == self.n_input_branches
@@ -1010,12 +1033,11 @@ class BrUNet(UNet, torch.nn.Module):
             self.encoders[i][-1][1] = torch.nn.Identity()
 
     def init_merge_ops(self):
-        """Initializes operations that merge the outputs of each branch.
+        """
+        Initializes operations that merge the outputs of each branch.
         For this we use concurrent squeeze and excite layers as they allow
         us to learn a self-attention mechanism that weighs different inputs
         in both spatial and channel terms.
-        """
-        """Initializes linking (skip) operations.
         """
         if self.encoder_only is True:
             D = [self.depth[-1]]
@@ -1077,7 +1099,8 @@ class BrUNet(UNet, torch.nn.Module):
         return_bottleneck=False,
         return_logits=False,
     ) -> torch.Tensor:
-        """Forward pass for this class.
+        """
+        Forward pass for this class.
 
         Args:
             X (List[torch.Tensor]): list of tensors.
