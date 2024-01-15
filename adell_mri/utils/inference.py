@@ -941,4 +941,4 @@ class SegmentationInference:
         if self.mc_iterations is not None:
             return self.call_dropout(X, *args, **kwargs)
         else:
-            return self.call_dropout(X, *args, **kwargs)
+            return self.call_regular(X, *args, **kwargs)

@@ -76,3 +76,26 @@ def test_segmentation_inference_pl():
     assert list(output.shape) == [1, 1, h, w, d]
     assert output.max() <= 1
     assert output.min() > 0
+
+
+def test_segmentation_inference_dropout_pl():
+    unet = UNetPL(
+        spatial_dimensions=3,
+        depth=depth,
+        kernel_sizes=kernel_sizes,
+        strides=strides,
+        interpolation="trilinear",
+        padding=1,
+    )
+    input_dictionary = {"image": torch.ones([1, c, h, w, d])}
+    sli = SegmentationInference(
+        base_inference_function=lambda x: unet.predict_step(x)[0],
+        sliding_window_size=[8, 8, 8],
+        n_classes=1,
+        flip=True,
+        mc_iterations=2,
+    )
+    output = sli(input_dictionary)
+    assert list(output.shape) == [1, 2, h, w, d]
+    assert output.max() <= 1
+    assert output.min() > 0
