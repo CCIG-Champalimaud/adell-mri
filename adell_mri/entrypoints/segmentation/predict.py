@@ -74,6 +74,7 @@ def main(arguments):
           prediction_mode in [deep_features,bounding_box]"
                 },
             ),
+            "monte_carlo_dropout_iterations",
         ]
     )
 
@@ -331,6 +332,15 @@ def main(arguments):
             unet.load_state_dict(state_dict)
             unet = unet.to(args.dev)
             unet.eval()
+            if args.monte_carlo_dropout_iterations is not None:
+                assert (
+                    args.prediction_mode == "probs"
+                ), "monte_carlo_dropout_iterations only supported for \
+                    prediction_mode probs"
+                for mod in unet.modules():
+                    if mod.__class__.__name__.startswith("Dropout"):
+                        mod.train()
+
             networks.append(unet)
 
         for i in trange(len(data_list)):
@@ -352,6 +362,7 @@ def main(arguments):
                     flip_keys=["image"],
                     ndim=network_config["spatial_dimensions"],
                     inference_batch_size=len(flips),
+                    mc_iterations=args.monte_carlo_dropout_iterations,
                 )
                 for network in networks
             ]

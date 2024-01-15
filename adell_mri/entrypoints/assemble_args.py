@@ -564,6 +564,11 @@ argument_factory = {
         action="store_true", help="Keeps only the largest connected component."
     ),
     "flip": dict(action="store_true", help="Flips before predicting."),
+    "monte_carlo_dropout_iterations": dict(
+        default=None,
+        type=int,
+        help="Number of Monte Carlo dropout iterations.",
+    ),
     "per_sample": dict(
         action="store_true",
         help="Also calculates metrics on a per sample basis.",

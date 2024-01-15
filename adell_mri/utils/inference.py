@@ -786,6 +786,7 @@ class SegmentationInference:
         flip: bool = False,
         flip_idx: List[int] = None,
         flip_keys: List[str] = ["image"],
+        mc_iterations: int = None,
         ndim: int = 3,
         reduction: callable = None,
     ):
@@ -800,16 +801,18 @@ class SegmentationInference:
                 Defaults to None (same as sliding_window_size). If float,
                 sliding_window_size is multiplied by stride to obtain the
                 actual stride size.
-
             flip (bool, optional): triggers flipped prediction. Defaults to False.
             flip_idx (list[int]): dimension index for flipping. Defaults to None.
             flip_keys (list[str], optional): list of keys for flipping. Defaults
                 to ["image"].
-            ndim (int, optional): number of spatial dimensions. Defaults to 3.
 
+            mc_iterations (int, optional): sets the number of iterations for
+                MC dropout (assumes the Dropout modules in the layer are in
+                train mode). Defaults to None (no MC dropout).
+
+            ndim (int, optional): number of spatial dimensions. Defaults to 3.
             inference_batch_size (int, optional): batch size for inference.
                 Defaults to 1.
-
             reduction (callable, optional): sets strategy for reduction when a
                 list of inference functions are provided. Defaults to None (no
                 reduction)
@@ -821,6 +824,7 @@ class SegmentationInference:
         self.flip = flip
         self.flip_idx = flip_idx
         self.flip_keys = flip_keys
+        self.mc_iterations = mc_iterations
         self.ndim = ndim
         self.inference_batch_size = inference_batch_size
         self.reduction = reduction
@@ -887,7 +891,9 @@ class SegmentationInference:
                 )
         self.inference_function = inference_function
 
-    def __call__(self, X: MultiFormatInput, *args, **kwargs) -> TensorOrArray:
+    def call_regular(
+        self, X: MultiFormatInput, *args, **kwargs
+    ) -> TensorOrArray:
         if isinstance(self.inference_function, (list, tuple)):
             with torch.no_grad():
                 output = [
@@ -903,3 +909,36 @@ class SegmentationInference:
                     output = self.reduction(output)
 
         return output
+
+    def call_dropout(
+        self, X: MultiFormatInput, *args, **kwargs
+    ) -> TensorOrArray:
+        outputs = []
+        if isinstance(self.inference_function, (list, tuple)):
+            for _ in range(self.mc_iterations):
+                with torch.no_grad():
+                    output = [
+                        inference_function(X, *args, **kwargs)
+                        for inference_function in self.inference_function
+                    ]
+                    if self.reduction is not None:
+                        output = self.reduction(output)
+                outputs.append(output)
+        else:
+            for _ in range(self.mc_iterations):
+                with torch.no_grad():
+                    output = self.inference_function(X, *args, **kwargs)
+                    if self.reduction is not None:
+                        output = self.reduction(output)
+                outputs.append(output)
+        outputs = torch.stack(outputs)
+        output = torch.cat(
+            [torch.mean(outputs, axis=0), torch.std(outputs, axis=0)], dim=1
+        )
+        return output
+
+    def __call__(self, X: MultiFormatInput, *args, **kwargs) -> TensorOrArray:
+        if self.mc_iterations is not None:
+            return self.call_dropout(X, *args, **kwargs)
+        else:
+            return self.call_dropout(X, *args, **kwargs)

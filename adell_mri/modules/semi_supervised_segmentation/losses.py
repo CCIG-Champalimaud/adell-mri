@@ -292,8 +292,9 @@ class LocalContrastiveLoss(torch.nn.Module):
         self.temperature = temperature
         self.seed = seed
         self.rng = np.random.default_rng(seed)
+        self.eps = torch.as_tensor(1e-8)
 
-    def forward(
+    def forward_with_anchors(
         self,
         X_1: torch.Tensor,
         X_2: torch.Tensor,
@@ -319,3 +320,21 @@ class LocalContrastiveLoss(torch.nn.Module):
             F.softmax(sim_2, dim=1),
             reduction="none",
         )
+
+    def forward(
+        self,
+        X_1: torch.Tensor,
+        X_2: torch.Tensor,
+        anchors: torch.Tensor = None,
+    ) -> torch.Tensor:
+        # based on LoCo [1]
+        # [1] https://proceedings.neurips.cc/paper/2020/file/7fa215c9efebb3811a7ef58409907899-Paper.pdf
+        if anchors is not None:
+            return self.forward_with_anchors(X_1, X_2, anchors)
+        X_1 = X_1.flatten(start_dim=2)[None, :, :, :]
+        X_2 = X_2.flatten(start_dim=2)[:, None, :, :]
+        sim = F.cosine_similarity(X_1, X_2, dim=2) / self.temperature
+        loss = -torch.log(
+            torch.max(F.softmax(sim, dim=1).diagonal().permute(1, 0), self.eps)
+        ).mean(-1)
+        return loss
