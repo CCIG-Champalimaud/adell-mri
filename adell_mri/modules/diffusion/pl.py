@@ -27,7 +27,7 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
         weight_decay: float = 0.0,
         seed: int = 42,
         *args,
-        **kwargs
+        **kwargs,
     ):
         super().__init__(*args, **kwargs)
 
