@@ -6,6 +6,13 @@ from .functional import unravel_index
 from typing import Tuple
 
 
+def off_diagonal(x: torch.Tensor):
+    # from https://github.com/facebookresearch/vicreg/blob/a73f567660ae507b0667c68f685945ae6e2f62c3/main_vicreg.py
+    n, m = x.shape
+    assert n == m
+    return x.flatten()[:-1].view(n - 1, n + 1)[:, 1:].flatten()
+
+
 class VICRegLoss(torch.nn.Module):
     def __init__(
         self,
@@ -36,12 +43,6 @@ class VICRegLoss(torch.nn.Module):
         self.mu = mu
         self.nu = nu
 
-    def off_diagonal(self, x):
-        # from https://github.com/facebookresearch/vicreg/blob/a73f567660ae507b0667c68f685945ae6e2f62c3/main_vicreg.py
-        n, m = x.shape
-        assert n == m
-        return x.flatten()[:-1].view(n - 1, n + 1)[:, 1:].flatten()
-
     def variance_loss(self, X: torch.Tensor) -> torch.Tensor:
         """
         Calculates the VICReg variance loss (a Hinge loss for the variance
@@ -71,7 +72,7 @@ class VICRegLoss(torch.nn.Module):
         X_mean = X.mean(0)
         X_centred = X - X_mean
         cov = (X_centred.T @ X_centred) / (X.shape[0] - 1)
-        norm_cov = self.off_diagonal(cov) / sqrt(X.shape[1])
+        norm_cov = off_diagonal(cov) / sqrt(X.shape[1])
         return torch.sum(norm_cov.pow_(2))
 
     def invariance_loss(

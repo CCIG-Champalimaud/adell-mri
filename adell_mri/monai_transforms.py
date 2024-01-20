@@ -276,6 +276,8 @@ def get_transforms_unet(
                         dtype=torch.float32,
                     )
                 )
+        else:
+            keys.extend(image_keys)
         if track_meta is False:
             transforms.append(monai.transforms.SelectItemsd(keys + mask_key))
 

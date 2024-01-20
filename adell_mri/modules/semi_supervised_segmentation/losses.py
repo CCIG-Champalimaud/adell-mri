@@ -314,7 +314,6 @@ class LocalContrastiveLoss(torch.nn.Module):
         anchors = anchors.flatten(start_dim=2)
         sim_1 = F.cosine_similarity(X_1, anchors, dim=1) / self.temperature
         sim_2 = F.cosine_similarity(X_2, anchors, dim=1) / self.temperature
-        print(sim_1.shape, sim_2.shape)
         return F.kl_div(
             F.softmax(sim_1, dim=1),
             F.softmax(sim_2, dim=1),

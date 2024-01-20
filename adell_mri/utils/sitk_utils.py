@@ -1,9 +1,10 @@
 import SimpleITK as sitk
 import numpy as np
-from multiprocess import Pool
+import torch
+from multiprocess import Pool, Process, Queue
+from pathlib import Path
 from tqdm import tqdm
-from typing import List
-from typing import Dict, Tuple
+from typing import List, Dict, Tuple
 from dataclasses import dataclass
 from ..custom_types import DatasetDict
 
@@ -35,6 +36,47 @@ class ReadSpacing:
             self.dataset_dict[key][self.image_key]
         ).GetSpacing()
         return key, sp
+
+
+@dataclass
+class SitkWriter:
+    n_workers: int = 1
+
+    def __post_init__(self):
+        self.queue = Queue()
+        self.workers = [
+            Process(target=self.worker) for _ in range(self.n_workers)
+        ]
+        for worker in self.workers:
+            worker.start()
+
+    def worker(self):
+        while True:
+            path, image, source_image = self.queue.get()
+            if isinstance(image, torch.Tensor):
+                image = image.cpu().numpy()
+            if isinstance(image, np.ndarray):
+                image = sitk.GetImageFromArray(image)
+            if source_image is not None:
+                if isinstance(source_image, str):
+                    source_image = sitk.ReadImage(source_image)
+                image = copy_information_nd(image, source_image)
+            Path(path).parent.mkdir(parents=True, exist_ok=True)
+            sitk.WriteImage(image, path)
+
+    def put(
+        self,
+        path: str,
+        image: sitk.Image | np.ndarray | torch.Tensor,
+        source_image: sitk.Image | str = None,
+    ):
+        self.queue.put((path, image, source_image))
+
+    def close(self):
+        for _ in self.workers:
+            self.queue.put(None)
+        for worker in self.workers:
+            worker.join()
 
 
 def spacing_values_from_dataset_json(
@@ -220,3 +262,34 @@ def crop_image(sitk_image: sitk.Image, output_size: list[int]) -> sitk.Image:
 
     sitk_image = sitk.Crop(sitk_image, lower.tolist(), upper.tolist())
     return sitk_image
+
+
+def copy_information_nd(target_image: sitk.Image, source_image=sitk.Image):
+    n_dim_in = len(source_image.GetSize())
+    n_dim_out = len(target_image.GetSize())
+    if n_dim_in == n_dim_out:
+        target_image.CopyInformation(source_image)
+        return target_image
+    elif n_dim_in > n_dim_out:
+        raise Exception(
+            "target_image has to have the same or more dimensions than\
+                source_image"
+        )
+    spacing = list(source_image.GetSpacing())
+    origin = list(source_image.GetOrigin())
+    direction = list(source_image.GetDirection())
+    while len(origin) != n_dim_out:
+        spacing.append(1.0)
+        origin.append(0.0)
+    direction = np.reshape(direction, (n_dim_in, n_dim_in))
+    direction = np.pad(
+        direction, ((0, n_dim_out - n_dim_in), (0, n_dim_out - n_dim_in))
+    )
+    x, y = np.diag_indices(n_dim_out - n_dim_in)
+    x = x + n_dim_in
+    y = y + n_dim_in
+    direction[(x, y)] = 1.0
+    target_image.SetSpacing(spacing)
+    target_image.SetOrigin(origin)
+    target_image.SetDirection(direction.flatten())
+    return target_image

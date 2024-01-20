@@ -33,7 +33,7 @@ def split(x: torch.Tensor, n_splits: int, dim: int) -> torch.Tensor:
     return torch.split(x, size, dim)
 
 
-def get_lesions(x: torch.Tensor) -> np.ndarray:
+def get_lesions(x: torch.Tensor, threshold: float | str = 0.1) -> np.ndarray:
     """Wrapper for getting lesions using extract_lesion_candidates.
 
     Args:
@@ -42,7 +42,7 @@ def get_lesions(x: torch.Tensor) -> np.ndarray:
     Returns:
         (np.ndarray): map containing indexed lesion candidates.
     """
-    return extract_lesion_candidates(x)[0]
+    return extract_lesion_candidates(x, threshold=threshold)[0]
 
 
 def update_metrics(

@@ -3,6 +3,7 @@ import numpy as np
 import torch
 import monai
 import gc
+from copy import deepcopy
 from tqdm import trange
 
 from ...entrypoints.assemble_args import Parser
@@ -325,7 +326,7 @@ def main(arguments):
             state_dict = {
                 k: state_dict[k]
                 for k in state_dict
-                if "deep_supervision_ops" not in k
+                if "deep_supervision_ops" not in k and "ema." not in k
             }
             unet.load_state_dict(state_dict)
             unet = unet.to(args.dev)
@@ -375,10 +376,16 @@ def main(arguments):
                     )
                     pred = pred.squeeze()
                     y = data_element["mask"].round().int().squeeze()
+                    pred = get_lesions(pred.cpu().numpy(), args.threshold)
                     if args.picai_eval is True:
-                        all_pred.append(pred.cpu().numpy())
+                        all_pred.append(deepcopy(pred))
                         all_truth.append(y.cpu().numpy())
-                    pred = (pred > args.threshold).long()
+                    pred = (
+                        torch.as_tensor(pred, device=args.dev)
+                        .round()
+                        .long()
+                        .squeeze()
+                    )
                     if args.per_sample is True:
                         metrics_dict["metrics"][test_id] = {}
                         for k in metrics:
@@ -398,7 +405,7 @@ def main(arguments):
                     picai_eval_metrics = evaluate(
                         y_det=all_pred,
                         y_true=all_truth,
-                        y_det_postprocess_func=get_lesions,
+                        y_det_postprocess_func=None,
                         num_parallel_calls=8,
                     )
                     metrics_dict["global_metrics"][
@@ -441,11 +448,11 @@ def main(arguments):
                     return_logits=True,
                 )
                 y = data_element["mask"].round().int().squeeze()
-                pred = pred.squeeze()
+                pred = get_lesions(pred.cpu().numpy(), args.threshold)
                 if args.picai_eval is True:
-                    all_pred.append(pred.cpu().numpy())
+                    all_pred.append(deepcopy(pred))
                     all_truth.append(y.cpu().numpy())
-                pred = pred.round().long().squeeze()
+                pred = torch.as_tensor(pred, device=args.dev).long().squeeze()
                 if args.per_sample is True:
                     metrics_dict["metrics"][test_id] = {}
                     for k in metrics:
@@ -465,7 +472,7 @@ def main(arguments):
                 picai_eval_metrics = evaluate(
                     y_det=all_pred,
                     y_true=all_truth,
-                    y_det_postprocess_func=get_lesions,
+                    y_det_postprocess_func=None,
                     num_parallel_calls=8,
                 )
                 metrics_dict["global_metrics"]["AP"] = picai_eval_metrics.AP

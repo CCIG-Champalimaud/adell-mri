@@ -170,10 +170,10 @@ class UNetContrastiveSemiSL(UNetSemiSL, UNetBasePL):
         x_cond: torch.Tensor,
         x_fc: torch.Tensor,
     ):
-        output_1 = self.forward_features_ema_stop_grad(
+        output_1 = self.forward_features(
             X=x_1, X_skip_layer=x_cond, X_feature_conditioning=x_fc
         )
-        output_2 = self.forward_features(
+        output_2 = self.forward_features_ema_stop_grad(
             X=x_2, X_skip_layer=x_cond, X_feature_conditioning=x_fc
         )
         return self.calculate_loss_semi_sl(output_1, output_2)

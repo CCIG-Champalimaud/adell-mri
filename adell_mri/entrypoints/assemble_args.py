@@ -574,7 +574,7 @@ argument_factory = {
         help="Also calculates metrics on a per sample basis.",
     ),
     "segmentation_prediction_mode": dict(
-        choices=["image", "probs", "deep_features", "bounding_box"],
+        choices=["image", "probs", "logits", "deep_features", "bounding_box"],
         default="image",
     ),
     "threshold": dict(

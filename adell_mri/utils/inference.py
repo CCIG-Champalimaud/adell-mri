@@ -1,5 +1,6 @@
 import numpy as np
 import torch
+from monai.data.meta_tensor import MetaTensor
 from copy import deepcopy
 from typing import List, Callable, Union, Dict, Sequence, Tuple
 
@@ -9,6 +10,48 @@ MultiFormatInput = Union[
 ]
 Coords = Union[Sequence[Tuple[int, int]], Sequence[Tuple[int, int, int]]]
 Shape = Union[Tuple[int, int], Tuple[int, int, int]]
+
+
+def get_example(X: MultiFormatInput) -> TensorOrArray:
+    """
+    Retrieves an example from a multi-format input.
+
+    Args:
+        X (MultiFormatInput): np.array, torch.Tensor, dict, tuple or list.
+
+    Raises:
+        NotImplementedError: if X is not one of np.array, torch.Tensor, dict,
+            tuple or list.
+
+    Returns:
+        TensorOrArray: an example of X. If X is np.array or torch.Tensor,
+            returns the input. If it is a dict, list or tuple: the first
+            element is returned.
+    """
+    if isinstance(X, (np.ndarray, torch.Tensor)):
+        x = X
+    elif isinstance(X, dict):
+        k = list(X.keys())[0]
+        x = X[k]
+    elif isinstance(X, (tuple, list)):
+        x = X[0]
+    else:
+        raise NotImplementedError(
+            "Supported inputs are np.ndarray, dict, tuple, list"
+        )
+    return x
+
+
+def make_meta(X: torch.Tensor, source_X: MultiFormatInput) -> TensorOrArray:
+    source_X = get_example(source_X)
+    if isinstance(source_X, MetaTensor):
+        X = MetaTensor(
+            X,
+            affine=source_X.affine,
+            meta=source_X.meta,
+            applied_operations=source_X.applied_operations,
+        )
+    return X
 
 
 def get_shape(X: MultiFormatInput) -> Shape:
@@ -27,17 +70,7 @@ def get_shape(X: MultiFormatInput) -> Shape:
     Returns:
         Shape: tensor/array shape.
     """
-    if isinstance(X, (np.ndarray, torch.Tensor)):
-        return X.shape
-    elif isinstance(X, dict):
-        k = list(X.keys())[0]
-        return X[k].shape
-    elif isinstance(X, (tuple, list)):
-        return X[0].shape
-    else:
-        raise NotImplementedError(
-            "Supported inputs are np.ndarray, tensor, dict, tuple, list"
-        )
+    return get_example(X).shape
 
 
 def cat_array(X: List[TensorOrArray], *args, **kwargs) -> TensorOrArray:
@@ -438,17 +471,7 @@ class SlidingWindowSegmentation:
         Returns:
             str: device.
         """
-        if isinstance(X, (np.ndarray, torch.Tensor)):
-            return X.device
-        elif isinstance(X, dict):
-            k = list(X.keys())[0]
-            return X[k].device
-        elif isinstance(X, (tuple, list)):
-            return X[0].device
-        else:
-            raise NotImplementedError(
-                "Supported inputs are np.ndarray, dict, tuple, list"
-            )
+        return get_example(X).device
 
     def get_zeros_fn(self, X: MultiFormatInput) -> Callable:
         """
@@ -467,17 +490,7 @@ class SlidingWindowSegmentation:
             Callable: np.zeros if inferred type is np.ndarray, torch.zeros if inferred
                 type is torch.Tensor.
         """
-        if isinstance(X, (np.ndarray, torch.Tensor)):
-            x = X
-        elif isinstance(X, dict):
-            k = list(X.keys())[0]
-            x = X[k]
-        elif isinstance(X, (tuple, list)):
-            x = X[0]
-        else:
-            raise NotImplementedError(
-                "Supported inputs are np.ndarray, dict, tuple, list"
-            )
+        x = get_example(X)
         if isinstance(x, np.ndarray):
             return np.zeros
         elif isinstance(x, torch.Tensor):
@@ -829,6 +842,8 @@ class SegmentationInference:
         self.inference_batch_size = inference_batch_size
         self.reduction = reduction
 
+        self.flips = [(1,), (2,), (3,), (1, 2), (1, 3), (2, 3), (1, 2, 3)]
+
         self.update_base_inference_function(base_inference_function)
 
     def update_base_inference_function(
@@ -854,15 +869,14 @@ class SegmentationInference:
                     for fn in inference_function
                 ]
             if self.flip == True:
-                flips = [(1,), (2,), (3,)]
                 inference_function = [
                     FlippedInference(
                         inference_function=fn,
-                        flips=flips,
+                        flips=self.flips,
                         flip_idx=self.flip_idx,
                         flip_keys=self.flip_keys,
                         ndim=self.ndim,
-                        inference_batch_size=self.inference_batch_size,
+                        inference_batch_size=len(self.flips),
                     )
                     for fn in inference_function
                 ]
@@ -880,14 +894,13 @@ class SegmentationInference:
                     inference_batch_size=self.inference_batch_size,
                 )
             if self.flip == True:
-                flips = [(1,), (2,), (3,)]
                 inference_function = FlippedInference(
                     inference_function=inference_function,
-                    flips=flips,
+                    flips=self.flips,
                     flip_idx=self.flip_idx,
                     flip_keys=self.flip_keys,
                     ndim=self.ndim,
-                    inference_batch_size=len(flips),
+                    inference_batch_size=len(self.flips),
                 )
         self.inference_function = inference_function
 
@@ -939,6 +952,8 @@ class SegmentationInference:
 
     def __call__(self, X: MultiFormatInput, *args, **kwargs) -> TensorOrArray:
         if self.mc_iterations is not None:
-            return self.call_dropout(X, *args, **kwargs)
+            output = self.call_dropout(X, *args, **kwargs)
         else:
-            return self.call_regular(X, *args, **kwargs)
+            output = self.call_regular(X, *args, **kwargs)
+        output = make_meta(output, X)
+        return output

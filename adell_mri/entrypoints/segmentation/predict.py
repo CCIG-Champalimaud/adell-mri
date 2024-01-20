@@ -3,20 +3,19 @@ import gc
 import os
 import numpy as np
 import torch
-import SimpleITK as sitk
 import monai
-from pathlib import Path
 from tqdm import trange
 
 from ...entrypoints.assemble_args import Parser
-from ...utils import collate_last_slice, SlicesToFirst, safe_collate
 from ...monai_transforms import get_transforms_unet as get_transforms
-from ...utils.dataset_filters import filter_dictionary
 from ...modules.layers import ResNet
-from ...utils.network_factories import get_segmentation_network
 from ...modules.config_parsing import parse_config_unet, parse_config_ssl
-from ...utils.inference import SegmentationInference
+from ...utils import collate_last_slice, SlicesToFirst, safe_collate
+from ...utils.dataset_filters import filter_dictionary
+from ...utils.network_factories import get_segmentation_network
+from ...utils.inference import SegmentationInference, TensorListReduction
 from ...utils.parser import parse_ids
+from ...utils.sitk_utils import SitkWriter
 
 torch.backends.cudnn.benchmark = True
 
@@ -46,6 +45,7 @@ def main(arguments):
             "prediction_ids",
             "excluded_ids",
             "filter_on_keys",
+            "filter_is_optional",
             "target_spacing",
             "resize_size",
             "resize_keys",
@@ -71,7 +71,8 @@ def main(arguments):
                 "output_path",
                 {
                     "help": "Path to output masks (if prediction_mode == image) or json if\
-          prediction_mode in [deep_features,bounding_box]"
+          prediction_mode in [deep_features,bounding_box]",
+                    "required": True,
                 },
             ),
             "monte_carlo_dropout_iterations",
@@ -131,6 +132,7 @@ def main(arguments):
         possible_labels=None,
         label_key=None,
         filters=args.filter_on_keys,
+        filter_is_optional=args.filter_is_optional,
     )
     if args.excluded_ids is not None:
         data_dict = {
@@ -197,7 +199,7 @@ def main(arguments):
         "label_mode": label_mode,
         "fill_missing": args.missing_to_empty is not None,
         "brunet": args.net_type == "brunet",
-        "track_meta": True,
+        "track_meta": False,
         "convert_to_tensor": False,
     }
 
@@ -282,7 +284,7 @@ def main(arguments):
         clinical_feature_key_net=feature_key_net,
         aux_key_net=aux_key_net,
         max_epochs=100,
-        picai_eval=args.picai_eval,
+        picai_eval=False,
         lr_encoder=None,
         cosine_decay=False,
         encoder_checkpoint=args.bottleneck_classification,
@@ -299,12 +301,13 @@ def main(arguments):
     )
 
     if args.prediction_ids is not None:
-        args.preprediction_idsd_ids = parse_ids(args.prediction_ids)
+        args.prediction_ids = parse_ids(args.prediction_ids)
     else:
         args.prediction_ids = [[k for k in data_dict]]
     n_ckpt = len(args.checkpoint)
     n_data = len(args.prediction_ids)
     output = {}
+    sitk_writer = SitkWriter(2)
     for pred_idx in range(n_data):
         pred_ids = [k for k in args.prediction_ids[pred_idx] if k in data_dict]
         curr_dict = {k: data_dict[k] for k in pred_ids}
@@ -327,16 +330,17 @@ def main(arguments):
             state_dict = {
                 k: state_dict[k]
                 for k in state_dict
-                if "deep_supervision_ops" not in k
+                if "deep_supervision_ops" not in k and "ema." not in k
             }
             unet.load_state_dict(state_dict)
             unet = unet.to(args.dev)
             unet.eval()
             if args.monte_carlo_dropout_iterations is not None:
-                assert (
-                    args.prediction_mode == "probs"
-                ), "monte_carlo_dropout_iterations only supported for \
-                    prediction_mode probs"
+                assert args.prediction_mode == [
+                    "probs",
+                    "logits",
+                ], "monte_carlo_dropout_iterations only supported for \
+                    prediction_mode probs or logits"
                 for mod in unet.modules():
                     if mod.__class__.__name__.startswith("Dropout"):
                         mod.train()
@@ -351,34 +355,44 @@ def main(arguments):
                 data_element[k] = data_element[k].to(args.dev).unsqueeze(0)
             pred_id = pred_ids[i]
             pred_mode = args.prediction_mode
-            flips = [(1,), (2,), (3,)]
             inference_fns = [
                 SegmentationInference(
                     base_inference_function=network.predict_step,
                     sliding_window_size=args.sliding_window_size,
                     stride=0.5,
                     n_classes=n_classes if n_classes > 2 else 1,
-                    flips=flips,
+                    flip=args.flip,
                     flip_keys=["image"],
                     ndim=network_config["spatial_dimensions"],
-                    inference_batch_size=len(flips),
                     mc_iterations=args.monte_carlo_dropout_iterations,
+                    reduction=TensorListReduction(
+                        postproc_fn=unet.final_layer[-1]
+                    ),
                 )
                 for network in networks
             ]
 
-            if pred_mode in ["image", "probs", "bounding_box"]:
+            if pred_mode in ["image", "probs", "bounding_box", "logits"]:
                 pred = [
-                    inference_fn(data_element, 0)[0][0]
+                    inference_fn(
+                        data_element,
+                        0,
+                        return_logits=True,
+                        return_only_segmentation=True,
+                    )[0]
                     for inference_fn in inference_fns
                 ]
                 pred = [
-                    transforms_postprocess({"image": p})["image"][0]
-                    for p in pred
+                    transforms_postprocess({"image": p})["image"] for p in pred
                 ]
             elif pred_mode == "deep_features":
                 pred = [
-                    inference_fn(data_element, 0, return_bottleneck=True)[2][0]
+                    inference_fn(
+                        data_element,
+                        0,
+                        return_bottleneck=True,
+                        return_only_segmentation=True,
+                    )[2][0]
                     for inference_fn in inference_fns
                 ]
                 pred = [x.flatten(start_dim=1).max(1).values for x in pred]
@@ -386,32 +400,28 @@ def main(arguments):
             pred = torch.stack(pred, -1)
             if args.ensemble is not None:
                 pred = pred.mean(-1)
-            pred = networks[0].final_layer[-1](pred).detach().cpu()
+            if pred_mode in ["image", "probs"]:
+                pred = networks[0].final_layer[-1](pred)
+            pred = pred.detach().cpu()
             if pred_mode == "image":
                 pred = np.int32(np.round(pred))
-                pred = np.transpose(pred, [2, 1, 0])
-                pred_image = sitk.GetImageFromArray(pred)
-                pred_image.CopyInformation(
-                    sitk.ReadImage(curr_dict[pred_id]["image"])
+                pred = np.transpose(pred, [2, 1, 0]).to(torch.int16)
+                output_path = os.path.join(
+                    args.output_path, pred_id + ".nii.gz"
                 )
-                pred_image = sitk.Cast(pred_image, sitk.sitkInt16)
-                output_path = Path(
-                    os.path.join(args.output_path, pred_id + ".nii.gz")
+                t_image = curr_dict[pred_id]["image"]
+                sitk_writer.put(output_path, pred, t_image)
+            elif pred_mode in ["probs", "logits"]:
+                sh = pred.shape
+                if len(sh) == 4:
+                    pred = np.transpose(pred, [3, 2, 1, 0])
+                elif len(sh) == 5:
+                    pred = np.transpose(pred, [4, 0, 3, 2, 1])
+                output_path = os.path.join(
+                    args.output_path, pred_id + ".nii.gz"
                 )
-                output_path.parent.mkdir(parents=True, exist_ok=True)
-                sitk.WriteImage(pred_image, str(output_path))
-            elif pred_mode == "probs":
-                pred = np.transpose(pred, [2, 1, 0])
-                pred_image = sitk.GetImageFromArray(pred)
-                pred_image.CopyInformation(
-                    sitk.ReadImage(curr_dict[pred_id]["image"])
-                )
-                pred_image = sitk.Cast(pred_image, sitk.sitkFloat32)
-                output_path = Path(
-                    os.path.join(args.output_path, pred_id + ".nii.gz")
-                )
-                output_path.parent.mkdir(parents=True, exist_ok=True)
-                sitk.WriteImage(pred_image, str(output_path))
+                t_image = curr_dict[pred_id]["image"]
+                sitk_writer.put(output_path, pred, t_image)
             elif pred_mode == "deep_features":
                 pred = pred
                 output[pred_id] = pred.tolist()
@@ -423,6 +433,8 @@ def main(arguments):
                 output[pred_id] = [*bb_min, *bb_max]
             gc.collect()
 
-    if pred_mode in ["deep_features", "bounding_box"]:
+    sitk_writer.close()
+
+    if args.pred_mode in ["deep_features", "bounding_box"]:
         with open(args.output_path, "w") as o:
             json.dump(output, o)
