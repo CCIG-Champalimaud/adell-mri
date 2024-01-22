@@ -347,6 +347,23 @@ def main(arguments):
 
             networks.append(unet)
 
+        postproc_fn = (
+            unet.final_layer[-1] if pred_mode in ["image", "probs"] else None
+        )
+        inference_fns = [
+            SegmentationInference(
+                base_inference_function=network.predict_step,
+                sliding_window_size=args.sliding_window_size,
+                stride=0.5,
+                n_classes=n_classes if n_classes > 2 else 1,
+                flip=args.flip,
+                flip_keys=["image"],
+                ndim=network_config["spatial_dimensions"],
+                mc_iterations=args.monte_carlo_dropout_iterations,
+                reduction=TensorListReduction(postproc_fn=postproc_fn),
+            )
+            for network in networks
+        ]
         for key in tqdm(curr_dict):
             data_element = curr_dict[key]
             data_element = transform_input(data_element)
@@ -354,22 +371,6 @@ def main(arguments):
             for k in all_keys:
                 data_element[k] = data_element[k].to(args.dev).unsqueeze(0)
             pred_id = key
-            inference_fns = [
-                SegmentationInference(
-                    base_inference_function=network.predict_step,
-                    sliding_window_size=args.sliding_window_size,
-                    stride=0.5,
-                    n_classes=n_classes if n_classes > 2 else 1,
-                    flip=args.flip,
-                    flip_keys=["image"],
-                    ndim=network_config["spatial_dimensions"],
-                    mc_iterations=args.monte_carlo_dropout_iterations,
-                    reduction=TensorListReduction(
-                        postproc_fn=unet.final_layer[-1]
-                    ),
-                )
-                for network in networks
-            ]
 
             if pred_mode in ["image", "probs", "bounding_box", "logits"]:
                 pred = [
@@ -412,7 +413,9 @@ def main(arguments):
                 sitk_writer.put(output_path, pred, t_image)
             elif pred_mode in ["probs", "logits"]:
                 sh = pred.shape
-                if len(sh) == 4:
+                if len(sh) == 3:
+                    pred = np.transpose(pred, [2, 1, 0])
+                elif len(sh) == 4:
                     pred = np.transpose(pred, [3, 2, 1, 0])
                 elif len(sh) == 5:
                     pred = np.transpose(pred, [4, 0, 3, 2, 1])

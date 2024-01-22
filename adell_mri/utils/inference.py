@@ -45,12 +45,37 @@ def get_example(X: MultiFormatInput) -> TensorOrArray:
 def make_meta(X: torch.Tensor, source_X: MultiFormatInput) -> TensorOrArray:
     source_X = get_example(source_X)
     if isinstance(source_X, MetaTensor):
-        X = MetaTensor(
-            X,
-            affine=source_X.affine,
-            meta=source_X.meta,
-            applied_operations=source_X.applied_operations,
-        )
+        if isinstance(X, (np.ndarray, torch.Tensor)):
+            X = MetaTensor(
+                X,
+                affine=source_X.affine,
+                meta=source_X.meta,
+                applied_operations=source_X.applied_operations,
+            )
+        elif isinstance(X, dict):
+            X = {
+                k: MetaTensor(
+                    X[k],
+                    affine=source_X.affine,
+                    meta=source_X.meta,
+                    applied_operations=source_X.applied_operations,
+                )
+                for k in X
+            }
+        elif isinstance(X, (tuple, list)):
+            X = [
+                MetaTensor(
+                    x,
+                    affine=source_X.affine,
+                    meta=source_X.meta,
+                    applied_operations=source_X.applied_operations,
+                )
+                for x in X
+            ]
+        else:
+            raise NotImplementedError(
+                "Supported inputs are np.ndarray, dict, tuple, list"
+            )
     return X
 
 
@@ -341,54 +366,35 @@ class FlippedInference:
             )
 
     def __call__(self, X: MultiFormatInput, *args, **kwargs) -> TensorOrArray:
-        batch = []
         batch_flips = []
-        output = None
-        if (self.ndim + 1) == len(get_shape(X)):
-            original_batch_size = 1
-            shift = 1
-        else:
-            original_batch_size = get_shape(X)[0]
-            shift = 0
-        for flip in self.flips:
-            flipped_X = self.flip(X, flip)
-            batch.append(flipped_X)
+        original_batch_size = get_shape(X)[0]
+        flips = self.flips
+        output = [
+            self.inference_function(
+                multi_format_stack_or_cat([X], self.ndim), *args, **kwargs
+            )
+        ]
+        for flip in flips:
             batch_flips.append(flip)
-            if len(batch) == self.inference_batch_size:
+            if len(batch_flips) == self.inference_batch_size:
+                batch = [self.flip(X, flip_axis) for flip_axis in batch_flips]
                 batch = multi_format_stack_or_cat(batch, self.ndim)
-                with torch.no_grad():
-                    result = self.inference_function(
-                        batch, *args, **kwargs
-                    ).detach()
-                result = [
-                    self.flip(x, tuple([ff + shift for ff in f]))
-                    for x, f in zip(
-                        torch.split(result, original_batch_size),
-                        batch_flips,
-                    )
-                ]
-                result = torch.stack(result, -1).sum(-1)
-                # lazy output
-                if output is None:
-                    output = torch.zeros_like(result)
-                output = output + result
-                batch = []
+                result = self.inference_function(batch, *args, **kwargs)
+                result = torch.split(result, original_batch_size)
+                output.extend(result)
                 batch_flips = []
-        if len(batch) > 0:
+        if len(batch_flips) > 0:
+            batch = [self.flip(X, flip_axis) for flip_axis in batch_flips]
             batch = multi_format_stack_or_cat(batch, self.ndim)
-            with torch.no_grad():
-                result = self.inference_function(
-                    batch, *args, **kwargs
-                ).detach()
-            result = [self.flip(x, f) for x, f in zip(X, batch_flips)]
-            result = torch.stack(result, -1).sum(-1)
-            # lazy output
-            if output is None:
-                output = torch.zeros_like(result)
-            output = output + result
-            batch = []
-            batch_flips = []
-        return output / len(self.flips)
+            result = self.inference_function(batch, *args, **kwargs)
+            result = torch.split(result, original_batch_size)
+            output.extend(result)
+        print(len(output))
+        output[1:] = [
+            torch.flip(x, flip_axis) for x, flip_axis in zip(output[1:], flips)
+        ]
+        output = torch.stack(output, 0).mean(0)
+        return output
 
 
 class SlidingWindowSegmentation:
@@ -842,7 +848,7 @@ class SegmentationInference:
         self.inference_batch_size = inference_batch_size
         self.reduction = reduction
 
-        self.flips = [(1,), (2,), (3,), (1, 2), (1, 3), (2, 3), (1, 2, 3)]
+        self.flips = [(2,), (3,), (4,)]
 
         self.update_base_inference_function(base_inference_function)
 

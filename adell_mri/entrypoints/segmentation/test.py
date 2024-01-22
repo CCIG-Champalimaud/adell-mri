@@ -52,6 +52,7 @@ def main(arguments):
             "feature_keys",
             "test_ids",
             "excluded_ids",
+            "cache_rate",
             "resize_size",
             "resize_keys",
             "crop_size",
@@ -312,6 +313,7 @@ def main(arguments):
             data_list,
             monai.transforms.Compose(transforms),
             num_workers=args.n_workers,
+            cache_rate=args.cache_rate,
         )
 
         if args.one_to_one == True:
@@ -365,7 +367,8 @@ def main(arguments):
                 for i in trange(len(dataset), smoothing=1):
                     data_element = dataset[i]
                     data_element = {
-                        k: data_element[k].to(args.dev) for k in data_element
+                        k: data_element[k].to(args.dev)[None]
+                        for k in data_element
                     }
                     test_id = test_ids[test_idx][i]
                     pred = inference_function(

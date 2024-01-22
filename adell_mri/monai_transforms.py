@@ -796,7 +796,10 @@ def get_augmentations_unet(
 
     # ensures that flips are applied regardless of TrivialAugment trigger
     if "flip" in augment:
-        flip_transform = [monai.transforms.RandFlipd(all_keys, prob=0.2)]
+        flip_transform = [
+            monai.transforms.RandFlipd(all_keys, spatial_axis=[axis], prob=0.2)
+            for axis in [0, 1, 2]
+        ]
     else:
         flip_transform = []
 
@@ -847,7 +850,7 @@ def get_augmentations_unet(
 
 
 def get_augmentations_class(
-    augment, all_keys, mask_key, image_keys, t2_keys, flip_axis=[0]
+    augment, all_keys, mask_key, image_keys, t2_keys, flip_axis=[0, 1]
 ):
     valid_arg_list = [
         "intensity",

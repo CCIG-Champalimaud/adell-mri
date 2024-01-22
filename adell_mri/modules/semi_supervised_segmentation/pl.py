@@ -116,7 +116,7 @@ class UNetContrastiveSemiSL(UNetSemiSL, UNetBasePL):
         self.all_true = []
 
         self.bn_mult = 0.1
-        self.ssl_weight = 0.1
+        self.ssl_weight = 1.0
 
         if (
             self.semi_sl_image_key_1 is not None
