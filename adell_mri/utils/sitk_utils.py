@@ -6,6 +6,7 @@ from pathlib import Path
 from tqdm import tqdm
 from typing import List, Dict, Tuple
 from dataclasses import dataclass
+from copy import deepcopy
 from ..custom_types import DatasetDict
 
 
@@ -52,15 +53,26 @@ class SitkWriter:
 
     def worker(self):
         while True:
-            path, image, source_image = self.queue.get()
+            element = self.queue.get()
+            if element is None:
+                break
+            path, image, source_image = element
             if isinstance(image, torch.Tensor):
                 image = image.cpu().numpy()
             if isinstance(image, np.ndarray):
                 image = sitk.GetImageFromArray(image)
             if source_image is not None:
+                source_image_original = deepcopy(source_image)
                 if isinstance(source_image, str):
                     source_image = sitk.ReadImage(source_image)
                 image = copy_information_nd(image, source_image)
+                # checks for differences in size
+                if isinstance(image, str):
+                    print(
+                        f"error for image {path} and source_image {source_image_original}",
+                        image,
+                    )
+                    return
             Path(path).parent.mkdir(parents=True, exist_ok=True)
             sitk.WriteImage(image, path)
 
@@ -265,8 +277,10 @@ def crop_image(sitk_image: sitk.Image, output_size: list[int]) -> sitk.Image:
 
 
 def copy_information_nd(target_image: sitk.Image, source_image=sitk.Image):
-    n_dim_in = len(source_image.GetSize())
-    n_dim_out = len(target_image.GetSize())
+    size_source = source_image.GetSize()
+    size_target = target_image.GetSize()
+    n_dim_in = len(size_source)
+    n_dim_out = len(size_target)
     if n_dim_in == n_dim_out:
         target_image.CopyInformation(source_image)
         return target_image
@@ -275,6 +289,10 @@ def copy_information_nd(target_image: sitk.Image, source_image=sitk.Image):
             "target_image has to have the same or more dimensions than\
                 source_image"
         )
+    if size_target[:n_dim_in] != size_source:
+        out_str = f"sizes are different (target={size_target[:n_dim_in]}"
+        out_str += f" size_source={size_source})"
+        return out_str
     spacing = list(source_image.GetSpacing())
     origin = list(source_image.GetOrigin())
     direction = list(source_image.GetDirection())

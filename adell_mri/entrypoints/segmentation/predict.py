@@ -4,7 +4,7 @@ import os
 import numpy as np
 import torch
 import monai
-from tqdm import trange
+from tqdm import tqdm
 
 from ...entrypoints.assemble_args import Parser
 from ...monai_transforms import get_transforms_unet as get_transforms
@@ -308,10 +308,10 @@ def main(arguments):
     n_data = len(args.prediction_ids)
     output = {}
     sitk_writer = SitkWriter(2)
+    pred_mode = args.prediction_mode
     for pred_idx in range(n_data):
         pred_ids = [k for k in args.prediction_ids[pred_idx] if k in data_dict]
         curr_dict = {k: data_dict[k] for k in pred_ids}
-        data_list = [curr_dict[k] for k in curr_dict]
 
         transform_input = transforms[0]
         transforms_preprocess = monai.transforms.Compose(transforms[1:])
@@ -347,14 +347,13 @@ def main(arguments):
 
             networks.append(unet)
 
-        for i in trange(len(data_list)):
-            data_element = data_list[i]
+        for key in tqdm(curr_dict):
+            data_element = curr_dict[key]
             data_element = transform_input(data_element)
             data_element = transforms_preprocess(data_element)
             for k in all_keys:
                 data_element[k] = data_element[k].to(args.dev).unsqueeze(0)
-            pred_id = pred_ids[i]
-            pred_mode = args.prediction_mode
+            pred_id = key
             inference_fns = [
                 SegmentationInference(
                     base_inference_function=network.predict_step,
@@ -435,6 +434,6 @@ def main(arguments):
 
     sitk_writer.close()
 
-    if args.pred_mode in ["deep_features", "bounding_box"]:
+    if pred_mode in ["deep_features", "bounding_box"]:
         with open(args.output_path, "w") as o:
             json.dump(output, o)

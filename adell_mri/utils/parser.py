@@ -238,7 +238,7 @@ def parse_ids(
         else:
             if "cli" not in output:
                 output["cli"] = []
-            output["cli"].extend([element.split(",")])
+            output["cli"].extend(element.split(","))
     if output_format == "list":
         output = merge_dictionary(output)
     else:

@@ -876,7 +876,7 @@ class SegmentationInference:
                         flip_idx=self.flip_idx,
                         flip_keys=self.flip_keys,
                         ndim=self.ndim,
-                        inference_batch_size=len(self.flips),
+                        inference_batch_size=self.inference_batch_size,
                     )
                     for fn in inference_function
                 ]
@@ -900,7 +900,7 @@ class SegmentationInference:
                     flip_idx=self.flip_idx,
                     flip_keys=self.flip_keys,
                     ndim=self.ndim,
-                    inference_batch_size=len(self.flips),
+                    inference_batch_size=self.inference_batch_size,
                 )
         self.inference_function = inference_function
 
@@ -908,18 +908,16 @@ class SegmentationInference:
         self, X: MultiFormatInput, *args, **kwargs
     ) -> TensorOrArray:
         if isinstance(self.inference_function, (list, tuple)):
-            with torch.no_grad():
-                output = [
-                    inference_function(X, *args, **kwargs)
-                    for inference_function in self.inference_function
-                ]
-                if self.reduction is not None:
-                    output = self.reduction(output)
+            output = [
+                inference_function(X, *args, **kwargs)
+                for inference_function in self.inference_function
+            ]
+            if self.reduction is not None:
+                output = self.reduction(output)
         else:
-            with torch.no_grad():
-                output = self.inference_function(X, *args, **kwargs)
-                if self.reduction is not None:
-                    output = self.reduction(output)
+            output = self.inference_function(X, *args, **kwargs)
+            if self.reduction is not None:
+                output = self.reduction(output)
 
         return output
 
@@ -929,20 +927,18 @@ class SegmentationInference:
         outputs = []
         if isinstance(self.inference_function, (list, tuple)):
             for _ in range(self.mc_iterations):
-                with torch.no_grad():
-                    output = [
-                        inference_function(X, *args, **kwargs)
-                        for inference_function in self.inference_function
-                    ]
-                    if self.reduction is not None:
-                        output = self.reduction(output)
+                output = [
+                    inference_function(X, *args, **kwargs)
+                    for inference_function in self.inference_function
+                ]
+                if self.reduction is not None:
+                    output = self.reduction(output)
                 outputs.append(output)
         else:
             for _ in range(self.mc_iterations):
-                with torch.no_grad():
-                    output = self.inference_function(X, *args, **kwargs)
-                    if self.reduction is not None:
-                        output = self.reduction(output)
+                output = self.inference_function(X, *args, **kwargs)
+                if self.reduction is not None:
+                    output = self.reduction(output)
                 outputs.append(output)
         outputs = torch.stack(outputs)
         output = torch.cat(
@@ -951,9 +947,10 @@ class SegmentationInference:
         return output
 
     def __call__(self, X: MultiFormatInput, *args, **kwargs) -> TensorOrArray:
-        if self.mc_iterations is not None:
-            output = self.call_dropout(X, *args, **kwargs)
-        else:
-            output = self.call_regular(X, *args, **kwargs)
-        output = make_meta(output, X)
+        with torch.no_grad():
+            if self.mc_iterations is not None:
+                output = self.call_dropout(X, *args, **kwargs)
+            else:
+                output = self.call_regular(X, *args, **kwargs)
+            output = make_meta(output, X)
         return output

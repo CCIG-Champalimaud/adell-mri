@@ -1,6 +1,6 @@
 import sys
 
-supported_modes = ["train", "test", "predict"]
+supported_modes = ["train", "test", "predict", "test_from_predictions"]
 
 
 def main(arguments):
@@ -19,6 +19,10 @@ def main(arguments):
         main(arguments[1:])
     elif arguments[0] == "predict":
         from .predict import main
+
+        main(arguments[1:])
+    elif arguments[0] == "test_from_predictions":
+        from .test_from_predictions import main
 
         main(arguments[1:])
     else:
