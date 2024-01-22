@@ -8,14 +8,38 @@ from multiprocessing import Pool
 
 from ...entrypoints.assemble_args import Parser
 from ...utils.parser import parse_ids
-from ...modules.segmentation.pl import get_metric_dict
+from ...modules.segmentation.picai_eval.eval import evaluate_case, Metrics
+from ...modules.extract_lesion_candidates import extract_lesion_candidates
+
+
+def file_list_to_dict(file_list: list[str], pattern: str) -> dict[str, str]:
+    pat = re.compile(pattern)
+    output = {}
+    for file in file_list:
+        match = pat.search(file)
+        if match is not None:
+            match = match.group()
+            output[match] = file
+    return output
+
+
+def sigmoid(x: np.ndarray) -> np.ndarray:
+    return 1 / (1 + np.exp(-x))
+
+
+def softmax(x: np.ndarray) -> np.ndarray:
+    x = np.exp(x)
+    x = x / x.sum(0, keepdims=True)
 
 
 @dataclass
 class CalculateMetrics:
     prediction_mode: str = "mask"
     reduction: str = "mean"
+    n_classes: int = 2
     fold: int = None
+    threshold: float = None
+    proba_threshold: float = 0.1
 
     def __post_init__(self):
         pass
@@ -47,13 +71,17 @@ class CalculateMetrics:
             image = sitk.GetArrayFromImage(image)
         return image
 
-    def calculate_metrics(
-        self, images: tuple[str, str, str] | tuple[str, sitk.Image, sitk.Image]
-    ):
-        key, gt, pred = images
-        gt = self.read_image(gt)
-        pred = self.read_image(pred)
-        output_dict = {}
+    def pred_to_mask(self, pred: np.ndarray) -> np.ndarray:
+        if self.prediction_mode in ["probs", "logits"]:
+            if self.threshold is None:
+                if pred.shape[0] == 1:
+                    pred = np.concatenate([1 - pred, pred])
+                pred = np.argmax(pred, 0)
+            else:
+                pred = np.int32(pred > self.threshold)
+        return pred
+
+    def preprocess_pred(self, pred: np.ndarray) -> np.ndarray:
         if len(pred.shape) == 5:
             if self.reduction == "mean":
                 pred = pred.mean(0)
@@ -61,26 +89,42 @@ class CalculateMetrics:
                 pred = pred.sum(0)
             elif isinstance(self.reduction, int):
                 pred = pred[self.reduction]
-        if self.prediction_mode in ["probs", "logits"]:
+        if self.prediction_mode == "logits":
             if pred.shape[0] == 1:
-                pred = np.concatenate([1 - pred, pred])
-            pred = np.argmax(pred, 0)
-        for metric in self.metric_dict:
-            value = self.metric_dict[metric](gt, pred)
-            for k in value:
-                output_dict[k] = value[k]
+                pred = sigmoid(pred)
+            else:
+                pred = softmax(pred)
+        return pred
+
+    def extract_lesion_candidates(self, pred: np.ndarray) -> np.ndarray:
+        return extract_lesion_candidates(
+            pred,
+            threshold=self.proba_threshold,
+        )[0]
+
+    def calculate_metrics(
+        self, images: tuple[str, str, str] | tuple[str, sitk.Image, sitk.Image]
+    ):
+        key, gt, pred = images
+        gt = self.read_image(gt)
+        pred = self.read_image(pred)
+        pred = self.preprocess_pred(pred)
+        y_list, case_confidence, _, _ = evaluate_case(
+            y_det=pred[0],
+            y_true=gt,
+            min_overlap=self.threshold,
+            y_det_postprocess_func=self.extract_lesion_candidates,
+        )
+        y_list = [
+            {"gt": y[0], "confidence": y[1], "overlap": y[2]} for y in y_list
+        ]
+        gt = max([y["gt"] for y in y_list]) if len(y_list) > 0 else 0
+        output_dict = {
+            "lesions": y_list,
+            "case_confidence": case_confidence,
+            "gt": gt,
+        }
         return key, output_dict
-
-
-def file_list_to_dict(file_list: list[str], pattern: str) -> dict[str, str]:
-    pat = re.compile(pattern)
-    output = {}
-    for file in file_list:
-        match = pat.search(file)
-        if match is not None:
-            match = match.group()
-            output[match] = file
-    return output
 
 
 def main(arguments):
@@ -145,6 +189,20 @@ def main(arguments):
             extract that index.",
     )
     parser.add_argument(
+        "--threshold",
+        default=None,
+        type=float,
+        help="IoU threshold to consider that an object has been detected",
+    )
+    parser.add_argument(
+        "--proba_threshold",
+        default=None,
+        type=float,
+        help="If a probability is > threshold then it is considered positive. \
+            If not specified, assumes the maximum probability/0.5 in binary \
+            cases corresponds to the correct/positive class",
+    )
+    parser.add_argument(
         "--id_list",
         default=None,
         nargs="+",
@@ -206,13 +264,6 @@ def main(arguments):
 
     print(f"Found matches: {len(merged_dict)}")
 
-    metrics = get_metric_dict(
-        nc=n_classes,
-        bottleneck_classification=False,
-        metric_keys=["Dice", "IoU"],
-        dev="cpu",
-    )
-
     if args.reduction_mode in ["mean", "sum"]:
         reduction_mode = args.reduction_mode
     else:
@@ -221,6 +272,8 @@ def main(arguments):
     metric_dict = CalculateMetrics(
         prediction_mode=args.prediction_mode,
         reduction=reduction_mode,
+        n_classes=n_classes,
+        threshold=args.threshold,
     )
 
     for key in merged_dict:
@@ -236,5 +289,25 @@ def main(arguments):
         pool = Pool(args.n_workers)
         iterator = pool.imap(metric_dict.calculate_metrics, input_list)
 
-    for output in tqdm(iterator, total=len(merged_dict)):
-        print(output)
+    all_outputs = {}
+    for key, output in tqdm(iterator, total=len(merged_dict)):
+        all_outputs[key] = output
+
+    lesion_results = {
+        key: [
+            [lesion[k] for k in ["gt", "confidence", "overlap"]]
+            for lesion in all_outputs[key]["lesions"]
+        ]
+        for key in all_outputs
+    }
+    case_target = {key: all_outputs[key]["gt"] for key in all_outputs}
+    case_pred = {
+        key: all_outputs[key]["case_confidence"] for key in all_outputs
+    }
+    print(
+        Metrics(
+            lesion_results=lesion_results,
+            case_target=case_target,
+            case_pred=case_pred,
+        )
+    )
