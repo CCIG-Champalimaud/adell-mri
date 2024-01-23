@@ -700,6 +700,7 @@ def get_augmentations_unet(
     random_crop_size: List[int] = None,
     has_label: bool = True,
     n_crops: int = 1,
+    flip_axis: list[int] = [0, 1],
 ):
     valid_arg_list = [
         "intensity",
@@ -710,6 +711,7 @@ def get_augmentations_unet(
         "flip",
         "blur",
         "distort",
+        "lowres",
         "trivial",
     ]
     interpolation = [
@@ -746,9 +748,6 @@ def get_augmentations_unet(
                 monai.transforms.RandStdShiftIntensityd(
                     image_keys, factors=0.1, prob=prob
                 ),
-                monai.transforms.RandShiftIntensityd(
-                    image_keys, offsets=0.1, prob=prob
-                ),
             ]
         )
 
@@ -776,10 +775,9 @@ def get_augmentations_unet(
         augments.append(
             monai.transforms.RandAffined(
                 all_keys,
-                rotate_range=[np.pi / 16],
+                rotate_range=[np.pi / 8, np.pi / 8, np.pi / 16],
                 prob=prob,
                 mode=interpolation,
-                padding_mode="zeros",
             )
         )
 
@@ -790,15 +788,22 @@ def get_augmentations_unet(
                 shear_range=((0.9, 1.1), (0.9, 1.1), (0.9, 1.1)),
                 prob=prob,
                 mode=interpolation,
-                padding_mode="zeros",
+            )
+        )
+    if "lowres" in augment:
+        augments.append(
+            monai.transforms.RandSimulateLowResolutiond(
+                image_keys,
+                zoom_range=[0.8, 1.2],
+                prob=prob,
             )
         )
 
     # ensures that flips are applied regardless of TrivialAugment trigger
     if "flip" in augment:
         flip_transform = [
-            monai.transforms.RandFlipd(all_keys, spatial_axis=[axis], prob=0.2)
-            for axis in [0, 1, 2]
+            monai.transforms.RandFlipd(all_keys, spatial_axis=[axis], prob=0.5)
+            for axis in flip_axis
         ]
     else:
         flip_transform = []

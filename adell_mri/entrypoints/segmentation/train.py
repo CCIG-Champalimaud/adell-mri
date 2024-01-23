@@ -384,6 +384,7 @@ def main(arguments):
             "t2_keys": t2_keys,
             "random_crop_size": args.random_crop_size,
             "n_crops": args.n_crops,
+            "flip_axis": [0, 1, 2],
         }
         if args.random_crop_size:
             get_all_crops_transform = [
@@ -630,7 +631,7 @@ def main(arguments):
         train_loader = train_loader_call(network_config["batch_size"])
         train_val_loader = monai.data.DataLoader(
             train_dataset_val,
-            batch_size=1,
+            batch_size=network_config["batch_size"],
             shuffle=False,
             num_workers=nw,
             collate_fn=collate_fn_train,
