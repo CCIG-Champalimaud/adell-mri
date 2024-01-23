@@ -1,15 +1,16 @@
+import os
 import random
 import json
 import numpy as np
 import torch
 import monai
+import SimpleITK as sitk
+from copy import deepcopy
+from pathlib import Path
 from ..assemble_args import Parser
-
-from lightning.pytorch import Trainer
 
 import sys
 from ...entrypoints.assemble_args import Parser
-from ...utils import safe_collate, RandomSlices, collate_last_slice
 from ...utils.pl_utils import get_devices
 from ...utils.torch_utils import load_checkpoint_to_model
 from ...utils.dataset_filters import filter_dictionary
@@ -19,22 +20,27 @@ from ...monai_transforms import (
 )
 from ...utils.network_factories import get_generative_network
 from ...utils.parser import get_params, merge_args, parse_ids, compose
+from .train import return_first_not_none
+
+from typing import Any
 
 
-def get_conditional_specification(d: dict, cond_key: str):
-    possible_values = []
-    for k in d:
-        if cond_key in d[k]:
-            v = d[k][cond_key]
-            if v not in possible_values:
-                possible_values.append(d[k][cond_key])
-    return possible_values
-
-
-def return_first_not_none(*size_list):
-    for size in size_list:
-        if size is not None:
-            return size
+def fetch_specifications(state_dict: dict[str, Any]):
+    cbks = state_dict["callbacks"]
+    ckpt_cbk = cbks[[k for k in cbks if "ModelCheckpointWithMetadata" in k][0]]
+    metadata = ckpt_cbk["metadata"]
+    cat_spec = None
+    num_spec = None
+    if "network_config" in metadata:
+        network_config = metadata["network_config"]
+    else:
+        network_config = None
+    if "categorical_specification" in metadata:
+        cat_spec = metadata["categorical_specification"]
+    if "numerical_specification" in metadata:
+        num_spec = metadata["numerical_specification"]
+    spacing = metadata["transform_arguments"]["pre"]["target_spacing"]
+    return network_config, cat_spec, num_spec, spacing
 
 
 def main(arguments):
@@ -47,6 +53,8 @@ def main(arguments):
             "image_keys",
             "cat_condition_keys",
             "num_condition_keys",
+            "cat_condition",
+            "num_condition",
             "filter_on_keys",
             "excluded_ids",
             "cache_rate",
@@ -65,6 +73,7 @@ def main(arguments):
             "learning_rate",
             "diffusion_steps",
             "n_samples_gen",
+            "output_path",
         ]
     )
 
@@ -81,14 +90,17 @@ def main(arguments):
     g.manual_seed(args.seed)
     rng = np.random.default_rng(args.seed)
 
-    ckpt = torch.load(args.checkpoint)
+    ckpt = torch.load(args.checkpoint[0])
 
     accelerator, devices, strategy = get_devices(args.dev)
     n_devices = len(devices) if isinstance(devices, list) else devices
     n_devices = 1 if isinstance(devices, str) else n_devices
 
-    categorical_specification = ckpt["metadata"]["categorical_specification"]
-    numerical_specification = ckpt["metadata"]["numerical_specification"]
+    specs = fetch_specifications(ckpt)
+    network_config = specs[0]
+    categorical_specification = specs[1]
+    numerical_specification = specs[2]
+    spacing = specs[3]
 
     presence_keys = [*args.image_keys]
     with_conditioning = False
@@ -101,35 +113,36 @@ def main(arguments):
 
     keys = args.image_keys
 
-    network_config = compose(args.config_file, "diffusion", args.overrides)
-    network_config["batch_size"] = return_first_not_none(
-        args.batch_size, network_config.get("batch_size")
-    )
-    network_config["learning_rate"] = return_first_not_none(
-        args.learning_rate, network_config.get("learning_rate")
-    )
-    network_config["with_conditioning"] = with_conditioning
-    network_config["cross_attention_dim"] = 256 if with_conditioning else None
+    if network_config is None:
+        network_config = compose(args.config_file, "diffusion", args.overrides)
+        network_config["batch_size"] = return_first_not_none(
+            args.batch_size, network_config.get("batch_size")
+        )
+        network_config["learning_rate"] = return_first_not_none(
+            args.learning_rate, network_config.get("learning_rate")
+        )
+        network_config["with_conditioning"] = with_conditioning
+        network_config["cross_attention_dim"] = (
+            256 if with_conditioning else None
+        )
 
     network = get_generative_network(
         network_config=network_config,
         categorical_specification=categorical_specification,
         numerical_specification=numerical_specification,
         train_loader_call=None,
-        max_epochs=args.max_epochs,
-        warmup_steps=args.warmup_steps,
-        start_decay=args.start_decay,
-        diffusion_steps=1000,
+        max_epochs=None,
+        warmup_steps=None,
+        start_decay=None,
+        diffusion_steps=args.diffusion_steps,
+        scheduler_config={
+            "schedule": "scaled_linear_beta",
+            "beta_start": 0.0005,
+            "beta_end": 0.0195,
+        },
     )
 
-    load_checkpoint_to_model(network, args.checkpoint, [])
-
-    trainer = Trainer(
-        accelerator=accelerator,
-        devices=devices,
-        precision=args.precision,
-        deterministic="warn",
-    )
+    load_checkpoint_to_model(network, ckpt, [])
 
     print("Setting up transforms...")
     transform_pre_arguments = {
@@ -152,13 +165,18 @@ def main(arguments):
     # PL needs a little hint to detect GPUs.
     torch.ones([1]).to("cuda" if "cuda" in args.dev else "cpu")
 
-    if network_config["spatial_dims"] == 2:
-        transforms.append(RandomSlices(["image"], None, n=2, base=0.05))
-        collate_fn = collate_last_slice
-    else:
-        collate_fn = safe_collate
+    if "cuda" in args.dev:
+        network = network.to(args.dev)
+
     transforms = monai.transforms.Compose(transforms)
     transforms.set_random_state(args.seed)
+
+    cat_condition = None
+    num_condition = None
+    if args.cat_condition is not None:
+        cat_condition = [[c] for c in args.cat_condition]
+    if args.num_condition is not None:
+        num_condition = [[n] for n in args.num_condition]
 
     if args.dataset_json is not None:
         data_dict = json.load(open(args.dataset_json, "r"))
@@ -220,25 +238,28 @@ def main(arguments):
             bs = new_bs
             real_bs = bs * n_devices
 
-        loader = monai.data.ThreadDataLoader(
-            dataset,
-            batch_size=bs,
-            shuffle=True,
-            num_workers=n_workers,
-            generator=g,
-            collate_fn=collate_fn,
-            pin_memory=True,
-            persistent_workers=args.n_workers > 0,
-            drop_last=True,
-        )
-
         for data in dataset:
             pass
 
     elif args.n_samples_gen is not None:
         size = return_first_not_none(args.crop_size, args.pad_size)
+        size = [int(i) for i in size]
+        Path(args.output_path).mkdir(exist_ok=True, parents=True)
+        print(f"Generating {args.n_samples_gen} samples")
         for i in range(args.n_samples_gen):
-            output = network.generate_image(size, 1)
+            output = network.generate_image(
+                size=size,
+                n=1,
+                skip_steps=0,
+                cat_condition=deepcopy(cat_condition),
+                num_condition=deepcopy(num_condition),
+            )
+            output = output.detach().cpu()[0].permute(3, 1, 2, 0).numpy()
+            output = sitk.GetImageFromArray(output)
+            output.SetSpacing(spacing)
+            output.SetMetaData("checkpoint", args.checkpoint[0])
+            output_path = os.path.join(args.output_path, f"{i}.mha")
+            sitk.WriteImage(output, output_path)
 
     else:
         raise Exception(

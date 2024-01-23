@@ -136,10 +136,19 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
         return next(self.parameters()).device
 
     @torch.no_grad()
-    def generate_image(self, size=List[int], n=int):
+    def generate_image(
+        self,
+        size=List[int],
+        n=int,
+        skip_steps: int = 0,
+        cat_condition: torch.Tensor = None,
+        num_condition: torch.Tensor = None,
+    ):
         noise = torch.randn([n, self.in_channels, *size], device=self.device)
         if self.embedder is not None:
-            conditioning = self.embedder(batch_size=n).unsqueeze(1)
+            conditioning = self.embedder(
+                X_cat=cat_condition, X_num=num_condition, batch_size=n
+            ).unsqueeze(1)
         else:
             conditioning = None
         sample = self.inferer.sample(
@@ -147,6 +156,7 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
             diffusion_model=self,
             scheduler=self.scheduler,
             conditioning=conditioning,
+            skip_steps=skip_steps,
         )
         return sample
 
