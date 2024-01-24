@@ -10,6 +10,7 @@ import argparse
 import yaml
 import json
 import importlib
+import pandas as pd
 from hydra import compose as hydra_compose
 from hydra import initialize_config_dir
 from omegaconf import OmegaConf
@@ -211,6 +212,8 @@ def parse_ids(
             with open(id_file) as o:
                 out = [x.strip().split(",") for x in o.readlines()]
             out = {x[0]: x[1:] for x in out}
+        elif term == "parquet":
+            out = pd.read_parquet(id_file).to_dict()
         elif term == "json":
             with open(id_file) as o:
                 out = json.load(o)
