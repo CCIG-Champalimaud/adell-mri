@@ -129,7 +129,10 @@ class Embedder(torch.nn.Module):
         output = [[] for _ in range(n)]
         for i in range(len(self.cat_distributions)):
             curr = self.cat_distributions[i]
-            tmp = str(mode(curr))
+            if len(curr) == 0:
+                tmp = self.cat_feat[i][0]
+            else:
+                tmp = str(mode(curr))
             for j in range(n):
                 output[j].append(tmp)
         output = [np.array(x) for x in output]

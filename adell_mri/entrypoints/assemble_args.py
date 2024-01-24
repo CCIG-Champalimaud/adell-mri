@@ -294,7 +294,7 @@ argument_factory = {
         help="Stores models with loggers as artefacts",
     ),
     "output_path": dict(
-        type=str, default="output.csv", help="Path to output file."
+        type=str, default="output.csv", help="Path to output file/folder."
     ),
     # training
     "max_epochs": dict(
@@ -653,6 +653,20 @@ argument_factory = {
         default=None,
         nargs="+",
         help="Fills missing keys with value (key1:value1, key2:value2)",
+    ),
+    "cat_condition": dict(
+        type=str,
+        default=None,
+        nargs="+",
+        help="Specifies the categorical condition for generation. Should be one\
+            value for each field in cat_condition_keys",
+    ),
+    "num_condition": dict(
+        type=float,
+        default=None,
+        nargs="+",
+        help="Specifies the numerical condition for generation. Should be one\
+            value for each field in num_condition_keys",
     ),
     # deconfounded classifier-specific
     "cat_confounder_keys": dict(

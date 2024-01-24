@@ -32,17 +32,18 @@ def load_checkpoint_to_model(
     """
 
     if isinstance(checkpoint, str):
+        print(f"Loading checkpoint from {checkpoint}")
         sd = torch.load(checkpoint)
     else:
         sd = checkpoint
     if "state_dict" in sd:
         sd = sd["state_dict"]
 
-    print(f"Loading checkpoint from {checkpoint}")
     if exclude_from_state_dict is not None:
         for pattern in exclude_from_state_dict:
             sd = {k: sd[k] for k in sd if re.search(pattern, k) is None}
     output = model.load_state_dict(sd, strict=False)
+    print(output)
 
     if len(output.unexpected_keys) > 0:
         raise Exception(

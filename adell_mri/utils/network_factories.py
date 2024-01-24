@@ -54,7 +54,7 @@ from ..modules.self_supervised.pl import (
 # diffusion
 from ..modules.diffusion.pl import DiffusionUNetPL
 from ..modules.diffusion.embedder import Embedder
-from generative.inferers import DiffusionInferer
+from ..modules.diffusion.inferer import DiffusionInfererSkipSteps
 from generative.networks.schedulers import DDPMScheduler
 
 from typing import Dict, Any, List, Callable
@@ -551,7 +551,7 @@ def get_generative_network(
     diffusion_steps: int,
 ) -> torch.nn.Module:
     scheduler = DDPMScheduler(diffusion_steps, **scheduler_config)
-    inferer = DiffusionInferer(scheduler)
+    inferer = DiffusionInfererSkipSteps(scheduler)
     if any(
         [
             categorical_specification is not None,
