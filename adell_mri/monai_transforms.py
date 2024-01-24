@@ -29,7 +29,8 @@ from .modules.augmentations import (
 from .modules.semi_supervised_segmentation.utils import (
     convert_arguments_pre,
     convert_arguments_post,
-    convert_arguments_augment,
+    convert_arguments_augment_all,
+    convert_arguments_augment_individual,
 )
 
 ADC_FACTOR = -2 / 3
@@ -1167,15 +1168,23 @@ def get_semi_sl_transforms(
     transform_arguments_semi_sl_post_2 = convert_arguments_post(
         transform_arguments, 2, keys
     )
-    augment_arguments_semi_sl = convert_arguments_augment(
+    augment_arguments_semi_sl_all = convert_arguments_augment_all(
         augment_arguments, keys
+    )
+    augment_arguments_semi_sl_1 = convert_arguments_augment_individual(
+        augment_arguments, keys, 1
+    )
+    augment_arguments_semi_sl_2 = convert_arguments_augment_individual(
+        augment_arguments, keys, 2
     )
 
     transforms_semi_sl = [
         *get_transforms_unet("pre", **transform_arguments_semi_sl_pre),
         CopyEntryd(keys, {k: f"{k}_aug_1" for k in keys}),
         CopyEntryd(keys, {k: f"{k}_aug_2" for k in keys}),
-        get_augmentations_unet(**augment_arguments_semi_sl),
+        get_augmentations_unet(**augment_arguments_semi_sl_all),
+        get_augmentations_unet(**augment_arguments_semi_sl_1),
+        get_augmentations_unet(**augment_arguments_semi_sl_2),
         *get_transforms_unet("post", **transform_arguments_semi_sl_post_1),
         *get_transforms_unet("post", **transform_arguments_semi_sl_post_2),
         monai.transforms.SelectItemsd(["semi_sl_image_1", "semi_sl_image_2"]),
