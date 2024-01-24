@@ -7,12 +7,11 @@ import os
 import atexit
 import numpy as np
 import torch
-import wandb
 from PIL import Image
 from lightning import Trainer
 from lightning.pytorch import LightningModule, Trainer
 from lightning.pytorch.callbacks import Callback
-from lightning.pytorch.loggers import Logger, WandbLogger, MLFlowLogger
+from lightning.pytorch.loggers import Logger
 from lightning.pytorch.callbacks.model_checkpoint import ModelCheckpoint
 
 from typing import List, Union, Tuple, Any, Dict
@@ -623,6 +622,9 @@ def get_logger(
         if fold is not None:
             run_name = run_name + f"_fold{fold}"
         if logger_type == "wandb":
+            import wandb
+            from lightning.pytorch.loggers import WandbLogger
+
             wandb.finish()
             wandb_resume = resume
             if wandb_resume == "none":
@@ -638,6 +640,8 @@ def get_logger(
                 dir=summary_dir,
             )
         elif logger_type == "mlflow":
+            from lightning.pytorch.loggers import MLFlowLogger
+
             if tracking_uri is None:
                 raise NotImplementedError(
                     "tracking_uri must be defined for type='mlflow'"
