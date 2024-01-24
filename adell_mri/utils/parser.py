@@ -213,7 +213,7 @@ def parse_ids(
                 out = [x.strip().split(",") for x in o.readlines()]
             out = {x[0]: x[1:] for x in out}
         elif term == "parquet":
-            out = pd.read_parquet(id_file).to_dict()
+            out = pd.read_parquet(id_file).to_dict("list")
         elif term == "json":
             with open(id_file) as o:
                 out = json.load(o)

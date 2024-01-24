@@ -3,57 +3,10 @@ import json
 import numpy as np
 import os
 from sklearn.model_selection import StratifiedKFold, KFold, train_test_split
-
+from ....utils.parser import parse_ids
 from typing import List, Dict
 
 desc = "Splits JSON dataset entries into test set and folds"
-
-
-def parse_ids(id_list: List[str], output_format: str = "nested_list"):
-    def parse_id_file(id_file: str):
-        if ":" in id_file:
-            id_file, id_set = id_file.split(":")
-            id_set = id_set.split(",")
-        else:
-            id_set = None
-        term = id_file.split(".")[-1]
-        if term == "csv" or term == "folds":
-            with open(id_file) as o:
-                out = [x.strip().split(",") for x in o.readlines()]
-            out = {x[0]: x[1:] for x in out}
-        elif term == "json":
-            with open(id_file) as o:
-                out = json.load(o)
-        else:
-            with open(id_file) as o:
-                out = {"id_set": [x.strip() for x in o.readlines()]}
-        if id_set is None:
-            id_set = list(out.keys())
-        return {k: out[k] for k in id_set}
-
-    def merge_dictionary(nested_list: Dict[str, list]):
-        output_list = []
-        for list_tmp in nested_list.values():
-            output_list.extend(list_tmp)
-        return output_list
-
-    output = {}
-    for element in id_list:
-        if os.path.exists(element.split(":")[0]) is True:
-            tmp = parse_id_file(element)
-            for k in tmp:
-                if k not in output:
-                    output[k] = []
-                output[k].extend(tmp[k])
-        else:
-            if "cli" not in output:
-                output["cli"] = []
-            output["cli"].extend([element.split(",")])
-    if output_format == "list":
-        output = merge_dictionary(output)
-    else:
-        output = [output[k] for k in output]
-    return output
 
 
 def main(arguments):
@@ -66,6 +19,13 @@ def main(arguments):
         type=str,
         help="JSON containing dataset information",
         required=True,
+    )
+    parser.add_argument(
+        "--output_path",
+        dest="output_path",
+        type=str,
+        help="JSON containing dataset information",
+        default=None,
     )
     parser.add_argument(
         "--stratify",
@@ -190,10 +150,17 @@ def main(arguments):
                 ]
             )
 
-    print("test," + ",".join([all_pids[i] for i in test_pids]))
+    output = []
+    output.append("test," + ",".join([all_pids[i] for i in test_pids]))
 
     for i, (train_idxs, val_idxs) in enumerate(fold_generator):
-        print(
+        output.append(
             f"cv{i+1},"
             + ",".join([all_pids[all_train_pids[i]] for i in val_idxs])
         )
+
+    if args.output_path is not None:
+        with open(args.output_path, "w") as f:
+            f.write("\n".join(output))
+    else:
+        print("\n".join(output))
