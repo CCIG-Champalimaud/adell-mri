@@ -32,7 +32,7 @@ dependencies = [
   "torch=2.0.1",
   "torchmetrics=1.2.0",
   "tqdm=4.64.1",
-  "generative @ git+https://github.com/Project-MONAI/GenerativeModels.git
+  "generative@git+https://github.com/Project-MONAI/GenerativeModels.git
 ]
 requires-python = ">=3.11"
 
