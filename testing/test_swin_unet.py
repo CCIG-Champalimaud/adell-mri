@@ -19,8 +19,6 @@ def get_swin_params():
         "patch_size": [4, 4, 2],
         "window_size": [16, 16, 8],
         "shift_sizes": [0, 1],
-        "attention_dim": 1024,
-        "hidden_dim": 1024,
         "n_heads": 4,
         "dropout_rate": 0.1,
         "embed_method": "linear",
@@ -62,7 +60,7 @@ def test_swin_base(D, sd, conv_type, embed_method):
         kernel_sizes=K,
         conv_type=conv_type,
         norm_type="layer",
-        link_type="identity"
+        link_type="identity",
     )
     o, bb = a(i)
     assert list(o.shape) == output_size
@@ -102,7 +100,7 @@ def test_swin_skip(D, sd, conv_type):
         kernel_sizes=K,
         skip_conditioning=1,
         link_type="conv",
-        conv_type=conv_type
+        conv_type=conv_type,
     )
     o, bb = a(i, X_skip_layer=i_skip)
     assert list(o.shape) == output_size
@@ -148,7 +146,7 @@ def test_swin_skip_feature(D, sd):
             "mean": torch.zeros_like(i_feat),
             "std": torch.ones_like(i_feat),
         },
-        link_type="conv"
+        link_type="conv",
     )
     o, bb = a(i, X_feature_conditioning=i_feat, X_skip_layer=i_skip)
     assert list(o.shape) == output_size

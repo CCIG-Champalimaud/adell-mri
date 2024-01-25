@@ -570,8 +570,6 @@ class SWINUNet(UNet):
         patch_size: Size2dOr3d,
         window_size: Size2dOr3d,
         shift_sizes: Union[List[int], List[List[int]]],
-        attention_dim: int = None,
-        hidden_dim: int = None,
         embedding_size: int = None,
         n_heads: int = 4,
         dropout_rate: float = 0.0,
@@ -606,10 +604,6 @@ class SWINUNet(UNet):
             window_size (Size2dOr3d): size of image window.
             shift_sizes (Union[List[int],List[List[int]]]): size of shifts for
                 the shifted-window MHA blocks.
-            attention_dim (int): total dimension of the attention in the
-                MHA. Defaults to None (same as inferred output dimension).
-            hidden_dim (int): output dimension for the attention layers in the
-                MHA. Defaults to None (same as inferred output dimension).
             embedding_size (int, optional): size of the embedding. Defaults to
                 None (same as inferred output dimension).
             n_heads (int, optional): Number of heads in the MHA (the actual
@@ -691,8 +685,6 @@ class SWINUNet(UNet):
         self.patch_size = patch_size
         self.window_size = window_size
         self.shift_sizes = shift_sizes
-        self.attention_dim = attention_dim
-        self.hidden_dim = hidden_dim
         self.embedding_size = embedding_size
         self.n_heads = n_heads
         self.dropout_rate = dropout_rate
@@ -753,6 +745,8 @@ class SWINUNet(UNet):
         # if shift sizes is a list of ints convert to list of list of ints
         if isinstance(self.shift_sizes[0], int):
             self.shift_sizes = [self.shift_sizes for _ in self.depth]
+        if isinstance(self.n_heads, int):
+            self.n_heads = [self.n_heads for _ in self.depth]
         if isinstance(self.embedding_size, int) or self.embedding_size is None:
             self.embedding_size = [self.embedding_size for _ in self.depth]
         elif isinstance(self.shift_sizes[0], list):
@@ -761,7 +755,7 @@ class SWINUNet(UNet):
             raise AssertionError(shift_size_msg)
 
     def init_swin_blocks(self):
-        """Initialises ViT and infers the number of channels at
+        """Initialises SWin and infers the number of channels at
         (intermediary) output reconstruction.
         """
         self.n_channels_rec = []
@@ -771,10 +765,10 @@ class SWINUNet(UNet):
             window_size=self.window_size,
             n_channels=self.n_channels,
             shift_sizes=self.shift_sizes[0],
-            attention_dim=self.attention_dim,
-            hidden_dim=self.hidden_dim,
+            attention_dim=self.embedding_size[0],
+            hidden_dim=self.embedding_size[0],
             embedding_size=self.embedding_size[0],
-            n_heads=self.n_heads,
+            n_heads=self.n_heads[0],
             dropout_rate=self.dropout_rate,
             embed_method=self.embed_method,
             mlp_structure=self.mlp_structure,
@@ -796,10 +790,10 @@ class SWINUNet(UNet):
                 window_size=self.window_size,
                 n_channels=n_channels,
                 shift_sizes=self.shift_sizes[i + 1],
-                attention_dim=self.attention_dim,
-                hidden_dim=self.hidden_dim,
+                attention_dim=self.embedding_size[i + 1],
+                hidden_dim=self.embedding_size[i + 1],
                 embedding_size=self.embedding_size[i + 1],
-                n_heads=self.n_heads,
+                n_heads=self.n_heads[i + 1],
                 dropout_rate=self.dropout_rate,
                 embed_method=self.embed_method,
                 mlp_structure=self.mlp_structure,
