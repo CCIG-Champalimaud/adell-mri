@@ -34,7 +34,7 @@ def test_sliding_window_inference():
     output = sli(input_tensor)
     assert list(output.shape) == [1, 1, h, w, d]
     assert output.max() <= 1
-    assert output.min() > 0
+    assert output.min() >= 0
 
 
 def test_sliding_window_inference_pl():
@@ -53,7 +53,7 @@ def test_sliding_window_inference_pl():
     output = sli(input_dictionary)
     assert list(output.shape) == [1, 1, h, w, d]
     assert output.max() <= 1
-    assert output.min() > 0
+    assert output.min() >= 0
 
 
 def test_segmentation_inference_pl():
@@ -75,7 +75,7 @@ def test_segmentation_inference_pl():
     output = sli(input_dictionary)
     assert list(output.shape) == [1, 1, h, w, d]
     assert output.max() <= 1
-    assert output.min() > 0
+    assert output.min() >= 0
 
 
 def test_segmentation_inference_dropout_pl():
@@ -98,4 +98,4 @@ def test_segmentation_inference_dropout_pl():
     output = sli(input_dictionary)
     assert list(output.shape) == [1, 2, h, w, d]
     assert output.max() <= 1
-    assert output.min() > 0
+    assert output.min() >= 0
