@@ -1084,6 +1084,7 @@ class MonaiSWINUNet(UNet):
 
         from monai.networks.nets.swin_unetr import SwinUNETR
 
+        feature_size = 24 if self.attention_dim is None else self.attention_dim
         self.network = SwinUNETR(
             img_size=[int(x) for x in self.image_size],
             in_channels=self.n_channels,
