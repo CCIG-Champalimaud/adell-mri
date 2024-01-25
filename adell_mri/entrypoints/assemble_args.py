@@ -529,7 +529,15 @@ argument_factory = {
             tensors.",
     ),
     "segmentation_net_type": dict(
-        choices=["unet", "unetpp", "brunet", "unetr", "swin"],
+        choices=[
+            "unet",
+            "unetpp",
+            "brunet",
+            "unetr",
+            "swin",
+            "monai_swin",
+            "monai_unetr",
+        ],
         default="unet",
         help="Specifies which UNet model is used",
     ),
