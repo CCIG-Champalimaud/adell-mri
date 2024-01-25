@@ -485,8 +485,10 @@ class UNetBasePL(pl.LightningModule, ABC):
 
         self.cosine_decay = any(
             [
-                self.start_decay < 1.0,
-                self.start_decay < self.n_epochs,
+                isinstance(self.start_decay, float)
+                and (self.start_decay < 1.0),
+                isinstance(self.start_decay, int)
+                and (self.start_decay < self.n_epochs),
                 self.warmup_steps > 0,
             ]
         )
