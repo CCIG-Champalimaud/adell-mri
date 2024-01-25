@@ -483,12 +483,19 @@ class UNetBasePL(pl.LightningModule, ABC):
             nesterov=True,
         )
 
-        if self.cosine_decay == True:
+        self.cosine_decay = any(
+            [
+                self.start_decay < 1.0,
+                self.start_decay < self.n_epochs,
+                self.warmup_steps > 0,
+            ]
+        )
+        if self.cosine_decay:
             lr_schedulers = CosineAnnealingWithWarmupLR(
                 optimizer,
                 T_max=self.n_epochs,
-                start_decay=0,
-                n_warmup_steps=0,
+                start_decay=self.start_decay,
+                n_warmup_steps=self.warmup_steps,
             )
             lr_schedulers.last_epoch = self.current_epoch
 
@@ -590,7 +597,8 @@ class UNetPL(UNet, UNetBasePL):
         feature_conditioning_key: str = None,
         learning_rate: float = 0.001,
         lr_encoder: float = None,
-        cosine_decay: bool = True,
+        start_decay: float | int = 1.0,
+        warmup_steps: float | int = 0,
         batch_size: int = 4,
         n_epochs: int = 100,
         weight_decay: float = 0.005,
@@ -614,8 +622,10 @@ class UNetPL(UNet, UNetBasePL):
             learning_rate (float, optional): learning rate. Defaults to 0.001.
             lr_encoder (float, optional): encoder learning rate. Defaults to None
                 (same as learning_rate).
-            cosine_decay (bool, optional): triggers cosine learning rate
-                decay. Defaults to True.
+            start_decay (float | int, optional): epoch/epoch fraction to start
+                cosine decay. Defaults to 1.0 (no decay).
+            warmup_steps (float | int, optional): warmup epochs/epoch fraction.
+                Defaults to 0.0 (no warmup).
             batch_size (int, optional): batch size. Defaults to 4.
             n_epochs (int, optional): number of epochs. Defaults to 100.
             weight_decay (float, optional): weight decay for optimizer. Defaults
@@ -638,7 +648,8 @@ class UNetPL(UNet, UNetBasePL):
         self.feature_conditioning_key = feature_conditioning_key
         self.learning_rate = learning_rate
         self.lr_encoder = lr_encoder
-        self.cosine_decay = cosine_decay
+        self.start_decay = start_decay
+        self.warmup_steps = warmup_steps
         self.batch_size = batch_size
         self.n_epochs = n_epochs
         self.weight_decay = weight_decay
@@ -667,7 +678,8 @@ class UNETRPL(UNETR, UNetBasePL):
         feature_conditioning_key: str = None,
         learning_rate: float = 0.001,
         lr_encoder: float = None,
-        cosine_decay: bool = True,
+        start_decay: float | int = 1.0,
+        warmup_steps: float | int = 0,
         batch_size: int = 4,
         n_epochs: int = 100,
         weight_decay: float = 0.005,
@@ -691,8 +703,10 @@ class UNETRPL(UNETR, UNetBasePL):
             learning_rate (float, optional): learning rate. Defaults to 0.001.
             lr_encoder (float, optional): encoder learning rate. Defaults to None
                 (same as learning_rate).
-            cosine_decay (bool, optional): triggers cosine learning rate
-                decay. Defaults to True.
+            start_decay (float | int, optional): epoch/epoch fraction to start
+                cosine decay. Defaults to 1.0 (no decay).
+            warmup_steps (float | int, optional): warmup epochs/epoch fraction.
+                Defaults to 0.0 (no warmup).
             batch_size (int, optional): batch size. Defaults to 4.
             n_epochs (int, optional): number of epochs. Defaults to 100.
             weight_decay (float, optional): weight decay for optimizer. Defaults
@@ -713,7 +727,8 @@ class UNETRPL(UNETR, UNetBasePL):
         self.feature_conditioning_key = feature_conditioning_key
         self.learning_rate = learning_rate
         self.lr_encoder = lr_encoder
-        self.cosine_decay = cosine_decay
+        self.start_decay = start_decay
+        self.warmup_steps = warmup_steps
         self.batch_size = batch_size
         self.n_epochs = n_epochs
         self.weight_decay = weight_decay
@@ -742,7 +757,8 @@ class SWINUNetPL(SWINUNet, UNetBasePL):
         feature_conditioning_key: str = None,
         learning_rate: float = 0.001,
         lr_encoder: float = None,
-        cosine_decay: bool = True,
+        start_decay: float | int = 1.0,
+        warmup_steps: float | int = 0,
         batch_size: int = 4,
         n_epochs: int = 100,
         weight_decay: float = 0.005,
@@ -766,8 +782,10 @@ class SWINUNetPL(SWINUNet, UNetBasePL):
             learning_rate (float, optional): learning rate. Defaults to 0.001.
             lr_encoder (float, optional): encoder learning rate. Defaults to None
                 (same as learning_rate).
-            cosine_decay (bool, optional): triggers cosine learning rate
-                decay. Defaults to True.
+            start_decay (float | int, optional): epoch/epoch fraction to start
+                cosine decay. Defaults to 1.0 (no decay).
+            warmup_steps (float | int, optional): warmup epochs/epoch fraction.
+                Defaults to 0.0 (no warmup).
             batch_size (int, optional): batch size. Defaults to 4.
             n_epochs (int, optional): number of epochs. Defaults to 100.
             weight_decay (float, optional): weight decay for optimizer. Defaults
@@ -789,7 +807,8 @@ class SWINUNetPL(SWINUNet, UNetBasePL):
         self.feature_conditioning_key = feature_conditioning_key
         self.learning_rate = learning_rate
         self.lr_encoder = lr_encoder
-        self.cosine_decay = cosine_decay
+        self.start_decay = start_decay
+        self.warmup_steps = warmup_steps
         self.batch_size = batch_size
         self.n_epochs = n_epochs
         self.weight_decay = weight_decay
@@ -818,7 +837,8 @@ class MonaiSWINUNetPL(MonaiSWINUNet, UNetBasePL):
         feature_conditioning_key: str = None,
         learning_rate: float = 0.001,
         lr_encoder: float = None,
-        cosine_decay: bool = True,
+        start_decay: float | int = 1.0,
+        warmup_steps: float | int = 0,
         batch_size: int = 4,
         n_epochs: int = 100,
         weight_decay: float = 0.005,
@@ -842,8 +862,10 @@ class MonaiSWINUNetPL(MonaiSWINUNet, UNetBasePL):
             learning_rate (float, optional): learning rate. Defaults to 0.001.
             lr_encoder (float, optional): encoder learning rate. Defaults to None
                 (same as learning_rate).
-            cosine_decay (bool, optional): triggers cosine learning rate
-                decay. Defaults to True.
+            start_decay (float | int, optional): epoch/epoch fraction to start
+                cosine decay. Defaults to 1.0 (no decay).
+            warmup_steps (float | int, optional): warmup epochs/epoch fraction.
+                Defaults to 0.0 (no warmup).
             batch_size (int, optional): batch size. Defaults to 4.
             n_epochs (int, optional): number of epochs. Defaults to 100.
             weight_decay (float, optional): weight decay for optimizer. Defaults
@@ -865,7 +887,8 @@ class MonaiSWINUNetPL(MonaiSWINUNet, UNetBasePL):
         self.feature_conditioning_key = feature_conditioning_key
         self.learning_rate = learning_rate
         self.lr_encoder = lr_encoder
-        self.cosine_decay = cosine_decay
+        self.start_decay = start_decay
+        self.warmup_steps = warmup_steps
         self.batch_size = batch_size
         self.n_epochs = n_epochs
         self.weight_decay = weight_decay
@@ -894,7 +917,8 @@ class MonaiUNETRPL(MonaiUNETR, UNetBasePL):
         feature_conditioning_key: str = None,
         learning_rate: float = 0.001,
         lr_encoder: float = None,
-        cosine_decay: bool = True,
+        start_decay: float | int = 1.0,
+        warmup_steps: float | int = 0,
         batch_size: int = 4,
         n_epochs: int = 100,
         weight_decay: float = 0.005,
@@ -918,8 +942,10 @@ class MonaiUNETRPL(MonaiUNETR, UNetBasePL):
             learning_rate (float, optional): learning rate. Defaults to 0.001.
             lr_encoder (float, optional): encoder learning rate. Defaults to None
                 (same as learning_rate).
-            cosine_decay (bool, optional): triggers cosine learning rate
-                decay. Defaults to True.
+            start_decay (float | int, optional): epoch/epoch fraction to start
+                cosine decay. Defaults to 1.0 (no decay).
+            warmup_steps (float | int, optional): warmup epochs/epoch fraction.
+                Defaults to 0.0 (no warmup).
             batch_size (int, optional): batch size. Defaults to 4.
             n_epochs (int, optional): number of epochs. Defaults to 100.
             weight_decay (float, optional): weight decay for optimizer. Defaults
@@ -941,7 +967,8 @@ class MonaiUNETRPL(MonaiUNETR, UNetBasePL):
         self.feature_conditioning_key = feature_conditioning_key
         self.learning_rate = learning_rate
         self.lr_encoder = lr_encoder
-        self.cosine_decay = cosine_decay
+        self.start_decay = start_decay
+        self.warmup_steps = warmup_steps
         self.batch_size = batch_size
         self.n_epochs = n_epochs
         self.weight_decay = weight_decay
@@ -968,7 +995,8 @@ class UNetPlusPlusPL(UNetPlusPlus, UNetBasePL):
         feature_conditioning_key: str = None,
         learning_rate: float = 0.001,
         lr_encoder: float = None,
-        cosine_decay: bool = True,
+        start_decay: float | int = 1.0,
+        warmup_steps: float | int = 0,
         batch_size: int = 4,
         n_epochs: int = 100,
         weight_decay: float = 0.005,
@@ -1019,7 +1047,8 @@ class UNetPlusPlusPL(UNetPlusPlus, UNetBasePL):
         self.feature_conditioning_key = feature_conditioning_key
         self.learning_rate = learning_rate
         self.lr_encoder = lr_encoder
-        self.cosine_decay = cosine_decay
+        self.start_decay = start_decay
+        self.warmup_steps = warmup_steps
         self.batch_size = batch_size
         self.n_epochs = n_epochs
         self.weight_decay = weight_decay
@@ -1049,7 +1078,8 @@ class MIMUNetPL(MIMUNet, UNetBasePL):
         label_key: str = "label",
         learning_rate: float = 0.001,
         lr_encoder: float = None,
-        cosine_decay: bool = True,
+        start_decay: float | int = 1.0,
+        warmup_steps: float | int = 0,
         batch_size: int = 4,
         n_epochs: int = 100,
         weight_decay: float = 0.005,
@@ -1092,7 +1122,8 @@ class MIMUNetPL(MIMUNet, UNetBasePL):
         self.label_key = label_key
         self.learning_rate = learning_rate
         self.lr_encoder = lr_encoder
-        self.cosine_decay = cosine_decay
+        self.start_decay = start_decay
+        self.warmup_steps = warmup_steps
         self.batch_size = batch_size
         self.n_epochs = n_epochs
         self.weight_decay = weight_decay
@@ -1150,7 +1181,8 @@ class BrUNetPL(BrUNet, UNetBasePL):
         feature_conditioning_key: str = None,
         learning_rate: float = 0.001,
         lr_encoder: float = None,
-        cosine_decay: bool = True,
+        start_decay: float | int = 1.0,
+        warmup_steps: float | int = 0,
         batch_size: int = 4,
         n_epochs: int = 100,
         weight_decay: float = 0.005,
@@ -1201,7 +1233,8 @@ class BrUNetPL(BrUNet, UNetBasePL):
         self.feature_conditioning_key = feature_conditioning_key
         self.learning_rate = learning_rate
         self.lr_encoder = lr_encoder
-        self.cosine_decay = cosine_decay
+        self.start_decay = start_decay
+        self.warmup_steps = warmup_steps
         self.batch_size = batch_size
         self.n_epochs = n_epochs
         self.weight_decay = weight_decay
