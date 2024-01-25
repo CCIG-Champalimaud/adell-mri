@@ -405,7 +405,10 @@ def main(arguments):
             *get_transforms("post", **transform_arguments_val),
         ]
 
-        if args.net_type in ["unetr", "swin"] or args.sliding_window_val:
+        if (
+            args.net_type in ["unetr", "swin", "monai_unetr", "monai_swin"]
+            or args.sliding_window_val
+        ):
             transforms_val = [
                 *get_transforms("pre", **transform_arguments_val),
                 *get_all_crops_transform,
@@ -671,7 +674,7 @@ def main(arguments):
         max_steps_optim = len(iter(train_loader)) * args.max_epochs
 
         if args.res_config_file is not None:
-            if args.net_type in ["unetr", "swin"]:
+            if args.net_type in ["unetr", "swin", "monai_unetr", "monai_swin"]:
                 raise NotImplementedError(
                     "You can't use a ResNet backbone with\
                     a UNETR or SWINUNet model - what's the point?!"
