@@ -1016,7 +1016,8 @@ class SWINTransformerBlock(torch.nn.Module):
                 X, [-s * self.shift_size for s in self.patch_size]
             )
         X = self.embedding(X)
-        self.attention_mask = self.attention_mask.to(X.device)
+        if self.attention_mask is not None:
+            self.attention_mask = self.attention_mask.to(X.device)
         X_ = self.mha(self.norm_op_1(X), mask=self.attention_mask)
         if self.shift_size > 0:
             X_ = self.embedding.rearrange_inverse_basic(X_)
