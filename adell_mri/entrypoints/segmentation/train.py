@@ -124,6 +124,7 @@ def main(arguments):
             "precision",
             "n_folds",
             "folds",
+            "sliding_window_val",
             "check_val_every_n_epoch",
             "accumulate_grad_batches",
             "picai_eval",
