@@ -345,7 +345,8 @@ def get_segmentation_network(
     encoding_operations: List[torch.nn.Module],
     picai_eval: bool,
     lr_encoder: float,
-    cosine_decay: bool,
+    start_decay: float | int,
+    warmup_steps: float | int,
     encoder_checkpoint: str,
     res_config_file: str,
     deep_supervision: bool,
@@ -380,7 +381,8 @@ def get_segmentation_network(
         n_epochs=max_epochs,
         picai_eval=picai_eval,
         lr_encoder=lr_encoder,
-        cosine_decay=cosine_decay,
+        start_decay=start_decay,
+        warmup_steps=warmup_steps,
     )
 
     if net_type == "unet" and semi_supervised is True:
