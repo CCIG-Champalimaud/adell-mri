@@ -1269,6 +1269,7 @@ class SWINTransformerBlockStack(torch.nn.Module):
         self.dropout_rate = dropout_rate
         self.embed_method = embed_method
         self.mlp_structure = mlp_structure
+        self.use_pos_embed = use_pos_embed
         self.adn_fn = adn_fn
 
         self.init_swin_transformers()
