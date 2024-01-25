@@ -1089,7 +1089,6 @@ class MonaiSWINUNet(UNet):
             img_size=[int(x) for x in self.image_size],
             in_channels=self.n_channels,
             out_channels=self.n_classes - 1,
-            num_heads=self.n_heads,
             feature_size=feature_size,
             drop_rate=self.dropout_rate,
             spatial_dims=self.spatial_dimensions,
