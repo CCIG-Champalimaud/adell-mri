@@ -104,11 +104,14 @@ class LayerNormChannelsFirst(torch.nn.Module):
         s = (x - u).pow(2).mean(1, keepdim=True)
         x = (x - u) / torch.sqrt(s + self.eps)
         if x.ndim == 3:
-            x = x.multiply(self.weight[None,:,None]).add(self.bias[None,:,None])
+            x = x.multiply(self.weight[:,None]).add(
+                self.bias[:,None])
         if x.ndim == 4:
-            x = x.multiply(self.weight[None,:,None,None]).add(self.bias[None,:,None,None])
+            x = x.multiply(self.weight[:,None,None]).add(
+                self.bias[:,None,None])
         if x.ndim == 5:
-            x = x.multiply(self.weight[None,:,None,None,None]).add(self.bias[None,:,None,None, None])
+            x = x.multiply(self.weight[:,None,None,None]).add(
+                self.bias[:,None,None, None])
         return x
 
 
