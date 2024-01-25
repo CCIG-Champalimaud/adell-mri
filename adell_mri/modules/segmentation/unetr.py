@@ -1085,7 +1085,7 @@ class MonaiSWINUNet(UNet):
         from monai.networks.nets.swin_unetr import SwinUNETR
 
         self.network = SwinUNETR(
-            image_size=[int(x) for x in self.image_size],
+            img_size=[int(x) for x in self.image_size],
             in_channels=self.n_channels,
             out_channels=self.n_classes - 1,
             num_heads=self.n_heads,
