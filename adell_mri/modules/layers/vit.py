@@ -867,6 +867,7 @@ class SWINTransformerBlock(torch.nn.Module):
         dropout_rate: float = 0.0,
         embed_method: str = "linear",
         mlp_structure: Union[List[int], float] = [32, 32],
+        use_pos_embed: bool = False,
         adn_fn=get_adn_fn(1, "identity", "gelu"),
     ):
         """
@@ -894,6 +895,8 @@ class SWINTransformerBlock(torch.nn.Module):
                 structure becomes a single layer whose number of hidden units
                 is the inferred input dimension scaled by mlp_strcture.
                 Defaults to [32,32].
+            use_pos_embed (bool, optional): includes positional embedding.
+                Defaults to False.
             adn_fn (Callable, optional): function that returns a
                 torch.nn.Module that does activation/dropout/normalization,
                 used in the MLP sub-layer. Should take as arguments the number
@@ -913,6 +916,7 @@ class SWINTransformerBlock(torch.nn.Module):
         self.dropout_rate = dropout_rate
         self.embed_method = embed_method
         self.mlp_structure = mlp_structure
+        self.use_pos_embed = use_pos_embed
         self.adn_fn = adn_fn
 
         self.init_embedding()
@@ -929,6 +933,7 @@ class SWINTransformerBlock(torch.nn.Module):
             dropout_rate=self.dropout_rate,
             embed_method=self.embed_method,
             out_dim=self.embedding_size,
+            use_pos_embed=self.use_pos_embed,
         )
         self.input_dim_primary = self.embedding.true_n_features
 
@@ -1216,6 +1221,7 @@ class SWINTransformerBlockStack(torch.nn.Module):
         dropout_rate: float = 0.0,
         embed_method: str = "linear",
         mlp_structure: Union[List[int], float] = [128],
+        use_pos_embed: bool = False,
         adn_fn=get_adn_fn(1, "identity", "gelu"),
     ):
         """
@@ -1242,6 +1248,8 @@ class SWINTransformerBlockStack(torch.nn.Module):
                 structure becomes a single layer whose number of hidden units
                 is the inferred input dimension scaled by mlp_strcture.
                 Defaults to [32,32].
+            use_pos_embed (bool, optional): includes positional embedding.
+                Defaults to False.
             adn_fn (Callable, optional): function that returns a
                 torch.nn.Module that does activation/dropout/normalization,
                 used in the MLP sub-layer. Should take as arguments the number
@@ -1316,6 +1324,7 @@ class SWINTransformerBlockStack(torch.nn.Module):
         dropout_rate = self.convert_to_list_if_necessary(self.dropout_rate)
         mlp_structure = self.convert_mlp_structure(self.mlp_structure)
         self.stbs = torch.nn.ModuleList([])
+        first = True
         for ss, ad, hd, nh, dr, mlp_s in zip(
             self.shift_sizes,
             attention_dim,
@@ -1338,8 +1347,11 @@ class SWINTransformerBlockStack(torch.nn.Module):
                 embed_method=self.embed_method,
                 mlp_structure=mlp_s,
                 adn_fn=self.adn_fn,
+                use_pos_embed=first and self.use_pos_embed,
             )
             self.stbs.append(stb)
+            if first:
+                first = False
 
     def forward(
         self, X: torch.Tensor, scale: int = 1

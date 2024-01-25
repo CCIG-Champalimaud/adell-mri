@@ -773,6 +773,7 @@ class SWINUNet(UNet):
             embed_method=self.embed_method,
             mlp_structure=self.mlp_structure,
             adn_fn=self.adn_fn_mlp,
+            use_pos_embed=True,
         )
         sd = self.spatial_dimensions
         self.swin_blocks = torch.nn.ModuleList([])
@@ -798,6 +799,7 @@ class SWINUNet(UNet):
                 embed_method=self.embed_method,
                 mlp_structure=self.mlp_structure,
                 adn_fn=self.adn_fn_mlp,
+                use_pos_embed=False,
             )
             self.swin_blocks.append(swin_block)
         self.n_channels_rec.append(self.n_channels * 2 ** ((i + 1) * sd))
