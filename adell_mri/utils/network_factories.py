@@ -31,7 +31,9 @@ from ..modules.segmentation.pl import (
     UNetPlusPlusPL,
     BrUNetPL,
     UNETRPL,
+    MonaiUNETRPL,
     SWINUNetPL,
+    MonaiSWINUNetPL,
 )
 
 # semi-supervised segmentation
@@ -446,10 +448,32 @@ def get_segmentation_network(
             **network_config,
         )
 
+    elif net_type == "monai_unetr":
+        sd = network_config["spatial_dimensions"]
+        network_config["image_size"] = size[:sd]
+        network_config["patch_size"] = network_config["patch_size"][:sd]
+        unet = MonaiUNETRPL(
+            image_key="image",
+            deep_supervision=deep_supervision,
+            **boilerplate,
+            **network_config,
+        )
+
     elif net_type == "swin":
         sd = network_config["spatial_dimensions"]
         network_config["image_size"] = size[:sd]
         unet = SWINUNetPL(
+            image_key="image",
+            deep_supervision=deep_supervision,
+            **boilerplate,
+            **network_config,
+        )
+
+    elif net_type == "monai_swin":
+        sd = network_config["spatial_dimensions"]
+        network_config["image_size"] = size[:sd]
+        network_config["patch_size"] = network_config["patch_size"][:sd]
+        unet = MonaiSWINUNetPL(
             image_key="image",
             deep_supervision=deep_supervision,
             **boilerplate,
