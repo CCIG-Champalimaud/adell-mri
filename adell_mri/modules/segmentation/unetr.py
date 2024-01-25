@@ -1090,7 +1090,7 @@ class MonaiSWINUNet(UNet):
             in_channels=self.n_channels,
             out_channels=self.n_classes - 1,
             num_heads=self.n_heads,
-            feature_size=self.attention_dim,
+            feature_size=feature_size,
             drop_rate=self.dropout_rate,
             spatial_dims=self.spatial_dimensions,
         )
