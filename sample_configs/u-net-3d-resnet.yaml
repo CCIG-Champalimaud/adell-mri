@@ -15,4 +15,10 @@ strides: [2,2,2,2,2]
 learning_rate: 0.0005
 batch_size: 2
 weight_decay: 0.005
-loss_fn: "combo"
+loss_fn: 
+  "dice":
+    eps: 1.0e-6
+    smooth: 1.0e-5
+  "focal":
+    gamma: 1.0
+    eps: 1.0e-6

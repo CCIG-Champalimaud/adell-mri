@@ -22,4 +22,10 @@ kernel_sizes: [3,3,3,3]
 learning_rate: 0.005
 batch_size: 2
 weight_decay: 0.05
-loss_fn: "focal"
+loss_fn: 
+  "dice":
+    eps: 1.0e-6
+    smooth: 1.0e-5
+  "focal":
+    gamma: 1.0
+    eps: 1.0e-6
