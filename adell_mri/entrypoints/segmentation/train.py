@@ -440,7 +440,7 @@ def main(arguments):
         elif args.random_crop_size is not None:
             collate_fn_train = safe_collate_crops
             collate_fn_train_semi_sl = safe_collate
-            collate_fn_val = safe_collate
+            collate_fn_val = safe_collate_crops
         else:
             collate_fn_train = safe_collate
             collate_fn_train_semi_sl = safe_collate

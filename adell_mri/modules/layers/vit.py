@@ -948,10 +948,6 @@ class SWINTransformerBlock(torch.nn.Module):
             ],
             shift_size=self.shift_size,
         )
-        if self.attention_mask is not None:
-            self.attention_mask = torch.nn.Parameter(
-                self.attention_mask, requires_grad=False
-            )
 
     def init_layers(self):
         if isinstance(self.mlp_structure, float):
