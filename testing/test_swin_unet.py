@@ -61,6 +61,7 @@ def test_swin_base(D, sd, conv_type, embed_method):
         padding=1,
         kernel_sizes=K,
         conv_type=conv_type,
+        norm_type="layer",
         link_type="identity"
     )
     o, bb = a(i)
