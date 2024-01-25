@@ -404,10 +404,17 @@ def main(arguments):
             *get_transforms("post", **transform_arguments_val),
         ]
 
-        transforms_val = [
-            *get_transforms("pre", **transform_arguments_val),
-            *get_transforms("post", **transform_arguments_val),
-        ]
+        if args.net_type in ["unetr", "swin"] or args.sliding_window_val:
+            transforms_val = [
+                *get_transforms("pre", **transform_arguments_val),
+                *get_all_crops_transform,
+                *get_transforms("post", **transform_arguments_val),
+            ]
+        else:
+            transforms_val = [
+                *get_transforms("pre", **transform_arguments_val),
+                *get_transforms("post", **transform_arguments_val),
+            ]
 
         if args.semi_supervised is True:
             transforms_semi_sl = get_semi_sl_transforms(
@@ -431,7 +438,7 @@ def main(arguments):
             collate_fn_val = safe_collate
         else:
             collate_fn_train = safe_collate
-            collate_fn_train_semi_sl = collate_last_slice
+            collate_fn_train_semi_sl = safe_collate
             collate_fn_val = safe_collate
 
         callbacks = [RichProgressBar()]

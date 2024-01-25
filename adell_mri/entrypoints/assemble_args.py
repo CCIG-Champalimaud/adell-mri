@@ -558,7 +558,15 @@ argument_factory = {
         action="store_true", help="Validates model using PI-CAI metrics."
     ),
     "sliding_window_size": dict(
-        default=None, type=int, nargs="+", help="Size of sliding window."
+        default=None,
+        type=int,
+        nargs="+",
+        help="Size of sliding window.",
+    ),
+    "sliding_window_val": dict(
+        default=False,
+        action="store_true",
+        help="Validates using sliding window.",
     ),
     "keep_largest_connected_component": dict(
         action="store_true", help="Keeps only the largest connected component."
