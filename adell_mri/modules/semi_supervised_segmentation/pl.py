@@ -22,7 +22,8 @@ class UNetContrastiveSemiSL(UNetSemiSL, UNetBasePL):
         feature_conditioning_key: str = None,
         learning_rate: float = 0.001,
         lr_encoder: float = None,
-        cosine_decay: bool = True,
+        start_decay: float | int = 1.0,
+        warmup_steps: float | int = 0,
         batch_size: int = 4,
         n_epochs: int = 100,
         weight_decay: float = 0.005,
@@ -54,8 +55,10 @@ class UNetContrastiveSemiSL(UNetSemiSL, UNetBasePL):
             learning_rate (float, optional): learning rate. Defaults to 0.001.
             lr_encoder (float, optional): encoder learning rate. Defaults to None
                 (same as learning_rate).
-            cosine_decay (bool, optional): triggers cosine learning rate
-                decay. Defaults to True.
+            start_decay (float | int, optional): epoch/epoch fraction to start
+                cosine decay. Defaults to 1.0 (no decay).
+            warmup_steps (float | int, optional): warmup epochs/epoch fraction.
+                Defaults to 0.0 (no warmup).
             batch_size (int, optional): batch size. Defaults to 4.
             n_epochs (int, optional): number of epochs. Defaults to 100.
             weight_decay (float, optional): weight decay for optimizer. Defaults
@@ -91,7 +94,8 @@ class UNetContrastiveSemiSL(UNetSemiSL, UNetBasePL):
         self.feature_conditioning_key = feature_conditioning_key
         self.learning_rate = learning_rate
         self.lr_encoder = lr_encoder
-        self.cosine_decay = cosine_decay
+        self.start_decay = start_decay
+        self.warmup_steps = warmup_steps
         self.batch_size = batch_size
         self.n_epochs = n_epochs
         self.weight_decay = weight_decay
