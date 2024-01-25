@@ -3,32 +3,32 @@ from typing import OrderedDict
 from ..activations import activation_factory
 from ..layers.regularization import LayerNormChannelsFirst
 
+norm_fn_dict = {
+    "batch": {
+        1: torch.nn.BatchNorm1d,
+        2: torch.nn.BatchNorm2d,
+        3: torch.nn.BatchNorm3d,
+    },
+    "instance": {
+        1: torch.nn.InstanceNorm1d,
+        2: torch.nn.InstanceNorm2d,
+        3: torch.nn.InstanceNorm3d,
+    },
+    "layer": {
+        1: torch.nn.LayerNorm,
+        2: LayerNormChannelsFirst,
+        3: LayerNormChannelsFirst,
+    },
+    "identity": {
+        1: torch.nn.Identity,
+        2: torch.nn.Identity,
+        3: torch.nn.Identity,
+    },
+}
 
 def get_adn_fn(
     spatial_dim, norm_fn="batch", act_fn="swish", dropout_param=0.1
 ):
-    norm_fn_dict = {
-        "batch": {
-            1: torch.nn.BatchNorm1d,
-            2: torch.nn.BatchNorm2d,
-            3: torch.nn.BatchNorm3d,
-        },
-        "instance": {
-            1: torch.nn.InstanceNorm1d,
-            2: torch.nn.InstanceNorm2d,
-            3: torch.nn.InstanceNorm3d,
-        },
-        "layer": {
-            1: torch.nn.LayerNorm,
-            2: LayerNormChannelsFirst,
-            3: LayerNormChannelsFirst,
-        },
-        "identity": {
-            1: torch.nn.Identity,
-            2: torch.nn.Identity,
-            3: torch.nn.Identity,
-        },
-    }
     if norm_fn not in norm_fn_dict:
         raise "norm_fn must be one of {}".format(norm_fn_dict)
     norm_fn = norm_fn_dict[norm_fn][spatial_dim]

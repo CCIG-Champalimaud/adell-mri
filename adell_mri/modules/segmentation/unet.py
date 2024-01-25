@@ -2,7 +2,6 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-# from ..layers import *
 from ..layers.regularization import UOut
 from ..layers.res_blocks import ResidualBlock2d, ResidualBlock3d
 from ..layers.self_attention import (
@@ -14,7 +13,7 @@ from ..layers.multi_resolution import (
     AtrousSpatialPyramidPooling2d,
     AtrousSpatialPyramidPooling3d,
 )
-from ..layers.adn_fn import get_adn_fn, ActDropNorm
+from ..layers.adn_fn import get_adn_fn, ActDropNorm, norm_fn_dict
 from ..layers.utils import crop_to_size
 from ...custom_types import ModuleList
 
@@ -186,17 +185,7 @@ class UNet(torch.nn.Module):
         if self.norm_type is None:
             self.norm_op = torch.nn.Identity
 
-        if self.spatial_dimensions == 2:
-            if self.norm_type == "batch":
-                self.norm_op = torch.nn.BatchNorm2d
-            elif self.norm_type == "instance":
-                self.norm_op = torch.nn.InstanceNorm2d
-
-        if self.spatial_dimensions == 3:
-            if self.norm_type == "batch":
-                self.norm_op = torch.nn.BatchNorm3d
-            elif self.norm_type == "instance":
-                self.norm_op = torch.nn.InstanceNorm3d
+        self.norm_op = norm_fn_dict[self.norm_type][self.spatial_dimensions]
 
     def get_drop_op(self):
         """
