@@ -130,7 +130,8 @@ def main(arguments):
             "picai_eval",
             "metric_path",
             "early_stopping",
-            "cosine_decay",
+            "start_decay",
+            "warmup_steps",
             ("class_weights", "class_weights", {"default": [1.0]}),
             "semi_supervised",
         ]
