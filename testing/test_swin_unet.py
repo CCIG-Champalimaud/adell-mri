@@ -6,6 +6,7 @@ import pytest
 
 import torch
 from adell_mri.modules.segmentation.unetr import SWINUNet
+from copy import deepcopy
 
 h, w, d, c = 64, 64, 32, 1
 
@@ -14,16 +15,18 @@ spatial_dims = [2, 3]
 
 
 def get_swin_params():
-    return {
-        "image_size": [h, w, d],
-        "patch_size": [4, 4, 2],
-        "window_size": [16, 16, 8],
-        "shift_sizes": [0, 1],
-        "n_heads": 4,
-        "dropout_rate": 0.1,
-        "embed_method": "linear",
-        "embedding_size": [8, 16, 32, 64],
-    }
+    return deepcopy(
+        {
+            "image_size": [h, w, d],
+            "patch_size": [2, 2, 2],
+            "window_size": [8, 8, 8],
+            "shift_sizes": [0, 1],
+            "n_heads": 4,
+            "dropout_rate": 0.1,
+            "embed_method": "linear",
+            "embedding_size": [8, 16, 32, 64],
+        }
+    )
 
 
 param_list = []
@@ -31,11 +34,12 @@ for dim in [2, 3]:
     for D in depths:
         for conv_type in ["regular", "resnet"]:
             for embed_method in ["linear", "convolutional"]:
-                param_list.append((D, dim, conv_type, embed_method))
+                for pool in ["regular", "irregular"]:
+                    param_list.append((D, dim, conv_type, embed_method, pool))
 
 
-@pytest.mark.parametrize("D,sd,conv_type,embed_method", param_list)
-def test_swin_base(D, sd, conv_type, embed_method):
+@pytest.mark.parametrize("D,sd,conv_type,embed_method,pool", param_list)
+def test_swin_base(D, sd, conv_type, embed_method, pool):
     K = [3 for _ in D]
     if sd == 2:
         i = torch.rand(size=[1, c, h, w])
@@ -44,6 +48,9 @@ def test_swin_base(D, sd, conv_type, embed_method):
         i = torch.rand(size=[1, c, h, w, d])
         output_size = [1, 1, h, w, d]
 
+    pooling_structure = [2] * len(D)
+    if pool == "irregular":
+        pooling_structure[0] = [2, 2, 1][:sd]
     swin_params = get_swin_params()
     swin_params["image_size"] = swin_params["image_size"][:sd]
     swin_params["patch_size"] = swin_params["patch_size"][:sd]
@@ -61,6 +68,7 @@ def test_swin_base(D, sd, conv_type, embed_method):
         conv_type=conv_type,
         norm_type="layer",
         link_type="identity",
+        strides=pooling_structure,
     )
     o, bb = a(i)
     assert list(o.shape) == output_size

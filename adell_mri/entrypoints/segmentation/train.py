@@ -659,10 +659,10 @@ def main(arguments):
         if args.semi_supervised is True:
             train_val_semi_sl_loader = monai.data.DataLoader(
                 train_val_semi_sl_dataset,
-                batch_size=1,
+                batch_size=network_config["batch_size"],
                 shuffle=False,
+                collate_fn=collate_fn_train_semi_sl,
                 num_workers=args.n_workers,
-                collate_fn=collate_fn_val,
             )
             train_val_loader = CombinedLoader(
                 {

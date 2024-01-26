@@ -181,7 +181,6 @@ class UNETR(UNet, torch.nn.Module):
         self.n_channels_rec = np.prod(
             [self.scale**self.spatial_dimensions, self.n_channels]
         )
-        self.strides = [2 for _ in self.depth]
 
         # check parameters
         self.assertions()
@@ -591,6 +590,7 @@ class SWINUNet(UNet):
         n_classes: int = 2,
         depth: list = [16, 32, 64],
         kernel_sizes: list = [3, 3, 3],
+        strides: list[int] = None,
         bottleneck_classification: bool = False,
         skip_conditioning: int = None,
         feature_conditioning: int = None,
@@ -657,6 +657,8 @@ class SWINUNet(UNet):
                 U-Net (the decoder will be the opposite). Defaults to [16,32,64].
             kernel_sizes (list, optional): defines the kernels of each layer
                 of the U-Net. Defaults to [3,3,3].
+            strides (list, optional): defines the strides of each layer of the
+                U-Net. Defaults to None (2 for every instance).
             bottleneck_classification (bool, optional): sets up a
                 classification task using the channel-wise maximum of the
                 bottleneck layer. Defaults to False.
@@ -706,13 +708,12 @@ class SWINUNet(UNet):
         self.n_classes = n_classes
         self.depth = depth
         self.kernel_sizes = kernel_sizes
+        self.strides = strides
         self.bottleneck_classification = bottleneck_classification
         self.skip_conditioning = skip_conditioning
         self.feature_conditioning = feature_conditioning
         self.feature_conditioning_params = feature_conditioning_params
         self.deep_supervision = deep_supervision
-
-        self.strides = [2 for _ in self.depth]
 
         self.number_of_blocks = len(self.depth)
 
@@ -753,6 +754,13 @@ class SWINUNet(UNet):
             assert isinstance(self.shift_sizes[0][0], int), shift_size_msg
         else:
             raise AssertionError(shift_size_msg)
+        if self.strides is None:
+            self.strides = [2 for _ in range(len(self.depth))]
+        for i in range(len(self.strides)):
+            if isinstance(self.strides[i], int):
+                self.strides[i] = [
+                    self.strides[i] for _ in range(self.spatial_dimensions)
+                ]
 
     def init_swin_blocks(self):
         """Initialises SWin and infers the number of channels at
@@ -777,13 +785,11 @@ class SWINUNet(UNet):
         )
         sd = self.spatial_dimensions
         self.swin_blocks = torch.nn.ModuleList([])
+        image_size = self.image_size
         for i in range(self.number_of_blocks - 1):
-            # print("Initializing SWIN block={}".format(i))
-            image_size = [x // (2**i) for x in self.image_size]
-            if i == 0:
-                n_channels = self.n_channels
-            else:
-                n_channels = self.n_channels * 2 ** (i * sd)
+            n_channels = self.n_channels
+            if i > 0:
+                n_channels *= np.prod([np.prod(s) for s in self.strides[:i]])
                 self.n_channels_rec.append(n_channels)
             swin_block = SWINTransformerBlockStack(
                 image_size=image_size,
@@ -802,10 +808,13 @@ class SWINUNet(UNet):
                 use_pos_embed=False,
             )
             self.swin_blocks.append(swin_block)
-        self.n_channels_rec.append(self.n_channels * 2 ** ((i + 1) * sd))
+            image_size = [x // s for x, s in zip(image_size, self.strides[i])]
+        self.n_channels_rec.append(
+            self.n_channels * np.prod([np.prod(s) for s in self.strides[:-1]])
+        )
 
     def init_reconstruction_ops(self):
-        """Initialises the operations that will resize the Swin outputs
+        """Initialises the operations that will resize the SWin outputs
         to be U-Net compliant.
         """
         self.first_rec_op = torch.nn.Sequential(
@@ -853,7 +862,7 @@ class SWINUNet(UNet):
         for i in range(len(self.swin_blocks)):
             swin_block = self.swin_blocks[i]
             rec_op = self.reconstruction_ops[i]
-            curr = swin_block(curr, scale=2)
+            curr = swin_block(curr, scale=self.strides[i])
             encoding_out.append(rec_op(curr))
 
         curr = encoding_out[-1]
@@ -947,6 +956,7 @@ class MonaiSWINUNet(UNet):
         n_classes: int = 2,
         depth: list = [16, 32, 64],
         kernel_sizes: list = [3, 3, 3],
+        strides: list = [2, 2, 2],
         bottleneck_classification: bool = False,
         skip_conditioning: int = None,
         feature_conditioning: int = None,
@@ -1017,6 +1027,8 @@ class MonaiSWINUNet(UNet):
                 U-Net (the decoder will be the opposite). Defaults to [16,32,64].
             kernel_sizes (list, optional): defines the kernels of each layer
                 of the U-Net. Defaults to [3,3,3].
+            strides (list, optional): defines the strides of each layer of the
+                U-Net. Defaults to [2,2,2].
             bottleneck_classification (bool, optional): sets up a
                 classification task using the channel-wise maximum of the
                 bottleneck layer. Defaults to False.
@@ -1068,13 +1080,12 @@ class MonaiSWINUNet(UNet):
         self.n_classes = n_classes
         self.depth = depth
         self.kernel_sizes = kernel_sizes
+        self.strides = strides
         self.bottleneck_classification = bottleneck_classification
         self.skip_conditioning = skip_conditioning
         self.feature_conditioning = feature_conditioning
         self.feature_conditioning_params = feature_conditioning_params
         self.deep_supervision = deep_supervision
-
-        self.strides = [2 for _ in self.depth]
 
         self.number_of_blocks = len(self.depth)
 

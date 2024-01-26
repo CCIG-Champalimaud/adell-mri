@@ -47,7 +47,7 @@ def downsample_ein_op_dict(
         ein_op_dict (Dict[str,int]): a dictionary containing x,y,z,h,w,d,c
             keys (z and d are optional), as produced by
             LinearEmbedding.get_einop_params.
-        scale (int, optional): downsampling scale. Defaults to 1.
+        scale (int list[int], optional): downsampling scale. Defaults to 1.
 
     Returns:
         Dict[str,int]: dictionary where the x,y(,z) values are rescaled.
@@ -55,11 +55,14 @@ def downsample_ein_op_dict(
     ein_op_dict = deepcopy(ein_op_dict)
     pairs = (("h", "x"), ("w", "y"), ("d", "z"))
     p = 0
+    if isinstance(scale, int):
+        scale = [scale] * len(pairs)
     for n_patches, size in pairs:
         if size in ein_op_dict:
+            s = scale[p]
             p += 1
-            ein_op_dict[size] = ein_op_dict[size] // scale
-    ein_op_dict["c"] = ein_op_dict["c"] * scale**p
+            ein_op_dict[size] = ein_op_dict[size] // s
+    ein_op_dict["c"] = ein_op_dict["c"] * np.prod(scale)
     return ein_op_dict
 
 
@@ -681,27 +684,36 @@ class LinearEmbedding(torch.nn.Module):
             X = einops.rearrange(X, self.einop_inv_str_l, **einop_dict)
         return X
 
-    def rearrange_rescale(self, X: torch.Tensor, scale: int) -> torch.Tensor:
+    def rearrange_rescale(
+        self, X: torch.Tensor, scale: int | list[int]
+    ) -> torch.Tensor:
         """Reverses the self.rearrange operation using the parameters inferred
         in self.get_einop_params but rescales the resolution so that the "extra"
         features are stacked on the channel dimension (for UNETR, etc.).
 
         Args:
             X (torch.Tensor): a tensor of size (b,h*x,w*y,(d*z))
-            scale: factor by which resolution will be downsampled
+            scale (int, list[int]): factor by which resolution will be
+                downsampled. If int, all dimensions are scaled equally,
+                if list, each dimension is scaled separately.
 
         Returns:
             x torch.Tensor: a tensor of size (b,c,h,w,(d))
         """
         X = self.map_to_in(X)
+        if isinstance(scale, int):
+            scale = [scale] * len(self.image_size)
         if self.embed_method == "linear":
             einop_dict = downsample_ein_op_dict(
                 deepcopy(self.einop_dict), scale
             )
             X = einops.rearrange(X, self.einop_inv_str, **einop_dict)
         elif self.embed_method == "convolutional":
-            image_size = [x // scale for x in self.image_size]
-            n_channels = self.n_channels * scale ** len(image_size)
+            image_size = [
+                self.image_size[i] // scale[i]
+                for i in range(len(self.image_size))
+            ]
+            n_channels = self.n_channels * np.prod(scale)
             X = X.reshape(-1, n_channels, *image_size)
         return X
 
@@ -1312,7 +1324,7 @@ class SWINTransformerBlockStack(torch.nn.Module):
         """Checks that the size of x is self.number_of_blocks
 
         Args:
-            x (_type_): _description_
+            x (Sequence): _description_
         """
         assert len(x) == len(self.shift_sizes)
 

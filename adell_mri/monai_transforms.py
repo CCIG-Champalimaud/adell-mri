@@ -1172,10 +1172,10 @@ def get_semi_sl_transforms(
         augment_arguments, keys
     )
     augment_arguments_semi_sl_1 = convert_arguments_augment_individual(
-        augment_arguments, keys, 1
+        augment_arguments, image_keys=keys, idx=1
     )
     augment_arguments_semi_sl_2 = convert_arguments_augment_individual(
-        augment_arguments, keys, 2
+        augment_arguments, image_keys=keys, idx=2
     )
 
     transforms_semi_sl = [
