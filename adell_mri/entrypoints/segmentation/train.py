@@ -444,7 +444,6 @@ def main(arguments):
                 collate_fn_val = safe_collate_crops
             else:
                 collate_fn_val = safe_collate
-            collate_fn_val = safe_collate
         else:
             collate_fn_train = safe_collate
             collate_fn_train_semi_sl = safe_collate
