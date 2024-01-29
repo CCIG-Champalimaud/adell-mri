@@ -985,7 +985,7 @@ class MonaiSWINUNet(UNet):
                 transformer modules in the network. Defaults to 0.0.
             embed_method (str, optional): embedding method for the linear
                 embedding of input images/volumes. More details in
-                `adell_mri.modules.layers.vit.LinearEmbedding`. Defaults to
+                `adell_mri.modules.layers.vit."LinearEmbedding"`. Defaults to
                 "linear".
             mlp_structure (List[int], optional): MLP structure (number of units
                 in each hidden unit) for the transformers. Defaults to

@@ -38,7 +38,8 @@ def cyclic_shift_batch(X: torch.Tensor, shift: List[int]):
 def downsample_ein_op_dict(
     ein_op_dict: Dict[str, int], scale: int = 1
 ) -> Dict[str, int]:
-    """Downsamples a einops constant dictionary given a downsampling scale
+    """
+    Downsamples a einops constant dictionary given a downsampling scale
     factor. Useful for UNETR/SWIN applications. This can then be used to
     parametrize the LinearEmbedding.rearrange_inverse operation in a way that
     a new tensor with downsampled resolution and more feature maps is produced.
@@ -544,7 +545,7 @@ class LinearEmbedding(torch.nn.Module):
         if self.n_dims == 3:
             lh.append(["d", "z"])
             rh[-2].append("d")
-            rh[-1].append("z")
+            rh[-1].insert(2, "z")
         if self.window_size is not None:
             windowing_vars = ["w{}".format(i + 1) for i in range(self.n_dims)]
             for i, w in enumerate(windowing_vars):
@@ -626,6 +627,29 @@ class LinearEmbedding(torch.nn.Module):
             self.einop_inv_str, **self.einop_dict
         )
 
+    def get_downsample_str_and_params(
+        self, scale: list[int]
+    ) -> tuple[str, dict[str, int]]:
+        lh_l = deepcopy(self.lh_l)
+        rh_l = deepcopy(self.rh_l)
+        einop_dict_l = deepcopy(self.einop_dict_l)
+        lh_l[1] = [lh_l[1]]
+        size_list = ["x", "y", "z"]
+        for i in range(len(self.image_size)):
+            k = f"ds{i+1}"
+            lh_l[1].append(k)
+            if self.window_size is not None:
+                rh_l[3].insert(2 * i + 1, k)
+            else:
+                rh_l[2].insert(2 * i + 1, k)
+            einop_dict_l[k] = scale[i]
+            einop_dict_l[size_list[i]] = einop_dict_l[size_list[i]] // scale[i]
+        einops_inv_str = "{rh} -> {lh}".format(
+            lh=" ".join([self.einops_tuple(x) for x in lh_l]),
+            rh=" ".join([self.einops_tuple(x) for x in rh_l]),
+        )
+        return einop_dict_l, einops_inv_str
+
     def rearrange(self, X: torch.Tensor) -> torch.Tensor:
         """Applies einops.rearrange given the parameters inferred in
         self.get_einop_params.
@@ -687,7 +711,8 @@ class LinearEmbedding(torch.nn.Module):
     def rearrange_rescale(
         self, X: torch.Tensor, scale: int | list[int]
     ) -> torch.Tensor:
-        """Reverses the self.rearrange operation using the parameters inferred
+        """
+        Reverses the self.rearrange operation using the parameters inferred
         in self.get_einop_params but rescales the resolution so that the "extra"
         features are stacked on the channel dimension (for UNETR, etc.).
 
@@ -704,10 +729,8 @@ class LinearEmbedding(torch.nn.Module):
         if isinstance(scale, int):
             scale = [scale] * len(self.image_size)
         if self.embed_method == "linear":
-            einop_dict = downsample_ein_op_dict(
-                deepcopy(self.einop_dict), scale
-            )
-            X = einops.rearrange(X, self.einop_inv_str, **einop_dict)
+            einop_dict, einop_str = self.get_downsample_str_and_params(scale)
+            X = einops.rearrange(X, einop_str, **einop_dict)
         elif self.embed_method == "convolutional":
             image_size = [
                 self.image_size[i] // scale[i]

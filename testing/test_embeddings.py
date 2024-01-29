@@ -6,6 +6,7 @@ import pytest
 
 import torch
 import numpy as np
+from itertools import product
 from adell_mri.modules.layers.vit import LinearEmbedding
 
 image_size = [32, 32, 32]
@@ -69,15 +70,50 @@ def test_conv_embedding(d):
     assert list(out.shape) == [1, le.n_patches, le.n_features]
 
 
-@pytest.mark.parametrize("d", [2, 3])
-def test_windowed_linear_embedding(d):
+@pytest.mark.parametrize(
+    "d, scale", product([2, 3], [[2, 2, 2], [2, 2, 1], [2, 1, 2]])
+)
+def test_windowed_linear_embedding(d, scale):
     i_s, p_s, w_s = image_size[:d], patch_size[:d], window_size[:d]
-    t = torch.rand(size=[1] + [n_channels] + i_s)
-    le = LinearEmbedding(i_s, p_s, n_channels, window_size=w_s)
+    n_channels = 2
+    scale = scale[:d]
+    sh = [1] + [n_channels] + i_s
+    t = torch.arange(0, np.prod(sh)).reshape(sh)
+    le = LinearEmbedding(
+        i_s, p_s, n_channels, window_size=w_s, use_pos_embed=False
+    )
     out = le(t)
+    tidx = 1
+    a = t[:, :, tidx * 2 : tidx * 2 + 2, tidx * 2 : tidx * 2 + 2].flatten()
+    b = le.rearrange_rescale(out, scale=scale)[0, :, tidx, tidx]
     assert list(out.shape) == [
         1,
         np.prod(le.n_windows),
         le.n_patches,
         le.n_features,
     ]
+    assert torch.all(le.rearrange_inverse(out) == t)
+    if d == 2:
+        for tx, ty in product([0, 1, 2], [0, 1, 2]):
+            a = t[
+                :,
+                :,
+                tx * scale[0] : tx * scale[0] + scale[0],
+                ty * scale[1] : ty * scale[1] + scale[1],
+            ].flatten()
+            b = le.rearrange_rescale(out, scale=scale)[0, :, tx, ty]
+
+            assert torch.all(a == b)
+
+    elif d == 3:
+        for tx, ty, tz in product([0, 1, 2], [0, 1, 2], [0, 1, 2]):
+            a = t[
+                :,
+                :,
+                tx * scale[0] : tx * scale[0] + scale[0],
+                ty * scale[1] : ty * scale[1] + scale[1],
+                tz * scale[2] : tz * scale[2] + scale[2],
+            ].flatten()
+            b = le.rearrange_rescale(out, scale=scale)[0, :, tx, ty, tz]
+
+            assert torch.all(a == b)
