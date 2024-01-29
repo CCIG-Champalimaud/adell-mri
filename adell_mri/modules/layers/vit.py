@@ -1355,7 +1355,7 @@ class SWINTransformerBlockStack(torch.nn.Module):
                 shift_size=ss,
                 n_heads=nh,
                 dropout_rate=dr,
-                embed_method=self.embed_method,
+                embed_method=self.embed_method if first else "linear",
                 mlp_structure=mlp_s,
                 adn_fn=self.adn_fn,
                 use_pos_embed=first and self.use_pos_embed,
