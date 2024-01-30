@@ -822,14 +822,17 @@ class SWINUNet(UNet):
         layer_norm = get_adn_fn(self.spatial_dimensions, "layer", None, 0.0)
         self.first_rec_op = torch.nn.Sequential(
             layer_norm(self.n_channels),
-            self.conv_op_enc(self.n_channels, self.depth[0], 1),
+            self.conv_op_enc(
+                self.n_channels, self.depth[0], 3, padding="same"
+            ),
             self.adn_fn(self.depth[0]),
         )
         self.reconstruction_ops = torch.nn.ModuleList([])
         for i, d in enumerate(self.depth[1:]):
             rec_op_seq = torch.nn.Sequential(
                 layer_norm(self.n_channels_rec[i]),
-                self.conv_op_enc(self.n_channels_rec[i], d, 1),
+                self.conv_op_enc(self.n_channels_rec[i], d, 1, padding="same"),
+                self.conv_op_enc(d, d, 3, padding="same"),
                 self.adn_fn(d),
             )
             self.reconstruction_ops.append(rec_op_seq)

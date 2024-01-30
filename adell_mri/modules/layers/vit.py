@@ -102,6 +102,41 @@ def window_partition(x: torch.Tensor, window_size: Size2dOr3d) -> torch.Tensor:
     return windows
 
 
+def image_mask_to_attention_mask(
+    x: torch.Tensor, window_size: Size2dOr3d
+) -> torch.Tensor:
+    """
+    Reshapes an image/volume batch tensor into smaller image/volumes of
+    window_size. Generalizes the implementation in [1] to both images and
+    volumes.
+
+    [1] https://github.com/microsoft/Swin-Transformer/blob/main/models/swin_transformer.py
+
+    Args:
+        x (torch.Tensor): tensor with shape (b,h,w,(d),c)
+        window_size (int): window size
+    Returns:
+        windows: (num_windows*b,
+                  window_size[0],
+                  window_size[1],
+                  (window_size[2]),c)
+    """
+    x = x.squeeze(0).squeeze(-1)
+    in_shape = x.shape
+    einops_dict = {}
+    sizes = ["h", "w", "d"]
+    for i in range(len(window_size)):
+        einops_dict[f"w{i + 1}"] = window_size[i]
+        einops_dict[sizes[i]] = in_shape[i] // window_size[i]
+    if len(in_shape) == 2:
+        einops_expression = "(w1 h) (w2 w) -> (h w) (w1 w2)"
+    if len(in_shape) == 3:
+        einops_expression = "(w1 h) (w2 w) (w3 d) -> (h w d) (w1 w2 w3)"
+    mask_windows = einops.rearrange(x, einops_expression, **einops_dict)
+    attention_mask = mask_windows.unsqueeze(1) - mask_windows.unsqueeze(2)
+    return attention_mask
+
+
 def generate_mask(
     image_size: Size2dOr3d, window_size: Size2dOr3d, shift_size: Size2dOr3d
 ) -> torch.Tensor:
@@ -137,16 +172,10 @@ def generate_mask(
             if len(x) == 3:
                 img_mask[:, x[0], x[1], x[2], :] = cnt
             cnt += 1
-
-        mask_windows = window_partition(
-            img_mask, window_size
-        )  # nW, window_size, window_size, 1
-        mask_windows = mask_windows.view(-1, int(np.prod(window_size)))
-        attn_mask = mask_windows.unsqueeze(1) - mask_windows.unsqueeze(2)
+        attn_mask = image_mask_to_attention_mask(img_mask, window_size)
         attn_mask = attn_mask.masked_fill(
             attn_mask != 0, float(-100.0)
         ).masked_fill(attn_mask == 0, float(0.0))
-
     return attn_mask
 
 
@@ -1063,7 +1092,7 @@ class SWINTransformerBlock(torch.nn.Module):
             X = self.embedding(X)
         else:
             X = self.embedding(X)
-            attention = self.mha(self.norm_op_1(X), mask=self.attention_mask)
+            attention = self.mha(self.norm_op_1(X), mask=None)
         X = X + self.drop_op_1(attention)
         X = X + self.drop_op_2(self.mlp(self.norm_op_2(X)))
 
