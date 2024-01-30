@@ -967,7 +967,7 @@ class SWINTransformerBlock(torch.nn.Module):
             window_size=self.window_size,
             dropout_rate=self.dropout_rate,
             embed_method=self.embed_method,
-            out_dim=self.embedding_size,
+            out_dim=None,
             use_pos_embed=self.use_pos_embed,
         )
         self.input_dim_primary = self.embedding.true_n_features
@@ -990,10 +990,7 @@ class SWINTransformerBlock(torch.nn.Module):
                 int(self.input_dim_primary * self.mlp_structure)
             ]
 
-        if self.embedding_size is not None:
-            input_dim_primary = self.embedding_size
-        else:
-            input_dim_primary = self.input_dim_primary
+        input_dim_primary = self.input_dim_primary
 
         if self.hidden_dim is None:
             hidden_dim = input_dim_primary
@@ -1009,7 +1006,7 @@ class SWINTransformerBlock(torch.nn.Module):
             input_dim_primary,
             attention_dim,
             hidden_dim,
-            self.input_dim_primary,
+            input_dim_primary,
             window_size=self.window_size,
             dropout_rate=self.dropout_rate,
             n_heads=self.n_heads,
@@ -1055,10 +1052,10 @@ class SWINTransformerBlock(torch.nn.Module):
             self.attention_mask = self.attention_mask.to(X.device)
         X_ = self.mha(self.norm_op_1(X), mask=self.attention_mask)
         if self.shift_size > 0:
-            X_ = self.embedding.rearrange_inverse_basic(X_)
+            X_ = self.embedding.einop_rearrange_inv(X_)
             X_ = cyclic_shift_batch(X_, self.patch_size)
             # no_pos_embed skips the addition of the positional embedding
-            X_ = self.embedding.rearrange(X_)
+            X_ = self.embedding.einop_rearrange(X_)
         X = X + self.drop_op_1(X_)
         X = X + self.drop_op_2(self.mlp(self.norm_op_2(X)))
 
