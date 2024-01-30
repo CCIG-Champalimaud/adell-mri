@@ -57,7 +57,7 @@ def test_unetr_base(D, sd, conv_type):
         padding=1,
         kernel_sizes=K,
         conv_type=conv_type,
-        link_type="identity"
+        link_type="identity",
     )
     o, bb = a(i)
     assert list(o.shape) == output_size
@@ -96,7 +96,7 @@ def test_unetr_skip(D, sd, conv_type):
         kernel_sizes=K,
         skip_conditioning=1,
         link_type="conv",
-        conv_type=conv_type
+        conv_type=conv_type,
     )
     o, bb = a(i, X_skip_layer=i_skip)
     assert list(o.shape) == output_size
@@ -141,7 +141,7 @@ def test_unetr_skip_feature(D, sd):
             "mean": torch.zeros_like(i_feat),
             "std": torch.ones_like(i_feat),
         },
-        link_type="conv"
+        link_type="conv",
     )
     o, bb = a(i, X_feature_conditioning=i_feat, X_skip_layer=i_skip)
     assert list(o.shape) == output_size

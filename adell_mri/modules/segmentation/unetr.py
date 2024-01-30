@@ -4,7 +4,7 @@ import torch.nn.functional as F
 
 from .unet import UNet
 from ..layers.adn_fn import get_adn_fn
-from ..layers.vit import ViT
+from ..layers.vit import ViT, LinearEmbedding
 from ..layers.vit import SWINTransformerBlockStack
 from ...custom_types import Size2dOr3d
 
@@ -175,6 +175,8 @@ class UNETR(UNet, torch.nn.Module):
         self.feature_conditioning_params = feature_conditioning_params
         self.deep_supervision = deep_supervision
 
+        self.strides = [2 for _ in self.depth]
+
         # define the scale of the reconstructions
         self.scale = int(2 ** len(self.return_at))
         # define the number of channels in the reconstructed ViT outputs
@@ -198,6 +200,7 @@ class UNETR(UNet, torch.nn.Module):
             self.init_link_ops()
             self.init_decoder()
             self.init_final_layer()
+            self.init_rescalers()
             if self.bottleneck_classification is True:
                 self.init_bottleneck_classifier()
             if self.feature_conditioning is not None:
@@ -234,6 +237,28 @@ class UNETR(UNet, torch.nn.Module):
         )
         # expose this function for convenience
         self.rearrange_rescale = self.vit.embedding.rearrange_rescale
+
+    def init_rescalers(self):
+        """
+        Initialises a set of linear embeddings which become responsible for
+        transforming transformer representations to volumetric vector
+        representations.
+        """
+        self.rescalers = torch.nn.ModuleList(
+            [
+                LinearEmbedding(
+                    image_size=self.image_size,
+                    patch_size=self.patch_size,
+                    n_channels=self.n_channels,
+                    out_dim=self.embedding_size,
+                    dropout_rate=0.0,
+                    embed_method="linear",
+                    use_pos_embed=False,
+                    use_class_token=False,
+                )
+                for _ in self.depth
+            ]
+        )
 
     def init_reconstruction_ops(self):
         """Initialises the operations that will reconstruct the ViT outputs
@@ -298,9 +323,10 @@ class UNETR(UNet, torch.nn.Module):
         # run vit
         curr, encoding_out = self.vit(X, return_at=self.return_at)
         # rearrange outputs using einops
-        curr = self.rearrange_rescale(curr, self.scale)
+        curr = self.rescalers[0].rearrange_rescale(curr, self.scale)
         encoding_out = [
-            self.rearrange_rescale(x, self.scale) for x in encoding_out
+            rescaler.rearrange_rescale(x, self.scale)
+            for x, rescaler in zip(encoding_out, self.rescalers[1:])
         ]
 
         # apply reconstruction (deconv) ops

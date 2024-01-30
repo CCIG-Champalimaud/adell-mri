@@ -39,7 +39,7 @@ Using these you can run `adell` from your command line as an [entrypoint](#entry
 * [**Anysotropic Hybrid network (AHNet)**](https://arxiv.org/abs/1711.08580) - this network is first trained to segment 2D images and some of the (enconding) layers are then transferred to 3D (mostly by either concatenating weights or adding an extra dimension to the layer).
 * **Branched input U-Net (BrUNet)** - a U-Net model that has different encoders for each input channel
 * [**UNETR**](https://arxiv.org/abs/2103.10504) - transformer-based U-Net
-* [**SWINUNet**](https://arxiv.org/pdf/2103.14030.pdf) - transformer-based U-Net with shifted windows. Has better performance than UNETR while keeping a relatively similar complexity in terms of flops
+* [**SWINUNet**](https://arxiv.org/pdf/2103.14030.pdf) - transformer-based U-Net with shifted windows. Has better performance than UNETR while keeping a relatively similar complexity in terms of flops (**this is not currently functional and we are in the processing of figuring out why**)
 
 ### Implemented methods for detection
 
