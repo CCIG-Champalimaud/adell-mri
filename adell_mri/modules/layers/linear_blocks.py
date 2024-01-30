@@ -375,6 +375,7 @@ class MultiHeadSelfAttention(torch.nn.Module):
             ].reshape(-1, t, t)
             S = S + relative_position_bias
         if mask is not None:
+            mask = mask.to(S)
             S = S + mask.unsqueeze(1).unsqueeze(0)
         S = self.drop_op(self.sm(S))
         V_tilde = S @ V

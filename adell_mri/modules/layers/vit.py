@@ -900,6 +900,7 @@ class SWINTransformerBlock(torch.nn.Module):
         shift_size: int = 0,
         n_heads: int = 4,
         dropout_rate: float = 0.0,
+        dropout_rate_embedding: float = 0.0,
         embed_method: str = "linear",
         mlp_structure: Union[List[int], float] = [32, 32],
         use_pos_embed: bool = False,
@@ -923,6 +924,8 @@ class SWINTransformerBlock(torch.nn.Module):
                 Defaults to 0 (no shift).
             dropout_rate (float, optional): dropout rate of the dropout
                 operations applied throughout this module. Defaults to 0.0.
+            dropout_rate_embedding (float, optional): dropout rate for the
+                LinearEmbedding operation. Defaults to 0.0.
             embed_method (str, optional): . Defaults to "linear".
             n_heads (int, optional): number of attention heads. Defaults to 4.
             mlp_structure (Union[List[int],float], optional): hidden layer
@@ -949,6 +952,7 @@ class SWINTransformerBlock(torch.nn.Module):
         self.shift_size = shift_size
         self.n_heads = n_heads
         self.dropout_rate = dropout_rate
+        self.dropout_rate_embedding = dropout_rate_embedding
         self.embed_method = embed_method
         self.mlp_structure = mlp_structure
         self.use_pos_embed = use_pos_embed
@@ -965,7 +969,7 @@ class SWINTransformerBlock(torch.nn.Module):
             patch_size=self.patch_size,
             n_channels=self.n_channels,
             window_size=self.window_size,
-            dropout_rate=self.dropout_rate,
+            dropout_rate=self.dropout_rate_embedding,
             embed_method=self.embed_method,
             out_dim=None,
             use_pos_embed=self.use_pos_embed,
@@ -1026,6 +1030,17 @@ class SWINTransformerBlock(torch.nn.Module):
         self.drop_op_1 = torch.nn.Dropout(self.dropout_rate)
         self.drop_op_2 = torch.nn.Dropout(self.dropout_rate)
 
+    def apply_shift_and_attention(self, X: torch.Tensor):
+        cyc = [-s * self.shift_size for s in self.patch_size]
+        rev_cyc = [-c for c in cyc]
+        X = cyclic_shift_batch(X, cyc)
+        X = self.embedding(X)
+        attention = self.mha(self.norm_op_1(X), mask=self.attention_mask)
+        attention = self.embedding.einop_rearrange_inv(attention)
+        attention = cyclic_shift_batch(attention, rev_cyc)
+        attention = self.embedding.einop_rearrange(attention)
+        return attention
+
     def forward(
         self, X: torch.Tensor, scale: int = None
     ) -> Tuple[torch.Tensor, TensorList]:
@@ -1043,20 +1058,14 @@ class SWINTransformerBlock(torch.nn.Module):
                 the ith transformer outputs, where i is contained in return_at.
                 Same shape as the final output.
         """
+        shortcut = self.embedding(X)
         if self.shift_size > 0:
-            X = cyclic_shift_batch(
-                X, [-s * self.shift_size for s in self.patch_size]
-            )
-        X = self.embedding(X)
-        if self.attention_mask is not None:
-            self.attention_mask = self.attention_mask.to(X.device)
-        X_ = self.mha(self.norm_op_1(X), mask=self.attention_mask)
-        if self.shift_size > 0:
-            X_ = self.embedding.einop_rearrange_inv(X_)
-            X_ = cyclic_shift_batch(X_, self.patch_size)
-            # no_pos_embed skips the addition of the positional embedding
-            X_ = self.embedding.einop_rearrange(X_)
-        X = X + self.drop_op_1(X_)
+            attention = self.apply_shift_and_attention(X)
+            X = shortcut
+        else:
+            X = self.embedding(X)
+            attention = self.mha(self.norm_op_1(X), mask=self.attention_mask)
+        X = X + self.drop_op_1(attention)
         X = X + self.drop_op_2(self.mlp(self.norm_op_2(X)))
 
         X = self.embedding.rearrange_rescale(X, scale)
@@ -1235,7 +1244,7 @@ class TransformerBlockStack(torch.nn.Module):
 
 
 class SWINTransformerBlockStack(torch.nn.Module):
-    """Shifted window transformer module."""
+    """Shifted window transformer stack module."""
 
     def __init__(
         self,
@@ -1249,6 +1258,7 @@ class SWINTransformerBlockStack(torch.nn.Module):
         embedding_size: int = None,
         n_heads: int = 4,
         dropout_rate: float = 0.0,
+        dropout_rate_embedding: float = 0.0,
         embed_method: str = "linear",
         mlp_structure: Union[List[int], float] = [128],
         use_pos_embed: bool = False,
@@ -1271,6 +1281,8 @@ class SWINTransformerBlockStack(torch.nn.Module):
                 None (same as inferred output dimension).
             dropout_rate (float, optional): dropout rate of the dropout
                 operations applied throughout this module. Defaults to 0.0.
+            dropout_rate_embedding (float, optional): dropout rate of the
+                LinearEmbedding module. Defaults to 0.0.
             embed_method (str, optional): . Defaults to "linear".
             n_heads (int, optional): number of attention heads. Defaults to 4.
             mlp_structure (Union[List[int],float], optional): hidden layer
@@ -1297,6 +1309,7 @@ class SWINTransformerBlockStack(torch.nn.Module):
         self.embedding_size = embedding_size
         self.n_heads = n_heads
         self.dropout_rate = dropout_rate
+        self.dropout_rate_embedding = dropout_rate_embedding
         self.embed_method = embed_method
         self.mlp_structure = mlp_structure
         self.use_pos_embed = use_pos_embed
@@ -1374,6 +1387,7 @@ class SWINTransformerBlockStack(torch.nn.Module):
                 embedding_size=self.embedding_size,
                 shift_size=ss,
                 n_heads=nh,
+                dropout_rate_embedding=self.dropout_rate_embedding,
                 dropout_rate=dr,
                 embed_method=self.embed_method if first else "linear",
                 mlp_structure=mlp_s,
