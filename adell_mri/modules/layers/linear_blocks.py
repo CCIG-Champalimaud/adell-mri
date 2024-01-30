@@ -321,7 +321,9 @@ class MultiHeadSelfAttention(torch.nn.Module):
                     self.n_heads,
                 )
             )
-            torch.nn.init.trunc_normal_(self.relative_position_bias_table)
+            torch.nn.init.trunc_normal_(
+                self.relative_position_bias_table, std=0.02
+            )
             self.relative_position_index = get_relative_position_indices(
                 self.window_size
             )

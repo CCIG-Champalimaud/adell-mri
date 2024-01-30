@@ -528,7 +528,7 @@ class MonaiUNETR(UNet, torch.nn.Module):
 
         self.network = UNETR(
             self.n_channels,
-            self.n_classes - 1,
+            1 if self.n_classes == 2 else self.n_classes,
             [int(x) for x in self.image_size],
         )
 
@@ -1103,7 +1103,7 @@ class MonaiSWINUNet(UNet):
         self.network = SwinUNETR(
             img_size=[int(x) for x in self.image_size],
             in_channels=self.n_channels,
-            out_channels=self.n_classes - 1,
+            out_channels=1 if self.n_classes == 2 else self.n_classes,
             feature_size=feature_size,
             drop_rate=self.dropout_rate,
             spatial_dims=self.spatial_dimensions,

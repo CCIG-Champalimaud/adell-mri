@@ -290,9 +290,7 @@ class SliceLinearEmbedding(torch.nn.Module):
                     ]
                 )
             )
-            torch.nn.init.trunc_normal_(
-                self.positional_embedding, mean=0.0, std=0.02, a=-2.0, b=2.0
-            )
+            torch.nn.init.trunc_normal_(self.positional_embedding, std=0.02)
         else:
             sin_embed = sinusoidal_positional_encoding(
                 self.n_patches, self.true_n_features
@@ -534,11 +532,7 @@ class LinearEmbedding(torch.nn.Module):
                     torch.rand(1, self.n_patches, self.true_n_features)
                 )
                 torch.nn.init.trunc_normal_(
-                    self.positional_embedding,
-                    mean=0.0,
-                    std=0.02,
-                    a=-2.0,
-                    b=2.0,
+                    self.positional_embedding, std=0.02
                 )
             else:
                 sin_embed = sinusoidal_positional_encoding(
