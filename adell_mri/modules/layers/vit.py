@@ -1058,10 +1058,9 @@ class SWINTransformerBlock(torch.nn.Module):
                 the ith transformer outputs, where i is contained in return_at.
                 Same shape as the final output.
         """
-        shortcut = self.embedding(X)
         if self.shift_size > 0:
             attention = self.apply_shift_and_attention(X)
-            X = shortcut
+            X = self.embedding(X)
         else:
             X = self.embedding(X)
             attention = self.mha(self.norm_op_1(X), mask=self.attention_mask)
