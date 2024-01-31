@@ -1,6 +1,7 @@
 from argparse import ArgumentParser
 from typing import List
 from copy import deepcopy
+from ..utils.optimizer_factory import OPTIMIZER_MATCH
 
 argument_factory = {
     # dataset and data
@@ -332,6 +333,12 @@ argument_factory = {
         type=float, default=0.1, help="Parameter for dropout."
     ),
     "batch_size": dict(type=int, default=2, help="Batch size"),
+    "optimizer": dict(
+        type=str,
+        default=2,
+        help="Specifies the optimizer used during training",
+        choices=[k for k in OPTIMIZER_MATCH.keys()],
+    ),
     "learning_rate": dict(
         type=float,
         default=0.0001,

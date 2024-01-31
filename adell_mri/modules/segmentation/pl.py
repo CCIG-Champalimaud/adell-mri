@@ -18,6 +18,7 @@ from .unetr import MonaiSWINUNet
 from .mimunet import MIMUNet
 from ..extract_lesion_candidates import extract_lesion_candidates
 from ..learning_rate import CosineAnnealingWithWarmupLR
+from ...utils.optimizer_factory import get_optimizer
 
 
 def binary_iou_manual(
@@ -475,13 +476,25 @@ class UNetBasePL(pl.LightningModule, ABC):
                 {"params": encoder_params, "lr": lr_encoder},
                 {"params": rest_of_params},
             ]
-        optimizer = torch.optim.SGD(
-            parameters,
-            lr=self.learning_rate,
-            momentum=0.99,
-            weight_decay=self.weight_decay,
-            nesterov=True,
-        )
+        if hasattr(self, "optimizer_str"):
+            if hasattr(self, "optimizer_parmas"):
+                optimizer_params = self.optimizer_params
+            else:
+                optimizer_params = {}
+            optimizer = get_optimizer(
+                self.optimizer_str,
+                lr=self.learning_rate,
+                weight_decay=self.weight_decay,
+                **optimizer_params,
+            )
+        else:
+            optimizer = torch.optim.SGD(
+                parameters,
+                lr=self.learning_rate,
+                momentum=0.99,
+                weight_decay=self.weight_decay,
+                nesterov=True,
+            )
 
         self.cosine_decay = any(
             [
@@ -597,6 +610,7 @@ class UNetPL(UNet, UNetBasePL):
         label_key: str = "label",
         skip_conditioning_key: str = None,
         feature_conditioning_key: str = None,
+        optimizer_str: str = "sgd",
         learning_rate: float = 0.001,
         lr_encoder: float = None,
         start_decay: float | int = 1.0,
@@ -621,6 +635,8 @@ class UNetPL(UNet, UNetBasePL):
             feature_conditioning_key (str, optional): key corresponding to
                 the tabular features which will be used in the feature
                 conditioning.
+            optimizer_str (str, optional): specifies the optimizer using
+                `get_optimizer`. Defaults to "sgd".
             learning_rate (float, optional): learning rate. Defaults to 0.001.
             lr_encoder (float, optional): encoder learning rate. Defaults to None
                 (same as learning_rate).
@@ -648,6 +664,7 @@ class UNetPL(UNet, UNetBasePL):
         self.label_key = label_key
         self.skip_conditioning_key = skip_conditioning_key
         self.feature_conditioning_key = feature_conditioning_key
+        self.optimizer_str = optimizer_str
         self.learning_rate = learning_rate
         self.lr_encoder = lr_encoder
         self.start_decay = start_decay
@@ -678,6 +695,7 @@ class UNETRPL(UNETR, UNetBasePL):
         label_key: str = "label",
         skip_conditioning_key: str = None,
         feature_conditioning_key: str = None,
+        optimizer_str: str = "sgd",
         learning_rate: float = 0.001,
         lr_encoder: float = None,
         start_decay: float | int = 1.0,
@@ -702,6 +720,8 @@ class UNETRPL(UNETR, UNetBasePL):
             feature_conditioning_key (str, optional): key corresponding to
                 the tabular features which will be used in the feature
                 conditioning.
+            optimizer_str (str, optional): specifies the optimizer using
+                `get_optimizer`. Defaults to "sgd".
             learning_rate (float, optional): learning rate. Defaults to 0.001.
             lr_encoder (float, optional): encoder learning rate. Defaults to None
                 (same as learning_rate).
@@ -727,6 +747,7 @@ class UNETRPL(UNETR, UNetBasePL):
         self.label_key = label_key
         self.skip_conditioning_key = skip_conditioning_key
         self.feature_conditioning_key = feature_conditioning_key
+        self.optimizer_str = optimizer_str
         self.learning_rate = learning_rate
         self.lr_encoder = lr_encoder
         self.start_decay = start_decay
@@ -757,6 +778,7 @@ class SWINUNetPL(SWINUNet, UNetBasePL):
         label_key: str = "label",
         skip_conditioning_key: str = None,
         feature_conditioning_key: str = None,
+        optimizer_str: str = "sgd",
         learning_rate: float = 0.001,
         lr_encoder: float = None,
         start_decay: float | int = 1.0,
@@ -781,6 +803,8 @@ class SWINUNetPL(SWINUNet, UNetBasePL):
             feature_conditioning_key (str, optional): key corresponding to
                 the tabular features which will be used in the feature
                 conditioning.
+            optimizer_str (str, optional): specifies the optimizer using
+                `get_optimizer`. Defaults to "sgd".
             learning_rate (float, optional): learning rate. Defaults to 0.001.
             lr_encoder (float, optional): encoder learning rate. Defaults to None
                 (same as learning_rate).
@@ -807,6 +831,7 @@ class SWINUNetPL(SWINUNet, UNetBasePL):
         self.label_key = label_key
         self.skip_conditioning_key = skip_conditioning_key
         self.feature_conditioning_key = feature_conditioning_key
+        self.optimizer_str = optimizer_str
         self.learning_rate = learning_rate
         self.lr_encoder = lr_encoder
         self.start_decay = start_decay
@@ -837,6 +862,7 @@ class MonaiSWINUNetPL(MonaiSWINUNet, UNetBasePL):
         label_key: str = "label",
         skip_conditioning_key: str = None,
         feature_conditioning_key: str = None,
+        optimizer_str: str = "sgd",
         learning_rate: float = 0.001,
         lr_encoder: float = None,
         start_decay: float | int = 1.0,
@@ -861,6 +887,8 @@ class MonaiSWINUNetPL(MonaiSWINUNet, UNetBasePL):
             feature_conditioning_key (str, optional): key corresponding to
                 the tabular features which will be used in the feature
                 conditioning.
+            optimizer_str (str, optional): specifies the optimizer using
+                `get_optimizer`. Defaults to "sgd".
             learning_rate (float, optional): learning rate. Defaults to 0.001.
             lr_encoder (float, optional): encoder learning rate. Defaults to None
                 (same as learning_rate).
@@ -887,6 +915,7 @@ class MonaiSWINUNetPL(MonaiSWINUNet, UNetBasePL):
         self.label_key = label_key
         self.skip_conditioning_key = skip_conditioning_key
         self.feature_conditioning_key = feature_conditioning_key
+        self.optimizer_str = optimizer_str
         self.learning_rate = learning_rate
         self.lr_encoder = lr_encoder
         self.start_decay = start_decay
@@ -917,6 +946,7 @@ class MonaiUNETRPL(MonaiUNETR, UNetBasePL):
         label_key: str = "label",
         skip_conditioning_key: str = None,
         feature_conditioning_key: str = None,
+        optimizer_str: str = "sgd",
         learning_rate: float = 0.001,
         lr_encoder: float = None,
         start_decay: float | int = 1.0,
@@ -941,6 +971,8 @@ class MonaiUNETRPL(MonaiUNETR, UNetBasePL):
             feature_conditioning_key (str, optional): key corresponding to
                 the tabular features which will be used in the feature
                 conditioning.
+            optimizer_str (str, optional): specifies the optimizer using
+                `get_optimizer`. Defaults to "sgd".
             learning_rate (float, optional): learning rate. Defaults to 0.001.
             lr_encoder (float, optional): encoder learning rate. Defaults to None
                 (same as learning_rate).
@@ -967,6 +999,7 @@ class MonaiUNETRPL(MonaiUNETR, UNetBasePL):
         self.label_key = label_key
         self.skip_conditioning_key = skip_conditioning_key
         self.feature_conditioning_key = feature_conditioning_key
+        self.optimizer_str = optimizer_str
         self.learning_rate = learning_rate
         self.lr_encoder = lr_encoder
         self.start_decay = start_decay
@@ -995,6 +1028,7 @@ class UNetPlusPlusPL(UNetPlusPlus, UNetBasePL):
         label_key: str = "label",
         skip_conditioning_key: str = None,
         feature_conditioning_key: str = None,
+        optimizer_str: str = "sgd",
         learning_rate: float = 0.001,
         lr_encoder: float = None,
         start_decay: float | int = 1.0,
@@ -1020,6 +1054,8 @@ class UNetPlusPlusPL(UNetPlusPlus, UNetBasePL):
             feature_conditioning_key (str, optional): key corresponding to
                 the tabular features which will be used in the feature
                 conditioning.
+            optimizer_str (str, optional): specifies the optimizer using
+                `get_optimizer`. Defaults to "sgd".
             learning_rate (float, optional): learning rate. Defaults to 0.001.
             lr_encoder (float, optional): encoder learning rate.
             batch_size (int, optional): batch size. Defaults to 4.
@@ -1047,6 +1083,7 @@ class UNetPlusPlusPL(UNetPlusPlus, UNetBasePL):
         self.label_key = label_key
         self.skip_conditioning_key = skip_conditioning_key
         self.feature_conditioning_key = feature_conditioning_key
+        self.optimizer_str = optimizer_str
         self.learning_rate = learning_rate
         self.lr_encoder = lr_encoder
         self.start_decay = start_decay
@@ -1078,6 +1115,7 @@ class MIMUNetPL(MIMUNet, UNetBasePL):
         self,
         image_key: str = "image",
         label_key: str = "label",
+        optimizer_str: str = "sgd",
         learning_rate: float = 0.001,
         lr_encoder: float = None,
         start_decay: float | int = 1.0,
@@ -1097,6 +1135,8 @@ class MIMUNetPL(MIMUNet, UNetBasePL):
                 dataloader.
             label_key (str): key corresponding to the label map from the train
                 dataloader.
+            optimizer_str (str, optional): specifies the optimizer using
+                `get_optimizer`. Defaults to "sgd".
             learning_rate (float, optional): learning rate. Defaults to 0.001.
             lr_encoder (float, optional): encoder learning rate.
             batch_size (int, optional): batch size. Defaults to 4.
@@ -1122,6 +1162,7 @@ class MIMUNetPL(MIMUNet, UNetBasePL):
 
         self.image_key = image_key
         self.label_key = label_key
+        self.optimizer_str = optimizer_str
         self.learning_rate = learning_rate
         self.lr_encoder = lr_encoder
         self.start_decay = start_decay
@@ -1181,6 +1222,7 @@ class BrUNetPL(BrUNet, UNetBasePL):
         label_key: str = "label",
         skip_conditioning_key: str = None,
         feature_conditioning_key: str = None,
+        optimizer_str: str = "sgd",
         learning_rate: float = 0.001,
         lr_encoder: float = None,
         start_decay: float | int = 1.0,
@@ -1206,6 +1248,8 @@ class BrUNetPL(BrUNet, UNetBasePL):
             feature_conditioning_key (str, optional): key corresponding to
                 the tabular features which will be used in the feature
                 conditioning.
+            optimizer_str (str, optional): specifies the optimizer using
+                `get_optimizer`. Defaults to "sgd".
             learning_rate (float, optional): learning rate. Defaults to 0.001.
             lr_encoder (float, optional): encoder learning rate.
             batch_size (int, optional): batch size. Defaults to 4.
@@ -1233,6 +1277,7 @@ class BrUNetPL(BrUNet, UNetBasePL):
         self.label_key = label_key
         self.skip_conditioning_key = skip_conditioning_key
         self.feature_conditioning_key = feature_conditioning_key
+        self.optimizer_str = optimizer_str
         self.learning_rate = learning_rate
         self.lr_encoder = lr_encoder
         self.start_decay = start_decay
