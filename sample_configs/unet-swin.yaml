@@ -1,23 +1,24 @@
 ---
-patch_size: [16,16,2]
-window_size: [32,32,2]
-shift_sizes: [[0,1],[0,1],[0,1],[0,1]]
-embedding_size: [32,64,128,256]
+patch_size: [4, 4, 4]
+window_size: [8,8,8]
+shift_sizes: [[0,0],[0,0],[0,0],[0,0]]
+strides: [[2,2,1], [2,2,1], 2, 2]
+embedding_size: [32, 64, 128, 256]
 n_heads: 8
 mlp_structure: 4.0
 spatial_dimensions: 3
 embed_method: "convolutional"
 conv_type: "regular"
-link_type: "residual"
+link_type: "conv"
 upscale_type: "transpose"
 norm_type: "instance"
 interpolation: "bilinear"
-padding: 1
+padding: "same"
 dropout_rate: 0.1
 dropout_param: 0
 activation_fn: "leaky_relu"
 n_channels: 1
-depth: [32,64,128,256]
+depth: [32, 64, 128, 256]
 kernel_sizes: [3,3,3,3]
 learning_rate: 0.005
 batch_size: 2
@@ -27,5 +28,5 @@ loss_fn:
     eps: 1.0e-6
     smooth: 1.0e-5
   "focal":
-    gamma: 1.0
+    gamma: 0.0
     eps: 1.0e-6

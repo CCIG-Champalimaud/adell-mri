@@ -3,6 +3,7 @@ import re
 import argparse
 import numpy as np
 import monai
+import os
 from pathlib import Path
 from skimage import measure
 from tqdm import tqdm
@@ -176,14 +177,14 @@ def main(arguments):
         if len(mask_path) == 0 and args.strict == True:
             continue
 
-        bb_dict[image_id] = {"image": file_path}
+        bb_dict[image_id] = {"image": os.path.abspath(file_path)}
         if len(alt_file_paths) > 0:
             for i, p in enumerate(alt_file_paths):
-                bb_dict[image_id]["image_" + str(i + 1)] = p
+                bb_dict[image_id]["image_" + str(i + 1)] = os.path.abspath(p)
 
         if len(mask_path) > 0:
             mask_path = mask_path[0]
-            bb_dict[image_id][args.mask_key] = mask_path
+            bb_dict[image_id][args.mask_key] = os.path.abspath(mask_path)
             if args.skip_detection != True:
                 bb_dict[image_id]["boxes"] = []
                 bb_dict[image_id]["shape"] = ""
@@ -204,12 +205,14 @@ def main(arguments):
                 bb_dict[image_id]["image_labels"] = unique_labels
         elif image_id in class_dict_csv:
             bb_dict[image_id] = {
-                "image": file_path,
+                "image": os.path.abspath(file_path),
                 "image_labels": [int(class_dict_csv[image_id])],
             }
             if len(alt_file_paths) > 0:
                 for i, p in enumerate(alt_file_paths):
-                    bb_dict[image_id]["image_" + str(i + 1)] = p
+                    bb_dict[image_id]["image_" + str(i + 1)] = os.path.abspath(
+                        p
+                    )
 
     pretty_dict = json.dumps(bb_dict, indent=2)
     with open(args.output_json, "w") as o:

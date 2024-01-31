@@ -286,7 +286,6 @@ def main(arguments):
         max_epochs=100,
         picai_eval=False,
         lr_encoder=None,
-        cosine_decay=False,
         encoder_checkpoint=args.bottleneck_classification,
         res_config_file=args.res_config_file,
         deep_supervision=False,

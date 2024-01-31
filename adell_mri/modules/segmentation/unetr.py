@@ -195,6 +195,7 @@ class UNETR(UNet, torch.nn.Module):
         self.init_vit()
 
         if self.encoder_only is False:
+            self.init_first_encoder()
             self.init_reconstruction_ops()
             self.init_upscale_ops()
             self.init_link_ops()
@@ -240,9 +241,8 @@ class UNETR(UNet, torch.nn.Module):
 
     def init_rescalers(self):
         """
-        Initialises a set of linear embeddings which become responsible for
-        transforming transformer representations to volumetric vector
-        representations.
+        Initialises a set of linear embeddings which transform transformer
+        representations to volumetric representations.
         """
         self.rescalers = torch.nn.ModuleList(
             [
@@ -256,9 +256,27 @@ class UNETR(UNet, torch.nn.Module):
                     use_pos_embed=False,
                     use_class_token=False,
                 )
-                for _ in self.depth
+                for _ in self.depth[1:]
             ]
         )
+
+    def init_first_encoder(self):
+        """
+        Initialises the first encoder.
+        """
+        self.first_encoder = torch.nn.Sequential(
+            self.adn_fn(self.n_channels),
+            self.conv_op_enc(
+                self.n_channels, self.depth[0], 3, padding="same"
+            ),
+            self.adn_fn(self.depth[0]),
+        )
+
+    def init_final_layer(self):
+        """
+        Initializes the classification layer (simple linear layer)."""
+        o = self.depth[0] * 2
+        self.final_layer = self.get_final_layer(o)
 
     def init_reconstruction_ops(self):
         """Initialises the operations that will reconstruct the ViT outputs
@@ -322,11 +340,12 @@ class UNETR(UNet, torch.nn.Module):
 
         # run vit
         curr, encoding_out = self.vit(X, return_at=self.return_at)
+        X_encoded_first = self.first_encoder(X)
         # rearrange outputs using einops
-        curr = self.rescalers[0].rearrange_rescale(curr, self.scale)
+        curr = self.rearrange_rescale(curr, self.scale)
         encoding_out = [
             rescaler.rearrange_rescale(x, self.scale)
-            for x, rescaler in zip(encoding_out, self.rescalers[1:])
+            for x, rescaler in zip(encoding_out, self.rescalers)
         ]
 
         # apply reconstruction (deconv) ops
@@ -367,7 +386,7 @@ class UNETR(UNet, torch.nn.Module):
             deep_outputs.append(curr)
 
         final_features = curr
-
+        curr = torch.cat([X_encoded_first, curr], 1)
         if return_logits is True:
             curr = self.final_layer[:-1](curr)
         else:
@@ -402,13 +421,14 @@ class MonaiUNETR(UNet, torch.nn.Module):
         image_size: Size2dOr3d,
         patch_size: Size2dOr3d,
         number_of_blocks: int,
-        attention_dim: int,
-        return_at: List[int],
+        attention_dim: int = 128,
+        return_at: List[int] = [2, 4, 6],
         hidden_dim: int = None,
         n_heads: int = 4,
         dropout_rate: float = 0.0,
         embed_method: str = "linear",
         mlp_structure: List[int] = [256, 256],
+        embedding_size: int = 768,
         adn_fn_mlp: Callable = get_adn_fn(1, "identity", "gelu"),
         # regular u-net parametrization
         spatial_dimensions: int = 2,
@@ -528,6 +548,7 @@ class MonaiUNETR(UNet, torch.nn.Module):
         self.dropout_rate = dropout_rate
         self.embed_method = embed_method
         self.mlp_structure = mlp_structure
+        self.embedding_size = embedding_size
         self.adn_fn_mlp = adn_fn_mlp
         # regular u-net parametrization
         self.spatial_dimensions = spatial_dimensions
@@ -751,6 +772,7 @@ class SWINUNet(UNet):
         self.get_drop_op()
 
         self.get_conv_op()
+        self.init_first_encoder()
         self.init_swin_blocks()
         self.init_reconstruction_ops()
         self.init_upscale_ops()
@@ -787,6 +809,24 @@ class SWINUNet(UNet):
                 self.strides[i] = [
                     self.strides[i] for _ in range(self.spatial_dimensions)
                 ]
+
+    def init_first_encoder(self):
+        """
+        Initialises the first encoder.
+        """
+        self.first_encoder = torch.nn.Sequential(
+            self.adn_fn(self.n_channels),
+            self.conv_op_enc(
+                self.n_channels, self.depth[0], 3, padding="same"
+            ),
+            self.adn_fn(self.depth[0]),
+        )
+
+    def init_final_layer(self):
+        """
+        Initializes the classification layer (simple linear layer)."""
+        o = self.depth[0] * 2
+        self.final_layer = self.get_final_layer(o)
 
     def init_swin_blocks(self):
         """Initialises SWin and infers the number of channels at
@@ -890,6 +930,7 @@ class SWINUNet(UNet):
             X_feature_conditioning = X_feature_conditioning - self.f_mean
             X_feature_conditioning = X_feature_conditioning / self.f_std
 
+        X_encoded_first = self.first_encoder(X)
         # run swin blocks
         curr = self.first_swin_block(X)
         encoding_out = [self.first_rec_op(curr)]
@@ -931,6 +972,7 @@ class SWINUNet(UNet):
             deep_outputs.append(curr)
 
         final_features = curr
+        curr = torch.cat([X_encoded_first, curr], 1)
 
         if return_logits is True:
             curr = self.final_layer[:-1](curr)

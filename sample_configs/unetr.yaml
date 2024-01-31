@@ -1,10 +1,10 @@
 ---
-patch_size: [16,16,16]
-embedding_size: 768
-number_of_blocks: 12
-n_heads: 12
-mlp_structure: [3072]
-return_at: [3,6,9]
+patch_size: [16,16,8]
+embedding_size: 512
+number_of_blocks: 8
+n_heads: 8
+mlp_structure: [1024]
+return_at: [2, 4, 6]
 spatial_dimensions: 3
 embed_method: "linear"
 conv_type: "regular"
@@ -27,5 +27,5 @@ loss_fn:
     eps: 1.0e-6
     smooth: 1.0e-5
   "focal":
-    gamma: 1.0
+    gamma: 0.0
     eps: 1.0e-6

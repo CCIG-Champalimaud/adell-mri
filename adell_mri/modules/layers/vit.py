@@ -21,6 +21,21 @@ from ...custom_types import (
 from typing import Sequence
 
 
+def einops_rescale(X: torch.Tensor, scale: int = 1) -> torch.Tensor:
+    sh = X.shape
+    b, c, inner = sh[0], sh[1], sh[2:]
+    einops_dict = {"b": b, "c": c}
+    size_names = ["h", "w", "d"]
+    for i, (coord, s) in enumerate(zip(inner, scale)):
+        einops_dict[size_names[i]] = coord // s
+        einops_dict[f"p{i+1}"] = s
+    if len(sh) == 4:
+        einops_str = "b c (h p1) (w p2) -> b (c p1 p2) h w"
+    elif len(sh) == 5:
+        einops_str = "b c (h p1) (w p2) (d p3) -> b (c p1 p2 p3) h w d"
+    return einops.rearrange(X, einops_str, **einops_dict)
+
+
 def cyclic_shift_batch(X: torch.Tensor, shift: List[int]):
     """Applies what the authors from SWIN call a "cyclic shift".
 
@@ -67,7 +82,9 @@ def downsample_ein_op_dict(
     return ein_op_dict
 
 
-def window_partition(x: torch.Tensor, window_size: Size2dOr3d) -> torch.Tensor:
+def window_partition_custom(
+    x: torch.Tensor, window_size: Size2dOr3d
+) -> torch.Tensor:
     """
     Reshapes an image/volume batch tensor into smaller image/volumes of
     window_size. Generalizes the implementation in [1] to both images and
@@ -994,7 +1011,7 @@ class SWINTransformerBlock(torch.nn.Module):
             window_size=self.window_size,
             dropout_rate=self.dropout_rate_embedding,
             embed_method=self.embed_method,
-            out_dim=None,
+            out_dim=self.embedding_size,
             use_pos_embed=self.use_pos_embed,
         )
         self.input_dim_primary = self.embedding.true_n_features
@@ -1059,12 +1076,66 @@ class SWINTransformerBlock(torch.nn.Module):
         X = cyclic_shift_batch(X, cyc)
         X = self.embedding(X)
         attention = self.mha(self.norm_op_1(X), mask=self.attention_mask)
-        attention = self.embedding.einop_rearrange_inv(attention)
+        attention = self.embedding.rearrange_inverse_basic(attention)
         attention = cyclic_shift_batch(attention, rev_cyc)
-        attention = self.embedding.einop_rearrange(attention)
+        attention = self.embedding.rearrange(attention)
         return attention
 
+    def roll(self, X: torch.Tensor, shifts: List[int]):
+        """Rolls a tensor along the last dimensions.
+
+        Args:
+            X (torch.Tensor): tensor to roll.
+            shifts (List[int]): list of shifts to apply.
+
+        Returns:
+            torch.Tensor: rolled tensor.
+        """
+        dims = [-i - 1 for i in range(len(shifts))]
+        return torch.roll(X, shifts=shifts, dims=dims)
+
     def forward(
+        self, X: torch.Tensor, scale: int = None
+    ) -> Tuple[torch.Tensor, TensorList]:
+        """Forward pass, based on MONAI implementation [1].
+
+        [1] https://docs.monai.io/en/stable/_modules/monai/networks/nets/swin_unetr.html
+
+        Args:
+            X (torch.Tensor): tensor of shape
+                [-1,self.n_channels,*self.image_size]
+            scale (int): downsampling scale for output. Defaults to None
+                (returns the non-rearranged output).
+
+        Returns:
+            torch.Tensor: tensor of shape [...,self.input_dim_primary]
+            List[torch.Tensor]: list of intermediary tensors corresponding to
+                the ith transformer outputs, where i is contained in return_at.
+                Same shape as the final output.
+        """
+        if scale is not None:
+            if isinstance(scale, int):
+                scale = [scale for _ in self.patch_size]
+        ss = self.shift_size
+        if isinstance(ss, int):
+            ss = [ss] * len(self.patch_size)
+        sh = X.shape
+        if any(i > 0 for i in ss):
+            shifted_X = self.roll(X, shifts=[-s for s in ss])
+        else:
+            shifted_X = X
+        x_windows = self.embedding(shifted_X)
+        attn_windows = self.mha(x_windows, mask=self.attention_mask)
+        shifted_X = self.embedding.rearrange_inverse(attn_windows, c=sh[1])
+        if any(i > 0 for i in ss):
+            X = torch.roll(shifted_X, shifts=ss)
+        else:
+            X = shifted_X
+        if scale is not None:
+            X = einops_rescale(X, scale)
+        return X
+
+    def forward_old(
         self, X: torch.Tensor, scale: int = None
     ) -> Tuple[torch.Tensor, TensorList]:
         """Forward pass.
