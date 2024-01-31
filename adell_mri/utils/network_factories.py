@@ -350,6 +350,7 @@ def get_segmentation_network(
     deep_supervision: bool,
     n_classes: int,
     keys: List[str],
+    optimizer_str: str = "sgd",
     start_decay: float | int = 1.0,
     warmup_steps: float | int = 0.0,
     train_loader_call: Callable = None,
@@ -383,6 +384,7 @@ def get_segmentation_network(
         lr_encoder=lr_encoder,
         start_decay=start_decay,
         warmup_steps=warmup_steps,
+        optimizer_str=optimizer_str,
     )
 
     if net_type == "unet" and semi_supervised is True:

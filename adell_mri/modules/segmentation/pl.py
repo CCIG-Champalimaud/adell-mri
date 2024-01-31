@@ -479,10 +479,13 @@ class UNetBasePL(pl.LightningModule, ABC):
         if hasattr(self, "optimizer_str"):
             if hasattr(self, "optimizer_parmas"):
                 optimizer_params = self.optimizer_params
+            elif self.optimizer_str == "sgd":
+                optimizer_params = {"momentum": 0.99, "nesterov": True}
             else:
                 optimizer_params = {}
             optimizer = get_optimizer(
                 self.optimizer_str,
+                parameters,
                 lr=self.learning_rate,
                 weight_decay=self.weight_decay,
                 **optimizer_params,
