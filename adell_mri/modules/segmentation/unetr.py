@@ -272,40 +272,46 @@ class UNETR(UNet, torch.nn.Module):
             self.adn_fn(self.depth[0]),
         )
 
-    def init_final_layer(self):
-        """
-        Initializes the classification layer (simple linear layer)."""
-        o = self.depth[0] * 2
-        self.final_layer = self.get_final_layer(o)
+    def unetr_transp_op(
+        self, in_d: int, out_d: int, kernel_size: int = 3
+    ) -> torch.nn.Module:
+        if self.spatial_dimensions == 2:
+            transp_conv = torch.nn.ConvTranspose2d
+        else:
+            transp_conv = torch.nn.ConvTranspose3d
+        return torch.nn.Sequential(
+            transp_conv(in_d, out_d, 2, 2),
+            self.adn_fn(out_d),
+            self.conv_op_enc(out_d, out_d, kernel_size, padding="same"),
+            self.adn_fn(out_d),
+        )
+
+    def unetr_transp_block(
+        self, in_d: int, out_d: int, n_ops: int, kernel_size: int = 3
+    ) -> torch.nn.Module:
+        out = torch.nn.ModuleList(
+            [self.unetr_transp_op(in_d, out_d, kernel_size)]
+        )
+        for _ in range(n_ops):
+            out.append(self.unetr_transp_op(out_d, out_d, 3))
+        return torch.nn.Sequential(*out)
 
     def init_reconstruction_ops(self):
         """Initialises the operations that will reconstruct the ViT outputs
         to be U-Net compliant.
         """
-        if self.spatial_dimensions == 2:
-            transp_conv = torch.nn.ConvTranspose2d
-        else:
-            transp_conv = torch.nn.ConvTranspose3d
         self.reconstructed_dim = [
             self.n_channels_rec,
             *[x // self.scale for x in self.image_size],
         ]
         self.reconstruction_ops = torch.nn.ModuleList([])
         self.n_skip_connections = len(self.depth) - 1
-        for i, d in enumerate(self.depth[:-1]):
+        for i, d in enumerate(self.depth[1:-1]):
+            i = i + 1
             n_ops = self.n_skip_connections - i
-            rec_op_seq = torch.nn.ModuleList(
-                [
-                    torch.nn.Sequential(
-                        transp_conv(self.n_channels_rec, d, 2, 2),
-                        self.adn_fn(d),
-                    )
-                ]
+            rec_op_seq = self.unetr_transp_block(
+                self.n_channels_rec, d, n_ops - 1, 3
             )
-            for _ in range(n_ops - 1):
-                rec_op_seq.append(transp_conv(d, d, 2, 2))
-                rec_op_seq.append(self.adn_fn(d))
-            rec_op_seq = torch.nn.Sequential(*rec_op_seq)
             self.reconstruction_ops.append(rec_op_seq)
         self.bottleneck_reconstruction = self.conv_op_enc(
             self.n_channels_rec, self.depth[-1], 1, 1
@@ -351,9 +357,13 @@ class UNETR(UNet, torch.nn.Module):
         # apply reconstruction (deconv) ops
         curr = self.bottleneck_reconstruction(curr)
         encoding_out = [
-            rec_op(x)
-            for x, rec_op in zip(encoding_out, self.reconstruction_ops)
+            X_encoded_first,
+            *[
+                rec_op(x)
+                for x, rec_op in zip(encoding_out, self.reconstruction_ops)
+            ],
         ]
+
         encoding_out.append(curr)
         bottleneck = curr
         if return_bottleneck is True:
@@ -386,7 +396,6 @@ class UNETR(UNet, torch.nn.Module):
             deep_outputs.append(curr)
 
         final_features = curr
-        curr = torch.cat([X_encoded_first, curr], 1)
         if return_logits is True:
             curr = self.final_layer[:-1](curr)
         else:
