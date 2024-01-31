@@ -642,10 +642,6 @@ def get_logger(
         elif logger_type == "mlflow":
             from lightning.pytorch.loggers import MLFlowLogger
 
-            if tracking_uri is None:
-                raise NotImplementedError(
-                    "tracking_uri must be defined for type='mlflow'"
-                )
             logger = MLFlowLogger(
                 experiment_name=project_name,
                 run_name=run_name,
