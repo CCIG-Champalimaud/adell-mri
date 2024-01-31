@@ -116,6 +116,7 @@ def main(arguments):
             "tracking_uri",
             "resume",
             "monitor",
+            "optimizer",
             "learning_rate",
             "batch_size",
             "gradient_clip_val",
