@@ -619,11 +619,12 @@ def get_logger(
     logger = None
     if (summary_name is not None) and (project_name is not None):
         run_name = summary_name.replace(":", "_")
-        if fold is not None:
-            run_name = run_name + f"_fold{fold}"
         if logger_type == "wandb":
             import wandb
             from lightning.pytorch.loggers import WandbLogger
+
+            if fold is not None:
+                run_name = run_name + f"_fold{fold}"
 
             wandb.finish()
             wandb_resume = resume
@@ -641,6 +642,9 @@ def get_logger(
             )
         elif logger_type == "mlflow":
             from lightning.pytorch.loggers import MLFlowLogger
+
+            if fold is not None:
+                run_name = run_name + f"/fold{fold}"
 
             logger = MLFlowLogger(
                 experiment_name=project_name,

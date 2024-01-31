@@ -22,7 +22,7 @@ depth: [32, 64, 128, 256]
 kernel_sizes: [3, 3, 3, 3]
 learning_rate: 0.005
 batch_size: 2
-weight_decay: 0.0005
+weight_decay: 0.05
 loss_fn: 
   "dice":
     eps: 1.0e-6
