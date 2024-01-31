@@ -1092,7 +1092,7 @@ class SWINTransformerBlock(torch.nn.Module):
             torch.Tensor: rolled tensor.
         """
         n = len(X.shape)
-        dims = [n - i for i in range(1, len(shifts) + 1)]
+        dims = reversed([n - i for i in range(1, len(shifts) + 1)])
         return torch.roll(X, shifts=shifts, dims=dims)
 
     def forward(
