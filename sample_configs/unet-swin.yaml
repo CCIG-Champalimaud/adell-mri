@@ -1,7 +1,7 @@
 ---
 patch_size: [4, 4, 4]
-window_size: [8,8,8]
-shift_sizes: [[0,0],[0,0],[0,0],[0,0]]
+window_size: [8, 8, 8]
+shift_sizes: [[0, 1],[0, 1],[0, 1],[0, 1]]
 strides: [[2,2,1], [2,2,1], 2, 2]
 embedding_size: [32, 64, 128, 256]
 n_heads: 8
@@ -19,10 +19,10 @@ dropout_param: 0
 activation_fn: "leaky_relu"
 n_channels: 1
 depth: [32, 64, 128, 256]
-kernel_sizes: [3,3,3,3]
+kernel_sizes: [3, 3, 3, 3]
 learning_rate: 0.005
 batch_size: 2
-weight_decay: 0.05
+weight_decay: 0.0005
 loss_fn: 
   "dice":
     eps: 1.0e-6

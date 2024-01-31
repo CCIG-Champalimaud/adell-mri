@@ -70,6 +70,26 @@ def test_conv_embedding(d):
     assert list(out.shape) == [1, le.n_patches, le.n_features]
 
 
+@pytest.mark.parametrize("d", [2, 3])
+def test_conv_embedding_channels_first(d):
+    i_s, p_s = image_size[:d], patch_size[:d]
+    le = LinearEmbedding(
+        i_s, p_s, n_channels, embed_method="convolutional", channels_last=True
+    )
+    out = le(torch.rand(size=[1] + i_s + [n_channels]))
+    assert list(out.shape) == [1, le.n_patches, le.n_features]
+
+
+@pytest.mark.parametrize("d", [2, 3])
+def test_linear_embedding_channels_first(d):
+    i_s, p_s = image_size[:d], patch_size[:d]
+    le = LinearEmbedding(
+        i_s, p_s, n_channels, embed_method="linear", channels_last=True
+    )
+    out = le(torch.rand(size=[1] + i_s + [n_channels]))
+    assert list(out.shape) == [1, le.n_patches, le.n_features]
+
+
 @pytest.mark.parametrize(
     "d, scale", product([2, 3], [[2, 2, 2], [2, 2, 1], [2, 1, 2]])
 )

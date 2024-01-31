@@ -21,6 +21,16 @@ from ...custom_types import (
 from typing import Sequence
 
 
+def move_axis(X: torch.Tensor, axis1: int, axis2: int) -> torch.Tensor:
+    axes = [i for i in range(len(X.shape))]
+    if axis1 < 0:
+        axis1 = axes[axis1]
+    if axis2 < 0:
+        axis2 = axes[axis2]
+    axes.insert(axis2, axes.pop(axis1))
+    return X.permute(tuple(axes))
+
+
 def einops_rescale(X: torch.Tensor, scale: int = 1) -> torch.Tensor:
     sh = X.shape
     b, c, inner = sh[0], sh[1], sh[2:]
@@ -394,6 +404,7 @@ class LinearEmbedding(torch.nn.Module):
         use_class_token: bool = False,
         learnable_embedding: bool = True,
         channel_to_token: bool = False,
+        channels_last: bool = False,
     ):
         """
         Args:
@@ -418,6 +429,8 @@ class LinearEmbedding(torch.nn.Module):
             channel_to_token (bool, optional): embeds the channel dimension as
                 tokens rather than as part of the embedding. Works only with
                 "linear" embedding. Defaults to False.
+            channels_last (bool, optional): whether the channels in input and
+                output tensors are the last dimension. Defaults to False.
         """
         super().__init__()
         self.image_size = image_size
@@ -431,6 +444,7 @@ class LinearEmbedding(torch.nn.Module):
         self.use_class_token = use_class_token
         self.learnable_embedding = learnable_embedding
         self.channel_to_token = channel_to_token
+        self.channels_last = channels_last
 
         embed_methods = ["linear", "convolutional"]
         assert (
@@ -629,6 +643,12 @@ class LinearEmbedding(torch.nn.Module):
         ) = self.get_linear_einop_params()
         self.lh_c, self.rh_c, self.einop_dict_c = self.get_conv_einop_params()
 
+        if self.channels_last is True:
+            self.lh_l.remove("c")
+            self.lh_c.remove("c")
+            self.lh_l.append("c")
+            self.lh_c.append("c")
+
         self.einop_str_l = "{lh} -> {rh}".format(
             lh=" ".join([self.einops_tuple(x) for x in self.lh_l]),
             rh=" ".join([self.einops_tuple(x) for x in self.rh_l]),
@@ -684,6 +704,9 @@ class LinearEmbedding(torch.nn.Module):
                 rh_l[2].insert(2 * i + 1, k)
             einop_dict_l[k] = scale[i]
             einop_dict_l[size_list[i]] = einop_dict_l[size_list[i]] // scale[i]
+        if self.channels_last is True:
+            lh_l.remove("c")
+            lh_l.append("c")
         einops_inv_str = "{rh} -> {lh}".format(
             lh=" ".join([self.einops_tuple(x) for x in lh_l]),
             rh=" ".join([self.einops_tuple(x) for x in rh_l]),
@@ -797,7 +820,12 @@ class LinearEmbedding(torch.nn.Module):
         """
         # output should always be [X.shape[0],self.n_patches,self.true_n_features]
         if self.embed_method == "convolutional":
-            X = self.conv(X)
+            if self.channels_last is True:
+                X = move_axis(X, -1, 1)
+                X = self.conv(X)
+                X = move_axis(X, 1, -1)
+            else:
+                X = self.conv(X)
         X = self.rearrange(X)
         if (no_pos_embed is False) and (self.use_pos_embed is True):
             X = X + self.positional_embedding
@@ -1013,6 +1041,7 @@ class SWINTransformerBlock(torch.nn.Module):
             embed_method=self.embed_method,
             out_dim=self.embedding_size,
             use_pos_embed=self.use_pos_embed,
+            channels_last=True,
         )
         self.input_dim_primary = self.embedding.true_n_features
 
@@ -1030,9 +1059,7 @@ class SWINTransformerBlock(torch.nn.Module):
 
     def init_layers(self):
         if isinstance(self.mlp_structure, float):
-            self.mlp_structure = [
-                int(self.input_dim_primary * self.mlp_structure)
-            ]
+            self.mlp_structure = [int(self.n_channels * self.mlp_structure)]
 
         input_dim_primary = self.input_dim_primary
 
@@ -1057,10 +1084,10 @@ class SWINTransformerBlock(torch.nn.Module):
         )
 
         self.norm_op_1 = torch.nn.LayerNorm(input_dim_primary)
-        self.norm_op_2 = torch.nn.LayerNorm(input_dim_primary)
+        self.norm_op_2 = torch.nn.LayerNorm(self.n_channels)
         self.mlp = MLP(
-            input_dim_primary,
-            input_dim_primary,
+            self.n_channels,
+            self.n_channels,
             self.mlp_structure,
             self.adn_fn,
         )
@@ -1092,7 +1119,7 @@ class SWINTransformerBlock(torch.nn.Module):
             torch.Tensor: rolled tensor.
         """
         n = len(X.shape)
-        dims = reversed([n - i for i in range(1, len(shifts) + 1)])
+        dims = [i + 1 for i in range(1, len(shifts) + 1)]
         return torch.roll(X, shifts=shifts, dims=dims)
 
     def forward(
@@ -1114,6 +1141,8 @@ class SWINTransformerBlock(torch.nn.Module):
                 the ith transformer outputs, where i is contained in return_at.
                 Same shape as the final output.
         """
+        X = move_axis(X, 1, -1)
+        shortcut = X
         if scale is not None:
             if isinstance(scale, int):
                 scale = [scale for _ in self.patch_size]
@@ -1125,13 +1154,22 @@ class SWINTransformerBlock(torch.nn.Module):
             shifted_X = self.roll(X, shifts=[-s for s in ss])
         else:
             shifted_X = X
-        x_windows = self.embedding(shifted_X)
-        attn_windows = self.mha(x_windows, mask=self.attention_mask)
-        shifted_X = self.embedding.rearrange_inverse(attn_windows, c=sh[1])
+        embedded_X = self.embedding(shifted_X)
+        attention = self.mha(
+            self.norm_op_1(embedded_X), mask=self.attention_mask
+        )
+        if self.embedding.embed_method == "convolutional":
+            shifted_X = self.embedding.rearrange_inverse(attention)
+        else:
+            shifted_X = self.embedding.rearrange_inverse_basic(attention)
         if any(i > 0 for i in ss):
             X = self.roll(shifted_X, shifts=ss)
         else:
             X = shifted_X
+
+        X = shortcut + self.drop_op_1(shifted_X)
+        X = X + self.drop_op_2(self.mlp(self.norm_op_2(X)))
+        X = move_axis(X, -1, 1)
         if scale is not None:
             X = einops_rescale(X, scale)
         return X

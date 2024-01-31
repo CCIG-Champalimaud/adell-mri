@@ -389,7 +389,6 @@ class FlippedInference:
             result = self.inference_function(batch, *args, **kwargs)
             result = torch.split(result, original_batch_size)
             output.extend(result)
-        print(len(output))
         output[1:] = [
             torch.flip(x, flip_axis) for x, flip_axis in zip(output[1:], flips)
         ]
