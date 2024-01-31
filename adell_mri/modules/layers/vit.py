@@ -1091,7 +1091,8 @@ class SWINTransformerBlock(torch.nn.Module):
         Returns:
             torch.Tensor: rolled tensor.
         """
-        dims = [-i - 1 for i in range(len(shifts))]
+        n = len(X.shape)
+        dims = [n - i for i in range(1, len(shifts) + 1)]
         return torch.roll(X, shifts=shifts, dims=dims)
 
     def forward(
@@ -1128,7 +1129,7 @@ class SWINTransformerBlock(torch.nn.Module):
         attn_windows = self.mha(x_windows, mask=self.attention_mask)
         shifted_X = self.embedding.rearrange_inverse(attn_windows, c=sh[1])
         if any(i > 0 for i in ss):
-            X = torch.roll(shifted_X, shifts=ss)
+            X = self.roll(shifted_X, shifts=ss)
         else:
             X = shifted_X
         if scale is not None:
