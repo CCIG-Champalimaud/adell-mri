@@ -262,7 +262,9 @@ def main(arguments):
         data_dict = {
             k: data_dict[k] for k in data_dict if k not in args.excluded_ids
         }
-        print("\tRemoved {} IDs".format(prev_len - len(data_dict)))
+        print(f"\tRemoved {prev_len - len(data_dict)} IDs")
+        print(f"\tBefore: {prev_len} IDs")
+        print(f"\tAfter: {len(data_dict)} IDs")
         if args.semi_supervised is True:
             print(
                 "Removing IDs specified in --excluded_ids from semi-supervision"
@@ -273,7 +275,9 @@ def main(arguments):
                 for k in data_dict_ssl
                 if k not in args.excluded_ids
             }
-            print("\tRemoved {} IDs".format(prev_len - len(data_dict_ssl)))
+            print(f"\tRemoved {prev_len - len(data_dict_ssl)} IDs")
+            print(f"\tBefore: {prev_len} IDs")
+            print(f"\tAfter: {len(data_dict_ssl)} IDs")
 
     if args.target_spacing[0] == "infer":
         target_spacing_dict = spacing_values_from_dataset_json(
