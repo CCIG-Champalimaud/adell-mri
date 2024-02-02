@@ -432,6 +432,31 @@ class CalculateMetrics:
         output_figure = stack_images_pil(*output_figure, axis=0)
         return output_figure
 
+    def overlap_dictionary(
+        self, pred: np.ndarray, gt: np.ndarray
+    ) -> dict[str, int]:
+        """
+        Calculates total positive pixels, intersection and union of two arrays.
+
+        Args:
+            pred (np.ndarray): binarized prediction array.
+            gt (np.ndarray): ground truth array.
+
+        Returns:
+            dict[str, int]: dictionary with entries for total positive pixels
+                in prediction and ground truth, and intersection and union
+                between prediction and ground truth.
+        """
+        pred_sum = np.sum(pred == 1)
+        gt_sum = np.sum(gt == 1)
+        intersection = np.sum(np.logical_and(gt == pred, gt == 1))
+        return {
+            "pred_total": pred_sum,
+            "gt_total": gt_sum,
+            "intersection": intersection,
+            "union": pred_sum + gt_sum - intersection,
+        }
+
     def calculate_metrics(
         self,
         key: str,
@@ -472,6 +497,10 @@ class CalculateMetrics:
             "lesions": y_list,
             "case_confidence": case_confidence,
             "gt": gt_value,
+        }
+        output_dict = {
+            **output_dict,
+            **self.overlap_dictionary(pred > self.proba_threshold, gt),
         }
         if input_image is not None and self.return_examples:
             input_image = self.read_image(input_image)
