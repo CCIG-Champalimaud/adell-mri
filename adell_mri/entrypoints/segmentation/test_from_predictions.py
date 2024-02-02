@@ -1,15 +1,39 @@
+import pprint
 import re
+import json
 import numpy as np
 import SimpleITK as sitk
+import os
+from PIL import Image, ImageDraw, ImageFont
+from matplotlib import colormaps
 from pathlib import Path
 from tqdm import tqdm
 from dataclasses import dataclass
-from multiprocessing import Pool
-
+from scipy import ndimage
+from multiprocessing import Pool, Queue, Process
 from ...entrypoints.assemble_args import Parser
 from ...utils.parser import parse_ids
 from ...modules.segmentation.picai_eval.eval import evaluate_case, Metrics
 from ...modules.extract_lesion_candidates import extract_lesion_candidates
+
+from typing import Callable
+
+
+def get_lesion_candidates(arr: np.ndarray, threshold: float) -> np.ndarray:
+    arr = np.where(arr < threshold, 0, arr)
+    labels, max_label = ndimage.label(arr, structure=np.ones([3, 3, 3]))
+    output = np.zeros_like(arr)
+    output_eval = np.zeros_like(arr)
+    for i in range(1, max_label + 1):
+        if i != 0:
+            output[labels == i] = arr[labels == i]
+            output_eval[labels == i] = arr[labels == i].max()
+    return output, output_eval
+
+
+def normalize(image: np.ndarray) -> np.ndarray:
+    m, M = image.min(), image.max()
+    return (image - m) / (M - m)
 
 
 def file_list_to_dict(file_list: list[str], pattern: str) -> dict[str, str]:
@@ -32,14 +56,101 @@ def softmax(x: np.ndarray) -> np.ndarray:
     x = x / x.sum(0, keepdims=True)
 
 
+def coherce_to_serializable(d: dict) -> dict:
+    for k in d:
+        if isinstance(d[k], np.ndarray):
+            d[k] = d[k].tolist()
+        if isinstance(d[k], (np.float32, np.float64)):
+            d[k] = d[k].tolist()
+        if isinstance(d[k], dict):
+            d[k] = coherce_to_serializable(d[k])
+    return d
+
+
+def draw_legend(image_slice: np.ndarray, cmap: Callable, mix_factor: float):
+    legend_coords = (image_slice.shape[0] - 20, 20)
+    legend_size = 50
+    legend = cmap(np.linspace(0, 1, legend_size))
+    legend *= np.minimum(mix_factor * 1.5, 1)
+    vertical_size = 7
+    for i in range(-(vertical_size // 2 + 1), (vertical_size // 2 + 2)):
+        image_slice[
+            legend_coords[0] + i,
+            (legend_coords[1] - 4) : (legend_coords[1] + legend_size + 4),
+        ] = 1
+    for i in range(-(vertical_size // 2 - 1), (vertical_size // 2)):
+        image_slice[
+            legend_coords[0] + i,
+            (legend_coords[1]) : (legend_coords[1] + legend_size),
+        ] = legend
+
+
+def visualize_heatmap(
+    image_slice: np.ndarray,
+    heatmap_slice: np.ndarray,
+    mix_factor: int = 1.0,
+    do_legend: bool = True,
+) -> np.ndarray:
+    if np.count_nonzero(heatmap_slice) > 0:
+        cmap = colormaps["jet"]
+        heatmap_slice = heatmap_slice
+        heatmap_rgb = np.zeros((*heatmap_slice.shape, 4))
+        x, y = np.where(heatmap_slice)
+        heatmap_rgb[x, y] = cmap(heatmap_slice[x, y])
+        heatmap_rgb[:, :, 3] = 1
+        # R channel used for heatmap, G used for reverse
+        image_slice = np.where(
+            heatmap_rgb > 0,
+            heatmap_rgb * mix_factor + image_slice * (1 - mix_factor),
+            image_slice,
+        )
+        if do_legend:
+            draw_legend(image_slice, cmap, mix_factor)
+
+    return image_slice
+
+
+@dataclass
+class ImageWriter:
+    n_proc: int = 1
+
+    def __post_init__(self):
+        self.queue = Queue()
+        self.processes = [
+            Process(target=self.write, args=(self.queue,))
+            for _ in range(self.n_proc)
+        ]
+        for p in self.processes:
+            p.start()
+
+    def write(self, q):
+        while True:
+            image, image_name = q.get()
+            if image_name is None:
+                break
+            image.save(image_name)
+
+    def put(self, image, image_name):
+        self.queue.put((image, image_name))
+
+    # close queue and process
+    def close(self):
+        self.queue.put((None, None))
+        for p in self.processes:
+            p.join()
+            p.close()
+
+
 @dataclass
 class CalculateMetrics:
     prediction_mode: str = "mask"
     reduction: str = "mean"
     n_classes: int = 2
     fold: int = None
-    threshold: float = None
+    overlap_threshold: float = None
     proba_threshold: float = 0.1
+    return_examples: bool = False
+    class_idx: int = 0
 
     def __post_init__(self):
         pass
@@ -66,19 +177,22 @@ class CalculateMetrics:
 
     def read_image(self, image: str | sitk.Image) -> np.ndarray:
         if isinstance(image, str):
-            image = sitk.ReadImage(image)
+            if image.endswith(".npz") or image.endswith(".npy"):
+                image = np.load(image)
+            else:
+                image = sitk.ReadImage(image)
         if isinstance(image, sitk.Image):
             image = sitk.GetArrayFromImage(image)
         return image
 
     def pred_to_mask(self, pred: np.ndarray) -> np.ndarray:
         if self.prediction_mode in ["probs", "logits"]:
-            if self.threshold is None:
+            if self.proba_threshold is None:
                 if pred.shape[0] == 1:
                     pred = np.concatenate([1 - pred, pred])
                 pred = np.argmax(pred, 0)
             else:
-                pred = np.int32(pred > self.threshold)
+                pred = np.int32(pred > self.proba_threshold)
         return pred
 
     def preprocess_pred(self, pred: np.ndarray) -> np.ndarray:
@@ -97,34 +211,111 @@ class CalculateMetrics:
         return pred
 
     def extract_lesion_candidates(self, pred: np.ndarray) -> np.ndarray:
-        return extract_lesion_candidates(
-            pred,
-            threshold=self.proba_threshold,
-        )[0]
+        return get_lesion_candidates(pred, self.proba_threshold)
+
+    def retrieve_example_image(
+        self,
+        image: np.ndarray,
+        ground_truth: np.ndarray,
+        prediction: np.ndarray,
+    ) -> np.ndarray:
+        def stack_images_pil(*images: Image, axis: int = 0) -> Image:
+            widths, heights = zip(*(i.size for i in images))
+            if axis == 0:
+                W = sum(widths)
+                H = max(heights)
+            else:
+                W = max(widths)
+                H = sum(heights)
+            new_im = Image.new("RGBA", (W, H))
+            offset = 0
+            for im in images:
+                if axis == 0:
+                    new_im.paste(im, (offset, 0))
+                else:
+                    new_im.paste(im, (0, offset))
+                offset += im.size[axis]
+            return new_im
+
+        z_gt, _, _ = np.where(ground_truth > 0.5)
+        z_pred, _, _ = np.where(prediction)
+        image = normalize(image)
+        all_positive_slices = []
+        all_positive_slices.extend(z_gt)
+        all_positive_slices.extend(z_pred)
+        all_positive_slices = np.unique(all_positive_slices)
+        if len(all_positive_slices) == 0:
+            return None
+        output_figure = []
+        first = True
+        font = ImageFont.load_default(size=32)
+        for idx in all_positive_slices:
+            shaded = np.where(ground_truth[idx] > 0.5, 1, image[idx])
+            shaded = np.stack([shaded for _ in range(4)], -1)
+            shaded[:, :, -1] = 1
+            image_stack = np.stack([image[idx] for _ in range(4)], -1)
+            image_stack[:, :, -1] = 1
+            if shaded.sum() == 0 and prediction[idx].sum == 0:
+                continue
+            heatmap = visualize_heatmap(
+                image_stack, prediction[idx], do_legend=first
+            )
+            output_figure.append(
+                stack_images_pil(
+                    Image.fromarray(np.uint8(image_stack * 255)),
+                    Image.fromarray(np.uint8(shaded * 255)),
+                    Image.fromarray(np.uint8(heatmap * 255)),
+                    axis=1,
+                )
+            )
+            ImageDraw.Draw(output_figure[-1]).text(
+                (5, 5), f"slice idx={idx}", (255, 255, 255), font=font
+            )
+            first = False
+        output_figure = stack_images_pil(*output_figure, axis=0)
+        return output_figure
+
+    def calculate_metrics_wrapper(
+        self,
+        images: tuple[
+            str, str | sitk.Image, str | sitk.Image, str | sitk.Image
+        ],
+    ):
+        out = self.calculate_metrics(*images)
+        return out
 
     def calculate_metrics(
-        self, images: tuple[str, str, str] | tuple[str, sitk.Image, sitk.Image]
+        self,
+        key: str,
+        gt: str | sitk.Image,
+        pred: str | sitk.Image,
+        example: str | sitk.Image = None,
     ):
-        key, gt, pred = images
         gt = self.read_image(gt)
         pred = self.read_image(pred)
-        pred = self.preprocess_pred(pred)
+        pred = self.preprocess_pred(pred)[self.class_idx]
+        pred, pred_eval = self.extract_lesion_candidates(pred)
         y_list, case_confidence, _, _ = evaluate_case(
-            y_det=pred[0],
+            y_det=pred_eval,
             y_true=gt,
-            min_overlap=self.threshold,
-            y_det_postprocess_func=self.extract_lesion_candidates,
+            min_overlap=self.overlap_threshold,
+            y_det_postprocess_func=None,
         )
         y_list = [
             {"gt": y[0], "confidence": y[1], "overlap": y[2]} for y in y_list
         ]
-        gt = max([y["gt"] for y in y_list]) if len(y_list) > 0 else 0
+        gt_value = max([y["gt"] for y in y_list]) if len(y_list) > 0 else 0
         output_dict = {
             "lesions": y_list,
             "case_confidence": case_confidence,
-            "gt": gt,
+            "gt": gt_value,
         }
-        return key, output_dict
+        if example is not None and self.return_examples:
+            example = self.read_image(example)
+            example = self.retrieve_example_image(example, gt, pred)
+        else:
+            example = None
+        return key, output_dict, example
 
 
 def main(arguments):
@@ -189,15 +380,15 @@ def main(arguments):
             extract that index.",
     )
     parser.add_argument(
-        "--threshold",
-        default=None,
+        "--overlap_threshold",
+        default=0.1,
         type=float,
         help="IoU threshold to consider that an object has been detected",
     )
     parser.add_argument(
         "--proba_threshold",
-        default=None,
-        type=float,
+        default=0.1,
+        type=str,
         help="If a probability is > threshold then it is considered positive. \
             If not specified, assumes the maximum probability/0.5 in binary \
             cases corresponds to the correct/positive class",
@@ -214,6 +405,36 @@ def main(arguments):
         type=int,
         help="Number of parallel workers.",
     )
+    parser.add_argument(
+        "--output_json",
+        default=None,
+        type=str,
+        help="Output path. If not specified will print to stdout.",
+    )
+    parser.add_argument(
+        "--generate_examples",
+        action="store_true",
+        help="Generates examples of predictions in PNG format. An example will \
+            be generated for each study each having n slices, where n is the \
+            number of slices.",
+    )
+    parser.add_argument(
+        "--image_path",
+        required=True,
+        help="Path to images (for examples).",
+    )
+    parser.add_argument(
+        "--image_patterns",
+        default="*nii.gz",
+        nargs="+",
+        help="glob pattern which will be used to collect images (for examples).",
+    )
+    parser.add_argument(
+        "--example_path",
+        type=str,
+        default="figures",
+        help="Output path for examples.",
+    )
 
     args = parser.parse_args(arguments)
 
@@ -225,22 +446,33 @@ def main(arguments):
         all_ground_truth_paths.extend(
             [str(x) for x in Path(args.ground_truth_path).glob(pattern)]
         )
+    ground_truth_dict = file_list_to_dict(
+        all_ground_truth_paths, args.identifier_pattern
+    )
+    print(f"Found ground truths: {len(all_ground_truth_paths)}")
+
     all_prediction_paths = []
     for pattern in args.prediction_patterns:
         all_prediction_paths.extend(
             [str(x) for x in Path(args.prediction_path).glob(pattern)]
         )
-
-    print(f"Found ground truths: {len(all_ground_truth_paths)}")
-    print(f"Found predictions: {len(all_prediction_paths)}")
-
-    ground_truth_dict = file_list_to_dict(
-        all_ground_truth_paths, args.identifier_pattern
-    )
-
     prediction_dict = file_list_to_dict(
         all_prediction_paths, args.identifier_pattern
     )
+    print(f"Found predictions: {len(all_prediction_paths)}")
+
+    if args.generate_examples:
+        all_image_paths = []
+        for pattern in args.image_patterns:
+            all_image_paths.extend(
+                [str(x) for x in Path(args.image_path).glob(pattern)]
+            )
+        image_dict = file_list_to_dict(
+            all_image_paths, args.identifier_pattern
+        )
+        print(f"Found example images: {len(image_dict)}")
+    else:
+        image_dict = {}
 
     if args.id_list is not None:
         id_list = parse_ids(args.id_list, "list")
@@ -255,11 +487,13 @@ def main(arguments):
                     merged_dict[key] = {
                         "pred": prediction_dict[key],
                         "ground_truth": ground_truth_dict[key],
+                        "example": image_dict.get(key, None),
                     }
             else:
                 merged_dict[key] = {
                     "pred": prediction_dict[key],
                     "ground_truth": ground_truth_dict[key],
+                    "example": image_dict.get(key, None),
                 }
 
     print(f"Found matches: {len(merged_dict)}")
@@ -268,30 +502,48 @@ def main(arguments):
         reduction_mode = args.reduction_mode
     else:
         reduction_mode = int(args.reduction_mode)
-
+    if args.proba_threshold not in ["dynamic", "dynamic-fast"]:
+        args.proba_threshold = float(args.proba_threshold)
     metric_dict = CalculateMetrics(
         prediction_mode=args.prediction_mode,
         reduction=reduction_mode,
         n_classes=n_classes,
-        threshold=args.threshold,
+        overlap_threshold=args.overlap_threshold,
+        proba_threshold=args.proba_threshold,
+        return_examples=args.generate_examples,
     )
 
     for key in merged_dict:
         if key is None:
             print(key)
     input_list = [
-        (key, merged_dict[key]["ground_truth"], merged_dict[key]["pred"])
+        (
+            key,
+            merged_dict[key]["ground_truth"],
+            merged_dict[key]["pred"],
+            merged_dict[key]["example"],
+        )
         for key in merged_dict
     ]
     if args.n_workers <= 1:
-        iterator = map(metric_dict.calculate_metrics, input_list)
+        iterator = map(metric_dict.calculate_metrics_wrapper, input_list)
     else:
         pool = Pool(args.n_workers)
-        iterator = pool.imap(metric_dict.calculate_metrics, input_list)
+        iterator = pool.imap(metric_dict.calculate_metrics_wrapper, input_list)
 
     all_outputs = {}
-    for key, output in tqdm(iterator, total=len(merged_dict)):
+    if args.generate_examples:
+        image_writer = ImageWriter()
+    for key, output, example in tqdm(iterator, total=len(merged_dict)):
         all_outputs[key] = output
+        if args.generate_examples and example is not None:
+            Path(args.example_path).mkdir(exist_ok=True, parents=True)
+            image_writer.put(
+                example, os.path.join(args.example_path, key + ".png")
+            )
+    if args.generate_examples:
+        print("Writing examples...")
+        image_writer.close()
 
     lesion_results = {
         key: [
@@ -304,10 +556,24 @@ def main(arguments):
     case_pred = {
         key: all_outputs[key]["case_confidence"] for key in all_outputs
     }
-    print(
-        Metrics(
-            lesion_results=lesion_results,
-            case_target=case_target,
-            case_pred=case_pred,
-        )
+    metrics = Metrics(
+        lesion_results=lesion_results,
+        case_target=case_target,
+        case_pred=case_pred,
     )
+
+    pr = metrics.calculate_precision_recall()
+    roc = metrics.calculate_ROC()
+    metric_dict = metrics.as_dict()
+
+    for k in pr:
+        metric_dict[k] = pr[k]
+    for k in roc:
+        metric_dict[k] = roc[k]
+    metric_dict = coherce_to_serializable(metric_dict)
+
+    if args.output_json is not None:
+        with open(args.output_json, "w") as o:
+            json.dump(metric_dict, o, indent=2)
+    else:
+        pprint.pprint(metric_dict)
