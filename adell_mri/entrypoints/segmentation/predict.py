@@ -4,6 +4,7 @@ import os
 import numpy as np
 import torch
 import monai
+from copy import deepcopy
 from tqdm import tqdm
 
 from ...entrypoints.assemble_args import Parser
@@ -273,7 +274,7 @@ def main(arguments):
     else:
         encoding_operations = [None]
 
-    unet = get_segmentation_network(
+    unet_base = get_segmentation_network(
         net_type=args.net_type,
         encoding_operations=encoding_operations,
         network_config=network_config,
@@ -331,6 +332,7 @@ def main(arguments):
                 for k in state_dict
                 if "deep_supervision_ops" not in k and "ema." not in k
             }
+            unet = deepcopy(unet_base)
             unet.load_state_dict(state_dict)
             unet = unet.to(args.dev)
             unet.eval()
