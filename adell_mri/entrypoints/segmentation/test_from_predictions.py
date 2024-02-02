@@ -14,12 +14,26 @@ from multiprocessing import Pool, Queue, Process
 from ...entrypoints.assemble_args import Parser
 from ...utils.parser import parse_ids
 from ...modules.segmentation.picai_eval.eval import evaluate_case, Metrics
-from ...modules.extract_lesion_candidates import extract_lesion_candidates
 
-from typing import Callable
+from typing import Callable, Any
 
 
-def get_lesion_candidates(arr: np.ndarray, threshold: float) -> np.ndarray:
+def get_lesion_candidates(
+    arr: np.ndarray, threshold: float
+) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Shortened version of lesion candidate extraction.
+
+    Args:
+        arr (np.ndarray): probability array.
+        threshold (float): threshold below which probability values are set to
+            0.
+
+    Returns:
+        tuple[np.ndarray, np.ndarray]: lesion candidates and lesion cancidates
+            with all values above 0 set to the maximum probability of each
+            lesion.
+    """
     arr = np.where(arr < threshold, 0, arr)
     labels, max_label = ndimage.label(arr, structure=np.ones([3, 3, 3]))
     output = np.zeros_like(arr)
@@ -32,11 +46,31 @@ def get_lesion_candidates(arr: np.ndarray, threshold: float) -> np.ndarray:
 
 
 def normalize(image: np.ndarray) -> np.ndarray:
+    """
+    Normalises an array to be between 0 and 1.
+
+    Args:
+        image (np.ndarray): array.
+
+    Returns:
+        np.ndarray: normalised array.
+    """
     m, M = image.min(), image.max()
     return (image - m) / (M - m)
 
 
 def file_list_to_dict(file_list: list[str], pattern: str) -> dict[str, str]:
+    """
+    Converts a list of files to a dictionary of files where the key is
+    extracted from the file name given a regex pattern.
+
+    Args:
+        file_list (list[str]): list of file paths.
+        pattern (str): regex pattern for key.
+
+    Returns:
+        dict[str, str]: path dictionary.
+    """
     pat = re.compile(pattern)
     output = {}
     for file in file_list:
@@ -48,15 +82,44 @@ def file_list_to_dict(file_list: list[str], pattern: str) -> dict[str, str]:
 
 
 def sigmoid(x: np.ndarray) -> np.ndarray:
+    """
+    Sigmoid function.
+
+    Args:
+        x (np.ndarray): array.
+
+    Returns:
+        np.ndarray: array.
+    """
     return 1 / (1 + np.exp(-x))
 
 
-def softmax(x: np.ndarray) -> np.ndarray:
+def softmax(x: np.ndarray, axis: int = 0) -> np.ndarray:
+    """
+    Softmax function.
+
+    Args:
+        x (np.ndarray): array.
+        axis (int, optional): axis along which softmax is calculated. Defaults
+            to 0.
+
+    Returns:
+        np.ndarray: array.
+    """
     x = np.exp(x)
-    x = x / x.sum(0, keepdims=True)
+    x = x / x.sum(axis, keepdims=True)
 
 
 def coherce_to_serializable(d: dict) -> dict:
+    """
+    Recursive function to convert dictionaries to JSON serializable objects.
+
+    Args:
+        d (dict): dictionary structure.
+
+    Returns:
+        dict: dictionary with no numpy objects.
+    """
     for k in d:
         if isinstance(d[k], np.ndarray):
             d[k] = d[k].tolist()
@@ -67,30 +130,54 @@ def coherce_to_serializable(d: dict) -> dict:
     return d
 
 
-def draw_legend(image_slice: np.ndarray, cmap: Callable, mix_factor: float):
-    legend_coords = (image_slice.shape[0] - 20, 20)
+def draw_legend(image: np.ndarray, cmap: Callable, mix_factor: float):
+    """
+    Draws a legend using a given matplotlib colour map.
+
+    Args:
+        image (np.ndarray): image where legend will be drawn.
+        cmap (Callable): matplotlib colourmap.
+        mix_factor (float): sets how blended the legend is with the image.
+            Basically equivalent to alpha blending both, with 1.0 indicating
+            only legend and 0.0 indicating no legend.
+    """
+    legend_coords = (image.shape[0] - 20, 20)
     legend_size = 50
     legend = cmap(np.linspace(0, 1, legend_size))
     legend *= np.minimum(mix_factor * 1.5, 1)
     vertical_size = 7
     for i in range(-(vertical_size // 2 + 1), (vertical_size // 2 + 2)):
-        image_slice[
+        image[
             legend_coords[0] + i,
             (legend_coords[1] - 4) : (legend_coords[1] + legend_size + 4),
         ] = 1
     for i in range(-(vertical_size // 2 - 1), (vertical_size // 2)):
-        image_slice[
+        image[
             legend_coords[0] + i,
             (legend_coords[1]) : (legend_coords[1] + legend_size),
         ] = legend
 
 
 def visualize_heatmap(
-    image_slice: np.ndarray,
+    image: np.ndarray,
     heatmap_slice: np.ndarray,
     mix_factor: int = 1.0,
     do_legend: bool = True,
 ) -> np.ndarray:
+    """
+    Draws a heatmap on top of an image using the "jet" colourmap.
+
+    Args:
+        image (np.ndarray): RGBA image.
+        heatmap_slice (np.ndarray): heatmap with values between 0 and 1.
+        mix_factor (int, optional): mixture factor (works like alpha blending,
+            1.0 is all heatmap, 0.0 is all image). Defaults to 1.0.
+        do_legend (bool, optional): whether a legend should be drawn. Defaults
+            to True.
+
+    Returns:
+        np.ndarray: image with a heatmap drawn on top.
+    """
     if np.count_nonzero(heatmap_slice) > 0:
         cmap = colormaps["jet"]
         heatmap_slice = heatmap_slice
@@ -99,19 +186,26 @@ def visualize_heatmap(
         heatmap_rgb[x, y] = cmap(heatmap_slice[x, y])
         heatmap_rgb[:, :, 3] = 1
         # R channel used for heatmap, G used for reverse
-        image_slice = np.where(
+        image = np.where(
             heatmap_rgb > 0,
-            heatmap_rgb * mix_factor + image_slice * (1 - mix_factor),
-            image_slice,
+            heatmap_rgb * mix_factor + image * (1 - mix_factor),
+            image,
         )
         if do_legend:
-            draw_legend(image_slice, cmap, mix_factor)
+            draw_legend(image, cmap, mix_factor)
 
-    return image_slice
+    return image
 
 
 @dataclass
 class ImageWriter:
+    """
+    Helper class that dispatches processes to write images to the disk.
+
+    Args:
+        n_proc (int, optional): number of processes to use. Defaults to 1.
+    """
+
     n_proc: int = 1
 
     def __post_init__(self):
@@ -143,10 +237,49 @@ class ImageWriter:
 
 @dataclass
 class CalculateMetrics:
+    """
+    Metrics calculator and example drawer. Metrics are calculated using the
+    Radboud picai_eval library [1]. Examples are stacked images where the first
+    rows represent the input images, the last row represents the
+    predictions and the row before the last represents the ground truth. This
+    is included for all slices with at least one positive prediction.
+
+    For binary metrics (IoU, Dice, etc.) the `proba_threshold` has to be set
+    as this is the threshold used to binarise images.
+
+    This supports ensemble predictions as long as they are stacked on the first
+    dimension. The `reduction` argument will be used to calculate the average
+    value ("mean"), the maximum value ("max") or to extract a specific index of
+    the ensemble (if a number is provided).
+
+    This expects the input predictions to have 4 dimensions (classes, h, w, d)
+    and the input ground truth/examples to have 3 dimensions (h, w, d). This
+    function only calculates binary metrics, so a class index has to be set
+    through `class_idx`.
+
+    Args:
+        prediction_mode (str, optional): prediction mode. If "mask" does nothing
+            to the prediction, if "logits" calculates the sigmoid/softmax
+            depending on the number of classes, if "probs" does nothing to the
+            prediction. Defaults to "mask".
+        reduction (str, optional): reduction method. How ensemble values are
+            reduced - this only happens if the dimension of the input is 5.
+            Defaults to "mean".
+        n_classes (int, optional): number of classes. Defaults to 2.
+        overlap_threshold (float, optional): overlap threshold for detection
+            metrics. Defaults to None.
+        proba_threshold (float, optional): probability for binarising input.
+        return_examples (bool, optional): whether example images are to be
+            produced. Defaults to False.
+        class_idx (int, optional): index of class for metrics.
+
+
+    [1] https://github.com/DIAGNijmegen/picai_eval/tree/main
+    """
+
     prediction_mode: str = "mask"
     reduction: str = "mean"
     n_classes: int = 2
-    fold: int = None
     overlap_threshold: float = None
     proba_threshold: float = 0.1
     return_examples: bool = False
@@ -155,27 +288,17 @@ class CalculateMetrics:
     def __post_init__(self):
         pass
 
-    def iou_dice_sizes(self, gt: np.ndarray, pred: np.ndarray):
-        values = {}
-        for i in np.unique(gt):
-            is_gt = gt == i
-            is_pred = pred == i
-            gt_sum = is_gt.sum()
-            pred_sum = is_pred.sum()
-            intersection = np.logical_and(is_gt, is_pred).sum()
-            values[i] = {
-                "iou": intersection / (gt_sum + pred_sum - intersection),
-                "dice": 2 * intersection / (gt_sum + pred_sum),
-                "size_gt": gt_sum,
-                "size_pred": pred_sum,
-            }
-        return values
+    def read_image(self, image: str | sitk.Image | np.ndarray) -> np.ndarray:
+        """
+        Reads images in sitk.Image or np.ndarray format from a path allowing
+        any intermediate format.
 
-    @property
-    def metric_dict(self):
-        return {"iou": self.iou_dice_sizes}
+        Args:
+            image (str | sitk.Image | np.ndarray): image to be read.
 
-    def read_image(self, image: str | sitk.Image) -> np.ndarray:
+        Returns:
+            np.ndarray: output array.
+        """
         if isinstance(image, str):
             if image.endswith(".npz") or image.endswith(".npy"):
                 image = np.load(image)
@@ -185,22 +308,26 @@ class CalculateMetrics:
             image = sitk.GetArrayFromImage(image)
         return image
 
-    def pred_to_mask(self, pred: np.ndarray) -> np.ndarray:
-        if self.prediction_mode in ["probs", "logits"]:
-            if self.proba_threshold is None:
-                if pred.shape[0] == 1:
-                    pred = np.concatenate([1 - pred, pred])
-                pred = np.argmax(pred, 0)
-            else:
-                pred = np.int32(pred > self.proba_threshold)
-        return pred
-
     def preprocess_pred(self, pred: np.ndarray) -> np.ndarray:
+        """
+        Preprocesses prediction by converting it to the correct format and
+        calculating the necessary ensemble values.
+
+        Args:
+            pred (np.ndarray): prediction array with either 4 or 5 dimensions.
+                If ndim == 5 it assumes the first dimension corresponds to an
+                ensemble dimension.
+
+        Returns:
+            np.ndarray: 4 dimensional array with class predictions.
+        """
         if len(pred.shape) == 5:
             if self.reduction == "mean":
                 pred = pred.mean(0)
             elif self.reduction == "sum":
                 pred = pred.sum(0)
+            elif self.reduction == "max":
+                pred = pred.max(0)
             elif isinstance(self.reduction, int):
                 pred = pred[self.reduction]
         if self.prediction_mode == "logits":
@@ -210,7 +337,20 @@ class CalculateMetrics:
                 pred = softmax(pred)
         return pred
 
-    def extract_lesion_candidates(self, pred: np.ndarray) -> np.ndarray:
+    def extract_lesion_candidates(
+        self, pred: np.ndarray
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """
+        Dumb wrapper around get_lesion_candidates.
+
+        Args:
+            pred (np.ndarray): probability array.
+
+        Returns:
+            tuple[np.ndarray, np.ndarray]: lesion candidates and lesion cancidates
+                with all values above 0 set to the maximum probability of each
+                lesion.
+        """
         return get_lesion_candidates(pred, self.proba_threshold)
 
     def retrieve_example_image(
@@ -219,6 +359,23 @@ class CalculateMetrics:
         ground_truth: np.ndarray,
         prediction: np.ndarray,
     ) -> np.ndarray:
+        """
+        Draws all slice examples from an image which have either a positive
+        prediction or a positive pixel in the ground truth.
+
+        Examples are stacked images where the first rows represent the input
+        images, the last row represents the predictions and the row before the
+        last represents the ground truth.
+
+        Args:
+            image (np.ndarray): input image.
+            ground_truth (np.ndarray): ground truth binary array.
+            prediction (np.ndarray): candidate map.
+
+        Returns:
+            np.ndarray: example image.
+        """
+
         def stack_images_pil(*images: Image, axis: int = 0) -> Image:
             widths, heights = zip(*(i.size for i in images))
             if axis == 0:
@@ -275,22 +432,28 @@ class CalculateMetrics:
         output_figure = stack_images_pil(*output_figure, axis=0)
         return output_figure
 
-    def calculate_metrics_wrapper(
-        self,
-        images: tuple[
-            str, str | sitk.Image, str | sitk.Image, str | sitk.Image
-        ],
-    ):
-        out = self.calculate_metrics(*images)
-        return out
-
     def calculate_metrics(
         self,
         key: str,
         gt: str | sitk.Image,
         pred: str | sitk.Image,
-        example: str | sitk.Image = None,
-    ):
+        input_image: str | sitk.Image = None,
+    ) -> tuple[str, dict[str, Any], Image.Image]:
+        """
+        Calculates metrics for a given key and generates example image if
+        necessary.
+
+        Args:
+            key (str): key that will be returned with the output.
+            gt (str | sitk.Image): ground truth.
+            pred (str | sitk.Image): prediction probability map.
+            input_image (str | sitk.Image, optional): input images for example
+                image. Defaults to None.
+
+        Returns:
+            tuple[str, dict[str, Any], Image.Image]: key, output dict with all
+                metrics and a PIL image with examples.
+        """
         gt = self.read_image(gt)
         pred = self.read_image(pred)
         pred = self.preprocess_pred(pred)[self.class_idx]
@@ -310,12 +473,25 @@ class CalculateMetrics:
             "case_confidence": case_confidence,
             "gt": gt_value,
         }
-        if example is not None and self.return_examples:
-            example = self.read_image(example)
-            example = self.retrieve_example_image(example, gt, pred)
+        if input_image is not None and self.return_examples:
+            input_image = self.read_image(input_image)
+            input_image = self.retrieve_example_image(input_image, gt, pred)
         else:
-            example = None
-        return key, output_dict, example
+            input_image = None
+        return key, output_dict, input_image
+
+    def calculate_metrics_wrapper(
+        self,
+        images: tuple[
+            str, str | sitk.Image, str | sitk.Image, str | sitk.Image
+        ],
+    ):
+        """
+        Wrapper for self.calculate_metrics where the input is a tuple/list
+        of all the inputs to self.calculate_metrics.
+        """
+        out = self.calculate_metrics(*images)
+        return out
 
 
 def main(arguments):
@@ -378,6 +554,12 @@ def main(arguments):
         help="If input has shape [h,w,d,n_classes,batches], the last dimension \
             will be reduced using this mode. If a number is specified, it will \
             extract that index.",
+    )
+    parser.add_argument(
+        "--class_idx",
+        default=0,
+        help="Extracts this class from the data if more than one channel in \
+            prediction",
     )
     parser.add_argument(
         "--overlap_threshold",
@@ -511,6 +693,7 @@ def main(arguments):
         overlap_threshold=args.overlap_threshold,
         proba_threshold=args.proba_threshold,
         return_examples=args.generate_examples,
+        class_idx=args.class_idx,
     )
 
     for key in merged_dict:
