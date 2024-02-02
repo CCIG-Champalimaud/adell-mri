@@ -20,6 +20,7 @@ class UNetContrastiveSemiSL(UNetSemiSL, UNetBasePL):
         label_key: str = "label",
         skip_conditioning_key: str = None,
         feature_conditioning_key: str = None,
+        optimizer_str: str = "sgd",
         learning_rate: float = 0.001,
         lr_encoder: float = None,
         start_decay: float | int = 1.0,
@@ -52,6 +53,8 @@ class UNetContrastiveSemiSL(UNetSemiSL, UNetBasePL):
             feature_conditioning_key (str, optional): key corresponding to
                 the tabular features which will be used in the feature
                 conditioning.
+            optimizer_str (str, optional): specifies the optimizer using
+                `get_optimizer`. Defaults to "sgd".
             learning_rate (float, optional): learning rate. Defaults to 0.001.
             lr_encoder (float, optional): encoder learning rate. Defaults to None
                 (same as learning_rate).
@@ -92,6 +95,7 @@ class UNetContrastiveSemiSL(UNetSemiSL, UNetBasePL):
         self.label_key = label_key
         self.skip_conditioning_key = skip_conditioning_key
         self.feature_conditioning_key = feature_conditioning_key
+        self.optimizer_str = optimizer_str
         self.learning_rate = learning_rate
         self.lr_encoder = lr_encoder
         self.start_decay = start_decay
