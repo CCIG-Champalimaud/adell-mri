@@ -376,8 +376,8 @@ def main(arguments):
                         return_only_segmentation=True,
                         return_logits=True,
                     )
-                    pred = pred.squeeze()
-                    y = data_element["mask"].round().int().squeeze()
+                    pred = pred.squeeze().detach()
+                    y = data_element["mask"].round().int().squeeze().detach()
                     pred = get_lesions(pred.cpu().numpy(), args.threshold)
                     if args.picai_eval is True:
                         all_pred.append(deepcopy(pred))
@@ -396,8 +396,8 @@ def main(arguments):
                             metrics_dict["metrics"][test_id][k] = v
                             metrics[k].reset()
                             metrics_global[k].update(pred, y)
-                        metrics_dict["metrics"][test_id]["max_prob"] = y.max()
-                        metrics_dict["metrics"][test_id]["min_prob"] = y.min()
+                        metrics_dict["metrics"][test_id]["max_prob"] = pred.max()
+                        metrics_dict["metrics"][test_id]["min_prob"] = pred.min()
                     for k in metrics_global:
                         metrics_global[k].update(pred, y)
                 for k in metrics_global:

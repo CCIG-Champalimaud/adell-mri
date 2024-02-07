@@ -1,6 +1,9 @@
 import numpy as np
 import re
 import torch
+from multiprocessing import Pool
+from .utils import return_classes
+from tqdm import tqdm
 
 from typing import Dict, Union, List, Any
 
@@ -178,3 +181,41 @@ def set_classification_layer_bias(
             if list(v.shape) == [1]:
                 with torch.no_grad():
                     v[0] = value
+
+
+def get_segmentation_sample_weights(
+    data_list: List[Dict],
+    label_keys: List[str],
+    n_workers: int = 1,
+    base: str = "Calculating positive pixel counts",
+):
+    cl = []
+    pos_pixel_sum = 0
+    total_pixel_sum = 0
+    all_masks = [[x[mask_key] for mask_key in label_keys] for x in data_list]
+    with Pool(n_workers) as pool:
+        mapped_fn = pool.imap(return_classes, all_masks)
+        with tqdm(mapped_fn, total=len(all_masks)) as t:
+            t.set_description(base)
+            n, n_nonzero = 0, 0
+            for x_classes in t:
+                n += 1
+                all_classes = {}
+                all_classes = {**all_classes, **x_classes}
+                total = []
+                for u, c in all_classes.items():
+                    if u not in total:
+                        total.append(u)
+                    if u != 0:
+                        n_nonzero += 1
+                        pos_pixel_sum += c
+                    total_pixel_sum += c
+                if len(total) > 1:
+                    cl.append(1)
+                else:
+                    cl.append(0)
+                t.set_description(base + f" ({n_nonzero}/{n})")
+    adaptive_weights = len(cl) / np.sum(cl)
+    adaptive_pixel_weights = total_pixel_sum / pos_pixel_sum
+
+    return cl, adaptive_weights, adaptive_pixel_weights

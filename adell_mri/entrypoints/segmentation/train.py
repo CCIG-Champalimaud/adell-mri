@@ -43,7 +43,7 @@ from ...utils.sitk_utils import (
     spacing_values_from_dataset_json,
     get_spacing_quantile,
 )
-from ...utils.utils import return_classes
+from ...utils.torch_utils import get_segmentation_sample_weights
 
 torch.backends.cudnn.benchmark = True
 
@@ -534,50 +534,42 @@ def main(arguments):
             replacement=len(train_dataset) < n_samples,
             generator=g,
         )
+        val_sampler = None
         if isinstance(args.class_weights[0], str):
             ad = "adaptive" in args.class_weights[0]
         else:
             ad = False
         # include some constant label images
         if args.constant_ratio is not None or ad:
-            cl = []
-            pos_pixel_sum = 0
-            total_pixel_sum = 0
-            all_masks = [
-                [x[mask_key] for mask_key in label_keys] for x in train_list
-            ]
-            with Pool(args.n_workers) as pool:
-                mapped_fn = pool.imap(return_classes, all_masks)
-                with tqdm(mapped_fn, total=len(all_masks)) as t:
-                    base = "Calculating positive pixel counts"
-                    t.set_description(base)
-                    n, n_nonzero = 0, 0
-                    for x_classes in t:
-                        n += 1
-                        all_classes = {}
-                        all_classes = {**all_classes, **x_classes}
-                        total = []
-                        for u, c in all_classes.items():
-                            if u not in total:
-                                total.append(u)
-                            if u != 0:
-                                n_nonzero += 1
-                                pos_pixel_sum += c
-                            total_pixel_sum += c
-                        if len(total) > 1:
-                            cl.append(1)
-                        else:
-                            cl.append(0)
-                        t.set_description(base + f" ({n_nonzero}/{n})")
-            adaptive_weights = len(cl) / np.sum(cl)
-            adaptive_pixel_weights = total_pixel_sum / pos_pixel_sum
+            cl, adaptive_weights, adaptive_pixel_weights = (
+                get_segmentation_sample_weights(
+                    train_list,
+                    label_keys=label_keys,
+                    n_workers=args.n_workers,
+                    base="Calculating positive pixel counts for train list",
+                )
+            )
+            cl_val, adaptive_weights, adaptive_pixel_weights = (
+                get_segmentation_sample_weights(
+                    val_list,
+                    label_keys=label_keys,
+                    n_workers=args.n_workers,
+                    base="Calculating positive pixel counts for val list",
+                )
+            )
             if args.constant_ratio is not None:
                 sampler = PartiallyRandomSampler(
                     cl, non_keep_ratio=args.constant_ratio, seed=args.seed
                 )
+                val_sampler = PartiallyRandomSampler(
+                    cl_val, non_keep_ratio=args.constant_ratio, seed=args.seed
+                )
                 if args.dataset_iterations_per_epoch != 1.0:
                     sampler.set_n_samples(
                         int(sampler.n * args.dataset_iterations_per_epoch)
+                    )
+                    val_sampler.set_n_samples(
+                        int(val_sampler.n * args.dataset_iterations_per_epoch)
                     )
                 if args.class_weights[0] == "adaptive":
                     adaptive_weights = 1 + args.constant_ratio
@@ -653,6 +645,7 @@ def main(arguments):
             train_dataset_val,
             batch_size=network_config["batch_size"],
             shuffle=False,
+            sampler=val_sampler,
             num_workers=nw,
             collate_fn=collate_fn_train,
         )
