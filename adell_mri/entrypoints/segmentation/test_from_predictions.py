@@ -19,7 +19,7 @@ from typing import Callable, Any
 
 
 def get_lesion_candidates(
-    arr: np.ndarray, threshold: float
+    arr: np.ndarray, threshold: float, min_size: float = 0
 ) -> tuple[np.ndarray, np.ndarray]:
     """
     Shortened version of lesion candidate extraction.
@@ -28,6 +28,7 @@ def get_lesion_candidates(
         arr (np.ndarray): probability array.
         threshold (float): threshold below which probability values are set to
             0.
+        min_size (float): minimum size of lesion candidates. Defaults to None.
 
     Returns:
         tuple[np.ndarray, np.ndarray]: lesion candidates and lesion cancidates
@@ -40,8 +41,9 @@ def get_lesion_candidates(
     output_eval = np.zeros_like(arr)
     for i in range(1, max_label + 1):
         if i != 0:
-            output[labels == i] = arr[labels == i]
-            output_eval[labels == i] = arr[labels == i].max()
+            if arr[labels == i].sum() > min_size:
+                output[labels == i] = arr[labels == i]
+                output_eval[labels == i] = arr[labels == i].max()
     return output, output_eval
 
 
@@ -123,7 +125,7 @@ def coherce_to_serializable(d: dict) -> dict:
     for k in d:
         if isinstance(d[k], np.ndarray):
             d[k] = d[k].tolist()
-        if isinstance(d[k], (np.float32, np.float64)):
+        if isinstance(d[k], (np.float32, np.float64, np.int32, np.int64)):
             d[k] = d[k].tolist()
         if isinstance(d[k], dict):
             d[k] = coherce_to_serializable(d[k])
@@ -272,6 +274,8 @@ class CalculateMetrics:
         return_examples (bool, optional): whether example images are to be
             produced. Defaults to False.
         class_idx (int, optional): index of class for metrics.
+        min_size (float, optional): minimum size of candidates. Defaults to
+            10.0.
 
 
     [1] https://github.com/DIAGNijmegen/picai_eval/tree/main
@@ -284,6 +288,7 @@ class CalculateMetrics:
     proba_threshold: float = 0.1
     return_examples: bool = False
     class_idx: int = 0
+    min_size: float = 10.0
 
     def __post_init__(self):
         pass
@@ -351,7 +356,7 @@ class CalculateMetrics:
                 with all values above 0 set to the maximum probability of each
                 lesion.
         """
-        return get_lesion_candidates(pred, self.proba_threshold)
+        return get_lesion_candidates(pred, self.proba_threshold, self.min_size)
 
     def retrieve_example_image(
         self,
@@ -500,7 +505,9 @@ class CalculateMetrics:
         }
         output_dict = {
             **output_dict,
-            **self.overlap_dictionary(pred > self.proba_threshold, gt),
+            **self.overlap_dictionary(
+                pred > self.proba_threshold, gt > self.proba_threshold
+            ),
         }
         if input_image is not None and self.return_examples:
             input_image = self.read_image(input_image)
@@ -605,6 +612,12 @@ def main(arguments):
             cases corresponds to the correct/positive class",
     )
     parser.add_argument(
+        "--min_size",
+        default=10,
+        type=str,
+        help="Minimum prediction size",
+    )
+    parser.add_argument(
         "--id_list",
         default=None,
         nargs="+",
@@ -631,7 +644,8 @@ def main(arguments):
     )
     parser.add_argument(
         "--image_path",
-        required=True,
+        required=False,
+        default=None,
         help="Path to images (for examples).",
     )
     parser.add_argument(
@@ -709,7 +723,7 @@ def main(arguments):
 
     print(f"Found matches: {len(merged_dict)}")
 
-    if args.reduction_mode in ["mean", "sum"]:
+    if args.reduction_mode in ["mean", "sum", "max"]:
         reduction_mode = args.reduction_mode
     else:
         reduction_mode = int(args.reduction_mode)
@@ -723,6 +737,7 @@ def main(arguments):
         proba_threshold=args.proba_threshold,
         return_examples=args.generate_examples,
         class_idx=args.class_idx,
+        min_size=args.min_size,
     )
 
     for key in merged_dict:
@@ -759,7 +774,7 @@ def main(arguments):
 
     lesion_results = {
         key: [
-            [lesion[k] for k in ["gt", "confidence", "overlap"]]
+            [lesion[kk] for kk in ["gt", "confidence", "overlap"]]
             for lesion in all_outputs[key]["lesions"]
         ]
         for key in all_outputs
@@ -777,11 +792,14 @@ def main(arguments):
     pr = metrics.calculate_precision_recall()
     roc = metrics.calculate_ROC()
     metric_dict = metrics.as_dict()
-
+    metric_dict["lesion_results"] = {}
     for k in pr:
         metric_dict[k] = pr[k]
     for k in roc:
         metric_dict[k] = roc[k]
+    for k in all_outputs:
+        metric_dict["lesion_results"][k] = all_outputs[k]
+
     metric_dict = coherce_to_serializable(metric_dict)
 
     if args.output_json is not None:

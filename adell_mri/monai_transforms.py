@@ -803,7 +803,9 @@ def get_augmentations_unet(
     # ensures that flips are applied regardless of TrivialAugment trigger
     if "flip" in augment:
         flip_transform = [
-            monai.transforms.RandFlipd(all_keys, spatial_axis=[axis], prob=0.5)
+            monai.transforms.RandFlipd(
+                all_keys, spatial_axis=[axis], prob=0.25
+            )
             for axis in flip_axis
         ]
     else:
