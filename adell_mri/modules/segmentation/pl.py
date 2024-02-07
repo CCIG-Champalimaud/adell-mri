@@ -36,16 +36,27 @@ def split(x: torch.Tensor, n_splits: int, dim: int) -> torch.Tensor:
     return torch.split(x, size, dim)
 
 
-def get_lesions(x: torch.Tensor, threshold: float | str = 0.1) -> np.ndarray:
+def get_lesions(
+    x: torch.Tensor,
+    threshold: float | str = 0.1,
+    extract_lesions: bool = False,
+) -> np.ndarray:
     """Wrapper for getting lesions using extract_lesion_candidates.
 
     Args:
         x (torch.Tensor): input tensor with segmentation probabilities.
+        threshold (bool, optional): threshold for lesion extraction. Defaults
+            to 0.1.
+        extract_lesions (bool, optional): whether to extract lesions. Defaults
+            to False (simply returns the input tensor).
 
     Returns:
         (np.ndarray): map containing indexed lesion candidates.
     """
-    return extract_lesion_candidates(x, threshold=threshold)[0]
+    if extract_lesions is True:
+        return extract_lesion_candidates(x, threshold=threshold)[0]
+    else:
+        return x
 
 
 def update_metrics(

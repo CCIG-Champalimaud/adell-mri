@@ -72,6 +72,7 @@ def main(arguments):
             "picai_eval",
             "threshold",
             "metric_path",
+            "extract_lesions",
         ]
     )
 
@@ -378,7 +379,11 @@ def main(arguments):
                     )
                     pred = pred.squeeze().detach()
                     y = data_element["mask"].round().int().squeeze().detach()
-                    pred = get_lesions(pred.cpu().numpy(), args.threshold)
+                    pred = get_lesions(
+                        pred.cpu().numpy(),
+                        args.threshold,
+                        args.extract_lesions,
+                    )
                     if args.picai_eval is True:
                         all_pred.append(deepcopy(pred))
                         all_truth.append(y.cpu().numpy())
@@ -396,8 +401,12 @@ def main(arguments):
                             metrics_dict["metrics"][test_id][k] = v
                             metrics[k].reset()
                             metrics_global[k].update(pred, y)
-                        metrics_dict["metrics"][test_id]["max_prob"] = pred.max()
-                        metrics_dict["metrics"][test_id]["min_prob"] = pred.min()
+                        metrics_dict["metrics"][test_id][
+                            "max_prob"
+                        ] = pred.max()
+                        metrics_dict["metrics"][test_id][
+                            "min_prob"
+                        ] = pred.min()
                     for k in metrics_global:
                         metrics_global[k].update(pred, y)
                 for k in metrics_global:
@@ -450,7 +459,9 @@ def main(arguments):
                     return_logits=True,
                 )
                 y = data_element["mask"].round().int().squeeze()
-                pred = get_lesions(pred.cpu().numpy(), args.threshold)
+                pred = get_lesions(
+                    pred.cpu().numpy(), args.threshold, args.extract_lesions
+                )
                 if args.picai_eval is True:
                     all_pred.append(deepcopy(pred))
                     all_truth.append(y.cpu().numpy())

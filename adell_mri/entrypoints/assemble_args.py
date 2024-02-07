@@ -603,6 +603,12 @@ argument_factory = {
     "threshold": dict(
         default=0.5, type=float, help="Sets threshold for positive class"
     ),
+    "extract_lesions": dict(
+        default=False,
+        action="store_true",
+        help="Extracts lesions using the \
+            report-guided annotation methodology.",
+    ),
     # ssl-specific
     "jpeg_dataset": dict(
         action="store_true",
