@@ -9,7 +9,7 @@ from adell_mri.modules.segmentation.unetr import UNETR
 
 h, w, d, c = 32, 32, 16, 1
 
-depths = [[16, 32, 64]]
+depths = [[16, 32, 64], [16, 32, 64, 128]]
 spatial_dims = [2, 3]
 
 
@@ -24,6 +24,7 @@ def get_vit_params():
         "n_heads": 8,
         "dropout_rate": 0.1,
         "embed_method": "linear",
+        "upscale_type": "transpose",
     }
 
 
@@ -53,7 +54,6 @@ def test_unetr_base(D, sd, conv_type):
         **vit_params,
         spatial_dimensions=sd,
         depth=D,
-        upscale_type="transpose",
         padding=1,
         kernel_sizes=K,
         conv_type=conv_type,
@@ -91,7 +91,6 @@ def test_unetr_skip(D, sd, conv_type):
         **vit_params,
         spatial_dimensions=sd,
         depth=D,
-        upscale_type="transpose",
         padding=1,
         kernel_sizes=K,
         skip_conditioning=1,
@@ -132,7 +131,6 @@ def test_unetr_skip_feature(D, sd):
         **vit_params,
         spatial_dimensions=sd,
         depth=D,
-        upscale_type="transpose",
         padding=1,
         kernel_sizes=K,
         feature_conditioning=n_features,

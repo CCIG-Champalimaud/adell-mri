@@ -1,5 +1,4 @@
 import argparse
-import numpy as np
 import SimpleITK as sitk
 from ....utils.sitk_utils import resample_image, crop_image
 
