@@ -396,7 +396,6 @@ def main(arguments):
                     if args.per_sample is True:
                         metrics_dict["metrics"][test_id] = {}
                         for k in metrics:
-                            metrics_global[k].update(pred, y)
                             metrics[k].update(pred, y)
                             v = metrics[k].compute().cpu().numpy().tolist()
                             metrics[k].reset()
@@ -473,9 +472,12 @@ def main(arguments):
                         v = metrics[k].compute().cpu().numpy().tolist()
                         metrics_dict["metrics"][test_id][k] = v
                         metrics[k].reset()
-                        metrics_global[k].update(pred, y)
-                    metrics_dict["metrics"][test_id]["max_prob"] = y.max()
-                    metrics_dict["metrics"][test_id]["min_prob"] = y.min()
+                    metrics_dict["metrics"][test_id]["max_prob"] = float(
+                        pred.max().numpy()
+                    )
+                    metrics_dict["metrics"][test_id]["min_prob"] = float(
+                        pred.min().numpy()
+                    )
                 for k in metrics_global:
                     metrics_global[k].update(pred, y)
             for k in metrics_global:
