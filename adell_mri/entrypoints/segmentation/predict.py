@@ -349,10 +349,7 @@ def main(arguments):
             networks.append(unet)
 
         if pred_mode in ["image", "probs"]:
-            if "monai" in args.net_type:
-                postproc_fn = torch.sigmoid
-            else:
-                postproc_fn = unet.final_layer[-1]
+            postproc_fn = unet.final_layer[-1]
         else:
             postproc_fn = None
         inference_fns = [

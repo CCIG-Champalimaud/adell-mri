@@ -588,13 +588,12 @@ class MonaiUNETR(UNet, torch.nn.Module):
             [int(x) for x in self.image_size],
         )
 
+        self.last_activation = (
+            torch.nn.Sigmoid() if self.n_classes == 2 else torch.nn.Softmax(1)
+        )
         self.final_layer = torch.nn.Sequential(
             self.network.out,
-            (
-                torch.nn.Sigmoid()
-                if self.n_classes == 2
-                else torch.nn.Softmax(1)
-            ),
+            self.last_activation,
         )
 
     def forward(
@@ -617,7 +616,7 @@ class MonaiUNETR(UNet, torch.nn.Module):
         if return_logits is True:
             return self.network(X), None
         else:
-            return torch.sigmoid(self.network(X)), None
+            return self.last_activation(self.network(X)), None
 
 
 class SWINUNet(UNet):
@@ -1198,13 +1197,12 @@ class MonaiSWINUNet(UNet):
             drop_rate=self.dropout_rate,
             spatial_dims=self.spatial_dimensions,
         )
+        self.last_activation = (
+            torch.nn.Sigmoid() if self.n_classes == 2 else torch.nn.Softmax(1)
+        )
         self.final_layer = torch.nn.Sequential(
             self.network.out,
-            (
-                torch.nn.Sigmoid()
-                if self.n_classes == 2
-                else torch.nn.Softmax(1)
-            ),
+            self.last_activation,
         )
 
     def forward(
@@ -1227,4 +1225,4 @@ class MonaiSWINUNet(UNet):
         if return_logits is True:
             return self.network(X), None
         else:
-            return torch.sigmoid(self.network(X)), None
+            return self.last_activation(self.network(X)), None
