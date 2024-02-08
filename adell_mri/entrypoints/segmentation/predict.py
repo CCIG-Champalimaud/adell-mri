@@ -348,9 +348,13 @@ def main(arguments):
 
             networks.append(unet)
 
-        postproc_fn = (
-            unet.final_layer[-1] if pred_mode in ["image", "probs"] else None
-        )
+        if pred_mode in ["image", "probs"]:
+            if "monai" in args.net_type:
+                postproc_fn = torch.sigmoid
+            else:
+                postproc_fn = unet.final_layer[-1]
+        else:
+            postproc_fn = None
         inference_fns = [
             SegmentationInference(
                 base_inference_function=network.predict_step,
@@ -402,7 +406,7 @@ def main(arguments):
             if args.ensemble is not None:
                 pred = pred.mean(-1)
             if pred_mode in ["image", "probs"]:
-                pred = networks[0].final_layer[-1](pred)
+                pred = postproc_fn(pred)
             pred = pred.detach().cpu()
             if pred_mode == "image":
                 pred = np.int32(np.round(pred))
