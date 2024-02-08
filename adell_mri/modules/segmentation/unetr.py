@@ -592,7 +592,6 @@ class MonaiUNETR(UNet, torch.nn.Module):
             torch.nn.Sigmoid() if self.n_classes == 2 else torch.nn.Softmax(1)
         )
         self.final_layer = torch.nn.Sequential(
-            self.network.out,
             self.last_activation,
         )
 
@@ -1201,7 +1200,6 @@ class MonaiSWINUNet(UNet):
             torch.nn.Sigmoid() if self.n_classes == 2 else torch.nn.Softmax(1)
         )
         self.final_layer = torch.nn.Sequential(
-            self.network.out,
             self.last_activation,
         )
 
