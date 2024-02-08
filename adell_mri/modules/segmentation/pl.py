@@ -56,7 +56,7 @@ def get_lesions(
     if extract_lesions is True:
         return extract_lesion_candidates(x, threshold=threshold)[0]
     else:
-        return x
+        return x > threshold
 
 
 def update_metrics(

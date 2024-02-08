@@ -595,6 +595,7 @@ class MonaiUNETR(UNet, torch.nn.Module):
         X_feature_conditioning: torch.Tensor = None,
         return_features=False,
         return_bottleneck=False,
+        return_logits=False,
     ) -> torch.Tensor:
         """Forward pass for this class.
 
@@ -604,7 +605,10 @@ class MonaiUNETR(UNet, torch.nn.Module):
         Returns:
             torch.Tensor
         """
-        return torch.sigmoid(self.network(X)), None
+        if return_logits is True:
+            return self.network(X), None
+        else:
+            return torch.sigmoid(self.network(X)), None
 
 
 class SWINUNet(UNet):
@@ -1193,6 +1197,7 @@ class MonaiSWINUNet(UNet):
         X_feature_conditioning: torch.Tensor = None,
         return_features=False,
         return_bottleneck=False,
+        return_logits=False,
     ) -> torch.Tensor:
         """Forward pass for this class.
 
@@ -1202,4 +1207,7 @@ class MonaiSWINUNet(UNet):
         Returns:
             torch.Tensor
         """
-        return torch.sigmoid(self.network(X)), None
+        if return_logits is True:
+            return self.network(X), None
+        else:
+            return torch.sigmoid(self.network(X)), None
