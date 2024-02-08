@@ -588,6 +588,15 @@ class MonaiUNETR(UNet, torch.nn.Module):
             [int(x) for x in self.image_size],
         )
 
+        self.final_layer = torch.nn.Sequential(
+            self.network.out,
+            (
+                torch.nn.Sigmoid()
+                if self.n_classes == 2
+                else torch.nn.Softmax(1)
+            ),
+        )
+
     def forward(
         self,
         X: torch.Tensor,
@@ -1188,6 +1197,14 @@ class MonaiSWINUNet(UNet):
             feature_size=feature_size,
             drop_rate=self.dropout_rate,
             spatial_dims=self.spatial_dimensions,
+        )
+        self.final_layer = torch.nn.Sequential(
+            self.network.out,
+            (
+                torch.nn.Sigmoid()
+                if self.n_classes == 2
+                else torch.nn.Softmax(1)
+            ),
         )
 
     def forward(
