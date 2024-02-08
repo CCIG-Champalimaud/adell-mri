@@ -401,10 +401,10 @@ def main(arguments):
                             metrics[k].reset()
                             metrics_dict["metrics"][test_id][k] = v
                         metrics_dict["metrics"][test_id]["max_prob"] = float(
-                            pred.max().numpy()
+                            pred.max().cpu().numpy()
                         )
                         metrics_dict["metrics"][test_id]["min_prob"] = float(
-                            pred.min().numpy()
+                            pred.min().cpu().numpy()
                         )
                     for k in metrics_global:
                         metrics_global[k].update(pred, y)
@@ -473,10 +473,10 @@ def main(arguments):
                         metrics_dict["metrics"][test_id][k] = v
                         metrics[k].reset()
                     metrics_dict["metrics"][test_id]["max_prob"] = float(
-                        pred.max().numpy()
+                        pred.max().cpu().numpy()
                     )
                     metrics_dict["metrics"][test_id]["min_prob"] = float(
-                        pred.min().numpy()
+                        pred.min().cpu().numpy()
                     )
                 for k in metrics_global:
                     metrics_global[k].update(pred, y)
