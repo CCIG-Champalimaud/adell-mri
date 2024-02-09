@@ -269,7 +269,6 @@ class ClassPLABC(pl.LightningModule, ABC):
 
     def predict_step(self, batch, batch_idx, *args, **kwargs):
         x = batch[self.image_key]
-        x = batch[self.image_key]
         prediction = self.forward(x, *args, **kwargs)
         return prediction
 
@@ -451,6 +450,7 @@ class ClassNetPL(ClassPLABC):
         self.args = args
         self.kwargs = kwargs
 
+        self.save_hyperparameters()
         self.setup_network()
         self.setup_metrics()
 
@@ -778,6 +778,7 @@ class UNetEncoderPL(UNetEncoder, ClassPLABC):
         self.args = args
         self.kwargs = kwargs
 
+        self.save_hyperparameters()
         self.setup_metrics()
 
 
@@ -846,6 +847,7 @@ class GenericEnsemblePL(GenericEnsemble, ClassPLABC):
         self.args = args
         self.kwargs = kwargs
 
+        self.save_hyperparameters()
         self.setup_metrics()
 
     def training_step(self, batch, batch_idx):
@@ -1005,6 +1007,7 @@ class ViTClassifierPL(ViTClassifier, ClassPLABC):
         self.args = args
         self.kwargs = kwargs
 
+        self.save_hyperparameters()
         self.setup_metrics()
 
 
@@ -1080,6 +1083,7 @@ class FactorizedViTClassifierPL(FactorizedViTClassifier, ClassPLABC):
         self.args = args
         self.kwargs = kwargs
 
+        self.save_hyperparameters()
         self.setup_metrics()
 
 
@@ -1154,6 +1158,7 @@ class TransformableTransformerPL(TransformableTransformer, ClassPLABC):
         self.args = args
         self.kwargs = kwargs
 
+        self.save_hyperparameters()
         self.setup_metrics()
 
 
@@ -1307,6 +1312,7 @@ class HybridClassifierPL(HybridClassifier, ClassPLABC):
         self.args = args
         self.kwargs = kwargs
 
+        self.save_hyperparameters()
         self.setup_metrics()
 
     def training_step(self, batch, batch_idx):
@@ -1447,6 +1453,7 @@ class DeconfoundedNetPL(DeconfoundedNet, ClassPLABC):
 
         self.conf_mult = 0.1
 
+        self.save_hyperparameters()
         self.setup_metrics()
 
     def loss_cat_confounder(self, pred: torch.Tensor, y: torch.Tensor):

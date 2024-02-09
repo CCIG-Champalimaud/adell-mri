@@ -38,6 +38,7 @@ from ...modules.classification.losses import OrdinalSigmoidalLoss
 from ...modules.config_parsing import parse_config_unet, parse_config_cat
 from ...utils.network_factories import get_classification_network
 from ...utils.parser import get_params, merge_args, parse_ids
+from ...utils.logging import CSVLogger
 
 
 def main(arguments):
@@ -314,6 +315,7 @@ def main(arguments):
         args.n_folds = len(folds)
         fold_generator = iter(folds)
 
+    csv_logger = CSVLogger(args.metric_path, not args.resume_from_last)
     for val_fold in range(args.n_folds):
         train_idxs, val_idxs = next(fold_generator)
         if args.subsample_training_data is not None:
@@ -589,33 +591,44 @@ def main(arguments):
 
         # assessing performance on validation set
         print("Validating...")
-
         if ckpt is True:
-            ckpt_list = ["last", "best"]
+            ckpt_list = ["best", "last"]
         else:
             ckpt_list = ["last"]
         for ckpt_key in ckpt_list:
             test_metrics = trainer.test(
-                network, validation_loader, ckpt_path=ckpt_key
-            )
-            test_metrics = test_metrics[0]
+                network, train_val_loader, ckpt_path=ckpt_key
+            )[0]
             for k in test_metrics:
                 out = test_metrics[k]
-                try:
-                    value = float(out.detach().numpy())
-                except Exception:
-                    value = float(out)
-                if n_classes > 2:
-                    k = k.split("_")
-                    if k[-1].isdigit():
-                        k, idx = "_".join(k[:-1]), k[-1]
-                    else:
-                        k, idx = "_".join(k), 0
+                if n_classes == 2:
+                    try:
+                        value = float(out.detach().numpy())
+                    except Exception:
+                        value = float(out)
+                    x = {
+                        "metric": k,
+                        "checkpoint": ckpt_key,
+                        "val_fold": val_fold,
+                        "idx": 0,
+                        "value": value,
+                    }
+                    csv_logger.log(x)
+                    print(x)
                 else:
-                    idx = 0
-                x = "{},{},{},{},{}".format(k, ckpt_key, val_fold, idx, value)
-                output_file.write(x + "\n")
-                print(x)
+                    for i, v in enumerate(out):
+                        x = {
+                            "metric": k,
+                            "checkpoint": ckpt_key,
+                            "val_fold": val_fold,
+                            "idx": i,
+                            "value": v,
+                        }
+                        csv_logger.log(x)
+                        print(x)
+            trainer.test_loop._results.clear()
 
+        csv_logger.write()
+        print("=" * 80)
         if args.delete_checkpoints == True:
             delete_checkpoints(trainer)
