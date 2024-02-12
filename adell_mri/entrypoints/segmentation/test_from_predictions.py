@@ -19,7 +19,9 @@ from typing import Callable, Any
 
 
 def get_lesion_candidates(
-    arr: np.ndarray, threshold: float, min_size: float = 0
+    arr: np.ndarray,
+    threshold: float,
+    min_size: float = 0,
 ) -> tuple[np.ndarray, np.ndarray]:
     """
     Shortened version of lesion candidate extraction.
@@ -254,10 +256,11 @@ class CalculateMetrics:
     value ("mean"), the maximum value ("max") or to extract a specific index of
     the ensemble (if a number is provided).
 
-    This expects the input predictions to have 4 dimensions (classes, h, w, d)
+    This expects the input predictions to have 4 dimensions ((classes), h, w, d)
     and the input ground truth/examples to have 3 dimensions (h, w, d). This
     function only calculates binary metrics, so a class index has to be set
-    through `class_idx`.
+    through `class_idx`. If the number of dimensions is 3, it assumes that a
+    class has been selected.
 
     Args:
         prediction_mode (str, optional): prediction mode. If "mask" does nothing
@@ -273,6 +276,7 @@ class CalculateMetrics:
         proba_threshold (float, optional): probability for binarising input.
         return_examples (bool, optional): whether example images are to be
             produced. Defaults to False.
+        n_dim (int, optional): number of dimensions. Defaults to 3.
         class_idx (int, optional): index of class for metrics.
         min_size (float, optional): minimum size of candidates. Defaults to
             10.0.
@@ -287,6 +291,7 @@ class CalculateMetrics:
     overlap_threshold: float = None
     proba_threshold: float = 0.1
     return_examples: bool = False
+    n_dim: int = 3
     class_idx: int = 0
     min_size: float = 10.0
 
@@ -462,6 +467,12 @@ class CalculateMetrics:
             "union": pred_sum + gt_sum - intersection,
         }
 
+    def select_class(self, pred: np.ndarray):
+        if len(pred.shape) == self.n_classes:
+            return pred
+        else:
+            return pred[self.class_idx]
+
     def calculate_metrics(
         self,
         key: str,
@@ -486,7 +497,7 @@ class CalculateMetrics:
         """
         gt = self.read_image(gt)
         pred = self.read_image(pred)
-        pred = self.preprocess_pred(pred)[self.class_idx]
+        pred = self.select_class(self.preprocess_pred(pred))
         pred, pred_eval = self.extract_lesion_candidates(pred)
         y_list, case_confidence, _, _ = evaluate_case(
             y_det=pred_eval,
@@ -596,6 +607,11 @@ def main(arguments):
         default=0,
         help="Extracts this class from the data if more than one channel in \
             prediction",
+    )
+    parser.add_argument(
+        "--n_dim",
+        default=3,
+        help="Number of dimensions",
     )
     parser.add_argument(
         "--overlap_threshold",
@@ -736,6 +752,7 @@ def main(arguments):
         overlap_threshold=args.overlap_threshold,
         proba_threshold=args.proba_threshold,
         return_examples=args.generate_examples,
+        n_dim=args.n_dim,
         class_idx=args.class_idx,
         min_size=args.min_size,
     )
