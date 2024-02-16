@@ -1,6 +1,13 @@
 import argparse
 import json
-import pandas
+
+try:
+    import pandas as pd
+except:
+    raise ImportError(
+        "Pandas is required to parse parquet files. ",
+        "Please install it with `pip install pandas`.",
+    )
 
 desc = "Converts a CSV into a hierarchical JSON file."
 
@@ -28,7 +35,7 @@ def main(arguments):
 
     args = parser.parse_args(arguments)
 
-    data = pandas.read_csv(args.path)
+    data = pd.read_csv(args.path)
     data_ids = data[args.id_columns].astype(str)
     data_features = data[args.feature_columns]
     output = {}

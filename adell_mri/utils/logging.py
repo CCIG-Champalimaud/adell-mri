@@ -1,7 +1,14 @@
 import os
-import pandas as pd
 from dataclasses import dataclass
 from typing import Any
+
+try:
+    import pandas as pd
+except:
+    raise ImportError(
+        "Pandas is required to parse parquet files. ",
+        "Please install it with `pip install pandas`.",
+    )
 
 
 @dataclass

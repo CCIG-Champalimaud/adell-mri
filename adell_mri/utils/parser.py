@@ -10,7 +10,6 @@ import argparse
 import yaml
 import json
 import importlib
-import pandas as pd
 from hydra import compose as hydra_compose
 from hydra import initialize_config_dir
 from omegaconf import OmegaConf
@@ -213,6 +212,13 @@ def parse_ids(
                 out = [x.strip().split(",") for x in o.readlines()]
             out = {x[0]: x[1:] for x in out}
         elif term == "parquet":
+            try:
+                import pandas as pd
+            except:
+                raise ImportError(
+                    "Pandas is required to parse parquet files. ",
+                    "Please install it with `pip install pandas`.",
+                )
             out = pd.read_parquet(id_file).to_dict("list")
         elif term == "json":
             with open(id_file) as o:
