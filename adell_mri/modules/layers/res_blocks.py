@@ -263,6 +263,7 @@ class ResNeXtBlock2d(torch.nn.Module):
         out_channels: int = None,
         adn_fn: torch.nn.Module = torch.nn.Identity,
         n_splits: int = 16,
+        skip_activation: bool = None,
     ):
         """
         Args:
@@ -275,6 +276,8 @@ class ResNeXtBlock2d(torch.nn.Module):
                 module used. Defaults to torch.nn.Identity.
             n_splits (int, optional): number of branches in intermediate step
                 of the ResNeXt module. Defaults to 32.
+            skip_activation (bool, optional): skips final activation during forward
+                pass. Defaults to None (False).
         """
         super().__init__()
         self.in_channels = in_channels
@@ -324,8 +327,16 @@ class ResNeXtBlock2d(torch.nn.Module):
 
         self.final_op = self.adn_fn(self.out_channels)
 
-    def forward(self, X):
-        return self.final_op(self.op(X) + self.skip_op(X))
+    def forward(self, X: torch.Tensor, skip_activation: bool = None):
+        skip_activation = (
+            skip_activation
+            if skip_activation is not None
+            else self.skip_activation
+        )
+        out = self.op(X) + self.skip_op(X)
+        if skip_activation is not True:
+            out = self.final_op(out)
+        return out
 
 
 class ResNeXtBlock3d(torch.nn.Module):
@@ -343,6 +354,7 @@ class ResNeXtBlock3d(torch.nn.Module):
         out_channels: int = None,
         adn_fn: torch.nn.Module = torch.nn.Identity,
         n_splits: int = 32,
+        skip_activation: bool = None,
     ):
         """
         Args:
@@ -355,6 +367,8 @@ class ResNeXtBlock3d(torch.nn.Module):
                 module used. Defaults to torch.nn.Identity.
             n_splits (int, optional): number of branches in intermediate step
                 of the ResNeXt module. Defaults to 32.
+            skip_activation (bool, optional): skips final activation during forward
+                pass. Defaults to None (False).
         """
         super().__init__()
         self.in_channels = in_channels
@@ -369,6 +383,7 @@ class ResNeXtBlock3d(torch.nn.Module):
             self.out_channels = self.in_channels
         self.adn_fn = adn_fn
         self.n_splits = n_splits
+        self.skip_activation = skip_activation
 
         self.init_layers()
 
@@ -404,8 +419,16 @@ class ResNeXtBlock3d(torch.nn.Module):
 
         self.final_op = self.adn_fn(self.out_channels)
 
-    def forward(self, X):
-        return self.final_op(self.op(X) + self.skip_op(X))
+    def forward(self, X: torch.Tensor, skip_activation: bool = None):
+        skip_activation = (
+            skip_activation
+            if skip_activation is not None
+            else self.skip_activation
+        )
+        out = self.op(X) + self.skip_op(X)
+        if skip_activation is not True:
+            out = self.final_op(out)
+        return out
 
 
 class ConvNeXtBlock2d(torch.nn.Module):
@@ -422,6 +445,7 @@ class ConvNeXtBlock2d(torch.nn.Module):
         out_channels: int = None,
         adn_fn: torch.nn.Module = torch.nn.Identity,
         layer_scale_init_value: float = 1e-6,
+        skip_activation: bool = None,
     ):
         """
         Args:
@@ -433,6 +457,8 @@ class ConvNeXtBlock2d(torch.nn.Module):
             adn_fn (torch.nn.Module, optional): for compability purposes.
             layer_scale_init_value (float, optional): init value for gamma (
                 scales non-residual term). Defaults to 1e-6.
+            skip_activation (bool, optional): skips final activation during forward
+                pass (redundant; for consistency). Defaults to None (False).
         """
         super().__init__()
         self.in_channels = in_channels
@@ -441,6 +467,7 @@ class ConvNeXtBlock2d(torch.nn.Module):
         self.out_channels = out_channels
         self.adn_fn = adn_fn
         self.layer_scale_init_value = layer_scale_init_value
+        self.skip_activation = skip_activation
 
         self.dwconv = torch.nn.Conv2d(
             in_channels,
@@ -504,6 +531,7 @@ class ConvNeXtBlock3d(torch.nn.Module):
         out_channels: int,
         adn_fn: torch.nn.Module = torch.nn.Identity,
         layer_scale_init_value: float = 1e-6,
+        skip_activation: bool = None,
     ):
         """
         Args:
@@ -516,6 +544,8 @@ class ConvNeXtBlock3d(torch.nn.Module):
                 channels are different. Defaults to torch.nn.Identity.
             layer_scale_init_value (float, optional): init value for gamma (
                 scales non-residual term). Defaults to 1e-6.
+            skip_activation (bool, optional): skips final activation during forward
+                pass (redundant; for consistency). Defaults to None (False).
         """
         super().__init__()
         self.in_channels = in_channels
@@ -524,6 +554,7 @@ class ConvNeXtBlock3d(torch.nn.Module):
         self.out_channels = out_channels
         self.adn_fn = adn_fn
         self.layer_scale_init_value = layer_scale_init_value
+        self.skip_activation = skip_activation
 
         self.dwconv = torch.nn.Conv3d(
             in_channels,

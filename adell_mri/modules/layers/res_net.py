@@ -53,6 +53,7 @@ class ResNetBackbone(torch.nn.Module):
         adn_fn: torch.nn.Module = torch.nn.Identity,
         res_type: str = "resnet",
         batch_ensemble: int = 0,
+        skip_last_activation: bool = False, 
     ):
         """
         Args:
@@ -73,6 +74,8 @@ class ResNetBackbone(torch.nn.Module):
                 block)
             batch_ensemble (int, optional): triggers batch-ensemble layers.
                 Defines number of batch ensemble modules. Defaults to 0.
+            skip_last_activation (bool, optional): skips the last activation in
+                the ResNet backbone. Defaults to False.
         """
         super().__init__()
         self.spatial_dim = spatial_dim
@@ -84,6 +87,7 @@ class ResNetBackbone(torch.nn.Module):
         self.adn_fn = adn_fn
         self.res_type = res_type
         self.batch_ensemble = batch_ensemble
+        self.skip_last_activation = skip_last_activation
 
         self.get_ops()
         self.init_layers()
@@ -119,6 +123,7 @@ class ResNetBackbone(torch.nn.Module):
         inter_channels: int,
         out_channels: int,
         adn_fn: callable,
+        skip_activation: bool,
     ):
         return ConvolutionalBlock2d(
             in_channels=[in_channels],
@@ -135,6 +140,7 @@ class ResNetBackbone(torch.nn.Module):
         inter_channels: int,
         out_channels: int,
         adn_fn: callable,
+        skip_activation: bool,
     ):
         return ConvolutionalBlock3d(
             in_channels=[in_channels],

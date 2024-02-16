@@ -759,6 +759,7 @@ def main(arguments):
             deep_supervision=args.deep_supervision,
             n_classes=n_classes,
             keys=keys,
+            optimizer_str=args.optimizer,
             train_loader_call=train_loader_call,
             random_crop_size=args.random_crop_size,
             crop_size=args.crop_size,

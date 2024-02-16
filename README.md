@@ -14,15 +14,15 @@ Then, using some minor JSON manipulation and [`MONAI`](https://monai.io/) we are
 
 ## Installation
 
-Installing this as package can be done easily through `pdm` in a `conda` environment. This requires `scikit-build` and can be done through the following commands:
+First, `torch` should be installed. Then, installing `adell-mri` as a package can be done easily through `pdm` in a `conda` environment. This requires `scikit-build` and can be done through the following commands:
 
 ```
 # creates and activates environment
 conda create -n adell_env python=3.11
 conda activate adell_env
 
-# installs pdm and scikit-build
-pip install pdm scikit-build
+# installs pdm, scikit-build and torch
+pip install pdm scikit-build torch
 
 # installs adell_mri
 pdm install

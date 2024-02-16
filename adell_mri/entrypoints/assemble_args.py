@@ -332,16 +332,16 @@ argument_factory = {
     "dropout_param": dict(
         type=float, default=0.1, help="Parameter for dropout."
     ),
-    "batch_size": dict(type=int, default=2, help="Batch size"),
+    "batch_size": dict(type=int, default=None, help="Batch size"),
     "optimizer": dict(
         type=str,
-        default=2,
+        default="str",
         help="Specifies the optimizer used during training",
         choices=[k for k in OPTIMIZER_MATCH.keys()],
     ),
     "learning_rate": dict(
         type=float,
-        default=0.0001,
+        default=None,
         help="Overrides learning rate in config file",
     ),
     # trainer (lightning)

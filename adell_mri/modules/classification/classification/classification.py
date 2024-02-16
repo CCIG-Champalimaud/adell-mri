@@ -182,7 +182,9 @@ class CatNet(torch.nn.Module):
         maxpool_structure: List[Tuple[int, int, int]] = maxpool_default,
         adn_fn: torch.nn.Module = None,
         res_type: str = "resnet",
+        classification_structure: list[int] = None,
         batch_ensemble: bool = False,
+        skip_last_activation: bool = False,
     ):
         """
         Args:
@@ -210,8 +212,13 @@ class CatNet(torch.nn.Module):
                 Defaults to None (batch normalization).
             res_type (str, optional): type of residual operation, can be either
                 "resnet" or "resnext". Defaults to "resnet".
+            classification_structure (List[int], optional): structure of the
+                classifier. Defaults to None (last layer size repeated three
+                times).
             batch_ensemble (bool, optional): uses batch ensemble layers.
                 Defaults to False.
+            skip_last_activation (bool, optional): skips the last activation in
+                the ResNet backbone. Defaults to False.
         """
         super().__init__()
         self.spatial_dim = spatial_dimensions
@@ -222,7 +229,9 @@ class CatNet(torch.nn.Module):
         self.maxpool_structure = maxpool_structure
         self.adn_fn = adn_fn
         self.res_type = res_type
+        self.classification_structure = classification_structure
         self.batch_ensemble = batch_ensemble
+        self.skip_last_activation = skip_last_activation
 
         if self.adn_fn is None:
             if self.spatial_dim == 2:
@@ -247,6 +256,7 @@ class CatNet(torch.nn.Module):
                 maxpool_structure=self.maxpool_structure,
                 res_type=self.res_type,
                 batch_ensemble=self.batch_ensemble,
+                skip_last_activation=self.skip_last_activation,
             )
             self.feature_extraction = self.res_net
             self.last_size = self.resnet_structure[-1][0]
@@ -264,12 +274,14 @@ class CatNet(torch.nn.Module):
         else:
             final_n = self.n_classes
             self.last_act = torch.nn.Softmax(1)
+        if self.classification_structure is None:
+            self.classification_structure = [self.last_size for _ in range(3)]
         self.gp = GlobalPooling()
         self.classification_layer = torch.nn.Sequential(
             MLP(
                 self.last_size,
                 final_n,
-                [self.last_size for _ in range(3)],
+                self.classification_structure,
                 adn_fn=get_adn_fn(1, "batch", "gelu"),
             )
         )
