@@ -618,7 +618,6 @@ def get_pre_transforms_ssl(
 ):
     intp = []
     intp_resampling_augmentations = []
-    key_correspondence = {k: kk for k, kk in zip(all_keys, copied_keys)}
     for k in all_keys:
         intp.append("area")
         intp_resampling_augmentations.append("bilinear")
@@ -674,6 +673,7 @@ def get_pre_transforms_ssl(
         )
     transforms.append(monai.transforms.EnsureTyped(all_keys))
     if skip_augmentations is False:
+        key_correspondence = {k: kk for k, kk in zip(all_keys, copied_keys)}
         transforms.append(CopyEntryd(all_keys, key_correspondence))
     return transforms
 
