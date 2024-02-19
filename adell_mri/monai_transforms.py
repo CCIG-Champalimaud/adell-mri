@@ -1149,15 +1149,18 @@ def get_augmentations_ssl(
             N=n_transforms,
             dropout_size=dropout_size,
         ),
-        AugmentationWorkhorsed(
-            augmentations=aug_list,
-            keys=copied_keys,
-            mask_keys=[],
-            max_mult=0.5,
-            N=n_transforms,
-            dropout_size=dropout_size,
-        ),
     ]
+    if len(copied_keys) > 0:
+        transforms.append(
+            AugmentationWorkhorsed(
+                augmentations=aug_list,
+                keys=copied_keys,
+                mask_keys=[],
+                max_mult=0.5,
+                N=n_transforms,
+                dropout_size=dropout_size,
+            )
+        )
     return transforms
 
 
