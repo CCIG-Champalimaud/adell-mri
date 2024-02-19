@@ -608,8 +608,9 @@ def get_pre_transforms_ssl(
     adc_keys: List[str],
     non_adc_keys: List[str],
     target_spacing: List[float],
-    crop_size: List[int],
-    pad_size: List[int],
+    crop_size: List[int] = None,
+    pad_size: List[int] = None,
+    resize_size: List[int] = None,
     n_channels: int = 1,
     n_dim: int = 3,
     skip_augmentations: bool = False,
@@ -666,6 +667,10 @@ def get_pre_transforms_ssl(
     if pad_size is not None:
         transforms.append(
             monai.transforms.SpatialPadd(all_keys, [int(j) for j in pad_size])
+        )
+    if resize_size is not None:
+        transforms.append(
+            monai.transforms.Resized(all_keys, [int(j) for j in resize_size])
         )
     transforms.append(monai.transforms.EnsureTyped(all_keys))
     if skip_augmentations is False:
@@ -1048,7 +1053,6 @@ def get_augmentations_ssl(
         out = np.concatenate([box1, box2]).astype(np.float32)
         return out
 
-    scaled_crop_size = tuple([int(x) for x in scaled_crop_size])
     roi_size = tuple([int(x) for x in roi_size])
 
     transforms_to_remove = []
@@ -1069,6 +1073,7 @@ def get_augmentations_ssl(
     cropping_strategy = []
 
     if scaled_crop_size is not None:
+        scaled_crop_size = tuple([int(x) for x in scaled_crop_size])
         small_crop_size = [x // 2 for x in scaled_crop_size]
         cropping_strategy.extend(
             [

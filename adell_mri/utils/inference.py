@@ -293,7 +293,6 @@ class FlippedInference:
         self,
         inference_function: Callable,
         flips: List[List[int]],
-        flip_idx: List[int] = None,
         flip_keys: List[str] = None,
         ndim: int = 3,
         inference_batch_size: int = 1,
@@ -302,7 +301,6 @@ class FlippedInference:
         Args:
             inference_function (Callable): base inference function.
             flips (List[List[int]]): list of dimensions that should be flipped.
-            flip_idx (list[int]): dimension index for flipping. Defaults to None.
             flip_keys (list[str], optional): list of keys for flipping. Defaults
                 to ["image"].
             ndim (int, optional): number of spatial dimensions. Defaults to 3.
@@ -311,16 +309,15 @@ class FlippedInference:
         """
         self.inference_function = inference_function
         self.flips = flips
-        self.flip_idx = flip_idx
         self.flip_keys = flip_keys
         self.ndim = ndim
         self.inference_batch_size = inference_batch_size
 
     def flip_array(self, X: TensorOrArray, axis: Tuple[int]) -> TensorOrArray:
         if isinstance(X[0], np.ndarray):
-            return np.flip(X, axis)
+            return np.flip(deepcopy(X), axis)
         elif isinstance(X[0], torch.Tensor):
-            return torch.flip(X, axis)
+            return torch.flip(deepcopy(X), axis)
 
     def flip(self, X: MultiFormatInput, axis: List[int]) -> Shape:
         """
@@ -341,7 +338,7 @@ class FlippedInference:
         """
         axis = tuple(axis)
         if isinstance(X, (np.ndarray, torch.Tensor)):
-            return self.flip_array(deepcopy(X), axis)
+            return self.flip_array(X, axis)
         elif isinstance(X, dict):
             X_out = deepcopy(X)
             for k in X:
@@ -353,7 +350,7 @@ class FlippedInference:
             return X_out
         elif isinstance(X, (tuple, list)):
             X_out = deepcopy(X)
-            for k in X:
+            for k in range(len(X)):
                 if self.flip_keys is not None:
                     if k in self.flip_keys:
                         X_out[k] = self.flip_array(X_out[k], axis)
@@ -369,30 +366,33 @@ class FlippedInference:
         batch_flips = []
         original_batch_size = get_shape(X)[0]
         flips = self.flips
-        output = [
-            self.inference_function(
-                multi_format_stack_or_cat([X], self.ndim), *args, **kwargs
-            )
-        ]
+        output = self.inference_function(
+            multi_format_stack_or_cat([X], self.ndim), *args, **kwargs
+        )
         for flip in flips:
             batch_flips.append(flip)
             if len(batch_flips) == self.inference_batch_size:
                 batch = [self.flip(X, flip_axis) for flip_axis in batch_flips]
                 batch = multi_format_stack_or_cat(batch, self.ndim)
                 result = self.inference_function(batch, *args, **kwargs)
-                result = torch.split(result, original_batch_size)
-                output.extend(result)
+                result = torch.split(result, original_batch_size, dim=0)
+                result = [
+                    self.flip_array(x, flip_axis)
+                    for x, flip_axis in zip(result, batch_flips)
+                ]
+                output += sum(result)
                 batch_flips = []
         if len(batch_flips) > 0:
             batch = [self.flip(X, flip_axis) for flip_axis in batch_flips]
             batch = multi_format_stack_or_cat(batch, self.ndim)
             result = self.inference_function(batch, *args, **kwargs)
-            result = torch.split(result, original_batch_size)
-            output.extend(result)
-        output[1:] = [
-            torch.flip(x, flip_axis) for x, flip_axis in zip(output[1:], flips)
-        ]
-        output = torch.stack(output, 0).mean(0)
+            result = torch.split(result, original_batch_size, dim=0)
+            result = [
+                self.flip_array(x, flip_axis)
+                for x, flip_axis in zip(result, batch_flips)
+            ]
+            output += sum(result)
+        output = output / len(flips)
         return output
 
 
@@ -802,7 +802,6 @@ class SegmentationInference:
         inference_batch_size: int = 1,
         n_classes: int = 2,
         flip: bool = False,
-        flip_idx: List[int] = None,
         flip_keys: List[str] = ["image"],
         mc_iterations: int = None,
         ndim: int = 3,
@@ -820,7 +819,6 @@ class SegmentationInference:
                 sliding_window_size is multiplied by stride to obtain the
                 actual stride size.
             flip (bool, optional): triggers flipped prediction. Defaults to False.
-            flip_idx (list[int]): dimension index for flipping. Defaults to None.
             flip_keys (list[str], optional): list of keys for flipping. Defaults
                 to ["image"].
 
@@ -840,14 +838,21 @@ class SegmentationInference:
         self.n_classes = n_classes
         self.stride = stride
         self.flip = flip
-        self.flip_idx = flip_idx
         self.flip_keys = flip_keys
         self.mc_iterations = mc_iterations
         self.ndim = ndim
         self.inference_batch_size = inference_batch_size
         self.reduction = reduction
 
-        self.flips = [(2,), (3,), (4,)]
+        self.flips = [
+            (2,),
+            (3,),
+            (4,),
+            (2, 3),
+            (3, 4),
+            (2, 4),
+            (2, 3, 4),
+        ]
 
         self.update_base_inference_function(base_inference_function)
 
@@ -878,7 +883,6 @@ class SegmentationInference:
                     FlippedInference(
                         inference_function=fn,
                         flips=self.flips,
-                        flip_idx=self.flip_idx,
                         flip_keys=self.flip_keys,
                         ndim=self.ndim,
                         inference_batch_size=self.inference_batch_size,
@@ -902,7 +906,6 @@ class SegmentationInference:
                 inference_function = FlippedInference(
                     inference_function=inference_function,
                     flips=self.flips,
-                    flip_idx=self.flip_idx,
                     flip_keys=self.flip_keys,
                     ndim=self.ndim,
                     inference_batch_size=self.inference_batch_size,
