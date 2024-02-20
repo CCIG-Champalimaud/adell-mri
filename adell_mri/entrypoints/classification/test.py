@@ -252,11 +252,16 @@ def main(arguments):
                 mixup_alpha=None,
                 partial_mixup=None,
             )
+            state_dict = torch.load(checkpoint)["state_dict"]
+            state_dict = {
+                k: state_dict[k]
+                for k in state_dict
+                if "deep_supervision_ops" not in k and "ema." not in k
+            }
+            network.load_state_dict(state_dict)
             network = network.eval()
             trainer = Trainer(accelerator=accelerator, devices=devices)
-            test_metrics = trainer.test(
-                network, test_loader, ckpt_path=checkpoint
-            )[0]
+            test_metrics = trainer.test(network, test_loader)[0]
             for k in test_metrics:
                 out = test_metrics[k]
                 try:
