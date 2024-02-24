@@ -95,15 +95,15 @@ class GenericEnsemble(torch.nn.Module):
     def initialize_sae_if_necessary(self):
         if self.sae is True:
             if self.spatial_dimensions == 2:
-                self.preproc_method = torch.nn.Modulelist(
+                self.preproc_method = torch.nn.ModuleList(
                     [ConcurrentSqueezeAndExcite2d(f) for f in self.n_features]
                 )
             elif self.spatial_dimensions == 3:
-                self.preproc_method = torch.nn.Modulelist(
+                self.preproc_method = torch.nn.ModuleList(
                     [ConcurrentSqueezeAndExcite3d(f) for f in self.n_features]
                 )
         else:
-            self.preproc_method = torch.nn.Modulelist(
+            self.preproc_method = torch.nn.ModuleList(
                 [torch.nn.Identity() for _ in self.n_features]
             )
 
