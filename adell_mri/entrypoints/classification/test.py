@@ -285,7 +285,7 @@ def main(arguments):
                     print(x)
                     # bootstrap AUC estimate
                 mean, (upper, lower) = bootstrap_metric(
-                    ensemble_network.test_metrics["T_AUC"], 100, 0.5
+                    network.test_metrics["T_AUC"], 100, 0.5
                 )
                 for idx, (m, u, l) in enumerate(zip(mean, upper, lower)):
                     x = "{},{},{},{},{}".format(
