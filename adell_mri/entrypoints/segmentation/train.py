@@ -498,15 +498,17 @@ def main(arguments):
         )
 
         if args.semi_supervised is True:
+            transforms_semi_sl = monai.transforms.Compose(transforms_semi_sl)
+            transforms_semi_sl.set_random_state(args.seed)
             train_semi_sl_dataset = monai.data.CacheDataset(
                 train_semi_sl_list,
-                monai.transforms.Compose(transforms_semi_sl),
+                transforms_semi_sl,
                 num_workers=args.n_workers,
                 cache_rate=args.cache_rate,
             )
             train_val_semi_sl_dataset = monai.data.CacheDataset(
                 train_val_list,
-                monai.transforms.Compose(transforms_semi_sl),
+                transforms_semi_sl,
                 num_workers=args.n_workers,
                 cache_rate=args.cache_rate,
             )
