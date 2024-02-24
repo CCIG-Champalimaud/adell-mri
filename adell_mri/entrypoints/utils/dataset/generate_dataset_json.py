@@ -86,7 +86,7 @@ def main(arguments):
     parser.add_argument(
         "--mask_path",
         dest="mask_path",
-        required=True,
+        default=None,
         help="Path to folder containing nibabel compatible masks",
     )
     parser.add_argument(
@@ -153,7 +153,6 @@ def main(arguments):
 
     bb_dict = {}
     all_paths = [str(x) for x in Path(args.input_path).rglob("*")]
-    all_mask_paths = [str(x) for x in Path(args.mask_path).rglob("*")]
     all_paths = {p: search_with_re(all_paths, p) for p in args.patterns}
     class_dict_csv = {}
     if args.class_csv_path:
@@ -162,7 +161,11 @@ def main(arguments):
                 l = l.strip().split(",")
                 identifier, cl = l[0], l[-1]
                 class_dict_csv[identifier] = cl
-    mask_paths = search_with_re(all_mask_paths, args.mask_pattern)
+    if args.mask_path is not None:
+        all_mask_paths = [str(x) for x in Path(args.mask_path).rglob("*")]
+        mask_paths = search_with_re(all_mask_paths, args.mask_pattern)
+    else:
+        mask_paths = []
     for file_path in tqdm(all_paths[args.patterns[0]]):
         image_id = re.search(args.id_pattern, file_path).group()
         alt_file_paths = []
@@ -206,7 +209,7 @@ def main(arguments):
         elif image_id in class_dict_csv:
             bb_dict[image_id] = {
                 "image": os.path.abspath(file_path),
-                "image_labels": [int(class_dict_csv[image_id])],
+                "image_labels": class_dict_csv[image_id],
             }
             if len(alt_file_paths) > 0:
                 for i, p in enumerate(alt_file_paths):
