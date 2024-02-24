@@ -311,12 +311,11 @@ class FlippedInference:
         self.flips = flips
         self.flip_keys = flip_keys
         self.ndim = ndim
-        self.inference_batch_size = inference_batch_size
 
     def flip_array(self, X: TensorOrArray, axis: Tuple[int]) -> TensorOrArray:
-        if isinstance(X[0], np.ndarray):
+        if isinstance(X, np.ndarray):
             return np.flip(deepcopy(X), axis)
-        elif isinstance(X[0], torch.Tensor):
+        elif isinstance(X, torch.Tensor):
             return torch.flip(deepcopy(X), axis)
 
     def flip(self, X: MultiFormatInput, axis: List[int]) -> Shape:
@@ -344,6 +343,7 @@ class FlippedInference:
             for k in X:
                 if self.flip_keys is not None:
                     if k in self.flip_keys:
+                        im = deepcopy(X_out[k])
                         X_out[k] = self.flip_array(X_out[k], axis)
                 else:
                     X_out[k] = self.flip_array(X_out[k], axis)
@@ -363,36 +363,14 @@ class FlippedInference:
             )
 
     def __call__(self, X: MultiFormatInput, *args, **kwargs) -> TensorOrArray:
-        batch_flips = []
-        original_batch_size = get_shape(X)[0]
         flips = self.flips
-        output = self.inference_function(
-            multi_format_stack_or_cat([X], self.ndim), *args, **kwargs
-        )
+        output = self.inference_function(X, *args, **kwargs)
         for flip in flips:
-            batch_flips.append(flip)
-            if len(batch_flips) == self.inference_batch_size:
-                batch = [self.flip(X, flip_axis) for flip_axis in batch_flips]
-                batch = multi_format_stack_or_cat(batch, self.ndim)
-                result = self.inference_function(batch, *args, **kwargs)
-                result = torch.split(result, original_batch_size, dim=0)
-                result = [
-                    self.flip_array(x, flip_axis)
-                    for x, flip_axis in zip(result, batch_flips)
-                ]
-                output += sum(result)
-                batch_flips = []
-        if len(batch_flips) > 0:
-            batch = [self.flip(X, flip_axis) for flip_axis in batch_flips]
-            batch = multi_format_stack_or_cat(batch, self.ndim)
-            result = self.inference_function(batch, *args, **kwargs)
-            result = torch.split(result, original_batch_size, dim=0)
-            result = [
-                self.flip_array(x, flip_axis)
-                for x, flip_axis in zip(result, batch_flips)
-            ]
-            output += sum(result)
-        output = output / len(flips)
+            output += self.flip(
+                self.inference_function(self.flip(X, flip), *args, **kwargs),
+                flip,
+            )
+        output = output / (len(flips) + 1)
         return output
 
 
@@ -846,12 +824,8 @@ class SegmentationInference:
 
         self.flips = [
             (2,),
-            (3,),
-            (4,),
-            (2, 3),
-            (3, 4),
-            (2, 4),
-            (2, 3, 4),
+            # (3,),
+            # (2, 3),
         ]
 
         self.update_base_inference_function(base_inference_function)
