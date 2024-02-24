@@ -379,9 +379,11 @@ def main(arguments):
                     "Resuming training from checkpoint in {}".format(ckpt_path)
                 )
 
+        transforms_train = monai.transforms.Compose(transforms_train)
+        transforms_train.set_random_state(args.seed)
         train_dataset = monai.data.CacheDataset(
             train_list,
-            monai.transforms.Compose(transforms_train),
+            transforms_train,
             num_workers=args.n_workers,
             cache_rate=args.cache_rate,
         )
@@ -553,7 +555,7 @@ def main(arguments):
             training_dataloader_call=train_loader_call,
             deep_supervision=args.deep_supervision,
             loss_params=loss_params,
-            **network_config_corr
+            **network_config_corr,
         )
         unet.module = torch.jit.freeze(unet.module)
 

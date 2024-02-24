@@ -224,6 +224,8 @@ def main(arguments):
 
     accelerator, devices, strategy = get_devices(args.dev)
 
+    transforms = monai.transforms.Compose(transforms)
+    transforms.set_random_state(args.seed)
     train_dataset = monai.data.CacheDataset(
         train_list,
         monai.transforms.Compose(transforms),

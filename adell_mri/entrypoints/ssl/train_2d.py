@@ -254,10 +254,10 @@ def main(arguments):
 
     print(f"Training set size: {len(train_list)}")
 
+    transforms = monai.transforms.Compose(transforms)
+    transforms.set_random_state(args.seed)
     if args.jpeg_dataset is True:
-        train_dataset = monai.data.Dataset(
-            train_list, monai.transforms.Compose(transforms)
-        )
+        train_dataset = monai.data.Dataset(train_list, transforms)
         sampler = torch.utils.data.RandomSampler(
             train_list, num_samples=args.num_samples, generator=g
         )
@@ -265,9 +265,7 @@ def main(arguments):
             train_list, num_samples=args.num_samples, generator=g
         )
     else:
-        train_dataset = DICOMDataset(
-            train_list, monai.transforms.Compose(transforms)
-        )
+        train_dataset = DICOMDataset(train_list, transforms)
         if args.steps_per_epoch is not None:
             n_samples = args.steps_per_epoch * network_config["batch_size"]
         elif args.num_samples is not None:
