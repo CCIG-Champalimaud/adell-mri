@@ -16,6 +16,7 @@ from .classification import (
     SegCatNet,
     UNetEncoder,
     GenericEnsemble,
+    AveragingEnsemble,
     ViTClassifier,
     FactorizedViTClassifier,
     TransformableTransformer,
@@ -890,43 +891,120 @@ class GenericEnsemblePL(GenericEnsemble, ClassPLABC):
     def train_dataloader(self) -> torch.utils.data.DataLoader:
         return self.training_dataloader_call()
 
-    def configure_optimizers(self):
-        if isinstance(self.weight_decay, (list, tuple)):
-            # decouples body and head weight decay
-            wd_body, wd_head = self.weight_decay
-            params_head = [
-                p
-                for (n, p) in self.named_parameters()
-                if "classification" in n
-            ]
-            params_body = [
-                p
-                for (n, p) in self.named_parameters()
-                if "classification" not in n
-            ]
-            parameters = [
-                {"params": params_head, "weight_decay": wd_body},
-                {"params": params_body, "weight_decay": wd_head},
-            ]
-            wd = wd_body
-        else:
-            parameters = self.parameters()
-            wd = self.weight_decay
-        optimizer = torch.optim.AdamW(
-            parameters, lr=self.learning_rate, weight_decay=wd
-        )
-        lr_schedulers = CosineAnnealingWithWarmupLR(
-            optimizer,
-            T_max=self.n_epochs,
-            start_decay=self.start_decay,
-            n_warmup_steps=self.warmup_steps,
-        )
+    def on_train_epoch_end(self):
+        sch = self.lr_schedulers().state_dict()
+        lr = self.learning_rate
+        last_lr = sch["_last_lr"][0] if "_last_lr" in sch else lr
+        self.log("lr", last_lr)
 
-        return {
-            "optimizer": optimizer,
-            "lr_scheduler": lr_schedulers,
-            "monitor": "val_loss",
-        }
+
+class AveragingEnsemblePL(AveragingEnsemble, ClassPLABC):
+    """
+    Ensemble average classification network for PL.
+    """
+
+    def __init__(
+        self,
+        image_keys: List[str] = ["image"],
+        label_key: str = "label",
+        learning_rate: float = 0.001,
+        batch_size: int = 4,
+        weight_decay: float = 0.0,
+        training_dataloader_call: Callable = None,
+        loss_fn: Callable = F.binary_cross_entropy,
+        loss_params: dict = {},
+        n_epochs: int = 100,
+        warmup_steps: int = 0,
+        start_decay: int = None,
+        *args,
+        **kwargs,
+    ) -> torch.nn.Module:
+        """
+        Args:
+            image_keys (str): key corresponding to the key from the train
+                dataloader.
+            label_key (str): key corresponding to the label key from the train
+                dataloader.
+            learning_rate (float, optional): learning rate. Defaults to 0.001.
+                batch_size (int, optional): batch size. Defaults to 4.
+            weight_decay (float, optional): weight decay for optimizer. Defaults
+                to 0.005.
+            training_dataloader_call (Callable, optional): call for the
+                training dataloader. Defaults to None.
+            loss_fn (Callable, optional): loss function. Defaults to
+                F.binary_cross_entropy
+            loss_params (dict, optional): classification loss parameters.
+                Defaults to {}.
+            n_epochs (int, optional): number of epochs. Defaults to 100.
+            warmup_steps (int, optional): number of warmup steps. Defaults
+                to 0.
+            start_decay (int, optional): number of steps after which decay
+                begins. Defaults to None (decay starts after warmup).
+            args: arguments for classification network class.
+            kwargs: keyword arguments for classification network class.
+
+        Returns:
+            pl.LightningModule: a classification network module.
+        """
+
+        super().__init__(*args, **kwargs)
+
+        self.image_keys = image_keys
+        self.label_key = label_key
+        self.learning_rate = learning_rate
+        self.batch_size = batch_size
+        self.weight_decay = weight_decay
+        self.training_dataloader_call = training_dataloader_call
+        self.loss_fn = loss_fn
+        self.loss_params = loss_params
+        self.n_epochs = n_epochs
+        self.warmup_steps = warmup_steps
+        self.start_decay = start_decay
+        self.args = args
+        self.kwargs = kwargs
+
+        self.save_hyperparameters(ignore=["networks"])
+        self.setup_metrics()
+
+    def training_step(self, batch, batch_idx):
+        x, y = [batch[k] for k in self.image_keys], batch[self.label_key]
+        prediction = self.forward(x)
+        prediction = torch.squeeze(prediction, 1)
+
+        loss = self.calculate_loss(prediction, y)
+
+        self.log("train_loss", loss)
+        return loss
+
+    def validation_step(self, batch, batch_idx):
+        x, y = [batch[k] for k in self.image_keys], batch[self.label_key]
+        prediction = self.forward(x)
+        prediction = torch.squeeze(prediction, 1)
+
+        loss = self.calculate_loss(prediction, y)
+        self.log(
+            "val_loss",
+            loss,
+            on_epoch=True,
+            on_step=False,
+            prog_bar=True,
+            batch_size=x[0].shape[0],
+        )
+        self.update_metrics(prediction, y, self.val_metrics)
+        return loss
+
+    def test_step(self, batch, batch_idx):
+        x, y = [batch[k] for k in self.image_keys], batch[self.label_key]
+        prediction = self.forward(x)
+        prediction = torch.squeeze(prediction, 1)
+
+        loss = self.calculate_loss(prediction, y)
+
+        self.update_metrics(prediction, y, self.test_metrics, log=False)
+        return loss
+
+    def train_dataloader(self) -> torch.utils.data.DataLoader:
+        return self.training_dataloader_call()
 
     def on_train_epoch_end(self):
         sch = self.lr_schedulers().state_dict()
@@ -1312,7 +1390,16 @@ class HybridClassifierPL(HybridClassifier, ClassPLABC):
         self.args = args
         self.kwargs = kwargs
 
-        self.save_hyperparameters()
+        self.save_hyperparameters(
+            # explicitly ignoring as lightning seems to have some issues with
+            # this during testing
+            ignore=[
+                "args",
+                "kwargs",
+                "convolutional_module",
+                "tabular_module",
+            ]
+        )
         self.setup_metrics()
 
     def training_step(self, batch, batch_idx):

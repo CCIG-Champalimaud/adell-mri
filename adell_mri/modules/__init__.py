@@ -8,7 +8,6 @@ from . import object_detection
 from . import segmentation
 from . import self_supervised
 from . import augmentations
-from . import callbacks
 from . import continuous_learning
 from . import extract_lesion_candidates
 from . import learning_rate

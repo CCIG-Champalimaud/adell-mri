@@ -1,4 +1,3 @@
-import argparse
 import random
 import json
 import numpy as np
@@ -10,14 +9,17 @@ from lightning.pytorch import Trainer
 
 import sys
 from ..assemble_args import Parser
-from ...utils import safe_collate, subsample_dataset
-from ...utils.pl_utils import get_devices
 from ...monai_transforms import get_transforms_classification as get_transforms
 from ...modules.classification.losses import OrdinalSigmoidalLoss
 from ...modules.config_parsing import parse_config_unet, parse_config_cat
+from ...modules.classification.pl import AveragingEnsemblePL
+from ...utils.torch_utils import load_checkpoint_to_model
+from ...utils import safe_collate, subsample_dataset
+from ...utils.pl_utils import get_devices
 from ...utils.dataset_filters import filter_dictionary
 from ...utils.network_factories import get_classification_network
 from ...utils.parser import get_params, merge_args, parse_ids
+from ...utils.bootstrap_metrics import bootstrap_metric
 
 
 def main(arguments):
@@ -52,6 +54,7 @@ def main(arguments):
             "metric_path",
             "test_ids",
             "one_to_one",
+            "ensemble",
             ("test_checkpoints", "checkpoints"),
         ]
     )
@@ -112,7 +115,7 @@ def main(arguments):
         ]
         if len(label_groups) == 2:
             positive_labels = label_groups[1]
-    elif args.positive_labels is None:
+    elif positive_labels is None:
         n_classes = len(args.possible_labels)
     else:
         n_classes = 2
@@ -164,7 +167,7 @@ def main(arguments):
         "crop_size": args.crop_size,
         "pad_size": args.pad_size,
         "possible_labels": args.possible_labels,
-        "positive_labels": args.positive_labels,
+        "positive_labels": positive_labels,
         "label_groups": label_groups,
         "label_key": args.label_keys,
         "label_mode": label_mode,
@@ -232,6 +235,7 @@ def main(arguments):
             checkpoint_list = [args.checkpoints[iteration]]
         else:
             checkpoint_list = args.checkpoints
+        all_networks = []
         for checkpoint in checkpoint_list:
             network = get_classification_network(
                 net_type=args.net_type,
@@ -252,16 +256,61 @@ def main(arguments):
                 mixup_alpha=None,
                 partial_mixup=None,
             )
-            state_dict = torch.load(checkpoint)["state_dict"]
-            state_dict = {
-                k: state_dict[k]
-                for k in state_dict
-                if "deep_supervision_ops" not in k and "ema." not in k
-            }
-            network.load_state_dict(state_dict)
-            network = network.eval()
+            load_checkpoint_to_model(network, checkpoint, ["loss_fn.weight"])
+            all_networks.append(network)
+
+        if args.ensemble is None:
+            for network in all_networks:
+                network = network.eval()
+                trainer = Trainer(accelerator=accelerator, devices=devices)
+                test_metrics = trainer.test(network, test_loader)[0]
+                for k in test_metrics:
+                    out = test_metrics[k]
+                    try:
+                        value = float(out.detach().numpy())
+                    except Exception:
+                        value = float(out)
+                    if n_classes > 2:
+                        k = k.split("_")
+                        if k[-1].isdigit():
+                            k, idx = "_".join(k[:-1]), k[-1]
+                        else:
+                            k, idx = "_".join(k), 0
+                    else:
+                        idx = 0
+                    x = "{},{},{},{},{}".format(
+                        k, checkpoint, iteration, idx, value
+                    )
+                    output_file.write(x + "\n")
+                    print(x)
+                    # bootstrap AUC estimate
+                mean, (upper, lower) = bootstrap_metric(
+                    ensemble_network.test_metrics["T_AUC"], 100, 0.5
+                )
+                for idx, (m, u, l) in enumerate(zip(mean, upper, lower)):
+                    x = "{},{},{},{},{}".format(
+                        "T_AUC_mean", checkpoint, iteration, idx, m
+                    )
+                    output_file.write(x + "\n")
+                    print(x)
+                    x = "{},{},{},{},{}".format(
+                        "T_AUC_lower", checkpoint, iteration, idx, u
+                    )
+                    output_file.write(x + "\n")
+                    print(x)
+                    x = "{},{},{},{},{}".format(
+                        "T_AUC_upper", checkpoint, iteration, idx, l
+                    )
+                    output_file.write(x + "\n")
+                    print(x)
+
+        else:
+            ensemble_network = AveragingEnsemblePL(
+                networks=all_networks, n_classes=n_classes
+            )
+            ensemble_network = ensemble_network.eval()
             trainer = Trainer(accelerator=accelerator, devices=devices)
-            test_metrics = trainer.test(network, test_loader)[0]
+            test_metrics = trainer.test(ensemble_network, test_loader)[0]
             for k in test_metrics:
                 out = test_metrics[k]
                 try:
@@ -277,7 +326,29 @@ def main(arguments):
                 else:
                     idx = 0
                 x = "{},{},{},{},{}".format(
-                    k, checkpoint, iteration, idx, value
+                    k, "ensemble", iteration, idx, value
+                )
+                output_file.write(x + "\n")
+                print(x)
+            # bootstrap AUC estimate
+            mean, (upper, lower) = bootstrap_metric(
+                ensemble_network.test_metrics["T_AUC"],
+                samples=10000,
+                sample_size=0.5,
+            )
+            for idx, (m, u, l) in enumerate(zip(mean, upper, lower)):
+                x = "{},{},{},{},{}".format(
+                    "T_AUC_mean", "ensemble", iteration, idx, m
+                )
+                output_file.write(x + "\n")
+                print(x)
+                x = "{},{},{},{},{}".format(
+                    "T_AUC_lower", "ensemble", iteration, idx, u
+                )
+                output_file.write(x + "\n")
+                print(x)
+                x = "{},{},{},{},{}".format(
+                    "T_AUC_upper", "ensemble", iteration, idx, l
                 )
                 output_file.write(x + "\n")
                 print(x)
