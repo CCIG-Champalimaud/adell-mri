@@ -4,18 +4,26 @@ from copy import deepcopy
 from ..custom_types import DatasetDict
 
 
-def fill_missing_with_value(D: DatasetDict, filters: List[str]) -> DatasetDict:
+def print_verbose(*args, verbose: bool = False, **kwargs):
+    if verbose:
+        print(*args, **kwargs)
+
+
+def fill_missing_with_value(
+    D: DatasetDict, filters: List[str], verbose: bool = False
+) -> DatasetDict:
     """Imputes missing values with a given value, both present in filters as a
     list of strings specified as key:value pairs.
 
     Args:
         D (DatasetDict): dataset dictionary.
         filters (List[str]): list of with key:value pairs.
+        verbose (bool, optional): verbosity. Defaults to False.
 
     Returns:
         DatasetDict: imputed dataset dictionary.
     """
-    print(f"Filling keys: {filters}")
+    print_verbose(f"Filling keys: {filters}", verbose=verbose)
     n = 0
     filters = [k.split(":") for k in filters]
     filters = {k[0]: k[1] for k in filters}
@@ -24,12 +32,12 @@ def fill_missing_with_value(D: DatasetDict, filters: List[str]) -> DatasetDict:
             if filter_key not in D[key]:
                 D[key][filter_key] = filters[filter_key]
                 n += 1
-    print(f"\tFilled keys: {n}")
+    print_verbose(f"\tFilled keys: {n}", verbose=verbose)
     return D
 
 
 def filter_dictionary_with_presence(
-    D: DatasetDict, filters: List[str]
+    D: DatasetDict, filters: List[str], verbose: bool = False
 ) -> DatasetDict:
     """Filters a dictionary based on whether a nested dictionary has the keys
     specified in filters.
@@ -37,12 +45,13 @@ def filter_dictionary_with_presence(
     Args:
         D (DatasetDict): dataset dictionary.
         filters (List[str]): list of strings.
+        verbose (bool, optional): verbosity. Defaults to False.
 
     Returns:
         DatasetDict: filtered dataset dictionary.
     """
-    print("Filtering on: {} presence".format(filters))
-    print("\tInput size: {}".format(len(D)))
+    print_verbose("Filtering on: {} presence".format(filters), verbose=verbose)
+    print_verbose("\tInput size: {}".format(len(D)), verbose=verbose)
     out_dict = {}
     for pid in D:
         check = True
@@ -51,24 +60,27 @@ def filter_dictionary_with_presence(
                 check = False
         if check == True:
             out_dict[pid] = D[pid]
-    print("\tOutput size: {}".format(len(out_dict)))
+    print_verbose("\tOutput size: {}".format(len(out_dict)), verbose=verbose)
     return out_dict
 
 
 def filter_dictionary_with_existence(
-    D: DatasetDict, filters: List[str]
+    D: DatasetDict, filters: List[str], verbose: bool = False
 ) -> DatasetDict:
     """Filters a dictionary based on whether files with a given key exist.
 
     Args:
         D (DatasetDict): dataset dictionary.
         filters (List[str]): list of strings.
+        verbose (bool, optional): verbosity. Defaults to False.
 
     Returns:
         DatasetDict: filtered dataset dictionary.
     """
-    print("Filtering on: {} existence".format(filters))
-    print("\tInput size: {}".format(len(D)))
+    print_verbose(
+        "Filtering on: {} existence".format(filters), verbose=verbose
+    )
+    print_verbose("\tInput size: {}".format(len(D)), verbose=verbose)
     out_dict = {}
     for pid in D:
         check = True
@@ -79,12 +91,15 @@ def filter_dictionary_with_existence(
                 check = False
         if check == True:
             out_dict[pid] = D[pid]
-    print("\tOutput size: {}".format(len(out_dict)))
+    print_verbose("\tOutput size: {}".format(len(out_dict)), verbose=verbose)
     return out_dict
 
 
 def filter_dictionary_with_possible_labels(
-    D: DatasetDict, possible_labels: List[str], label_key: str
+    D: DatasetDict,
+    possible_labels: List[str],
+    label_key: str,
+    verbose: bool = False,
 ) -> DatasetDict:
     """Filters a dictionary by checking whether the possible_labels are
     included in DatasetDict[patient_id][label_key].
@@ -93,12 +108,16 @@ def filter_dictionary_with_possible_labels(
         D (DatasetDict): dataset dictionary.
         possible_labels (List[str]): list of possible labels.
         label_key (str): key corresponding to the label field.
+        verbose (bool, optional): verbosity. Defaults to False.
 
     Returns:
         DatasetDict: filtered dataset dictionary.
     """
-    print("Filtering on possible labels: {}".format(possible_labels))
-    print("\tInput size: {}".format(len(D)))
+    print_verbose(
+        "Filtering on possible labels: {}".format(possible_labels),
+        verbose=verbose,
+    )
+    print_verbose("\tInput size: {}".format(len(D)), verbose=verbose)
     out_dict = {}
     for pid in D:
         check = True
@@ -109,12 +128,15 @@ def filter_dictionary_with_possible_labels(
                 check = False
         if check == True:
             out_dict[pid] = D[pid]
-    print("\tOutput size: {}".format(len(out_dict)))
+    print_verbose("\tOutput size: {}".format(len(out_dict)), verbose=verbose)
     return out_dict
 
 
 def filter_dictionary_with_filters(
-    D: DatasetDict, filters: List[str], filter_is_optional: bool = False
+    D: DatasetDict,
+    filters: List[str],
+    filter_is_optional: bool = False,
+    verbose: bool = True,
 ) -> DatasetDict:
     """Filters a dataset dictionary with custom filters:
     * If "key=value": tests if field key is equal/contains value
@@ -128,12 +150,13 @@ def filter_dictionary_with_filters(
         filters (List[str]): filters.
         filter_is_optional (bool, optional): considers the filters to be
             optional. Defaults to False.
+        verbose (bool, optional): verbosity. Defaults to False.
 
     Returns:
         DatasetDict: filtered dataset dictionary.
     """
-    print("Filtering on: {}".format(filters))
-    print("\tInput size: {}".format(len(D)))
+    print_verbose("Filtering on: {}".format(filters), verbose=verbose)
+    print_verbose("\tInput size: {}".format(len(D)), verbose=verbose)
     processed_filters = {"eq": [], "gt": [], "lt": [], "neq": [], "in": []}
     for f in filters:
         if "!=" in f:
@@ -188,7 +211,7 @@ def filter_dictionary_with_filters(
                     check = False
         if check == True:
             out_dict[pid] = D[pid]
-    print("\tOutput size: {}".format(len(out_dict)))
+    print_verbose("\tOutput size: {}".format(len(out_dict)), verbose=verbose)
     return out_dict
 
 
@@ -200,6 +223,7 @@ def filter_dictionary(
     label_key: str = None,
     filters: List[str] = None,
     filter_is_optional: bool = False,
+    verbose: bool = False,
 ) -> DatasetDict:
     """
     Wraps all dataset filters in a more convenient function.
@@ -217,21 +241,26 @@ def filter_dictionary(
             filter_dictionary_with_filters. Defaults to None.
         filter_is_optional (bool, optional): considers the filters to be
             optional. Defaults to False.
+        verbose (bool, optional): verbosity. Defaults to False.
 
     Returns:
         DatasetDict: filtered dictionary.
     """
     D = deepcopy(D)
     if filters_presence is not None:
-        D = filter_dictionary_with_presence(D, filters_presence)
+        D = filter_dictionary_with_presence(
+            D, filters_presence, verbose=verbose
+        )
     if filters_existence is not None:
-        D = filter_dictionary_with_existence(D, filters_existence)
+        D = filter_dictionary_with_existence(
+            D, filters_existence, verbose=verbose
+        )
     if (possible_labels is not None) and (label_key is not None):
         D = filter_dictionary_with_possible_labels(
-            D, possible_labels, label_key
+            D, possible_labels, label_key, verbose=verbose
         )
     if filters is not None:
         D = filter_dictionary_with_filters(
-            D, filters, filter_is_optional=filter_is_optional
+            D, filters, filter_is_optional=filter_is_optional, verbose=verbose
         )
     return D

@@ -12,7 +12,7 @@ from ...monai_transforms import get_transforms_unet as get_transforms
 from ...modules.layers import ResNet
 from ...modules.config_parsing import parse_config_unet, parse_config_ssl
 from ...utils import collate_last_slice, SlicesToFirst, safe_collate
-from ...utils.dataset_filters import filter_dictionary
+from ...utils.dataset import Dataset
 from ...utils.network_factories import get_segmentation_network
 from ...utils.inference import SegmentationInference, TensorListReduction
 from ...utils.parser import parse_ids
@@ -126,9 +126,8 @@ def main(arguments):
     if args.resize_size is not None:
         args.resize_size = [round(x) for x in args.resize_size]
 
-    data_dict = json.load(open(args.dataset_json, "r"))
-    data_dict = filter_dictionary(
-        data_dict,
+    data_dict = Dataset(args.dataset_json, "r", verbose=True)
+    data_dict.filter_dictionary(
         filters_presence=args.image_keys,
         possible_labels=None,
         label_key=None,
@@ -136,9 +135,7 @@ def main(arguments):
         filter_is_optional=args.filter_is_optional,
     )
     if args.excluded_ids is not None:
-        data_dict = {
-            k: data_dict[k] for k in data_dict if k not in args.excluded_ids
-        }
+        data_dict.subsample_dataset(excluded_key_list=args.excluded_ids)
 
     if args.missing_to_empty is None:
         data_dict = {
@@ -168,7 +165,7 @@ def main(arguments):
             }
 
     for kk in feature_keys:
-        data_dict = {
+        data_dict.dataset = {
             k: data_dict[k]
             for k in data_dict
             if np.isnan(data_dict[k][kk]) == False

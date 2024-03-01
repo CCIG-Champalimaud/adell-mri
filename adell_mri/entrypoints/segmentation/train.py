@@ -6,8 +6,6 @@ import monai
 import gc
 import warnings
 from sklearn.model_selection import KFold, train_test_split
-from multiprocessing import Pool
-from tqdm import tqdm
 
 from lightning.pytorch import Trainer
 from lightning.pytorch.callbacks import EarlyStopping
@@ -34,7 +32,7 @@ from ...utils.logging import CSVLogger
 from ...monai_transforms import get_transforms_unet as get_transforms
 from ...monai_transforms import get_augmentations_unet as get_augmentations
 from ...monai_transforms import get_semi_sl_transforms
-from ...utils.dataset_filters import filter_dictionary
+from ...utils.dataset import Dataset
 from ...modules.layers import ResNet
 from ...utils.network_factories import get_segmentation_network
 from ...modules.config_parsing import parse_config_unet, parse_config_ssl
@@ -212,79 +210,54 @@ def main(arguments):
         args.random_crop_size = [round(x) for x in args.random_crop_size]
     label_mode = "binary" if n_classes == 2 else "cat"
 
-    data_dict = {}
-    for dataset_json in args.dataset_json:
-        cur_dataset_dict = json.load(open(dataset_json, "r"))
-        for k in cur_dataset_dict:
-            data_dict[k] = cur_dataset_dict[k]
+    data_dict = Dataset(args.dataset_json, seed=args.seed, verbose=True)
     if args.semi_supervised is True:
-        data_dict_ssl = filter_dictionary(
-            data_dict,
+        data_dict_ssl = Dataset(
+            args.dataset_json,
+            dataset_name="semi-SL",
+            seed=args.seed,
+            verbose=True,
+        )
+        data_dict_ssl.filter_dictionary(
             filters_presence=args.image_keys,
             possible_labels=None,
             label_key=None,
             filters=args.filter_on_keys,
             filter_is_optional=args.filter_is_optional,
         )
-    data_dict = filter_dictionary(
-        data_dict,
-        filters_presence=args.image_keys + args.mask_keys,
+    data_dict.filter_dictionary(
+        filters_presence=all_keys_t,
         possible_labels=None,
         label_key=None,
         filters=args.filter_on_keys,
         filter_is_optional=args.filter_is_optional,
     )
 
-    data_dict = {
-        k: data_dict[k]
-        for k in data_dict
-        if inter_size(data_dict[k], set(all_keys_t)) == len(all_keys_t)
-    }
-
     for kk in feature_keys:
-        data_dict = {
+        data_dict.dataset = {
             k: data_dict[k]
             for k in data_dict
             if np.isnan(data_dict[k][kk]) == False
         }
     if args.subsample_size is not None:
-        ss = np.random.choice(
-            sorted(list(data_dict.keys())), args.subsample_size, replace=False
-        )
-        data_dict = {k: data_dict[k] for k in ss}
+        data_dict.subsample_dataset(args.subsample_size)
         if args.semi_supervised is True:
-            data_dict_ssl = {k: data_dict_ssl[k] for k in ss}
+            data_dict_ssl.subsample_dataset(key_list=data_dict.keys())
 
     if args.excluded_ids is not None:
-        args.excluded_ids = parse_ids(args.excluded_ids, output_format="list")
-        print("Removing IDs specified in --excluded_ids")
-        prev_len = len(data_dict)
-        data_dict = {
-            k: data_dict[k] for k in data_dict if k not in args.excluded_ids
-        }
-        print(f"\tRemoved {prev_len - len(data_dict)} IDs")
-        print(f"\tBefore: {prev_len} IDs")
-        print(f"\tAfter: {len(data_dict)} IDs")
+        data_dict.subsample_dataset(excluded_key_list=args.excluded_ids)
+
         if args.semi_supervised is True:
-            print(
-                "Removing IDs specified in --excluded_ids from semi-supervision"
+            data_dict_ssl.subsample_dataset(
+                excluded_key_list=args.excluded_ids
             )
-            prev_len = len(data_dict_ssl)
-            data_dict_ssl = {
-                k: data_dict_ssl[k]
-                for k in data_dict_ssl
-                if k not in args.excluded_ids
-            }
-            print(f"\tRemoved {prev_len - len(data_dict_ssl)} IDs")
-            print(f"\tBefore: {prev_len} IDs")
-            print(f"\tAfter: {len(data_dict_ssl)} IDs")
 
     if args.target_spacing[0] == "infer":
         target_spacing_dict = spacing_values_from_dataset_json(
             data_dict, key=keys[0], n_workers=args.n_workers
         )
 
-    all_pids = [k for k in data_dict]
+    all_pids = list(data_dict.keys())
 
     network_config, loss_keys = parse_config_unet(
         args.config_file, len(keys), n_classes
@@ -337,9 +310,9 @@ def main(arguments):
         train_pids = [all_pids[i] for i in train_idxs]
         train_val_pids = [all_pids[i] for i in train_val_idxs]
         val_pids = [all_pids[i] for i in val_idxs]
-        train_list = [data_dict[pid] for pid in train_pids]
-        train_val_list = [data_dict[pid] for pid in train_val_pids]
-        val_list = [data_dict[pid] for pid in val_pids]
+        train_list = data_dict.to_datalist(train_pids)
+        train_val_list = data_dict.to_datalist(train_val_pids)
+        val_list = data_dict.to_datalist(val_pids)
 
         if args.semi_supervised is True:
             train_semi_sl_list = [

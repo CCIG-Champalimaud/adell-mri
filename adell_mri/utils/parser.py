@@ -161,7 +161,7 @@ def compose(
 
 
 def parse_ids(
-    id_list: List[str],
+    id_list: list[str],
     output_format: str = "nested_list",
 ) -> list[list[str]] | list[str]:
     """

@@ -19,8 +19,8 @@ from ...utils import (
     safe_collate,
     set_classification_layer_bias,
     conditional_parameter_freezing,
-    subsample_dataset,
 )
+from ...utils.dataset import subsample_dataset
 from ...utils.pl_utils import (
     get_ckpt_callback,
     get_logger,
@@ -28,6 +28,7 @@ from ...utils.pl_utils import (
     delete_checkpoints,
 )
 from ...utils.torch_utils import load_checkpoint_to_model, get_class_weights
+from ...utils.dataset import Dataset
 from ...utils.dataset_filters import (
     filter_dictionary,
     filter_dictionary_with_filters,
@@ -131,9 +132,7 @@ def main(arguments):
     n_devices = len(devices) if isinstance(devices, list) else devices
     n_devices = 1 if isinstance(devices, str) else n_devices
 
-    output_file = open(args.metric_path, "w")
-
-    data_dict = json.load(open(args.dataset_json, "r"))
+    data_dict = Dataset(args.dataset_json, rng=rng)
 
     if args.clinical_feature_keys is None:
         clinical_feature_keys = []
@@ -141,13 +140,7 @@ def main(arguments):
         clinical_feature_keys = args.clinical_feature_keys
 
     if args.excluded_ids is not None:
-        args.excluded_ids = parse_ids(args.excluded_ids, output_format="list")
-        print("Removing IDs specified in --excluded_ids")
-        prev_len = len(data_dict)
-        data_dict = {
-            k: data_dict[k] for k in data_dict if k not in args.excluded_ids
-        }
-        print("\tRemoved {} IDs".format(prev_len - len(data_dict)))
+        data_dict.subsample_dataset(excluded_key_list=args.excluded_ids)
 
     if args.excluded_ids_from_training_data is not None:
         excluded_ids_from_training_data = parse_ids(
@@ -159,21 +152,18 @@ def main(arguments):
     presence_keys = args.image_keys + [args.label_keys] + clinical_feature_keys
     if args.mask_key is not None:
         presence_keys.append(args.mask_key)
-    data_dict = filter_dictionary(
-        data_dict,
+    data_dict.filter_dictionary(
         filters_presence=presence_keys,
         possible_labels=args.possible_labels,
         label_key=args.label_keys,
         filters=args.filter_on_keys,
     )
     if len(clinical_feature_keys) > 0:
-        data_dict = filter_dictionary_with_filters(
-            data_dict, [f"{k}!=nan" for k in clinical_feature_keys]
+        data_dict.filter_dictionary(
+            filters=[f"{k}!=nan" for k in clinical_feature_keys]
         )
-    data_dict = subsample_dataset(
-        data_dict=data_dict,
+    data_dict.subsample_dataset(
         subsample_size=args.subsample_size,
-        rng=rng,
         strata_key=args.label_keys,
     )
 
@@ -231,7 +221,7 @@ def main(arguments):
     if "batch_size" not in network_config:
         network_config["batch_size"] = 1
 
-    all_pids = [k for k in data_dict]
+    all_pids = list(data_dict.keys())
 
     print("Setting up transforms...")
     label_mode = "binary" if n_classes == 2 and label_groups is None else "cat"
@@ -342,9 +332,9 @@ def main(arguments):
             ]
         else:
             train_val_pids = val_pids
-        train_list = [data_dict[pid] for pid in train_pids]
-        train_val_list = [data_dict[pid] for pid in train_val_pids]
-        val_list = [data_dict[pid] for pid in val_pids]
+        train_list = data_dict.to_datalist(train_pids)
+        train_val_list = data_dict.to_datalist(train_val_pids)
+        val_list = data_dict.to_datalist(val_pids)
 
         print("Current fold={}".format(val_fold))
         print("\tTrain set size={}".format(len(train_idxs)))

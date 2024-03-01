@@ -412,51 +412,6 @@ class ExponentialMovingAverage(torch.nn.Module):
             self.step += 1
 
 
-def subsample_dataset(
-    data_dict: DatasetDict,
-    subsample_size: int,
-    rng: np.random.Generator,
-    strata_key: str = None,
-) -> DatasetDict:
-    """
-    Subsamples a DatasetDict by either randomly sampling a subset of keys
-    or by stratifying based on a specified key and sampling from each
-    stratum.
-
-    Args:
-        data_dict (DatasetDict): the data dictionary to subsample from.
-        subsample_size (int): the number of samples to keep.
-        rng (np.random.Generator): a random number generator.
-        strata_key (str): a key to stratify the sampling on. If provided, each
-            stratum will be sampled to match its distribution in the original
-            dict.
-
-    Returns:
-        DatasetDict: the subsampled data dictionary.
-    """
-    if subsample_size is not None and len(data_dict) > subsample_size:
-        if strata_key is not None:
-            strata = {}
-            for k in data_dict:
-                label = data_dict[k][strata_key]
-                if label not in strata:
-                    strata[label] = []
-                strata[label].append(k)
-            ps = [len(strata[k]) / len(data_dict) for k in strata]
-            split = [int(p * subsample_size) for p in ps]
-            ss = []
-            for k, s in zip(strata, split):
-                ss.extend(
-                    rng.choice(strata[k], size=s, replace=False, shuffle=False)
-                )
-            data_dict = {k: data_dict[k] for k in ss}
-        else:
-            s = subsample_size * len(data_dict)
-            ss = rng.choice(list(data_dict.keys()))
-            data_dict = {k: data_dict[k] for k in ss}
-    return data_dict
-
-
 def return_classes(paths: str | list[str]) -> dict[str | int, str]:
     """
     Returns a dictionary with the unique values in the images and their counts.
