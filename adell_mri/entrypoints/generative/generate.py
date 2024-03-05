@@ -165,11 +165,11 @@ def main(arguments):
         num_condition = [c.split("=") for c in args.num_condition]
         num_condition = {k: float(v) for k, v in num_condition}
 
-    dtype = torch.bfloat16
+    inference_dtype = torch.bfloat16
+    network = network.eval()
+    network = torch.compile(network)
+    network = network.to(dtype=inference_dtype)
     if args.dataset_json is not None:
-        network = network.eval()
-        network = torch.compile(network)
-        network = network.to(dtype=dtype)
         print("Setting up transforms...")
         transform_pre_arguments = transform_args["pre"]
         transform_post_arguments = transform_args["post"]
@@ -249,10 +249,10 @@ def main(arguments):
                 if any([x is None for x in curr_num]):
                     continue
                 curr_num = torch.as_tensor(
-                    [curr_num], device=args.dev, dtype=dtype
+                    [curr_num], device=args.dev, dtype=inference_dtype
                 )
             output = network.generate_image(
-                input_image=image.to(dtype),
+                input_image=image.to(inference_dtype),
                 size=image.shape[2:],
                 n=1,
                 skip_steps=args.skip_steps,
@@ -285,13 +285,18 @@ def main(arguments):
         size = [int(i) for i in size]
         Path(args.output_path).mkdir(exist_ok=True, parents=True)
         print(f"Generating {args.n_samples_gen} samples")
+        cat_condition = [cat_condition[k] for k in args.cat_condition_keys]
+        num_condition = [num_condition[k] for k in args.num_condition_keys]
+        num_condition = torch.as_tensor(
+            [num_condition], device=args.dev, dtype=inference_dtype
+        )
         for i in range(args.n_samples_gen):
             output = network.generate_image(
                 size=size,
                 n=1,
                 skip_steps=0,
-                cat_condition=deepcopy(cat_condition),
-                num_condition=deepcopy(num_condition),
+                cat_condition=cat_condition,
+                num_condition=num_condition,
             )
             output = output.detach().cpu()[0].permute(3, 1, 2, 0).numpy()
             output = sitk.GetImageFromArray(output)
