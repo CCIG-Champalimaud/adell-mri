@@ -1,19 +1,19 @@
 import os
 import random
-import json
 import numpy as np
 import torch
 import monai
 import SimpleITK as sitk
 from copy import deepcopy
 from pathlib import Path
-from ..assemble_args import Parser
+from tqdm import tqdm
 
 import sys
+from ..assemble_args import Parser
 from ...entrypoints.assemble_args import Parser
 from ...utils.pl_utils import get_devices
 from ...utils.torch_utils import load_checkpoint_to_model
-from ...utils.dataset_filters import filter_dictionary
+from ...utils.dataset import Dataset
 from ...monai_transforms import (
     get_pre_transforms_generation as get_pre_transforms,
     get_post_transforms_generation as get_post_transforms,
@@ -37,10 +37,12 @@ def fetch_specifications(state_dict: dict[str, Any]):
         network_config = None
     if "categorical_specification" in metadata:
         cat_spec = metadata["categorical_specification"]
+        cat_spec = [[str(v) for v in C] for C in cat_spec]
     if "numerical_specification" in metadata:
         num_spec = metadata["numerical_specification"]
+    transform_args = metadata["transform_arguments"]
     spacing = metadata["transform_arguments"]["pre"]["target_spacing"]
-    return network_config, cat_spec, num_spec, spacing
+    return network_config, cat_spec, num_spec, spacing, transform_args
 
 
 def main(arguments):
@@ -49,6 +51,8 @@ def main(arguments):
     parser.add_argument_by_key(
         [
             ("dataset_json", "dataset_json", {"required": False}),
+            "prediction_ids",
+            "keep_original",
             "params_from",
             "image_keys",
             "cat_condition_keys",
@@ -72,6 +76,7 @@ def main(arguments):
             "batch_size",
             "learning_rate",
             "diffusion_steps",
+            "skip_steps",
             "n_samples_gen",
             "output_path",
         ]
@@ -101,6 +106,7 @@ def main(arguments):
     categorical_specification = specs[1]
     numerical_specification = specs[2]
     spacing = specs[3]
+    transform_args = specs[4]
 
     presence_keys = [*args.image_keys]
     with_conditioning = False
@@ -144,42 +150,40 @@ def main(arguments):
 
     load_checkpoint_to_model(network, ckpt, [])
 
-    print("Setting up transforms...")
-    transform_pre_arguments = {
-        "keys": keys,
-        "target_spacing": args.target_spacing,
-        "crop_size": args.crop_size,
-        "pad_size": args.pad_size,
-    }
-    transform_post_arguments = {
-        "image_keys": keys,
-        "cat_keys": args.cat_condition_keys,
-        "num_keys": args.num_condition_keys,
-    }
-
-    transforms = [
-        *get_pre_transforms(**transform_pre_arguments),
-        *get_post_transforms(**transform_post_arguments),
-    ]
-
     # PL needs a little hint to detect GPUs.
     torch.ones([1]).to("cuda" if "cuda" in args.dev else "cpu")
 
     if "cuda" in args.dev:
         network = network.to(args.dev)
 
-    transforms = monai.transforms.Compose(transforms)
-    transforms.set_random_state(args.seed)
-
     cat_condition = None
     num_condition = None
     if args.cat_condition is not None:
-        cat_condition = [[c] for c in args.cat_condition]
+        cat_condition = [c.split("=") for c in args.cat_condition]
+        cat_condition = {k: v for k, v in cat_condition}
     if args.num_condition is not None:
-        num_condition = [[n] for n in args.num_condition]
+        num_condition = [c.split("=") for c in args.num_condition]
+        num_condition = {k: float(v) for k, v in num_condition}
 
+    dtype = torch.bfloat16
     if args.dataset_json is not None:
-        data_dict = json.load(open(args.dataset_json, "r"))
+        network = network.eval()
+        network = torch.compile(network)
+        network = network.to(dtype=dtype)
+        print("Setting up transforms...")
+        transform_pre_arguments = transform_args["pre"]
+        transform_post_arguments = transform_args["post"]
+
+        transforms = [
+            *get_pre_transforms(**transform_pre_arguments),
+            *get_post_transforms(**transform_post_arguments),
+        ]
+        transforms = monai.transforms.Compose(transforms)
+        transforms.set_random_state(args.seed)
+        data_dict = Dataset(args.dataset_json, rng=rng, verbose=True)
+        data_dict.dataset = {
+            k: {**v, "key": k} for k, v in data_dict.dataset.items()
+        }
         if args.excluded_ids is not None:
             args.excluded_ids = parse_ids(
                 args.excluded_ids, output_format="list"
@@ -192,17 +196,12 @@ def main(arguments):
                 if k not in args.excluded_ids
             }
             print("\tRemoved {} IDs".format(prev_len - len(data_dict)))
-        data_dict = filter_dictionary(
-            data_dict,
+        data_dict.filter_dictionary(
             filters_presence=presence_keys,
             filters=args.filter_on_keys,
         )
-        if (
-            args.subsample_size is not None
-            and len(data_dict) > args.subsample_size
-        ):
-            ss = rng.choice(list(data_dict.keys()), size=args.subsample_size)
-            data_dict = {k: data_dict[k] for k in ss}
+        if args.subsample_size is not None:
+            data_dict.subsample_dataset(args.subsample_size)
 
         if len(data_dict) == 0:
             raise Exception(
@@ -212,9 +211,7 @@ def main(arguments):
                 )
             )
 
-        all_pids = [k for k in data_dict]
-
-        pred_list = [data_dict[pid] for pid in all_pids]
+        pred_list = data_dict.to_datalist(args.prediction_ids)
 
         print("\tPrediction set size={}".format(len(pred_list)))
 
@@ -227,19 +224,61 @@ def main(arguments):
             num_workers=args.n_workers,
         )
 
-        n_workers = args.n_workers // n_devices
-        bs = network_config["batch_size"]
-        real_bs = bs * n_devices
-        if len(dataset) < real_bs:
-            new_bs = len(dataset) // n_devices
-            print(
-                f"Batch size changed from {bs} to {new_bs} (dataset too small)"
+        Path(args.output_path).mkdir(exist_ok=True, parents=True)
+        for data in tqdm(dataset):
+            image = data["image"].to(args.dev).float().unsqueeze(0)
+            curr_cat, curr_num = None, None
+            if args.cat_condition_keys is not None:
+                curr_cat = [
+                    [
+                        cat_condition.get(k, data.get(k, None)[0])
+                        if cat_condition is not None
+                        else data.get(k, None)
+                        for k in args.cat_condition_keys
+                    ]
+                ]
+                if any([x is None for x in curr_cat]):
+                    continue
+            if args.num_condition_keys is not None:
+                curr_num = [
+                    num_condition.get(k, data.get(k, None))
+                    if num_condition is not None
+                    else data.get(k, None)
+                    for k in args.num_condition_keys
+                ]
+                if any([x is None for x in curr_num]):
+                    continue
+                curr_num = torch.as_tensor(
+                    [curr_num], device=args.dev, dtype=dtype
+                )
+            output = network.generate_image(
+                input_image=image.to(dtype),
+                size=image.shape[2:],
+                n=1,
+                skip_steps=args.skip_steps,
+                cat_condition=curr_cat,
+                num_condition=curr_num,
             )
-            bs = new_bs
-            real_bs = bs * n_devices
-
-        for data in dataset:
-            pass
+            output = (
+                output.detach().float().cpu()[0].permute(3, 1, 2, 0).numpy()
+            )
+            output = sitk.GetImageFromArray(output)
+            output.SetSpacing(spacing)
+            output.SetMetaData("checkpoint", args.checkpoint[0])
+            output_path = os.path.join(
+                args.output_path, f"{data['key']}_gen.mha"
+            )
+            sitk.WriteImage(output, output_path, useCompression=True)
+            if args.keep_original:
+                image = (
+                    data["image"].detach().cpu().permute(3, 1, 2, 0).numpy()
+                )
+                image = sitk.GetImageFromArray(image)
+                image.SetSpacing(spacing)
+                image_path = os.path.join(
+                    args.output_path, f"{data['key']}_orig.mha"
+                )
+                sitk.WriteImage(image, image_path, useCompression=True)
 
     elif args.n_samples_gen is not None:
         size = return_first_not_none(args.crop_size, args.pad_size)
@@ -259,7 +298,7 @@ def main(arguments):
             output.SetSpacing(spacing)
             output.SetMetaData("checkpoint", args.checkpoint[0])
             output_path = os.path.join(args.output_path, f"{i}.mha")
-            sitk.WriteImage(output, output_path)
+            sitk.WriteImage(output, output_path, useCompression=True)
 
     else:
         raise Exception(

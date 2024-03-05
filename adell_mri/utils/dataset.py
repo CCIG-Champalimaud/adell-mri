@@ -177,9 +177,11 @@ class Dataset:
         self.print_verbose(f"\tAfter: {len(self)} samples")
         self.print_verbose(f"\tDifference: {n_start - len(self)} samples")
 
-    def to_datalist(self, key_list: None):
+    def to_datalist(self, key_list: list[str] = None):
         if key_list is None:
             key_list = self.keys()
+        else:
+            key_list = parse_ids(key_list, "list")
         return [self[k] for k in self if k in key_list]
 
     def keys(self):

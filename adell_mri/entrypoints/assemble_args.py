@@ -691,11 +691,21 @@ argument_factory = {
             value for each field in cat_condition_keys",
     ),
     "num_condition": dict(
-        type=float,
+        type=str,
         default=None,
         nargs="+",
         help="Specifies the numerical condition for generation. Should be one\
             value for each field in num_condition_keys",
+    ),
+    "skip_steps": dict(
+        type=int,
+        default=None,
+        help="Number of diffusion steps to skip",
+    ),
+    "keep_original": dict(
+        action="store_true",
+        default=False,
+        help="Saves original image along with conditionally generated images.",
     ),
     # deconfounded classifier-specific
     "cat_confounder_keys": dict(

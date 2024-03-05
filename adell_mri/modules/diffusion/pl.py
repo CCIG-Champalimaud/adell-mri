@@ -135,29 +135,44 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
     def device(self):
         return next(self.parameters()).device
 
-    @torch.no_grad()
+    @torch.inference_mode()
     def generate_image(
         self,
-        size=List[int],
-        n=int,
+        size: List[int],
+        n: int,
+        input_image: torch.Tensor = None,
         skip_steps: int = 0,
         cat_condition: torch.Tensor = None,
         num_condition: torch.Tensor = None,
     ):
         noise = torch.randn([n, self.in_channels, *size], device=self.device)
+        if input_image is None:
+            input_image = noise
+        else:
+            input_image = self.inferer.scheduler.add_noise(
+                original_samples=input_image,
+                noise=noise[0].to(input_image),
+                timesteps=torch.as_tensor(
+                    self.scheduler.num_train_timesteps - skip_steps
+                ),
+            )
         if self.embedder is not None:
             conditioning = self.embedder(
-                X_cat=cat_condition, X_num=num_condition, batch_size=n
+                X_cat=cat_condition,
+                X_num=num_condition,
+                batch_size=n,
+                update_queues=False,
             ).unsqueeze(1)
         else:
             conditioning = None
         sample = self.inferer.sample(
-            input_noise=noise,
+            input_noise=input_image,
             diffusion_model=self,
             scheduler=self.scheduler,
             conditioning=conditioning,
             skip_steps=skip_steps,
         )
+
         return sample
 
     def train_dataloader(self) -> torch.utils.data.DataLoader:

@@ -49,7 +49,9 @@ class CategoricalEmbedder(torch.nn.Module):
         if self.convert is True:
             for i in range(len(X)):
                 X[i] = [
-                    conversion[x]
+                    conversion[str(x[0])]
+                    if isinstance(x, np.ndarray)
+                    else conversion[str(x)]
                     for x, conversion in zip(X[i], self.conversions)
                 ]
             X = torch.as_tensor(X, device=self.device)
@@ -145,7 +147,9 @@ class Embedder(torch.nn.Module):
             curr = self.num_distributions[i]
             tmp = np.mean(curr)
             output.append([tmp for _ in range(n)])
-        output = torch.as_tensor(output, device=self.device).T
+        output = torch.as_tensor(
+            output, device=self.device, dtype=torch.float32
+        ).T
         return output
 
     def forward(
@@ -153,8 +157,10 @@ class Embedder(torch.nn.Module):
         X_cat: List[torch.LongTensor] = None,
         X_num: torch.Tensor = None,
         batch_size: int = 1,
+        update_queues: bool = True,
     ):
-        self.update_queues(X_cat=X_cat, X_num=X_num)
+        if update_queues is True:
+            self.update_queues(X_cat=X_cat, X_num=X_num)
         embeddings = []
         if self.cat_feat is not None:
             if X_cat is None:
@@ -169,6 +175,5 @@ class Embedder(torch.nn.Module):
             embeddings.append(self.num_embedder(X_num))
             if self.device is None:
                 self.device = embeddings[-1].device
-
         out = self.final_embedding(torch.cat(embeddings, 1))
         return out

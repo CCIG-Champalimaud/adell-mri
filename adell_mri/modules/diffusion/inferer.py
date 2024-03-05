@@ -38,7 +38,7 @@ class DiffusionInfererSkipSteps(DiffusionInferer):
             scheduler = self.scheduler
         image = input_noise
         if verbose:
-            progress_bar = tqdm(scheduler.timesteps[skip_steps:])
+            progress_bar = tqdm(scheduler.timesteps[skip_steps:], leave=True)
         else:
             progress_bar = iter(scheduler.timesteps[skip_steps:])
         intermediates = []
