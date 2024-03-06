@@ -165,7 +165,7 @@ def main(arguments):
         num_condition = [c.split("=") for c in args.num_condition]
         num_condition = {k: float(v) for k, v in num_condition}
 
-    inference_dtype = torch.bfloat16
+    inference_dtype = torch.float16
     network = network.eval()
     network = torch.compile(network)
     network = network.to(dtype=inference_dtype)
