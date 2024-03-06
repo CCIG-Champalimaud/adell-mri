@@ -157,7 +157,7 @@ class Dataset:
                 for k in self.dataset
                 if k not in excluded_key_list
             }
-        else:
+        elif subsample_size is not None:
             self.print_verbose(
                 f"Reducing dataset to {subsample_size} samples from {self.dataset_name}"
             )
