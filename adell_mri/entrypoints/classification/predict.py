@@ -9,10 +9,10 @@ from tqdm import tqdm
 
 import sys
 from adell_mri.entrypoints.assemble_args import Parser
-from adell_mri.utils.utils import subsample_dataset
 from ...monai_transforms import get_transforms_classification as get_transforms
 from ...modules.classification.losses import OrdinalSigmoidalLoss
 from ...modules.config_parsing import parse_config_unet, parse_config_cat
+from ...utils.dataset import Dataset
 from ...utils.dataset_filters import filter_dictionary
 from ...utils.network_factories import get_classification_network
 from ...utils.parser import parse_ids
@@ -72,18 +72,15 @@ def main(arguments):
     else:
         clinical_feature_keys = args.clinical_feature_keys
 
-    data_dict = json.load(open(args.dataset_json, "r"))
+    data_dict = Dataset(args.dataset_json, rng=rng, verbose=True)
     presence_keys = args.image_keys + clinical_feature_keys
     if args.mask_key is not None:
         presence_keys.append(args.mask_key)
-    data_dict = filter_dictionary(
-        data_dict,
+    data_dict.filter_dictionary(
         filters_presence=presence_keys,
         filters=args.filter_on_keys,
     )
-    data_dict = subsample_dataset(
-        data_dict=data_dict, subsample_size=args.subsample_size, rng=rng
-    )
+    data_dict.subsample_dataset(subsample_size=args.subsample_size)
 
     if len(data_dict) == 0:
         raise Exception(
@@ -228,11 +225,17 @@ def main(arguments):
                     curr_prediction_ids, prediction_dataset
                 ):
                     pbar.set_description("Predicting {}".format(identifier))
-                    output = network.forward(
-                        element["image"].unsqueeze(0).to(args.dev),
-                        element["tabular"].unsqueeze(0).to(args.dev),
-                        **extra_args,
-                    ).detach()
+                    if "tabular" in element:
+                        output = network.forward(
+                            element["image"].unsqueeze(0).to(args.dev),
+                            element["tabular"].unsqueeze(0).to(args.dev),
+                            **extra_args,
+                        ).detach()
+                    else:
+                        output = network.forward(
+                            element["image"].unsqueeze(0).to(args.dev),
+                            **extra_args,
+                        ).detach()
                     if args.type == "features":
                         output = output.flatten(start_dim=2)
                         output = output.max(-1).values.cpu()

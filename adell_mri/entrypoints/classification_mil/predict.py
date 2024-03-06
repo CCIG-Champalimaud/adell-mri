@@ -13,10 +13,9 @@ from ...utils import (
     safe_collate,
     ScaleIntensityAlongDimd,
     EinopsRearranged,
-    subsample_dataset,
 )
 from ...utils.pl_utils import get_devices
-from ...utils.dataset_filters import filter_dictionary
+from ...utils.dataset import Dataset
 from ...monai_transforms import get_transforms_classification as get_transforms
 from ...modules.classification.pl import (
     TransformableTransformerPL,
@@ -80,7 +79,7 @@ def main(arguments):
 
     accelerator, devices, strategy = get_devices(args.dev)
 
-    data_dict = json.load(open(args.dataset_json, "r"))
+    data_dict = Dataset(args.dataset_json, rng=rng, verbose=True)
     all_prediction_pids = parse_ids(args.prediction_ids)
     if args.excluded_ids is not None:
         excluded_ids = parse_ids(args.excluded_ids, output_format="list")
@@ -92,14 +91,11 @@ def main(arguments):
             "Excluded {} cases with --excluded_ids".format(a - len(data_dict))
         )
 
-    data_dict = filter_dictionary(
-        data_dict,
+    data_dict.filter_dictionary(
         filters_presence=args.image_keys,
         filters=args.filter_on_keys,
     )
-    data_dict = subsample_dataset(
-        data_dict=data_dict, subsample_size=args.subsample_size, rng=rng
-    )
+    data_dict.subsample_dataset(subsample_size=args.subsample_size)
 
     if len(data_dict) == 0:
         raise Exception(

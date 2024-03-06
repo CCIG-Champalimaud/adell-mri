@@ -1236,7 +1236,7 @@ class TransformableTransformerPL(TransformableTransformer, ClassPLABC):
         self.args = args
         self.kwargs = kwargs
 
-        self.save_hyperparameters()
+        self.save_hyperparameters(ignore=["module", "loss_fn"])
         self.setup_metrics()
 
 
@@ -1311,7 +1311,7 @@ class MultipleInstanceClassifierPL(MultipleInstanceClassifier, ClassPLABC):
         self.args = args
         self.kwargs = kwargs
 
-        self.save_hyperparameters()
+        self.save_hyperparameters(ignore=["module", "loss_fn"])
         self.setup_metrics()
 
 
@@ -1540,7 +1540,7 @@ class DeconfoundedNetPL(DeconfoundedNet, ClassPLABC):
 
         self.conf_mult = 0.1
 
-        self.save_hyperparameters()
+        self.save_hyperparameters(ignore=['loss_fn'])
         self.setup_metrics()
 
     def loss_cat_confounder(self, pred: torch.Tensor, y: torch.Tensor):
