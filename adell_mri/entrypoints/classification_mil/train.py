@@ -19,7 +19,6 @@ from ...utils import (
     set_classification_layer_bias,
     ScaleIntensityAlongDimd,
     EinopsRearranged,
-    subsample_dataset,
 )
 from ...utils.pl_utils import (
     get_ckpt_callback,
@@ -28,7 +27,7 @@ from ...utils.pl_utils import (
     GPULock,
 )
 from ...utils.batch_preprocessing import BatchPreprocessing
-from ...utils.dataset_filters import filter_dictionary
+from ...utils.dataset import Dataset
 from ...monai_transforms import get_transforms_classification as get_transforms
 from ...monai_transforms import get_augmentations_class as get_augmentations
 from ...modules.classification.pl import (
@@ -127,15 +126,7 @@ def main(arguments):
 
     output_file = open(args.metric_path, "w")
 
-    data_dict = json.load(open(args.dataset_json, "r"))
-    if args.excluded_ids is not None:
-        args.excluded_ids = parse_ids(args.excluded_ids, output_format="list")
-        print("Removing IDs specified in --excluded_ids")
-        prev_len = len(data_dict)
-        data_dict = {
-            k: data_dict[k] for k in data_dict if k not in args.excluded_ids
-        }
-        print("\tRemoved {} IDs".format(prev_len - len(data_dict)))
+    data_dict = Dataset(args.dataset_json, rng=rng)
 
     if args.excluded_ids_from_training_data is not None:
         excluded_ids_from_training_data = parse_ids(
@@ -144,19 +135,8 @@ def main(arguments):
     else:
         excluded_ids_from_training_data = []
 
-    data_dict = filter_dictionary(
-        data_dict,
-        filters_presence=args.image_keys + [args.label_keys],
-        possible_labels=args.possible_labels,
-        label_key=args.label_keys,
-        filters=args.filter_on_keys,
-    )
-    data_dict = subsample_dataset(
-        data_dict=data_dict,
-        subsample_size=args.subsample_size,
-        rng=rng,
-        strata_key=args.label_keys,
-    )
+    presence_keys = args.image_keys + [args.label_keys]
+    data_dict.apply_filters(**vars(args), presence_keys=presence_keys)
 
     all_classes = []
     for k in data_dict:

@@ -15,7 +15,6 @@ from ...utils import (
     safe_collate,
     set_classification_layer_bias,
     conditional_parameter_freezing,
-    subsample_dataset,
 )
 from ...utils.pl_utils import (
     get_ckpt_callback,
@@ -24,10 +23,7 @@ from ...utils.pl_utils import (
     delete_checkpoints,
 )
 from ...utils.torch_utils import load_checkpoint_to_model, get_class_weights
-from ...utils.dataset_filters import (
-    filter_dictionary_with_filters,
-    filter_dictionary,
-)
+from ...utils.dataset import Dataset
 from ...monai_transforms import get_transforms_classification as get_transforms
 from ...monai_transforms import get_augmentations_class as get_augmentations
 from ...modules.losses import OrdinalSigmoidalLoss
@@ -134,21 +130,13 @@ def main(arguments):
 
     output_file = open(args.metric_path, "w")
 
-    data_dict = json.load(open(args.dataset_json, "r"))
+    data_dict = Dataset(args.dataset_json, rng=rng)
 
     if args.clinical_feature_keys is None:
         clinical_feature_keys = []
     else:
         clinical_feature_keys = args.clinical_feature_keys
 
-    if args.excluded_ids is not None:
-        args.excluded_ids = parse_ids(args.excluded_ids, output_format="list")
-        print("Removing IDs specified in --excluded_ids")
-        prev_len = len(data_dict)
-        data_dict = {
-            k: data_dict[k] for k in data_dict if k not in args.excluded_ids
-        }
-        print("\tRemoved {} IDs".format(prev_len - len(data_dict)))
     if args.excluded_ids_from_training_data is not None:
         excluded_ids_from_training_data = parse_ids(
             args.excluded_ids_from_training_data, output_format="list"
@@ -159,19 +147,10 @@ def main(arguments):
     presence_keys = args.image_keys + [args.label_keys] + clinical_feature_keys
     if args.mask_key is not None:
         presence_keys.append(args.mask_key)
-    data_dict = filter_dictionary(
-        data_dict,
-        filters_presence=presence_keys,
-        possible_labels=args.possible_labels,
-        label_key=args.label_keys,
-        filters=args.filter_on_keys,
-    )
-    if len(clinical_feature_keys) > 0:
-        data_dict = filter_dictionary_with_filters(
-            data_dict, [f"{k}!=nan" for k in clinical_feature_keys]
-        )
-    data_dict = subsample_dataset(
-        data_dict, args.subsample_size, rng=rng, strata_key=args.label_keys
+
+    data_dict.apply_filters(**vars(args), presence_keys=presence_keys)
+    data_dict.filter_dictionary(
+        filters=[f"{k}!=nan" for k in clinical_feature_keys]
     )
 
     all_classes = []

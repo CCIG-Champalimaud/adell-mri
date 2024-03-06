@@ -78,7 +78,9 @@ class Dataset:
             self.rng = np.random.default_rng(self.seed)
 
     def load_dataset(self, path: str):
-        if isinstance(path, list):
+        if path is None:
+            self.dataset = {}
+        elif isinstance(path, list):
             for p in path:
                 self.load_dataset(p)
         else:
@@ -92,9 +94,10 @@ class Dataset:
                 self.dataset[k] = dataset[k]
 
     def fill_missing_with_value(self, filters: list[str]):
-        self.dataset = fill_missing_with_value(
-            self.dataset, filters, verbose=self.verbose
-        )
+        if filters is not None:
+            self.dataset = fill_missing_with_value(
+                self.dataset, filters, verbose=self.verbose
+            )
 
     def filter_dictionary(
         self,
@@ -116,24 +119,15 @@ class Dataset:
             verbose=self.verbose,
         )
 
-    def __getitem__(self, key: str | list[str]):
-        if isinstance(key, (list, tuple)):
-            return {k: self[k] for k in key}
+    def to_datalist(self, key_list: list[str] = None):
+        if key_list is None:
+            key_list = self.keys()
         else:
-            return self.dataset[key]
+            key_list = parse_ids(key_list, "list")
+        return [self[k] for k in self if k in key_list]
 
-    def __setitem__(self, key: str, value: Any):
-        self.dataset[key] = value
-
-    def __len__(self):
-        return len(self.dataset)
-
-    def __iter__(self):
-        for key in self.keys():
-            yield key
-
-    def print_verbose(self, *args, **kwargs):
-        print_verbose(*args, **kwargs, verbose=self.verbose)
+    def keys(self):
+        return self.dataset.keys()
 
     def subsample_dataset(
         self,
@@ -177,12 +171,44 @@ class Dataset:
         self.print_verbose(f"\tAfter: {len(self)} samples")
         self.print_verbose(f"\tDifference: {n_start - len(self)} samples")
 
-    def to_datalist(self, key_list: list[str] = None):
-        if key_list is None:
-            key_list = self.keys()
-        else:
-            key_list = parse_ids(key_list, "list")
-        return [self[k] for k in self if k in key_list]
+    def print_verbose(self, *args, **kwargs):
+        print_verbose(*args, **kwargs, verbose=self.verbose)
 
-    def keys(self):
-        return self.dataset.keys()
+    def apply_filters(self, **filter_dict: dict[str, Any]):
+        self.filter_dictionary(
+            possible_labels=filter_dict.get("possible_labels", None),
+            label_key=filter_dict.get("label_keys", None),
+            filters_presence=filter_dict.get("presence_keys", None),
+            filters_existence=filter_dict.get("filters_existence", None),
+            filters=filter_dict.get("filter_on_keys", None),
+            filter_is_optional=filter_dict.get("filter_is_optional", False),
+        )
+        if "excluded_ids" in filter_dict:
+            self.subsample_dataset(
+                excluded_key_list=filter_dict["excluded_ids"]
+            )
+        if "subsample_size" in filter_dict:
+            self.subsample_dataset(
+                subsample_size=filter_dict["subsample_size"],
+                strata_key=filter_dict.get("label_keys", None),
+            )
+        if "fill_missing_with_placeholder" in filter_dict:
+            self.fill_missing_with_value(
+                filters=filter_dict["fill_missing_with_placeholder"]
+            )
+
+    def __getitem__(self, key: str | list[str]):
+        if isinstance(key, (list, tuple)):
+            return {k: self[k] for k in key}
+        else:
+            return self.dataset[key]
+
+    def __setitem__(self, key: str, value: Any):
+        self.dataset[key] = value
+
+    def __len__(self):
+        return len(self.dataset)
+
+    def __iter__(self):
+        for key in self.keys():
+            yield key

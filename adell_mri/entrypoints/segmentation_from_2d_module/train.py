@@ -24,6 +24,7 @@ from ...utils import (
     safe_collate,
     safe_collate_crops,
 )
+from ...utils.dataset import Dataset
 from ...utils.pl_utils import get_ckpt_callback, get_logger, get_devices
 from ...monai_transforms import get_transforms_unet as get_transforms
 from ...monai_transforms import get_augmentations_unet as get_augmentations
@@ -134,6 +135,7 @@ def main(arguments):
     np.random.seed(args.seed)
     g = torch.Generator()
     g.manual_seed(args.seed)
+    rng = np.random.default_rng(seed=args.seed)
 
     accelerator, devices, strategy = get_devices(args.dev)
     dev = args.dev.split(":")[0]
@@ -176,39 +178,22 @@ def main(arguments):
         args.random_crop_size = [round(x) for x in args.random_crop_size]
     label_mode = "binary" if n_classes == 2 else "cat"
 
-    data_dict = {}
-    for dataset_json in args.dataset_json:
-        cur_dataset_dict = json.load(open(dataset_json, "r"))
-        for k in cur_dataset_dict:
-            data_dict[k] = cur_dataset_dict[k]
+    data_dict = Dataset(args.dataset_json, rng=rng)
     if args.missing_to_empty is None:
-        data_dict = {
-            k: data_dict[k]
-            for k in data_dict
+        data_dict.dataset = {
+            k: data_dict.dataset[k]
+            for k in data_dict.dataset
             if inter_size(data_dict[k], set(all_keys_t)) == len(all_keys_t)
         }
     else:
         if "mask" in args.missing_to_empty:
-            data_dict = {
-                k: data_dict[k]
-                for k in data_dict
+            data_dict.dataset = {
+                k: data_dict.dataset[k]
+                for k in data_dict.dataset
                 if inter_size(data_dict[k], set(mask_image_keys)) >= 0
             }
 
-    if args.subsample_size is not None:
-        ss = np.random.choice(
-            sorted(list(data_dict.keys())), args.subsample_size, replace=False
-        )
-        data_dict = {k: data_dict[k] for k in ss}
-
-    if args.excluded_ids is not None:
-        args.excluded_ids = parse_ids(args.excluded_ids, output_format="list")
-        print("Removing IDs specified in --excluded_ids")
-        prev_len = len(data_dict)
-        data_dict = {
-            k: data_dict[k] for k in data_dict if k not in args.excluded_ids
-        }
-        print("\tRemoved {} IDs".format(prev_len - len(data_dict)))
+    data_dict.apply_filters(**vars(args))
 
     if args.target_spacing[0] == "infer":
         target_spacing_dict = spacing_values_from_dataset_json(

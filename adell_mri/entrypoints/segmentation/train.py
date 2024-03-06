@@ -225,32 +225,19 @@ def main(arguments):
             filters=args.filter_on_keys,
             filter_is_optional=args.filter_is_optional,
         )
-    data_dict.filter_dictionary(
-        filters_presence=all_keys_t,
-        possible_labels=None,
-        label_key=None,
-        filters=args.filter_on_keys,
-        filter_is_optional=args.filter_is_optional,
-    )
 
-    for kk in feature_keys:
-        data_dict.dataset = {
-            k: data_dict[k]
-            for k in data_dict
-            if np.isnan(data_dict[k][kk]) == False
-        }
     if args.subsample_size is not None:
         data_dict.subsample_dataset(args.subsample_size)
         if args.semi_supervised is True:
             data_dict_ssl.subsample_dataset(key_list=data_dict.keys())
 
-    if args.excluded_ids is not None:
-        data_dict.subsample_dataset(excluded_key_list=args.excluded_ids)
-
-        if args.semi_supervised is True:
-            data_dict_ssl.subsample_dataset(
-                excluded_key_list=args.excluded_ids
-            )
+    args_dict = vars(args)
+    args_dict = {
+        k: args_dict[k]
+        for k in args_dict
+        if k not in ["subsample_size", "possible_labels", "label_key"]
+    }
+    data_dict.apply_filters(args_dict, presence_keys=all_keys_t)
 
     if args.target_spacing[0] == "infer":
         target_spacing_dict = spacing_values_from_dataset_json(
@@ -516,21 +503,25 @@ def main(arguments):
             ad = False
         # include some constant label images
         if args.constant_ratio is not None or ad:
-            cl, adaptive_weights, adaptive_pixel_weights = (
-                get_segmentation_sample_weights(
-                    train_list,
-                    label_keys=label_keys,
-                    n_workers=args.n_workers,
-                    base="Calculating positive pixel counts for train list",
-                )
+            (
+                cl,
+                adaptive_weights,
+                adaptive_pixel_weights,
+            ) = get_segmentation_sample_weights(
+                train_list,
+                label_keys=label_keys,
+                n_workers=args.n_workers,
+                base="Calculating positive pixel counts for train list",
             )
-            cl_val, adaptive_weights, adaptive_pixel_weights = (
-                get_segmentation_sample_weights(
-                    val_list,
-                    label_keys=label_keys,
-                    n_workers=args.n_workers,
-                    base="Calculating positive pixel counts for val list",
-                )
+            (
+                cl_val,
+                adaptive_weights,
+                adaptive_pixel_weights,
+            ) = get_segmentation_sample_weights(
+                val_list,
+                label_keys=label_keys,
+                n_workers=args.n_workers,
+                base="Calculating positive pixel counts for val list",
             )
             if args.constant_ratio is not None:
                 sampler = PartiallyRandomSampler(

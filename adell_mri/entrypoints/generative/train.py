@@ -23,7 +23,7 @@ from ...utils.pl_utils import (
     LogImageFromDiffusionProcess,
 )
 from ...utils.torch_utils import load_checkpoint_to_model
-from ...utils.dataset_filters import filter_dictionary, fill_missing_with_value
+from ...utils.dataset import Dataset
 from ...monai_transforms import (
     get_pre_transforms_generation as get_pre_transforms,
     get_post_transforms_generation as get_post_transforms,
@@ -123,9 +123,8 @@ def main(arguments):
 
     output_file = open(args.metric_path, "w")
 
-    data_dict = json.load(open(args.dataset_json, "r"))
-    if args.fill_missing_with_placeholder is not None:
-        fill_missing_with_value(data_dict, args.fill_missing_with_placeholder)
+    data_dict = Dataset(args.dataset_json)
+    data_dict.fill_missing_with_value(args.fill_missing_with_placeholder)
 
     presence_keys = [*args.image_keys]
 
@@ -144,23 +143,7 @@ def main(arguments):
         presence_keys.extend(args.num_condition_keys)
         with_conditioning = True
 
-    if args.excluded_ids is not None:
-        args.excluded_ids = parse_ids(args.excluded_ids, output_format="list")
-        print("Removing IDs specified in --excluded_ids")
-        prev_len = len(data_dict)
-        data_dict = {
-            k: data_dict[k] for k in data_dict if k not in args.excluded_ids
-        }
-        print("\tRemoved {} IDs".format(prev_len - len(data_dict)))
-    data_dict = filter_dictionary(
-        data_dict, filters_presence=presence_keys, filters=args.filter_on_keys
-    )
-    if (
-        args.subsample_size is not None
-        and len(data_dict) > args.subsample_size
-    ):
-        ss = rng.choice(list(data_dict.keys()), size=args.subsample_size)
-        data_dict = {k: data_dict[k] for k in ss}
+    data_dict.apply_filters(**vars(args), presence_keys=presence_keys)
 
     if len(data_dict) == 0:
         raise Exception(

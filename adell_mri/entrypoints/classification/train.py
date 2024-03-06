@@ -1,5 +1,4 @@
 import random
-import json
 import numpy as np
 import torch
 import monai
@@ -20,7 +19,6 @@ from ...utils import (
     set_classification_layer_bias,
     conditional_parameter_freezing,
 )
-from ...utils.dataset import subsample_dataset
 from ...utils.pl_utils import (
     get_ckpt_callback,
     get_logger,
@@ -29,10 +27,6 @@ from ...utils.pl_utils import (
 )
 from ...utils.torch_utils import load_checkpoint_to_model, get_class_weights
 from ...utils.dataset import Dataset
-from ...utils.dataset_filters import (
-    filter_dictionary,
-    filter_dictionary_with_filters,
-)
 from ...monai_transforms import get_transforms_classification as get_transforms
 from ...monai_transforms import get_augmentations_class as get_augmentations
 from ...modules.classification.losses import OrdinalSigmoidalLoss
@@ -139,9 +133,6 @@ def main(arguments):
     else:
         clinical_feature_keys = args.clinical_feature_keys
 
-    if args.excluded_ids is not None:
-        data_dict.subsample_dataset(excluded_key_list=args.excluded_ids)
-
     if args.excluded_ids_from_training_data is not None:
         excluded_ids_from_training_data = parse_ids(
             args.excluded_ids_from_training_data, output_format="list"
@@ -152,19 +143,9 @@ def main(arguments):
     presence_keys = args.image_keys + [args.label_keys] + clinical_feature_keys
     if args.mask_key is not None:
         presence_keys.append(args.mask_key)
+    data_dict.apply_filters(**vars(args), presence_keys=presence_keys)
     data_dict.filter_dictionary(
-        filters_presence=presence_keys,
-        possible_labels=args.possible_labels,
-        label_key=args.label_keys,
-        filters=args.filter_on_keys,
-    )
-    if len(clinical_feature_keys) > 0:
-        data_dict.filter_dictionary(
-            filters=[f"{k}!=nan" for k in clinical_feature_keys]
-        )
-    data_dict.subsample_dataset(
-        subsample_size=args.subsample_size,
-        strata_key=args.label_keys,
+        filters=[f"{k}!=nan" for k in clinical_feature_keys]
     )
 
     all_classes = []

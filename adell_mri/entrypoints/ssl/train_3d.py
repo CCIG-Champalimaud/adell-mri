@@ -11,7 +11,7 @@ from lightning.pytorch.callbacks import RichProgressBar
 from ...entrypoints.assemble_args import Parser
 from ...utils import safe_collate
 from ...utils.pl_utils import get_ckpt_callback, get_logger, get_devices
-from ...utils.dataset_filters import filter_dictionary
+from ...utils.dataset import Dataset
 from ...utils.network_factories import get_ssl_network
 from ...utils import ExponentialMovingAverage
 from ...modules.config_parsing import parse_config_ssl, parse_config_unet
@@ -98,6 +98,7 @@ def main(arguments):
     np.random.seed(args.seed)
     g = torch.Generator()
     g.manual_seed(args.seed)
+    rng = np.random.default_rng(seed=args.seed)
 
     output_file = open(args.metric_path, "w")
 
@@ -114,30 +115,12 @@ def main(arguments):
     non_adc_keys = [k for k in keys if k not in args.adc_image_keys]
     all_keys = [*keys]
 
-    data_dict = json.load(open(args.dataset_json, "r"))
-    data_dict = {
-        k: data_dict[k]
-        for k in data_dict
-        if len(set.intersection(set(data_dict[k]), set(all_keys)))
-        == len(all_keys)
-    }
-    data_dict = filter_dictionary(
-        data_dict,
-        filters_presence=all_keys,
-        possible_labels=None,
-        label_key=None,
-        filters=args.filter_on_keys,
-    )
+    data_dict = Dataset(args.dataset_json, rng=rng)
+    data_dict.apply_filters(**vars(args), presence_keys=all_keys)
 
     if len(data_dict) == 0:
         print("No data in dataset JSON")
         exit()
-
-    if args.subsample_size is not None:
-        ss = np.random.choice(
-            list(data_dict.keys()), args.subsample_size, replace=False
-        )
-        data_dict = {k: data_dict[k] for k in ss}
 
     for k in data_dict:
         data_dict[k]["pid"] = k
