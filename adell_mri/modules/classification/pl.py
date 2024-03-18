@@ -1540,7 +1540,7 @@ class DeconfoundedNetPL(DeconfoundedNet, ClassPLABC):
 
         self.conf_mult = 0.1
 
-        self.save_hyperparameters(ignore=['loss_fn'])
+        self.save_hyperparameters(ignore=["loss_fn"])
         self.setup_metrics()
 
     def loss_cat_confounder(self, pred: torch.Tensor, y: torch.Tensor):
@@ -1567,11 +1567,11 @@ class DeconfoundedNetPL(DeconfoundedNet, ClassPLABC):
             deconf_f_mean = deconf_f.mean(0, keepdim=True)
             n = (conf_f - conf_f_mean) * (deconf_f - deconf_f_mean)
             n = n.sum(0)
-            d = torch.multiply(
-                torch.square(conf_f - conf_f_mean).sum(0),
-                torch.square(deconf_f - deconf_f_mean).sum(0),
-            ).sqrt()
-            return torch.mean(torch.square(n / d))
+            d1 = torch.square(conf_f - conf_f_mean).sum(0).sqrt()
+            d2 = torch.square(deconf_f - deconf_f_mean).sum(0).sqrt()
+            return torch.mean(
+                n / torch.clamp(d1, min=1e-5) / torch.clamp(d2, min=1e-5)
+            )
 
     def step(self, batch: Dict[str, torch.Tensor], with_params: bool):
         x, y = batch[self.image_key], batch[self.label_key]

@@ -22,7 +22,7 @@ class DeconfoundedNet(VGG):
         n_cat_deconfounder: int | List[int] = None,
         n_cont_deconfounder: int = None,
         *args,
-        **kwargs
+        **kwargs,
     ):
         """
         Args:
@@ -125,7 +125,9 @@ class CategoricalConversion(torch.nn.Module):
     def init_conversion(self):
         self.conversions = []
         for key_list in self.key_lists:
-            self.conversions.append({key: i for i, key in enumerate(key_list)})
+            self.conversions.append(
+                {str(key): i for i, key in enumerate(key_list)}
+            )
 
     def forward(self, X: List[str]) -> List[torch.Tensor]:
         assert len(X[0]) == len(self.key_lists)
