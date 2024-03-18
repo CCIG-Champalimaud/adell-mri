@@ -235,7 +235,11 @@ This creates a consistent way of entering different scripts. All entrypoints are
 
 I have included a few unit tests in `testing`. In them, we confirm that networks and modules are outputing the correct shapes and that they are compiling correctly. They are prepared to run with `pytest`, i.e. `pytest` runs all of the relevant tests.
 
-### To-do
+## To-do
 
 * <del>Change dataset generation to entrypoint</del>
 * <del>Create minimal installer</del>
+
+## CCIG publications using `adell`
+
+* Rodrigues NM, Almeida JG, Verde ASC, Gaivão AM, Bilreiro C, Santiago I, Ip J, Belião S, Moreno R, Matos C, Vanneschi L, Tsiknakis M, Marias K, Regge D, Silva S; ProCAncer-I Consortium; Papanikolaou N. [Analysis of domain shift in whole prostate gland, zonal and lesions segmentation and detection, using multicentric retrospective data.](https://pubmed.ncbi.nlm.nih.gov/38442555/) Comput Biol Med. 2024 Mar 2;171:108216. doi: 10.1016/j.compbiomed.2024.108216. Epub ahead of print. PMID: 38442555.
