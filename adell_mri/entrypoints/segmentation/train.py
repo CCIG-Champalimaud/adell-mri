@@ -237,9 +237,9 @@ def main(arguments):
         for k in args_dict
         if k not in ["subsample_size", "possible_labels", "label_key"]
     }
-    data_dict.apply_filters(args_dict, presence_keys=all_keys_t)
+    data_dict.apply_filters(**args_dict, presence_keys=all_keys_t)
     if args.semi_supervised is True:
-        data_dict_ssl.apply_filters(args_dict, presence_keys=keys)
+        data_dict_ssl.apply_filters(**args_dict, presence_keys=keys)
 
     if args.target_spacing[0] == "infer":
         target_spacing_dict = spacing_values_from_dataset_json(
