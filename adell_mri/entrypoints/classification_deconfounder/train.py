@@ -90,7 +90,6 @@ def main(arguments):
             "logger_type",
             "project_name",
             "log_model",
-            "log_model",
             "summary_dir",
             "summary_name",
             "tracking_uri",
@@ -105,6 +104,7 @@ def main(arguments):
             "swa",
             "learning_rate",
             "batch_size",
+            "precision",
             "class_weights",
             "weighted_sampling",
             "correct_classification_bias",
@@ -156,8 +156,8 @@ def main(arguments):
     cont_vars = None
     if args.cat_confounder_keys is not None:
         cat_vars = []
-        curr_cat_vars = []
         for k in args.cat_confounder_keys:
+            curr_cat_vars = []
             for kk in data_dict:
                 v = data_dict[kk][k]
                 if v not in curr_cat_vars:
@@ -556,6 +556,7 @@ def main(arguments):
             max_epochs=args.max_epochs,
             enable_checkpointing=ckpt,
             gradient_clip_val=args.gradient_clip_val,
+            precision=args.precision,
             strategy=strategy,
             accumulate_grad_batches=args.accumulate_grad_batches,
             sync_batchnorm=True if strategy is not None else None,

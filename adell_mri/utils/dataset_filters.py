@@ -141,7 +141,7 @@ def filter_dictionary_with_filters(
     """Filters a dataset dictionary with custom filters:
     * If "key=value": tests if field key is equal/contains value
     * If "key>value": tests if field key is larger than value
-    * If "key>value": tests if field key is smaller than value
+    * If "key<value": tests if field key is smaller than value
 
     For inequalities, the value is converted to float.
 
@@ -157,7 +157,15 @@ def filter_dictionary_with_filters(
     """
     print_verbose("Filtering on: {}".format(filters), verbose=verbose)
     print_verbose("\tInput size: {}".format(len(D)), verbose=verbose)
-    processed_filters = {"eq": [], "gt": [], "lt": [], "neq": [], "in": []}
+    processed_filters = {
+        "eq": [],
+        "gt": [],
+        "lt": [],
+        "neq": [],
+        "in": [],
+        "match": [],
+        "not_match": [],
+    }
     for f in filters:
         if "!=" in f:
             processed_filters["neq"].append(f.split("!="))
@@ -171,6 +179,12 @@ def filter_dictionary_with_filters(
             k, v = f.split("(in)")
             v = v.split(",")
             processed_filters["in"].append([k, v])
+        elif "(match)" in f:
+            k, v = f.split("(match)")
+            processed_filters["match"].append([k, v])
+        elif "(!match)" in f:
+            k, v = f.split("(!match)")
+            processed_filters["not_match"].append([k, v])
         else:
             err = (
                 "filter {} must have one of ['=','<','>','!=','(in)'].".format(
@@ -206,6 +220,12 @@ def filter_dictionary_with_filters(
                             check = False
                     elif k == "in":
                         if str(D[pid][kk]) not in v:
+                            check = False
+                    elif k == "match":
+                        if v not in str(D[pid][kk]):
+                            check = False
+                    elif k == "not_match":
+                        if v in str(D[pid][kk]):
                             check = False
                 elif filter_is_optional is False:
                     check = False
