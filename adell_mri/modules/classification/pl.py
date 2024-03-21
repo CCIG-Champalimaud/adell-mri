@@ -1563,14 +1563,14 @@ class DeconfoundedNetPL(DeconfoundedNet, ClassPLABC):
         if self.n_features_deconfounder > 0:
             conf_f = features[:, : self.n_features_deconfounder, None]
             deconf_f = features[:, None, self.n_features_deconfounder :]
-            conf_f_mean = conf_f.mean(0, keepdim=True)
-            deconf_f_mean = deconf_f.mean(0, keepdim=True)
-            n = (conf_f - conf_f_mean) * (deconf_f - deconf_f_mean)
+            conf_f_norm = conf_f - conf_f.mean(0, keepdim=True)
+            deconf_f_norm = deconf_f - deconf_f.mean(0, keepdim=True)
+            n = conf_f_norm * deconf_f_norm
             n = n.sum(0)
-            d1 = torch.square(conf_f - conf_f_mean).sum(0).sqrt()
-            d2 = torch.square(deconf_f - deconf_f_mean).sum(0).sqrt()
+            d1 = conf_f_norm.square().sum(0).sqrt()
+            d2 = deconf_f_norm.square().sum(0).sqrt()
             return torch.mean(
-                n / torch.clamp(d1, min=1e-5) / torch.clamp(d2, min=1e-5)
+                torch.square(n / torch.clamp(d1 * d2, min=1e-8))
             )
 
     def step(self, batch: Dict[str, torch.Tensor], with_params: bool):
