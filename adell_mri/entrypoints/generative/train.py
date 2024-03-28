@@ -1,5 +1,4 @@
 import random
-import json
 import numpy as np
 import torch
 import monai
@@ -30,7 +29,7 @@ from ...monai_transforms import (
     get_augmentations_class as get_augmentations,
 )
 from ...utils.network_factories import get_generative_network
-from ...utils.parser import get_params, merge_args, parse_ids, compose
+from ...utils.parser import get_params, merge_args, compose
 
 
 def get_conditional_specification(d: dict, cond_key: str):
@@ -227,7 +226,7 @@ def main(arguments):
     torch.ones([1]).to("cuda" if "cuda" in args.dev else "cpu")
 
     if network_config["spatial_dims"] == 2:
-        transforms_train.append(RandomSlices(["image"], None, n=2, base=0.05))
+        transforms_train.append(RandomSlices(["image"], None, n=1))
         collate_fn = collate_last_slice
     else:
         collate_fn = safe_collate

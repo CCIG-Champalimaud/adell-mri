@@ -196,6 +196,7 @@ def get_deconfounded_classification_network(
     warmup_steps: int,
     start_decay: int,
     n_features_deconfounder: int = 64,
+    exclude_surrogate_variables: bool = False,
     label_smoothing=None,
     mixup_alpha=None,
     partial_mixup=None,
@@ -240,6 +241,7 @@ def get_deconfounded_classification_network(
         n_cont_deconfounder=cont_vars,
         cat_confounder_key=cat_confounder_key,
         cont_confounder_key=cont_confounder_key,
+        exclude_surrogate_variables=exclude_surrogate_variables,
         **boilerplate_args,
         **network_config,
     )

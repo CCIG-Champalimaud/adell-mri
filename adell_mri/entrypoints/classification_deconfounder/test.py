@@ -17,7 +17,7 @@ from ...utils.torch_utils import load_checkpoint_to_model
 from ...utils import safe_collate
 from ...utils.dataset import Dataset
 from ...utils.pl_utils import get_devices
-from ...utils.network_factories import get_classification_network
+from ...utils.network_factories import get_deconfounded_classification_network
 from ...utils.parser import get_params, merge_args, parse_ids
 from ...utils.bootstrap_metrics import bootstrap_metric
 
@@ -35,6 +35,9 @@ def main(arguments):
             "adc_keys",
             "label_keys",
             "mask_key",
+            "cat_confounder_keys",
+            "cont_confounder_keys",
+            "exclude_surrogate_variables",
             "image_masking",
             "image_crop_from_mask",
             "filter_on_keys",
@@ -86,6 +89,12 @@ def main(arguments):
     presence_keys = args.image_keys + [args.label_keys] + clinical_feature_keys
     if args.mask_key is not None:
         presence_keys.append(args.mask_key)
+    cat_key = None
+    cont_key = None
+    if args.cat_confounder_keys is not None:
+        cat_key = "cat_confounder"
+    if args.cont_confounder_keys is not None:
+        cont_key = "cont_confounder"
     data_dict.filter_dictionary(
         filters_presence=presence_keys,
         possible_labels=args.possible_labels,
@@ -134,6 +143,20 @@ def main(arguments):
         input_keys.append(mask_key)
     adc_keys = [k for k in adc_keys if k in keys]
 
+    cat_vars = None
+    cont_vars = None
+    if args.cat_confounder_keys is not None:
+        cat_vars = []
+        for k in args.cat_confounder_keys:
+            curr_cat_vars = []
+            for kk in data_dict:
+                v = data_dict[kk][k]
+                if v not in curr_cat_vars:
+                    curr_cat_vars.append(v)
+            cat_vars.append(curr_cat_vars)
+    if args.cont_confounder_keys is not None:
+        cont_vars = len(args.cont_confounder_keys)
+
     if args.net_type == "unet":
         network_config, _ = parse_config_unet(
             args.config_file, len(input_keys), n_classes
@@ -169,6 +192,8 @@ def main(arguments):
         "label_groups": label_groups,
         "label_key": args.label_keys,
         "label_mode": label_mode,
+        "cat_confounder_keys": args.cat_confounder_keys,
+        "cont_confounder_keys": args.cont_confounder_keys,
     }
 
     transforms_val = monai.transforms.Compose(
@@ -239,24 +264,24 @@ def main(arguments):
         else:
             exclude_from_state_dict = args.exclude_from_state_dict
         for checkpoint in checkpoint_list:
-            network = get_classification_network(
-                net_type=args.net_type,
+            network = get_deconfounded_classification_network(
                 network_config=network_config,
                 dropout_param=0,
                 seed=None,
+                cat_confounder_key=cat_key,
+                cont_confounder_key=cont_key,
+                cat_vars=cat_vars,
+                cont_vars=cont_vars,
                 n_classes=n_classes,
                 keys=input_keys,
-                clinical_feature_keys=clinical_feature_keys,
                 train_loader_call=None,
                 max_epochs=None,
                 warmup_steps=None,
                 start_decay=None,
-                crop_size=args.crop_size,
-                clinical_feature_means=None,
-                clinical_feature_stds=None,
                 label_smoothing=None,
                 mixup_alpha=None,
                 partial_mixup=None,
+                exclude_surrogate_variables=args.exclude_surrogate_variables,
             )
             load_checkpoint_to_model(
                 network,

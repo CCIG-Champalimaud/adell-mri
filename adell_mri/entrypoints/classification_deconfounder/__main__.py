@@ -1,6 +1,6 @@
 import sys
 
-supported_modes = ["train"]
+supported_modes = ["train", "test"]
 
 
 def main(arguments):
@@ -11,6 +11,10 @@ def main(arguments):
 
     elif arguments[0] == "train":
         from .train import main
+
+        main(arguments[1:])
+    elif arguments[0] == "test":
+        from .test import main
 
         main(arguments[1:])
     else:

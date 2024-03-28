@@ -79,6 +79,7 @@ class VGG(torch.nn.Module):
         res_type=None,
         classification_structure: List[int] = [512, 512, 512],
         batch_ensemble: int = 0,
+        output_features: int = 512,
     ):
         """
         Args:
@@ -91,12 +92,16 @@ class VGG(torch.nn.Module):
                 classifier. Defaults to [512,512,512].
             batch_ensemble (int, optional): number of batch ensemble modules.
                 Defautls to 0.
+            output_features (int, optional): number of output features. Used
+                only when adapting this class to other methods. Defaults to
+                512.
         """
         super().__init__()
         self.in_channels = n_channels
         self.n_classes = n_classes
         self.batch_ensemble = batch_ensemble
         self.classification_structure = classification_structure
+        self.output_features = output_features
 
         self.conv1 = VGGConvolution3d(self.in_channels, 64)
         self.conv2 = VGGConvolution3d(128, 128)
@@ -112,7 +117,7 @@ class VGG(torch.nn.Module):
         self.classification_layer = torch.nn.Sequential(
             GlobalPooling(),
             MLP(
-                512,
+                self.output_features,
                 final_n,
                 classification_structure,
                 adn_fn=get_adn_fn(1, "batch", "gelu"),

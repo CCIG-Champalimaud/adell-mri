@@ -720,6 +720,11 @@ argument_factory = {
         nargs="+",
         help="Keys corresponding to continuous confounder.",
     ),
+    "exclude_surrogate_variables": dict(
+        default=False,
+        action="store_true",
+        help="Excludes variables used in deconfounding from prediction.",
+    ),
     # semi-supervised segmentation
     "semi_supervised": dict(
         action="store_true",

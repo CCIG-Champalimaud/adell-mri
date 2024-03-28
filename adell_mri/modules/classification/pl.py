@@ -1536,9 +1536,9 @@ class DeconfoundedNetPL(DeconfoundedNet, ClassPLABC):
         self.args = args
         self.kwargs = kwargs
 
-        self.loss_str = ["cl_loss", "cat_loss", "cont_loss", "feat_loss"]
+        self.loss_str = ["loss", "cat_loss", "cont_loss", "feat_loss"]
 
-        self.conf_mult = 0.1
+        self.conf_mult = 1.0
 
         self.save_hyperparameters(ignore=["loss_fn"])
         self.setup_metrics()
@@ -1569,9 +1569,7 @@ class DeconfoundedNetPL(DeconfoundedNet, ClassPLABC):
             n = n.sum(0)
             d1 = conf_f_norm.square().sum(0).sqrt()
             d2 = deconf_f_norm.square().sum(0).sqrt()
-            return torch.mean(
-                torch.square(n / torch.clamp(d1 * d2, min=1e-8))
-            )
+            return torch.mean(torch.square(n / torch.clamp(d1 * d2, min=1e-8)))
 
     def step(self, batch: Dict[str, torch.Tensor], with_params: bool):
         x, y = batch[self.image_key], batch[self.label_key]
@@ -1592,7 +1590,7 @@ class DeconfoundedNetPL(DeconfoundedNet, ClassPLABC):
             )
         if self.cont_confounder_key is not None:
             y_cont_confounder = batch[self.cont_confounder_key]
-            cont_conf_loss = self.loss_cat_confounder(
+            cont_conf_loss = self.loss_cont_confounder(
                 confounder_regression, y_cont_confounder
             )
         feature_loss = self.loss_features(features)
@@ -1626,9 +1624,9 @@ class DeconfoundedNetPL(DeconfoundedNet, ClassPLABC):
         losses = [l.mean() if l is not None else None for l in losses]
         self.log_losses(losses, "val")
         self.update_metrics(
-            self.val_metrics,
             pred_y[0],
             pred_y[1],
+            self.val_metrics,
             on_epoch=True,
             prog_bar=True,
         )
@@ -1640,20 +1638,24 @@ class DeconfoundedNetPL(DeconfoundedNet, ClassPLABC):
         losses = [l.mean() if l is not None else None for l in losses]
         self.log_losses(losses, "test")
         self.update_metrics(
-            self.test_metrics,
             pred_y[0],
             pred_y[1],
+            self.test_metrics,
+            log=False,
             on_epoch=True,
             prog_bar=True,
         )
         return sum([l for l in losses if l is not None])
 
-    def update_metrics(self, metrics, pred, y, **kwargs):
+    def update_metrics(
+        self, prediction, y, metrics, log: bool = True, **kwargs
+    ):
         y = y.long()
         if self.n_classes == 2:
-            pred = torch.sigmoid(pred).squeeze(1)
+            prediction = torch.sigmoid(prediction).squeeze(1)
         else:
-            pred = F.softmax(pred, -1)
+            prediction = F.softmax(prediction, -1)
         for k in metrics:
-            metrics[k](pred, y)
-            self.log(k, metrics[k], **kwargs)
+            metrics[k](prediction, y)
+            if log is True:
+                self.log(k, metrics[k], **kwargs)

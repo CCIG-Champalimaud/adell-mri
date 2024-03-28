@@ -21,6 +21,7 @@ class DeconfoundedNet(VGG):
         n_features_deconfounder: int = None,
         n_cat_deconfounder: int | List[int] = None,
         n_cont_deconfounder: int = None,
+        exclude_surrogate_variables: bool = False,
         *args,
         **kwargs,
     ):
@@ -34,11 +35,16 @@ class DeconfoundedNet(VGG):
                 (no categorical deconfounding).
             n_cont_deconfounder (int, optional): number of continuous
                 confounders. Defaults to None (no continuous deconfounding).
+            exclude_surrogate_variables (bool, optional): whether to exclude
+                surrogate variables
         """
-        super().__init__(*args, **kwargs)
         self.n_features_deconfounder = n_features_deconfounder
         self.n_cat_deconfounder = n_cat_deconfounder
         self.n_cont_deconfounder = n_cont_deconfounder
+        self.exclude_surrogate_variables = exclude_surrogate_variables
+        if self.exclude_surrogate_variables:
+            kwargs["output_features"] = 512 - self.n_features_deconfounder
+        super().__init__(*args, **kwargs)
 
         if self.n_features_deconfounder is None:
             self.n_features_deconfounder = 0
@@ -92,7 +98,12 @@ class DeconfoundedNet(VGG):
         features = self.gp(features)
         if return_features is True:
             return features
-        classification = self.classification_layer(features)
+        if self.exclude_surrogate_variables:
+            classification = self.classification_layer(
+                features[:, self.n_features_deconfounder :]
+            )
+        else:
+            classification = self.classification_layer(features)
         confounder_classification = None
         confounder_regression = None
         if self.confound_classifiers is not None:
