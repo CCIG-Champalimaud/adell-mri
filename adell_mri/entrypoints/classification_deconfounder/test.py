@@ -281,6 +281,7 @@ def main(arguments):
                 label_smoothing=None,
                 mixup_alpha=None,
                 partial_mixup=None,
+                n_features_deconfounder=128,
                 exclude_surrogate_variables=args.exclude_surrogate_variables,
             )
             load_checkpoint_to_model(
