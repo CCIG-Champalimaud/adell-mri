@@ -1,6 +1,11 @@
 import sys
 
-supported_modes = ["train_2d", "train_3d", "model_to_torchscript"]
+supported_modes = [
+    "train_2d",
+    "train_3d",
+    "model_to_torchscript",
+    "predict_folder",
+]
 
 
 def main(arguments):
@@ -19,6 +24,10 @@ def main(arguments):
         main(arguments[1:])
     elif arguments[0] == "model_to_torchscript":
         from .model_to_torchscript import main
+
+        main(arguments[1:])
+    elif arguments[0] == "predict_folder":
+        from .predict_folder import main
 
         main(arguments[1:])
     else:
