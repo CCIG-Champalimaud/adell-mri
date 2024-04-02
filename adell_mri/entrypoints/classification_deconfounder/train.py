@@ -352,6 +352,10 @@ def main(arguments):
             metadata={
                 "train_pids": train_pids,
                 "transform_arguments": transform_arguments,
+                "cat_vars": cat_vars,
+                "cont_vars": cont_vars,
+                "cat_key": cat_key,
+                "cont_key": cont_key,
             },
         )
         ckpt = ckpt_callback is not None

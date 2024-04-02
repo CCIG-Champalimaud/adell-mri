@@ -64,12 +64,17 @@ class DeconfoundedNet(VGG):
             if len(self.n_cat_deconfounder) > 0:
                 for n_class in self.n_cat_deconfounder:
                     self.confound_classifiers.append(
-                        MLP(self.n_features_deconfounder, n_class, [])
+                        MLP(
+                            self.n_features_deconfounder,
+                            n_class,
+                            [self.n_features_deconfounder],
+                        )
                     )
-        if self.n_features_deconfounder > 0:
             if self.n_cont_deconfounder > 0:
                 self.confound_regressions = MLP(
-                    self.n_features_deconfounder, self.n_cont_deconfounder, []
+                    self.n_features_deconfounder,
+                    self.n_cont_deconfounder,
+                    [self.n_features_deconfounder],
                 )
 
     def forward(
