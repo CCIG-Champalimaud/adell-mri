@@ -1,7 +1,6 @@
 import os
 import argparse
 import re
-import numpy as np
 import SimpleITK as sitk
 from pathlib import Path
 from tqdm import tqdm

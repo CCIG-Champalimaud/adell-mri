@@ -5,7 +5,6 @@ import einops
 
 from ...custom_types import (
     TensorDict,
-    TensorOrNDarray,
 )
 
 

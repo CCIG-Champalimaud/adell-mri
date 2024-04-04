@@ -1,7 +1,5 @@
 import argparse
 import json
-import numpy as np
-from tqdm import tqdm
 
 desc = "Creates individual entries from a hierarchical JSON"
 

@@ -4,8 +4,6 @@ import torch.nn.functional as F
 from queue import Queue
 from math import prod
 
-from typing import Any
-
 
 def swap(xs, a, b):
     xs[a], xs[b] = xs[b], xs[a]

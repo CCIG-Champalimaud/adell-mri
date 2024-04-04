@@ -4,7 +4,6 @@ import numpy as np
 import torch
 import monai
 import SimpleITK as sitk
-from copy import deepcopy
 from pathlib import Path
 from tqdm import tqdm
 

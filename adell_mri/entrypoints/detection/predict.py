@@ -11,9 +11,7 @@ from ...utils.dataset_filters import (
     filter_dictionary_with_presence,
 )
 from ...utils.network_factories import get_detection_network
-import argparse
 import yaml
-import numpy as np
 import torch
 import monai
 import json
