@@ -41,9 +41,19 @@ class ReadSpacing:
 
 @dataclass
 class SitkWriter:
+    """
+    Class that writes files using SimpleITK in the background and parallely.
+
+    Args:
+        n_workers (int): number of workers. Defaults to 1.
+    """
+
     n_workers: int = 1
 
     def __post_init__(self):
+        """
+        Initialises the queues and processes.
+        """
         self.queue = Queue()
         self.workers = [
             Process(target=self.worker) for _ in range(self.n_workers)
@@ -52,6 +62,9 @@ class SitkWriter:
             worker.start()
 
     def worker(self):
+        """
+        Performs all image writing operations.
+        """
         while True:
             element = self.queue.get()
             if element is None:
@@ -82,9 +95,22 @@ class SitkWriter:
         image: sitk.Image | np.ndarray | torch.Tensor,
         source_image: sitk.Image | str = None,
     ):
+        """
+        Adds image to the queue.
+
+        Args:
+            path (str): path where the image will be saved.
+            image (sitk.Image | np.ndarray | torch.Tensor): image to be saved.
+                Can be a numpy array, a SimpleITK image, or a PyTorch tensor.
+            source_image (sitk.Image | str, optional): source image used to
+                define metadata. Defaults to None.
+        """
         self.queue.put((path, image, source_image))
 
     def close(self):
+        """
+        Terminates all processes.
+        """
         for _ in self.workers:
             self.queue.put(None)
         for worker in self.workers:
@@ -276,7 +302,29 @@ def crop_image(sitk_image: sitk.Image, output_size: list[int]) -> sitk.Image:
     return sitk_image
 
 
-def copy_information_nd(target_image: sitk.Image, source_image=sitk.Image):
+def copy_information_nd(
+    target_image: sitk.Image, source_image: sitk.Image
+) -> sitk.Image:
+    """
+    Copies information from a source image to a target image. Unlike the
+    standard CopyInformation method in SimpleITK, the source image can have
+    fewer axes than the target image as long as the first n axes of each are
+    identical (where n is the number of axes in the source image).
+
+    Args:
+        target_image (sitk.Image): target image.
+        source_image (sitk.Image): source information for metadata.
+
+    Raises:
+        Exception: if the source image has more dimensions than the target
+            image.
+
+    Returns:
+        sitk.Image: target image with metadata copied from source image.
+            The metadata information for the additional axes is set to 0 in the
+            case of the origin, 1.0 in the case of the spacing and to the 
+            identity in the case of the direction.
+    """
     size_source = source_image.GetSize()
     size_target = target_image.GetSize()
     n_dim_in = len(size_source)

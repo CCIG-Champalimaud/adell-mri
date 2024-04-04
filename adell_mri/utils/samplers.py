@@ -5,7 +5,8 @@ from typing import List, Iterable
 
 
 class PartiallyRandomSampler(torch.utils.data.Sampler):
-    """PartiallyRandomSampler samples indices from keep_classes with
+    """
+    PartiallyRandomSampler samples indices from keep_classes with
     probability keep_prob and the remaining indices with probability
     1 - keep_prob.
 
@@ -54,7 +55,14 @@ class PartiallyRandomSampler(torch.utils.data.Sampler):
             self.seed = np.random.randint(1e6)
         self.rng = np.random.default_rng(self.seed)
 
-    def __iter__(self) -> Iterable:
+    def __iter__(self) -> Iterable[int]:
+        """
+        Iters a random set of indices in the dataset.
+
+        Yields:
+            Iterable[int]: random indices corresponding to elements in the
+                dataset.
+        """
         rand_list = [
             *self.keep_list,
             *self.rng.choice(
@@ -81,4 +89,11 @@ class PartiallyRandomSampler(torch.utils.data.Sampler):
         self.num_samples = n
 
     def __len__(self) -> int:
+        """
+        Returns the number of elements retrieved during a complete iteration of
+        the dataset.
+
+        Returns:
+            int: number of iterations.
+        """
         return self.n

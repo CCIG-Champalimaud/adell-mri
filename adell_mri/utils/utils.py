@@ -176,7 +176,18 @@ def get_loss_param_dict(
         different losses.
     """
 
-    def invert_weights(w):
+    def invert_weights(w: torch.Tensor) -> torch.Tensor:
+        """
+        Inverts weights if necessary. Used only for the Tversky focal loss.
+        If W >= 1, then the inversion returns 1. If W < 0, the inversion
+        returns 1 - W.
+
+        Args:
+            w (torch.Tensor): weight tensor.
+
+        Returns:
+            torch.Tensor: inverted W.
+        """
         if torch.any(w >= 1):
             return torch.ones_like(w)
         else:
@@ -249,10 +260,30 @@ def collate_last_slice(X: List[TensorIterable]) -> TensorIterable:
     """
 
     def swap(x):
+        """
+        Swaps the channel dimension of a tensor to the first position.
+
+        Args:
+            x (torch.Tensor): Input tensor of shape (N, C, H, W).
+
+        Returns:
+            torch.Tensor: Output tensor of shape (C, N, H, W).
+        """
         out = x.permute(0, 3, 1, 2)
         return out
 
     def swap_cat(x):
+        """
+        Swaps the channel dimension of each tensor in x to the first
+        position and concatenates them along the batch dimension.
+
+        Args:
+            x (List[torch.Tensor]): List of input tensors, each with shape
+                (N, C, H, W).
+
+        Returns:
+            torch.Tensor: Output tensor with shape (N*C, H, W)
+        """
         try:
             o = torch.cat([swap(y) for y in x])
             return o
@@ -288,6 +319,19 @@ def safe_collate(X: List[TensorIterable]) -> List[TensorIterable]:
     """
 
     def cat(x):
+        """
+        Concatenates a list of tensors or tensor-like objects into a single
+        tensor.
+
+        Args:
+            x (List[torch.Tensor]): A list of tensors or tensor-like objects
+                to concatenate.
+
+        Returns:
+            torch.Tensor: The concatenated tensor, or the original list if
+                concatenation fails.
+        """
+
         try:
             x = [torch.as_tensor(y) for y in x]
         except Exception:
@@ -348,18 +392,21 @@ def load_anchors(path: str) -> np.ndarray:
 
 
 class ExponentialMovingAverage(torch.nn.Module):
+    """
+    Exponential moving average for model weights. The weight-averaged
+    model is kept as `self.shadow` and each iteration of self.update leads
+    to weight updating. This implementation is heavily based on that
+    available in https://www.zijianhu.com/post/pytorch/ema/.
+
+    Essentially, self.update(model) is called, a shadow version of the
+    model (i.e. self.shadow) is updated using the exponential moving
+    average formula such that $v'=(1-decay)*(v_{shadow}-v)$, where
+    $v$ is the new parameter value, $v'$ is the updated value and
+    $v_{shadow}$ is the exponential moving average value (i.e. the shadow).
+    """
+
     def __init__(self, decay: float, final_decay: float = None, n_steps=None):
-        """Exponential moving average for model weights. The weight-averaged
-        model is kept as `self.shadow` and each iteration of self.update leads
-        to weight updating. This implementation is heavily based on that
-        available in https://www.zijianhu.com/post/pytorch/ema/.
-
-        Essentially, self.update(model) is called, a shadow version of the
-        model (i.e. self.shadow) is updated using the exponential moving
-        average formula such that $v'=(1-decay)*(v_{shadow}-v)$, where
-        $v$ is the new parameter value, $v'$ is the updated value and
-        $v_{shadow}$ is the exponential moving average value (i.e. the shadow).
-
+        """
         Args:
             decay (float): decay for the exponential moving average.
             final_decay (float, optional): final value for decay. Defaults to
@@ -379,13 +426,28 @@ class ExponentialMovingAverage(torch.nn.Module):
         self.slope = (self.final_decay - self.decay) / self.n_steps
         self.intercept = self.decay
 
-    def set_requires_grad_false(self, model):
+    def set_requires_grad_false(self, model: torch.nn.Module):
+        """
+        Sets requires_grad attribute of all parameters to False in a torch
+        Module.
+
+        Args:
+            model (torch.Tensor): torch module.
+        """
         for k, p in model.named_parameters():
             if p.requires_grad is True:
                 p.requires_grad = False
 
     @torch.no_grad()
     def update(self, model: torch.nn.Module):
+        """
+        Updates the shadow version of the model using an exponential moving
+        average.
+
+        Args:
+            model (torch.nn.Module): torch module. Must have same parameters as
+                self.shadow.
+        """
         if self.shadow is None:
             # this effectively skips the first epoch
             self.shadow = deepcopy(model)
