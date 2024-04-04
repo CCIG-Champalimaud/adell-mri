@@ -278,7 +278,6 @@ class SliceLinearEmbedding(torch.nn.Module):
             )
 
     def linearize_image_slices(self, image: torch.Tensor) -> torch.Tensor:
-        b = image.shape[0]
         h, w, s = self.image_size
         c = self.n_channels
         x, y, z = self.patch_size
@@ -574,14 +573,14 @@ class LinearEmbedding(torch.nn.Module):
                     requires_grad=False,
                 )
 
-    def einops_tuple(self, l):
-        if isinstance(l, list):
-            if len(l) > 1:
-                return "({})".format(" ".join(l))
+    def einops_tuple(self, einops_str):
+        if isinstance(einops_str, list):
+            if len(einops_str) > 1:
+                return "({})".format(" ".join(einops_str))
             else:
-                return l[0]
+                return einops_str[0]
         else:
-            return l
+            return einops_str
 
     def get_linear_einop_params(self):
         lh = ["b", "c", ["h", "x"], ["w", "y"]]
@@ -1118,7 +1117,6 @@ class SWINTransformerBlock(torch.nn.Module):
         Returns:
             torch.Tensor: rolled tensor.
         """
-        n = len(X.shape)
         dims = [i + 1 for i in range(1, len(shifts) + 1)]
         return torch.roll(X, shifts=shifts, dims=dims)
 
@@ -1149,7 +1147,6 @@ class SWINTransformerBlock(torch.nn.Module):
         ss = self.shift_size
         if isinstance(ss, int):
             ss = [ss] * len(self.patch_size)
-        sh = X.shape
         if any(i > 0 for i in ss):
             shifted_X = self.roll(X, shifts=[-s for s in ss])
         else:

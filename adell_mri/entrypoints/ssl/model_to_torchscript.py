@@ -128,7 +128,7 @@ def main(arguments):
         network_config_correct=network_config_correct,
     )
 
-    train_loader_call = None
+    train_loader_call = None  # noqa
     ssl = ssl.to(args.dev)
     state_dict = torch.load(
         args.checkpoint, map_location=args.dev.split(":")[0]

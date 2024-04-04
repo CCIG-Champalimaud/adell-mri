@@ -10,7 +10,6 @@ from tqdm import tqdm
 
 import sys
 from ..assemble_args import Parser
-from ...entrypoints.assemble_args import Parser
 from ...utils.pl_utils import get_devices
 from ...utils.torch_utils import load_checkpoint_to_model
 from ...utils.dataset import Dataset
@@ -116,8 +115,6 @@ def main(arguments):
     if args.num_condition_keys is not None:
         presence_keys.extend(args.num_condition_keys)
         with_conditioning = True
-
-    keys = args.image_keys
 
     if network_config is None:
         network_config = compose(args.config_file, "diffusion", args.overrides)
@@ -231,9 +228,11 @@ def main(arguments):
             if args.cat_condition_keys is not None:
                 curr_cat = [
                     [
-                        cat_condition.get(k, data.get(k, None)[0])
-                        if cat_condition is not None
-                        else data.get(k, None)
+                        (
+                            cat_condition.get(k, data.get(k, None)[0])
+                            if cat_condition is not None
+                            else data.get(k, None)
+                        )
                         for k in args.cat_condition_keys
                     ]
                 ]
@@ -241,9 +240,11 @@ def main(arguments):
                     continue
             if args.num_condition_keys is not None:
                 curr_num = [
-                    num_condition.get(k, data.get(k, None))
-                    if num_condition is not None
-                    else data.get(k, None)
+                    (
+                        num_condition.get(k, data.get(k, None))
+                        if num_condition is not None
+                        else data.get(k, None)
+                    )
                     for k in args.num_condition_keys
                 ]
                 if any([x is None for x in curr_num]):

@@ -1005,9 +1005,9 @@ class BrUNet(UNet, torch.nn.Module):
     def init_backbone_encoders(self):
         """
         Initializes the encoder operations."""
-        l = len(self.encoders)
+        n_encoders = len(self.encoders)
         assert (
-            l == self.n_input_branches
+            n_encoders == self.n_input_branches
         ), "n_input_branches and \
             len(self.encoders) must be the same"
         if self.spatial_dimensions == 2:
@@ -1060,8 +1060,8 @@ class BrUNet(UNet, torch.nn.Module):
     @staticmethod
     def fix_input(X: List[List[torch.Tensor]]):
         shapes = [[] for _ in X]
-        for i, l in enumerate(X):
-            for x in l:
+        for i, item_list in enumerate(X):
+            for x in item_list:
                 if x is not None:
                     shapes[i].append(x.shape)
         shapes = [list(set(sh)) for sh in shapes]

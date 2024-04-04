@@ -36,7 +36,7 @@ def filter_orientations(
                                 dcm_dict["orientation"][-3:], [0, 0, -1]
                             )
                         )
-                        if is_bad == True and keep_bad == False:
+                        if is_bad is True and keep_bad is False:
                             pass
                         else:
                             new_dicom_dictionary[k][kk].append(dcm_dict)
@@ -202,14 +202,14 @@ class SliceSampler(torch.utils.data.Sampler):
         Yields:
             int: an index used for the __getitem__ method in DICOMDataset.
         """
-        if self.verbose == True:
+        if self.verbose is True:
             print("Starting iteration")
 
         corr_idx = []
         for _ in range(self.n_iterations):
             corr_idx.extend([i for i in range(self.N)])
 
-        if self.shuffle == True:
+        if self.shuffle is True:
             self.rng.shuffle(corr_idx)
 
         if self.n_samples is not None:

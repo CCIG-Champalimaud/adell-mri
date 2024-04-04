@@ -31,7 +31,7 @@ def process_dicom(dcm: str) -> DICOMInformation:
     # construction skip these files
     try:
         dcm_file.pixel_array
-    except:
+    except Exception:
         return None
     # signals poorly specified orientation
     if (0x0020, 0x0037) in dcm_file:
@@ -61,7 +61,7 @@ def update_dict(
     else:
         add = True
 
-    if add == True:
+    if add is True:
         if study_uid not in d:
             d[study_uid] = {}
         if series_uid not in d[study_uid]:

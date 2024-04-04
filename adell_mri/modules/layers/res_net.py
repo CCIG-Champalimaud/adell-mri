@@ -53,7 +53,7 @@ class ResNetBackbone(torch.nn.Module):
         adn_fn: torch.nn.Module = torch.nn.Identity,
         res_type: str = "resnet",
         batch_ensemble: int = 0,
-        skip_last_activation: bool = False, 
+        skip_last_activation: bool = False,
     ):
         """
         Args:
@@ -199,7 +199,7 @@ class ResNetBackbone(torch.nn.Module):
             else:
                 X = op(X)
             pooled_X = pool_op(X)
-            if after_pool == True:
+            if after_pool is True:
                 output_list.append(pooled_X)
             else:
                 output_list.append(X)
@@ -224,7 +224,7 @@ class ResNetBackbone(torch.nn.Module):
             else:
                 X = op(X)
             pooled_X = pool_op(X)
-            if after_pool == True:
+            if after_pool is True:
                 output_list.append(pooled_X)
             else:
                 output_list.append(X)
@@ -336,7 +336,7 @@ class ResNet(torch.nn.Module):
             try:
                 d = self.projection_head_args["structure"][-1]
                 norm_fn = self.projection_head_args["adn_fn"](d).norm_fn
-            except:
+            except Exception:
                 norm_fn = torch.nn.LayerNorm
             self.projection_head = torch.nn.Sequential(
                 ProjectionHead(**self.projection_head_args), norm_fn(d)

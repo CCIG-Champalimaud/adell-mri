@@ -8,7 +8,6 @@ from ...custom_types import (
     TensorDict,
     TensorOrNDarray,
     NDArrayOrTensorDict,
-    Size2dOr3d,
 )
 
 
@@ -368,13 +367,13 @@ class DbscanAssistedSegmentSelection(monai.transforms.MapTransform):
                 sizes[label] = np.sum(idxs)
 
             labels_to_keep = []
-            if self.filter_by_size == True:
+            if self.filter_by_size is True:
                 sorted_labels = sorted(sizes.keys(), key=lambda k: -sizes[k])
                 if len(sorted_labels) > self.keep_n:
                     sorted_labels = sorted_labels[: self.keep_n]
                 labels_to_keep.extend(sorted_labels)
 
-            if self.filter_by_dist_to_centre == True:
+            if self.filter_by_dist_to_centre is True:
                 sorted_labels = sorted(
                     dist_to_centre.keys(), key=lambda k: sizes[k]
                 )
@@ -382,8 +381,8 @@ class DbscanAssistedSegmentSelection(monai.transforms.MapTransform):
                 idx = 0
                 while label_to_keep is None:
                     curr_label = sorted_labels[idx]
-                    if self.filter_by_size == True:
-                        if curr_label in labels_to_keep == True:
+                    if self.filter_by_size is True:
+                        if curr_label in labels_to_keep:
                             label_to_keep = curr_label
                     else:
                         label_to_keep = curr_label

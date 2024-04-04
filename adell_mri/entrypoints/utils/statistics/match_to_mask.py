@@ -68,7 +68,6 @@ def main(arguments):
         if pid in path_dictionary:
             path_dictionary[pid]["mask"] = path
 
-    t = len(all_sequences) + 1
     matches = {}
     has_non_zero = {}
     good_pids = []

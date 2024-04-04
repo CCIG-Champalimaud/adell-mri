@@ -142,9 +142,11 @@ def main(arguments):
         network_configs = None
     else:
         network_configs = [
-            parse_config_unet(config_file, len(keys), n_classes)
-            if net_type == "unet"
-            else parse_config_cat(config_file)
+            (
+                parse_config_unet(config_file, len(keys), n_classes)
+                if net_type == "unet"
+                else parse_config_cat(config_file)
+            )
             for config_file, net_type in zip(config_files, args.net_types)
         ]
         if len(args.config_files) == 1:
@@ -157,7 +159,7 @@ def main(arguments):
     if "batch_size" not in ensemble_config:
         ensemble_config["batch_size"] = 1
 
-    all_pids = [k for k in data_dict]
+    all_pids = [k for k in data_dict]  # noqa
 
     print("Setting up transforms...")
     label_mode = "binary" if n_classes == 2 and label_groups is None else "cat"
@@ -218,7 +220,7 @@ def main(arguments):
         )
 
         print("Setting up testing...")
-        batch_preprocessing = None
+        batch_preprocessing = None  # noqa
 
         if args.one_to_one is True:
             checkpoint_list = [args.checkpoints[iteration]]

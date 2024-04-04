@@ -183,13 +183,13 @@ class SelfSLBasePL(pl.LightningModule, ABC):
     def calculate_loss(self, y1, y2, *args):
         if self.stop_gradient is False:
             # no need to stop gradients with VICReg or VICRegL.
-            l = self.loss(y1, y2, *args)
+            loss_value = self.loss(y1, y2, *args)
         else:
             # the famous stop gradient operation just implies detaching the
             # output tensor from the computation graph to prevent gradients
             # from being automatically propagated.
-            l = self.loss(y1, y2.detach(), *args)
-        return l
+            loss_value = self.loss(y1, y2.detach(), *args)
+        return loss_value
 
     def safe_sum(self, X):
         if isinstance(X, torch.Tensor):
@@ -686,14 +686,14 @@ class SelfSLUNetPL(UNet, SelfSLBasePL):
         else:
             return loss
 
-        for s, l in zip(loss_str_list, losses):
+        for s, loss_value in zip(loss_str_list, losses):
             if s is not None:
                 sub_loss_str = "{}:{}".format(loss_str, s)
             else:
                 sub_loss_str = loss_str
             self.log(
                 sub_loss_str,
-                l,
+                loss_value,
                 batch_size=x1.shape[0],
                 on_epoch=True,
                 on_step=False,
@@ -911,14 +911,14 @@ class SelfSLConvNeXtPL(ConvNeXt, SelfSLBasePL):
             loss_str_list = self.loss_str_dict["vicreg"]
         else:
             return loss
-        for s, l in zip(loss_str_list, losses):
+        for s, loss_value in zip(loss_str_list, losses):
             if s is not None:
                 sub_loss_str = "{}:{}".format(loss_str, s)
             else:
                 sub_loss_str = loss_str
             self.log(
                 sub_loss_str,
-                l,
+                loss_value,
                 batch_size=x1.shape[0],
                 on_epoch=True,
                 on_step=False,

@@ -68,7 +68,7 @@ class GenericEnsemble(torch.nn.Module):
             nc = 1
         else:
             nc = self.n_classes
-        if self.gaussian_process == True:
+        if self.gaussian_process is True:
             self.prediction_head = torch.nn.Sequential(
                 self.head_adn_fn(self.n_features_final),
                 MLP(
@@ -133,10 +133,10 @@ class GenericEnsemble(torch.nn.Module):
                 out = out.flatten(start_dim=2).max(-1).values
             outputs.append(out)
         outputs = torch.concat(outputs, 1)
-        if return_features == True:
+        if return_features is True:
             return outputs
         output = self.prediction_head(outputs)
-        if self.gaussian_process == True:
+        if self.gaussian_process is True:
             output = self.gaussian_process_head(output)
         return output
 

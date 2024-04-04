@@ -55,17 +55,15 @@ def main(arguments):
 
     output = {}
     for k in all_keys:
-        D0 = dict_list[0]
         output[k] = {}
-        n_l = []
         for D, suffix in zip(dict_list, args.suffixes):
             for kk in D[k]:
                 updated_kk = kk
                 if kk in output[k]:
-                    if D[k][kk] != output[k][kk] or args.keep_all == True:
+                    if D[k][kk] != output[k][kk] or args.keep_all is True:
                         new_kk = False
                         if suffix is None:
-                            while new_kk == False:
+                            while new_kk is False:
                                 index = re.search(r"[0-9]+$", updated_kk)
                                 if index is not None:
                                     index = index.group()

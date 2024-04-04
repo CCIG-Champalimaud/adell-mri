@@ -570,7 +570,7 @@ def main(arguments):
             ckpt_list = ["last"]
         for ckpt_key in ckpt_list:
             test_metrics = trainer.test(
-                network, train_val_loader, ckpt_path=ckpt_key
+                network, validation_loader, ckpt_path=ckpt_key
             )[0]
             for k in test_metrics:
                 out = test_metrics[k]
@@ -603,5 +603,5 @@ def main(arguments):
 
         csv_logger.write()
         print("=" * 80)
-        if args.delete_checkpoints == True:
+        if args.delete_checkpoints is True:
             delete_checkpoints(trainer)

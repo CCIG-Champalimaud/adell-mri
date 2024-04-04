@@ -297,7 +297,7 @@ def get_transforms_detection_pre(
     mask_mode: str = "mask_is_labels",
     target_spacing: List[float] = None,
 ):
-    intp_resampling = ["area" for _ in keys]
+    # intp_resampling = ["area" for _ in keys]
     non_adc_keys = [k for k in keys if k not in adc_keys]
     if mask_key is not None:
         image_keys = keys + [mask_key]

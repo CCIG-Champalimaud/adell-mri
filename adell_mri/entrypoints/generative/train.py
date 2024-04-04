@@ -8,7 +8,6 @@ from lightning.pytorch import Trainer
 from lightning.pytorch.callbacks import RichProgressBar
 
 import sys
-from ...entrypoints.assemble_args import Parser
 from ...utils import (
     safe_collate,
     conditional_parameter_freezing,
@@ -122,7 +121,7 @@ def main(arguments):
 
     output_file = open(args.metric_path, "w")
 
-    data_dict = Dataset(args.dataset_json)
+    data_dict = Dataset(args.dataset_json, rng=rng)
     data_dict.fill_missing_with_value(args.fill_missing_with_placeholder)
 
     presence_keys = [*args.image_keys]

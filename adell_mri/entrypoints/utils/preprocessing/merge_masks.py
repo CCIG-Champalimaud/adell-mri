@@ -23,9 +23,9 @@ def iou(a: np.ndarray, b: np.ndarray) -> float:
     result_list = []
     for u in uniq:
         intersection = np.where(np.logical_and(a == b, a == u), 1, 0)
-        I = np.sum(intersection)
-        U = np.sum(a == u) + np.sum(b == u) - I
-        result_list.append(I / U)
+        inter_value = np.sum(intersection)
+        U = np.sum(a == u) + np.sum(b == u) - inter_value
+        result_list.append(inter_value / U)
     return float(np.mean(result_list))
 
 
@@ -36,7 +36,7 @@ def merge_masks(path_list: List[str], argmax: bool) -> sitk.Image:
     ]
     images = [sitk.GetArrayFromImage(x) for x in images_]
     image_out = np.stack([np.zeros_like(images[0]), *images])
-    if argmax == True:
+    if argmax is True:
         image_out = np.argmax(image_out, 0)
     else:
         image_out = image_out.mean(0) > 0
@@ -114,11 +114,10 @@ def main(arguments):
                 path_dict[study_id] = []
             path_dict[study_id].append(path)
 
-    iou_list = []
     path_dict_keys = list(path_dict.keys())
     n = len(args.patterns)
     for patient_id in tqdm(path_dict_keys):
-        if len(path_dict[patient_id]) == n or args.strict == False:
+        if len(path_dict[patient_id]) == n or args.strict is False:
             image_out = merge_masks(path_dict[patient_id], args.argmax)
             image_out = sitk.Cast(image_out, sitk.sitkInt16)
             output_path_image = os.path.join(

@@ -95,7 +95,7 @@ class VGGAutoencoder(torch.nn.Module):
             torch.Tensor: output (reconstruction)
         """
         X = self.encoder_block(X)
-        if return_features == True:
+        if return_features is True:
             return X
 
         return self.decoder_block(X)

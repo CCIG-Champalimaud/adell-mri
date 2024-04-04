@@ -59,6 +59,6 @@ def main(arguments):
     output_image = resample_image(fixed_image, args.spacing, args.is_label)
     if args.crop_size is not None:
         output_image = crop_image(output_image, args.crop_size)
-    if args.is_label == True:
+    if args.is_label is True:
         output_image = sitk.Cast(output_image, sitk.sitkInt16)
     sitk.WriteImage(output_image, args.output_path)

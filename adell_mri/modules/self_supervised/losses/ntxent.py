@@ -23,7 +23,7 @@ class NTXentLoss(torch.nn.Module):
         self.apply_relu = apply_relu
 
     def forward(self, X1: torch.Tensor, X2: torch.Tensor):
-        if self.apply_relu == True:
+        if self.apply_relu is True:
             X1 = F.relu(X1)
             X2 = F.relu(X2)
         dev = X1.device

@@ -43,7 +43,7 @@ def anchors_from_nested_list(
     cont = True
     i = 2
     up.set_description("Determining the ideal anchor size")
-    while cont == True:
+    while cont is True:
         up.update()
         km = KMeans(i, random_state=42)
         km = km.fit(all_sizes)

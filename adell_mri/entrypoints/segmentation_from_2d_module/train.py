@@ -51,9 +51,9 @@ def inter_size(a, b):
 
 
 def get_first(*lists):
-    for l in lists:
-        if l is not None:
-            return l
+    for ll in lists:
+        if ll is not None:
+            return ll
 
 
 def main(arguments):

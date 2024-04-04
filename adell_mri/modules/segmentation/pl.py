@@ -82,7 +82,7 @@ def update_metrics(
     """
     try:
         y = torch.round(y).int()
-    except:
+    except Exception:
         pass
     y = y.long()
     pred = pred.squeeze(1)
@@ -164,7 +164,7 @@ class UNetBasePL(pl.LightningModule, ABC):
     def calculate_loss(self, prediction, y):
         loss = self.loss_fn(prediction, y)
         if isinstance(loss, list):
-            loss = torch.stack([l.mean() for l in loss])
+            loss = torch.stack([loss_value.mean() for loss_value in loss])
         return loss
 
     def calculate_loss_class(self, prediction, y):
@@ -246,12 +246,12 @@ class UNetBasePL(pl.LightningModule, ABC):
                 y_small = (
                     F.interpolate(y, S, mode=interp, align_corners=True) > 0
                 ).float()
-                l = (
+                loss_value = (
                     self.calculate_loss(o, y_small).mean()
                     / (2 ** (t - i))
                     / (t + 1)
                 )
-                additional_losses = additional_losses + l
+                additional_losses = additional_losses + loss_value
             loss = loss + additional_losses
         if self.bottleneck_classification is True:
             class_loss = self.calculate_loss_class(pred_class, y_class)
@@ -310,9 +310,9 @@ class UNetBasePL(pl.LightningModule, ABC):
             *args,
             **kwargs,
         )
-        if return_only_segmentation == True:
+        if return_only_segmentation is True:
             output = output[0]
-        if not_batched == True:
+        if not_batched is True:
             output = output[0]
         return output
 
@@ -543,7 +543,7 @@ class UNetBasePL(pl.LightningModule, ABC):
         opt = self.optimizers()
         try:
             last_lr = [x["lr"] for x in opt.param_groups][-1]
-        except:
+        except Exception:
             last_lr = self.learning_rate
         self.log("lr", last_lr, prog_bar=True, sync_dist=True)
         gc.collect()
@@ -1216,12 +1216,12 @@ class MIMUNetPL(MIMUNet, UNetBasePL):
             for i, o in enumerate(deep_outputs):
                 S = o.shape[-self.spatial_dimensions :]
                 y_small = F.interpolate(y, S, mode="nearest")
-                l = (
+                loss_value = (
                     self.calculate_loss(o, y_small).mean()
                     / (2 ** (t - i))
                     / (t + 1)
                 )
-                additional_losses = additional_losses + l
+                additional_losses = additional_losses + loss_value
             loss = loss + additional_losses
         class_loss = None
         pred_class = None
@@ -1315,7 +1315,7 @@ class BrUNetPL(BrUNet, UNetBasePL):
     def calculate_loss(self, prediction, y):
         loss = self.loss_fn(prediction, y)
         if isinstance(loss, list):
-            loss = torch.stack([l.mean() for l in loss])
+            loss = torch.stack([loss_value.mean() for loss_value in loss])
         return loss
 
     def calculate_loss_class(self, prediction, y):
@@ -1340,12 +1340,12 @@ class BrUNetPL(BrUNet, UNetBasePL):
             for i, o in enumerate(deep_outputs):
                 S = o.shape[-self.spatial_dimensions :]
                 y_small = F.interpolate(y, S, mode="nearest")
-                l = (
+                loss_value = (
                     self.calculate_loss(o, y_small).mean()
                     / (2 ** (t - i))
                     / (t + 1)
                 )
-                additional_losses = additional_losses + l
+                additional_losses = additional_losses + loss_value
             loss = loss + additional_losses
         if self.bottleneck_classification is True:
             class_loss = self.calculate_loss_class(pred_class, y_class)

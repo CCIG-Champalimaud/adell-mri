@@ -38,7 +38,6 @@ def main(arguments):
     args = parser.parse_args(arguments)
 
     for path in tqdm(glob(os.path.join(args.input_path, args.pattern))):
-        path_sub = path.split(os.sep)[-1]
         image = sitk.ReadImage(path)
         if sitk.GetArrayFromImage(image).sum() > 0:
             if args.spacing is not None:

@@ -49,7 +49,7 @@ def mask_to_bb(img: np.ndarray) -> tuple[list[np.array], list[int]]:
     for u in uniq:
         C = np.where(labelled_image == u)
         bb = np.array([value_range(c) for c in C])
-        if np.all(bb[:, 1] == bb[:, 0]) == False:
+        if np.all(bb[:, 1] == bb[:, 0]) == False:  # noqa
             bb_vertices.append(bb)
             c.append(np.median(img[C]))
 
@@ -157,9 +157,9 @@ def main(arguments):
     class_dict_csv = {}
     if args.class_csv_path:
         with open(args.class_csv_path, "r") as o:
-            for l in o:
-                l = l.strip().split(",")
-                identifier, cl = l[0], l[-1]
+            for line in o:
+                line = line.strip().split(",")
+                identifier, cl = line[0], line[-1]
                 class_dict_csv[identifier] = cl
     if args.mask_path is not None:
         all_mask_paths = [str(x) for x in Path(args.mask_path).rglob("*")]
@@ -177,7 +177,7 @@ def main(arguments):
         mask_path = [
             p for p in mask_paths if image_id in p.replace(args.mask_path, "")
         ]
-        if len(mask_path) == 0 and args.strict == True:
+        if len(mask_path) == 0 and args.strict is True:
             continue
 
         bb_dict[image_id] = {"image": os.path.abspath(file_path)}
@@ -188,7 +188,7 @@ def main(arguments):
         if len(mask_path) > 0:
             mask_path = mask_path[0]
             bb_dict[image_id][args.mask_key] = os.path.abspath(mask_path)
-            if args.skip_detection != True:
+            if args.skip_detection is not True:
                 bb_dict[image_id]["boxes"] = []
                 bb_dict[image_id]["shape"] = ""
                 bb_dict[image_id]["labels"] = []

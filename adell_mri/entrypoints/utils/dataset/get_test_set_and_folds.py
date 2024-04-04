@@ -86,7 +86,7 @@ def main(arguments):
             for kk in args.all_keys:
                 if kk not in data_dict[k]:
                     check = False
-            if check == True:
+            if check is True:
                 new_dict[k] = data_dict[k]
         data_dict = new_dict
 

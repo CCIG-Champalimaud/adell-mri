@@ -124,7 +124,7 @@ class GaussianProcessLayer(torch.nn.Module):
             Tuple[torch.Tensor,torch.Tensor]: mean and covariance for Gaussian
                 process.
         """
-        if hasattr(self, "cov") == False:
+        if hasattr(self, "cov") is False:
             raise Exception(
                 "self.get_cov() must be called before getting parameters"
             )

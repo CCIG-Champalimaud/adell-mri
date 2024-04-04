@@ -152,8 +152,6 @@ def main(arguments):
     else:
         roi_size = [int(x) for x in args.random_crop_size]
 
-    all_pids = [k for k in data_dict]
-
     is_ijepa = args.ssl_method == "ijepa"
     pre_transform_args = {
         "all_keys": all_keys,
@@ -302,6 +300,7 @@ def main(arguments):
             "state_dict"
         ]
         inc = ssl.load_state_dict(state_dict)
+        print(inc)
 
     callbacks = [RichProgressBar()]
 

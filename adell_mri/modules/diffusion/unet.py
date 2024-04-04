@@ -38,7 +38,7 @@ class DiffusionUNet(UNet):
         classifier_free_guidance: bool = False,
         classifier_classes: int = 2,
         *args,
-        **kwargs
+        **kwargs,
     ):
         if "n_channels" not in kwargs:
             raise Exception("n_channels must be defined")
@@ -56,7 +56,7 @@ class DiffusionUNet(UNet):
 
     def init_eca(self):
         eca_op = EfficientConditioningAttentionBlock
-        if self.classifier_free_guidance == True:
+        if self.classifier_free_guidance is True:
             # use this to map classes to self.t_dim vectors
             self.embedding = torch.nn.Embedding(
                 self.classifier_classes, self.t_dim
@@ -116,7 +116,7 @@ class DiffusionUNet(UNet):
             t = t[:, None]
         t = get_timestep_embedding(t, self.t_dim)
         if cls is not None:
-            if self.classifier_free_guidance == False:
+            if self.classifier_free_guidance is False:
                 raise Exception(
                     "cls can only be defined if classifier_free_guidance is \
                         True in the constructor"

@@ -37,7 +37,7 @@ def main(arguments):
                 mask = sitk.GetArrayFromImage(sitk.ReadImage(data_dict[k][kk]))
                 if len(np.unique(mask)) > 1:
                     constant = False
-        if constant == False:
+        if constant is False:
             nc_keys.append(k)
 
     data_dict = {k: data_dict[k] for k in nc_keys}

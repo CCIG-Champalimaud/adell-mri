@@ -168,7 +168,7 @@ def main(arguments):
         data_dict.dataset = {
             k: data_dict[k]
             for k in data_dict
-            if np.isnan(data_dict[k][kk]) == False
+            if np.isnan(data_dict[k][kk]) == False  # noqa
         }
 
     network_config, loss_key = parse_config_unet(
@@ -209,7 +209,7 @@ def main(arguments):
         transforms.append(SlicesToFirst(["image", "mask"]))
         collate_fn = collate_last_slice
     else:
-        collate_fn = safe_collate
+        collate_fn = safe_collate  # noqa
 
     torch.cuda.empty_cache()
 
@@ -297,7 +297,6 @@ def main(arguments):
     )
 
     test_ids = parse_ids(args.test_ids)
-    n_ckpt = len(args.checkpoint)
     n_data = len(test_ids)
     all_metrics = []
     for test_idx in range(n_data):
@@ -312,7 +311,7 @@ def main(arguments):
             cache_rate=args.cache_rate,
         )
 
-        if args.one_to_one == True:
+        if args.one_to_one is True:
             checkpoint_list = [args.checkpoint[test_idx]]
         else:
             checkpoint_list = args.checkpoint

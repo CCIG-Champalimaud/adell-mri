@@ -72,11 +72,11 @@ class ChannelSqueezeAndExcite(torch.nn.Module):
         self.init_layers()
 
     def init_layers(self):
-        I = self.input_channels
+        n_chan = self.input_channels
         self.op = torch.nn.Sequential(
-            torch.nn.Linear(I, I),
+            torch.nn.Linear(n_chan, n_chan),
             torch.nn.ReLU(),
-            torch.nn.Linear(I, I),
+            torch.nn.Linear(n_chan, n_chan),
             torch.nn.Sigmoid(),
         )
 

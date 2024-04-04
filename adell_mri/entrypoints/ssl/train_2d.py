@@ -56,7 +56,7 @@ def filter_dicom_dict_on_presence(data_dict, all_keys):
 
 
 def filter_dicom_dict_by_size(data_dict, max_size):
-    print("Filtering by size (max={})".format(max_size, len(data_dict)))
+    print("Filtering by size (max={})".format(max_size))
     output_dict = {}
     removed_series = 0
     for k in data_dict:
@@ -192,7 +192,7 @@ def main(arguments):
     else:
         roi_size = [int(x) for x in args.random_crop_size]
 
-    all_pids = [k for k in data_dict]
+    # all_pids = [k for k in data_dict]
 
     is_ijepa = args.ssl_method == "ijepa"
     transform_pre_arguments = {
@@ -365,6 +365,7 @@ def main(arguments):
             "state_dict"
         ]
         inc = ssl.load_state_dict(state_dict)
+        print(inc)
 
     callbacks = [RichProgressBar()]
 

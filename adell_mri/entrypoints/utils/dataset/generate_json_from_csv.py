@@ -3,7 +3,7 @@ import json
 
 try:
     import pandas as pd
-except:
+except Exception:
     raise ImportError(
         "Pandas is required to parse parquet files. ",
         "Please install it with `pip install pandas`.",

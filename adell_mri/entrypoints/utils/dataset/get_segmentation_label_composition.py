@@ -31,7 +31,6 @@ def main(arguments):
 
     total_voxels = {}
     for path in tqdm(glob(os.path.join(args.input_path, args.pattern))):
-        path_sub = path.split(os.sep)[-1]
         image = sitk.GetArrayFromImage(sitk.ReadImage(path))
         un, co = np.unique(image, return_counts=True)
         for u, c in zip(un, co):

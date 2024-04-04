@@ -343,7 +343,7 @@ class FlippedInference:
             for k in X:
                 if self.flip_keys is not None:
                     if k in self.flip_keys:
-                        im = deepcopy(X_out[k])
+                        # im = deepcopy(X_out[k])
                         X_out[k] = self.flip_array(X_out[k], axis)
                 else:
                     X_out[k] = self.flip_array(X_out[k], axis)
@@ -852,7 +852,7 @@ class SegmentationInference:
                     )
                     for fn in inference_function
                 ]
-            if self.flip == True:
+            if self.flip is True:
                 inference_function = [
                     FlippedInference(
                         inference_function=fn,
@@ -876,7 +876,7 @@ class SegmentationInference:
                     stride=self.stride,
                     inference_batch_size=self.inference_batch_size,
                 )
-            if self.flip == True:
+            if self.flip is True:
                 inference_function = FlippedInference(
                     inference_function=inference_function,
                     flips=self.flips,

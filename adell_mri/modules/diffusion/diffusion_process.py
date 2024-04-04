@@ -166,7 +166,7 @@ class Diffusion:
             if len(self.img_size) not in [2, 3]:
                 raise TypeError("img_size must be tuple with size 2 or 3")
             if (
-                any([isinstance(x, int) == False for x in self.img_size])
+                any([isinstance(x, int) is False for x in self.img_size])
                 is True
             ):
                 raise TypeError("img_size must be tuple of int")

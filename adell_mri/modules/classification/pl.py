@@ -242,7 +242,7 @@ class ClassPLABC(pl.LightningModule, ABC):
 
     def on_fit_end(self):
         if hasattr(self, "gaussian_process"):
-            if self.gaussian_process == True:
+            if self.gaussian_process is True:
                 with tqdm(self.training_dataloader_call()) as pbar:
                     pbar.set_description("Fitting GP covariance")
                     for batch in pbar:
@@ -340,7 +340,7 @@ class ClassPLABC(pl.LightningModule, ABC):
             y.squeeze(1)
         for k in metrics:
             metrics[k](prediction, y)
-            if log == True:
+            if log is True:
                 self.log(
                     k,
                     metrics[k],
@@ -486,7 +486,7 @@ class ClassNetPL(ClassPLABC):
             y.squeeze(1)
         for k in metrics:
             metrics[k](prediction, y)
-            if log == True:
+            if log is True:
                 self.log(
                     k,
                     metrics[k],
@@ -662,7 +662,7 @@ class SegCatNetPL(SegCatNet, pl.LightningModule):
 
         try:
             y = torch.round(y).int()
-        except:
+        except Exception:
             pass
         self.update_metrics(
             self.test_metrics,
@@ -676,10 +676,10 @@ class SegCatNetPL(SegCatNet, pl.LightningModule):
 
     def setup_metrics(self):
         if self.n_classes == 2:
-            C_1, C_2, A, M, I = 2, None, None, "micro", None
+            C_1, C_2, A, M, ign_idx = 2, None, None, "micro", None
         else:
             c = self.n_classes
-            C_1, C_2, A, M, I = [c, c, "samplewise", "macro", None]
+            C_1, C_2, A, M, ign_idx = [c, c, "samplewise", "macro", None]
         self.train_metrics = torch.nn.ModuleDict({})
         self.val_metrics = torch.nn.ModuleDict({})
         self.test_metrics = torch.nn.ModuleDict({})
@@ -697,13 +697,22 @@ class SegCatNetPL(SegCatNet, pl.LightningModule):
 
             if k in ["F1"]:
                 self.train_metrics[k] = md[k](
-                    num_classes=C, mdmc_average=A, average=m, ignore_index=I
+                    num_classes=C,
+                    mdmc_average=A,
+                    average=m,
+                    ignore_index=ign_idx,
                 ).to(self.device)
                 self.val_metrics["V_" + k] = md[k](
-                    num_classes=C, mdmc_average=A, average=m, ignore_index=I
+                    num_classes=C,
+                    mdmc_average=A,
+                    average=m,
+                    ignore_index=ign_idx,
                 ).to(self.device)
             self.test_metrics["T_" + k] = md[k](
-                num_classes=C, mdmc_average=A, average=m, ignore_index=I
+                num_classes=C,
+                mdmc_average=A,
+                average=m,
+                ignore_index=ign_idx,
             ).to(self.device)
 
 
@@ -1607,21 +1616,27 @@ class DeconfoundedNetPL(DeconfoundedNet, ClassPLABC):
         )
 
     def log_losses(self, losses: List[torch.Tensor], prefix: str):
-        for l, s in zip(losses, self.loss_str):
-            if l is not None:
-                self.log(f"{prefix}_{s}", l, prog_bar=True)
+        for loss_val, s in zip(losses, self.loss_str):
+            if loss_val is not None:
+                self.log(f"{prefix}_{s}", loss_val, prog_bar=True)
 
     def training_step(self, batch, batch_idx):
         output = self.step(batch, with_params=True)
-        losses, pred_y = output[:4], output[4:]
-        losses = [l.mean() if l is not None else None for l in losses]
+        losses, _ = output[:4], output[4:]
+        losses = [
+            loss_val.mean() if loss_val is not None else None
+            for loss_val in losses
+        ]
         self.log_losses(losses, "tr")
-        return sum([l for l in losses if l is not None])
+        return sum([loss_val for loss_val in losses if loss_val is not None])
 
     def validation_step(self, batch, batch_idx):
         output = self.step(batch, with_params=False)
         losses, pred_y = output[:4], output[4:]
-        losses = [l.mean() if l is not None else None for l in losses]
+        losses = [
+            loss_val.mean() if loss_val is not None else None
+            for loss_val in losses
+        ]
         self.log_losses(losses, "val")
         self.update_metrics(
             pred_y[0],
@@ -1630,12 +1645,15 @@ class DeconfoundedNetPL(DeconfoundedNet, ClassPLABC):
             on_epoch=True,
             prog_bar=True,
         )
-        return sum([l for l in losses if l is not None])
+        return sum([loss_val for loss_val in losses if loss_val is not None])
 
     def test_step(self, batch, batch_idx):
         output = self.step(batch, with_params=False)
         losses, pred_y = output[:4], output[4:]
-        losses = [l.mean() if l is not None else None for l in losses]
+        losses = [
+            loss_val.mean() if loss_val is not None else None
+            for loss_val in losses
+        ]
         self.log_losses(losses, "test")
         self.update_metrics(
             pred_y[0],
@@ -1645,7 +1663,7 @@ class DeconfoundedNetPL(DeconfoundedNet, ClassPLABC):
             on_epoch=True,
             prog_bar=True,
         )
-        return sum([l for l in losses if l is not None])
+        return sum([loss_val for loss_val in losses if loss_val is not None])
 
     def update_metrics(
         self, prediction, y, metrics, log: bool = True, **kwargs

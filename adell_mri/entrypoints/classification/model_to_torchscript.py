@@ -1,3 +1,8 @@
+from adell_mri.modules.config_parsing import (
+    parse_config_unet,
+    parse_config_cat,
+)
+from adell_mri.utils.network_factories import get_classification_network
 import argparse
 import numpy as np
 import torch
@@ -5,11 +10,6 @@ import torch
 import sys
 
 sys.path.append(r"..")
-from adell_mri.modules.config_parsing import (
-    parse_config_unet,
-    parse_config_cat,
-)
-from adell_mri.utils.network_factories import get_classification_network
 
 
 def main(arguments):
@@ -124,9 +124,10 @@ def main(arguments):
     ]
     state_dict = {k: state_dict[k] for k in state_dict if "loss_fn" not in k}
     inc = network.load_state_dict(state_dict)
+    print(inc)
     network.eval()
 
-    example = torch.rand(1, args.n_channels, *args.input_shape).to(args.dev)
+    # example = torch.rand(1, args.n_channels, *args.input_shape).to(args.dev)
     traced_network = network.to_torchscript()
 
     torch.jit.save(traced_network, args.output_model_path)

@@ -291,7 +291,7 @@ def main(arguments):
         train_pids = [all_pids[i] for i in train_idxs]
         val_pids = [all_pids[i] for i in val_idxs]
         train_list = [data_dict[pid] for pid in train_pids]
-        val_list = [data_dict[pid] for pid in val_pids]
+        val_list = [data_dict[pid] for pid in val_pids]  # noqa
 
         train_dataset = monai.data.Dataset(
             [full_dataset[i] for i in train_idxs], transform=transforms_train
@@ -501,7 +501,6 @@ def main(arguments):
         )
 
         if is_auto is True:
-            dev = f"cuda:{devices[0]}"
             # reload to correct device
             network_config["module"] = torch.jit.load(
                 args.module_path, map_location=f"cuda:{devices[0]}"

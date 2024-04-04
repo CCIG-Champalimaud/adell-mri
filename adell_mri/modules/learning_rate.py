@@ -21,7 +21,7 @@ def float_to_epochs(v: float, max_epochs: int) -> int:
     Returns:
         int: number of epochs.
     """
-    if isinstance(v, float) == True:
+    if isinstance(v, float) is True:
         if v >= 1.0:
             v = int(v)
         else:

@@ -229,7 +229,7 @@ class ViTMaskedAutoEncoder(ViTAutoEncoder):
         # based on https://github.com/facebookresearch/mae/blob/main/models_mae.py
 
         X = self.proj(X)  # projection
-        X_original = X
+        # X_original = X
         X, mask, ids_restore = random_masking(
             X, self.mask_fraction, self.rng
         )  # masking

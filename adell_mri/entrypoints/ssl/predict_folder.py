@@ -101,7 +101,7 @@ def main(arguments):
             t = torch.as_tensor(
                 dcmread(str(dcm_path)).pixel_array.astype(np.float32)
             ).to(args.dev)
-        except:
+        except Exception:
             continue
         if len(t.shape) > 2:
             continue

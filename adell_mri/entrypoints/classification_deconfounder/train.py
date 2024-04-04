@@ -603,5 +603,5 @@ def main(arguments):
                 output_file.write(x + "\n")
                 print(x)
 
-        if args.delete_checkpoints == True:
+        if args.delete_checkpoints is True:
             delete_checkpoints(trainer)

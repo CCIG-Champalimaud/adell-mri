@@ -168,7 +168,7 @@ def main(arguments):
         data_dict.dataset = {
             k: data_dict[k]
             for k in data_dict
-            if np.isnan(data_dict[k][kk]) == False
+            if np.isnan(data_dict[k][kk]) == False  # noqa
         }
 
     network_config, loss_key = parse_config_unet(
@@ -210,7 +210,7 @@ def main(arguments):
         transforms.append(SlicesToFirst(["image"]))
         collate_fn = collate_last_slice
     else:
-        collate_fn = safe_collate
+        collate_fn = safe_collate  # noqa
 
     torch.cuda.empty_cache()
 
@@ -301,7 +301,6 @@ def main(arguments):
         args.prediction_ids = parse_ids(args.prediction_ids)
     else:
         args.prediction_ids = [[k for k in data_dict]]
-    n_ckpt = len(args.checkpoint)
     n_data = len(args.prediction_ids)
     output = {}
     sitk_writer = SitkWriter(2)
@@ -316,7 +315,7 @@ def main(arguments):
             "image", transforms_preprocess
         )
 
-        if args.one_to_one == True:
+        if args.one_to_one is True:
             checkpoint_list = [args.checkpoint[pred_idx]]
         else:
             checkpoint_list = args.checkpoint

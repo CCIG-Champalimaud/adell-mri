@@ -79,11 +79,11 @@ class LayerNorm(torch.nn.Module):
                 x, self.normalized_shape, self.weight, self.bias, self.eps
             )
         elif self.data_format == "channels_first":
-            l = len(x.shape)
+            n = len(x.shape)
             u = x.mean(1, keepdim=True)
             s = (x - u).pow(2).mean(1, keepdim=True)
             x = (x - u) / torch.sqrt(s + self.eps)
-            sh = [1, self.normalized_shape[0], *[1 for _ in range(2, l)]]
+            sh = [1, self.normalized_shape[0], *[1 for _ in range(2, n)]]
             x = self.weight.reshape(sh) * x + self.bias.reshape(sh)
             return x
 
@@ -104,14 +104,15 @@ class LayerNormChannelsFirst(torch.nn.Module):
         s = (x - u).pow(2).mean(1, keepdim=True)
         x = (x - u) / torch.sqrt(s + self.eps)
         if x.ndim == 3:
-            x = x.multiply(self.weight[:,None]).add(
-                self.bias[:,None])
+            x = x.multiply(self.weight[:, None]).add(self.bias[:, None])
         if x.ndim == 4:
-            x = x.multiply(self.weight[:,None,None]).add(
-                self.bias[:,None,None])
+            x = x.multiply(self.weight[:, None, None]).add(
+                self.bias[:, None, None]
+            )
         if x.ndim == 5:
-            x = x.multiply(self.weight[:,None,None,None]).add(
-                self.bias[:,None,None, None])
+            x = x.multiply(self.weight[:, None, None, None]).add(
+                self.bias[:, None, None, None]
+            )
         return x
 
 

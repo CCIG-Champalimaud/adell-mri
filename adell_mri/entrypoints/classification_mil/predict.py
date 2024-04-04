@@ -123,7 +123,7 @@ def main(arguments):
     if "batch_size" not in network_config:
         network_config["batch_size"] = 1
 
-    all_pids = [k for k in data_dict]
+    all_pids = [k for k in data_dict]  # noqa
 
     print("Setting up transforms...")
     label_mode = "binary" if args.n_classes == 2 else "cat"

@@ -137,7 +137,7 @@ def main(arguments):
     if "batch_size" not in network_config:
         network_config["batch_size"] = 1
 
-    all_pids = [k for k in data_dict]
+    all_pids = [k for k in data_dict]  # noqa
 
     print("Setting up transforms...")
     label_mode = "binary" if n_classes == 2 else "cat"
@@ -233,7 +233,7 @@ def main(arguments):
                     **boilerplate_args, **network_config
                 )
 
-            train_loader_call = None
+            train_loader_call = None  # noqa
             state_dict = torch.load(checkpoint)["state_dict"]
             network.load_state_dict(state_dict)
             network = network.eval().to(args.dev)

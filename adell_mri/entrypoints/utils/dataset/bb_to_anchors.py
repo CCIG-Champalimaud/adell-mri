@@ -66,7 +66,7 @@ def main(arguments):
     up = tqdm()
     cont = True
     i = 2
-    while cont == True:
+    while cont is True:
         up.update()
         km = KMeans(i, random_state=42)
         km = km.fit(d)

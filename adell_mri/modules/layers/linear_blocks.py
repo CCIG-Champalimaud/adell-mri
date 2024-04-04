@@ -41,10 +41,10 @@ def get_relative_position_indices(window_size: Size2dOr3d) -> torch.Tensor:
         relative_coords[:, :, i] = (
             relative_coords[:, :, i] + window_size[i] - 1
         )
-        l = [2 * w - 1 for w in window_size[(i + 1) :]]
-        if len(l) > 0:
+        window_sides = [2 * w - 1 for w in window_size[(i + 1) :]]
+        if len(window_sides) > 0:
             relative_coords[:, :, i] = relative_coords[:, :, i] * float(
-                np.prod(l)
+                np.prod(window_sides)
             )
     relative_position_index = relative_coords.sum(-1)
     return relative_position_index
@@ -351,7 +351,7 @@ class MultiHeadSelfAttention(torch.nn.Module):
             torch.Tensor: tensor with shape [...,self.output_dim]
         """
         sh = X.shape
-        b, t, f = sh[:-2], sh[-2], sh[-1]
+        b, t, _ = sh[:-2], sh[-2], sh[-1]
         QKV = self.qkv(X)
         permute_dims = [
             *[i for i in range(len(b))],

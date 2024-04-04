@@ -51,7 +51,7 @@ def test_import_supported_modes(supported_modes: dict[str, str]):
     print("\n\tSupported modes:")
     for mode in supported_modes:
         print(f"\t\t{mode}")
-        main = getattr(
+        main = getattr(  # noqa
             importlib.import_module(
                 supported_modes[mode], package="lib.entrypoints.utils"
             ),

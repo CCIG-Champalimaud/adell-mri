@@ -58,7 +58,7 @@ def filter_dictionary_with_presence(
         for k in filters:
             if k not in D[pid]:
                 check = False
-        if check == True:
+        if check is True:
             out_dict[pid] = D[pid]
     print_verbose("\tOutput size: {}".format(len(out_dict)), verbose=verbose)
     return out_dict
@@ -87,9 +87,9 @@ def filter_dictionary_with_existence(
         for k in filters:
             if k not in D[pid]:
                 check = False
-            elif os.path.exists(D[pid][k]) == False:
+            elif os.path.exists(D[pid][k]) is False:
                 check = False
-        if check == True:
+        if check is True:
             out_dict[pid] = D[pid]
     print_verbose("\tOutput size: {}".format(len(out_dict)), verbose=verbose)
     return out_dict
@@ -126,7 +126,7 @@ def filter_dictionary_with_possible_labels(
         else:
             if str(D[pid][label_key]) not in possible_labels:
                 check = False
-        if check == True:
+        if check is True:
             out_dict[pid] = D[pid]
     print_verbose("\tOutput size: {}".format(len(out_dict)), verbose=verbose)
     return out_dict
@@ -229,7 +229,7 @@ def filter_dictionary_with_filters(
                             check = False
                 elif filter_is_optional is False:
                     check = False
-        if check == True:
+        if check is True:
             out_dict[pid] = D[pid]
     print_verbose("\tOutput size: {}".format(len(out_dict)), verbose=verbose)
     return out_dict

@@ -160,7 +160,7 @@ class VGG(torch.nn.Module):
         X = self.conv1(X)
         X = self.conv2(X)
         X = self.conv3(X, batch_idx=batch_idx)
-        if return_features == True:
+        if return_features is True:
             return X
 
         return self.classification_layer(X)
@@ -315,7 +315,7 @@ class CatNet(torch.nn.Module):
             torch.Tensor: output (classification or features)
         """
         features = self.gp(self.feature_extraction(X, *args, **kwargs))
-        if return_features == True:
+        if return_features is True:
             return features
         classification = self.classification_layer(features)
         return classification
@@ -370,7 +370,7 @@ class OrdNet(CatNet):
             torch.Tensor: output (classification or features)
         """
         features = self.gp(self.feature_extraction(X))
-        if return_features == True:
+        if return_features is True:
             return features
         p_general = self.classification_layer(features)
         p_ordinal = self.last_act(p_general + self.bias)
@@ -577,7 +577,7 @@ class UNetEncoder(UNet):
         if self.prediction_head is None:
             return curr
         out = curr.flatten(start_dim=2).max(-1).values
-        if return_features == True:
+        if return_features is True:
             return out
         out = self.prediction_head(out)
         return out
@@ -617,7 +617,7 @@ class ViTClassifier(ViT):
             nc = 1
         else:
             nc = self.n_classes
-        if self.use_seq_pool == True:
+        if self.use_seq_pool is True:
             self.seqpool = SeqPool(self.input_dim_primary)
         self.classification_layer = torch.nn.Sequential(
             MLP(
@@ -661,7 +661,7 @@ class ViTClassifier(ViT):
             embeded_X = embeded_X[:, 0]
         else:
             embeded_X = embeded_X.mean(1)
-        if return_features == True:
+        if return_features is True:
             return embeded_X
         classification = self.classification_layer(embeded_X)
         return classification

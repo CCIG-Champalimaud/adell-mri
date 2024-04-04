@@ -508,7 +508,7 @@ class BBToAdjustedAnchors(monai.transforms.Transform):
             center = np.mean(rel_bb_vert[i, :, :], axis=-1)
             bb_vol = np.prod(rel_bb_size + 1 / rel_sh)
             cl = classes[i]
-            for I, long_anchor in enumerate(self.long_anchors):
+            for anchor_idx, long_anchor in enumerate(self.long_anchors):
                 anchor_size = long_anchor[0, :, 1] - long_anchor[0, :, 0]
                 rel_bb_size_adj = np.log(rel_bb_size / anchor_size)
                 anchor_dim = long_anchor[0, :, 1] - long_anchor[0, :, 0]
@@ -542,7 +542,7 @@ class BBToAdjustedAnchors(monai.transforms.Transform):
                 for j in range(box_coords.shape[0]):
                     idx = tuple(
                         [
-                            tuple([1 + k + I * 7 for k in range(7)]),
+                            tuple([1 + k + anchor_idx * 7 for k in range(7)]),
                             *box_coords[j],
                         ]
                     )
@@ -753,7 +753,7 @@ class MasksToBBd(monai.transforms.Transform):
                     data[self.bounding_box_key] = bb
                     data[self.classes_key] = cl
                     data[self.shape_key] = sh
-                elif self.bounding_box_key in data and self.replace == False:
+                elif self.bounding_box_key in data and self.replace is False:
                     bb, cl, sh = self.tr(data[k])
                     data[self.bounding_box_key].extend(bb)
                     data[self.classes_key].extend(cl)
@@ -2240,13 +2240,13 @@ class DbscanAssistedSegmentSelection(monai.transforms.MapTransform):
                 sizes[label] = np.sum(idxs)
 
             labels_to_keep = []
-            if self.filter_by_size == True:
+            if self.filter_by_size is True:
                 sorted_labels = sorted(sizes.keys(), key=lambda k: -sizes[k])
                 if len(sorted_labels) > self.keep_n:
                     sorted_labels = sorted_labels[: self.keep_n]
                 labels_to_keep.extend(sorted_labels)
 
-            if self.filter_by_dist_to_centre == True:
+            if self.filter_by_dist_to_centre is True:
                 sorted_labels = sorted(
                     dist_to_centre.keys(), key=lambda k: sizes[k]
                 )
@@ -2254,8 +2254,8 @@ class DbscanAssistedSegmentSelection(monai.transforms.MapTransform):
                 idx = 0
                 while label_to_keep is None:
                     curr_label = sorted_labels[idx]
-                    if self.filter_by_size == True:
-                        if curr_label in labels_to_keep == True:
+                    if self.filter_by_size is True:
+                        if curr_label in labels_to_keep is True:
                             label_to_keep = curr_label
                     else:
                         label_to_keep = curr_label

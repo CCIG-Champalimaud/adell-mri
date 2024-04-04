@@ -26,6 +26,7 @@ norm_fn_dict = {
     },
 }
 
+
 def get_adn_fn(
     spatial_dim, norm_fn="batch", act_fn="swish", dropout_param=0.1
 ):
@@ -111,7 +112,7 @@ class ActDropNorm(torch.nn.Module):
     def get_act_fn(self):
         try:
             return self.act_fn(inplace=self.inplace)
-        except:
+        except Exception:
             return self.act_fn()
 
     def get_dropout_fn(self):

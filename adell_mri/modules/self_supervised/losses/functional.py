@@ -100,10 +100,10 @@ def pearson_corr(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
 
 
 def barlow_twins_loss(
-    x: torch.Tensor, y: torch.Tensor, l: float = 0.02
+    x: torch.Tensor, y: torch.Tensor, reduction_scale: float = 0.02
 ) -> torch.Tensor:
     """
-        Calculates the Barlow twins loss between x and y. This loss is composed
+    Calculates the Barlow twins loss between x and y. This loss is composed
     of two terms: the invariance term, which maximises the Pearson correlation
     with views belonging to the same image (invariance term) and minimises the
     correlation between different images (reduction term) to promote greater
@@ -125,7 +125,8 @@ def barlow_twins_loss(
     red_term = torch.square(C)
     red_term[diag_idx, diag_idx] = 0
     loss = torch.add(
-        inv_term.sum() / x.shape[0], red_term.sum() / (n * (n - 1)) * l
+        inv_term.sum() / x.shape[0],
+        red_term.sum() / (n * (n - 1)) * reduction_scale,
     )
     return loss
 

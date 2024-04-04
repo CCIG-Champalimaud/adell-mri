@@ -175,8 +175,8 @@ def main(arguments):
         if args.net_type == "unet":
             act_fn = network_config["activation_fn"]
         else:
-            act_fn = "swish"
-        batch_preprocessing = None
+            act_fn = "swish"  # noqa
+        batch_preprocessing = None  # noqa
 
         if args.one_to_one is True and args.ensemble is None:
             checkpoint_list = [args.checkpoints[iteration]]

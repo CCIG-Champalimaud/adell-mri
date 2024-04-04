@@ -198,9 +198,11 @@ def main(arguments):
         network_configs = None
     else:
         network_configs = [
-            parse_config_unet(config_file, len(keys), n_classes)
-            if net_type == "unet"
-            else parse_config_cat(config_file)
+            (
+                parse_config_unet(config_file, len(keys), n_classes)
+                if net_type == "unet"
+                else parse_config_cat(config_file)
+            )
             for config_file, net_type in zip(config_files, args.net_types)
         ]
         if len(args.config_files) == 1:
@@ -544,9 +546,9 @@ def main(arguments):
                     set_classification_layer_bias(pos, neg, network)
 
         ensemble = GenericEnsemblePL(
-            image_keys=args.image_keys
-            if args.branched is False
-            else ["image"],
+            image_keys=(
+                args.image_keys if args.branched is False else ["image"]
+            ),
             label_key="label",
             networks=networks,
             n_classes=n_classes,
@@ -635,5 +637,5 @@ def main(arguments):
                 output_file.write(x + "\n")
                 print(x)
 
-        if args.delete_checkpoints == True:
+        if args.delete_checkpoints is True:
             delete_checkpoints(trainer)

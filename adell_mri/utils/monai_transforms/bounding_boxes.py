@@ -115,7 +115,7 @@ class BBToAdjustedAnchors(monai.transforms.Transform):
             center = np.mean(rel_bb_vert[i, :, :], axis=-1)
             bb_vol = np.prod(rel_bb_size + 1 / rel_sh)
             cl = classes[i]
-            for I, long_anchor in enumerate(self.long_anchors):
+            for anchor_idx, long_anchor in enumerate(self.long_anchors):
                 anchor_size = long_anchor[0, :, 1] - long_anchor[0, :, 0]
                 rel_bb_size_adj = np.log(rel_bb_size / anchor_size)
                 anchor_dim = long_anchor[0, :, 1] - long_anchor[0, :, 0]
@@ -149,7 +149,7 @@ class BBToAdjustedAnchors(monai.transforms.Transform):
                 for j in range(box_coords.shape[0]):
                     idx = tuple(
                         [
-                            tuple([1 + k + I * 7 for k in range(7)]),
+                            tuple([1 + k + anchor_idx * 7 for k in range(7)]),
                             *box_coords[j],
                         ]
                     )
@@ -360,7 +360,7 @@ class MasksToBBd(monai.transforms.Transform):
                     data[self.bounding_box_key] = bb
                     data[self.classes_key] = cl
                     data[self.shape_key] = sh
-                elif self.bounding_box_key in data and self.replace == False:
+                elif self.bounding_box_key in data and self.replace is False:
                     bb, cl, sh = self.tr(data[k])
                     data[self.bounding_box_key].extend(bb)
                     data[self.classes_key].extend(cl)

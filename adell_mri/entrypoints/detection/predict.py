@@ -1,13 +1,3 @@
-import argparse
-import yaml
-import numpy as np
-import torch
-import monai
-import json
-
-import sys
-
-sys.path.append(r"..")
 from ...entrypoints.assemble_args import Parser
 from ...utils import load_anchors
 from ...monai_transforms import (
@@ -21,6 +11,16 @@ from ...utils.dataset_filters import (
     filter_dictionary_with_presence,
 )
 from ...utils.network_factories import get_detection_network
+import argparse
+import yaml
+import numpy as np
+import torch
+import monai
+import json
+
+import sys
+
+sys.path.append(r"..")
 
 torch.backends.cudnn.benchmark = True
 
@@ -60,7 +60,6 @@ def main(arguments):
     accelerator, devices, strategy = get_devices(args.dev)
 
     anchor_array = load_anchors(args.anchor_csv)
-    n_anchors = anchor_array.shape[0]
     if args.dataset_json is not None:
         with open(args.dataset_json, "r") as o:
             data_dict = json.load(o)
@@ -159,4 +158,4 @@ def main(arguments):
     with torch.no_grad():
         for instance in predict_dataset:
             instance = instance.unsqueeze(0)
-            y_hat = yolo(instance)
+            # y_hat = yolo(instance)

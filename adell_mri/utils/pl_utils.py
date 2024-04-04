@@ -8,7 +8,6 @@ import atexit
 import numpy as np
 import torch
 from PIL import Image
-from lightning import Trainer
 from lightning.pytorch import LightningModule, Trainer
 from lightning.pytorch.callbacks import Callback
 from lightning.pytorch.loggers import Logger
@@ -235,7 +234,7 @@ class GPULock:
                 gpu_to_lock = i
                 break
         if gpu_to_lock is None:
-            raise Exception(f"No available GPUs to lock")
+            raise Exception("No available GPUs to lock")
         self.lock(gpu_to_lock)
         return gpu_to_lock
 
@@ -679,7 +678,7 @@ def get_devices(
         accelerator = "gpu" if "cuda" in device_str else "cpu"
         try:
             devices = [int(i) for i in device_str.split(":")[-1].split(",")]
-        except:
+        except Exception:
             devices = "auto"
         if len(devices) > 1:
             strategy_out = strategy

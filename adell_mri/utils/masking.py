@@ -242,6 +242,6 @@ def get_masker(model_type: str, *args, **kwargs):
     elif model_type == "convolutional":
         return ConvolutionalMasker(*args, **kwargs)
     else:
-        raise NotImplemented(
+        raise NotImplementedError(
             "model_type must be either 'transformer' or 'convolutional'"
         )

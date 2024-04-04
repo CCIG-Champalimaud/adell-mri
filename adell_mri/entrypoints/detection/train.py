@@ -101,8 +101,6 @@ def main(arguments):
 
     accelerator, devices, strategy = get_devices(args.dev)
 
-    output_file = open(args.metric_path, "w")
-
     with open(args.dataset_json, "r") as o:
         data_dict = json.load(o)
     if mode == "boxes":
@@ -265,16 +263,17 @@ def main(arguments):
         class_weights = torch.as_tensor(args.class_weights)
         class_weights = class_weights.to(args.dev)
 
-        train_loader_call = lambda: monai.data.ThreadDataLoader(
-            train_dataset,
-            batch_size=network_config["batch_size"],
-            shuffle=True,
-            num_workers=args.n_workers,
-            generator=g,
-            collate_fn=safe_collate,
-            pin_memory=True,
-            persistent_workers=args.n_workers > 0,
-        )
+        def train_loader_call():
+            monai.data.ThreadDataLoader(
+                train_dataset,
+                batch_size=network_config["batch_size"],
+                shuffle=True,
+                num_workers=args.n_workers,
+                generator=g,
+                collate_fn=safe_collate,
+                pin_memory=True,
+                persistent_workers=args.n_workers > 0,
+            )
 
         train_loader = train_loader_call()
         train_val_loader = monai.data.ThreadDataLoader(
@@ -328,7 +327,6 @@ def main(arguments):
                 "transform_arguments_post": transform_arguments_post,
             },
         )
-        ckpt = ckpt_callback is not None
         if status == "finished":
             continue
         if ckpt_callback is not None:
@@ -373,7 +371,7 @@ def main(arguments):
             out = yolo.test_metrics[k].compute()
             try:
                 value = float(out.detach().numpy())
-            except:
+            except Exception:
                 value = float(out)
             print("{},{},{},{}".format(k, val_fold, 0, value))
 

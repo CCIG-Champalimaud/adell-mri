@@ -289,7 +289,7 @@ def main(arguments):
         print("Starting fold={}".format(val_fold))
 
         train_idxs, val_idxs = next(fold_generator)
-        if args.use_val_as_train_val == False:
+        if args.use_val_as_train_val is False:
             train_idxs, train_val_idxs = train_test_split(
                 train_idxs, test_size=0.15
             )
@@ -667,7 +667,7 @@ def main(arguments):
                     res_state_dict = torch.load(args.encoder_checkpoint[i])[
                         "state_dict"
                     ]
-                    mismatched = res_net[i].load_state_dict(
+                    mismatched = res_net[i].load_state_dict(  # noqa
                         res_state_dict, strict=False
                     )
             backbone = [x.backbone for x in res_net]

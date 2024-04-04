@@ -210,7 +210,9 @@ def get_loss_param_dict(
     elif loss_key == "mse":
         return kwargs
     else:
-        raise NotImplemented(f"loss_key {loss_key} not in available loss_keys")
+        raise NotImplementedError(
+            f"loss_key {loss_key} not in available loss_keys"
+        )
 
 
 def unpack_crops(X: List[TensorIterable]) -> TensorList:

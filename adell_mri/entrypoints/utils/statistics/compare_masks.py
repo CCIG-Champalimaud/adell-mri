@@ -19,10 +19,10 @@ def iou(a, b):
     uniq = list(set(a_unique + b_unique))
     result_list = []
     for u in uniq:
-        intersection = np.where(np.logical_and(a == b, a == u), 1, 0)
-        I = np.sum(intersection)
-        U = np.sum(a == u) + np.sum(b == u) - I
-        result_list.append(I / U)
+        intersection_arr = np.where(np.logical_and(a == b, a == u), 1, 0)
+        intersection = np.sum(intersection_arr)
+        union = np.sum(a == u) + np.sum(b == u) - intersection
+        result_list.append(intersection / union)
     return np.mean(result_list)
 
 
@@ -75,7 +75,7 @@ def main(arguments):
             image_2 = resample_image_to_target(image_2, image_1, True)
             image_1 = sitk.GetArrayFromImage(image_1)
             image_2 = sitk.GetArrayFromImage(image_2)
-            if args.binarize == True:
+            if args.binarize is True:
                 image_1 = np.where(image_1 > 0, 1, 0)
                 image_2 = np.where(image_2 > 0, 1, 0)
             if np.count_nonzero(image_1) > 0 or np.count_nonzero(image_2) > 0:

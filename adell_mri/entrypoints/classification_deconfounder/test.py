@@ -251,8 +251,8 @@ def main(arguments):
         if args.net_type == "unet":
             act_fn = network_config["activation_fn"]
         else:
-            act_fn = "swish"
-        batch_preprocessing = None
+            act_fn = "swish"  # noqa
+        batch_preprocessing = None  # noqa
 
         if args.one_to_one is True:
             checkpoint_list = [args.checkpoints[iteration]]
@@ -320,7 +320,9 @@ def main(arguments):
                 mean, (upper, lower) = bootstrap_metric(
                     network.test_metrics["T_AUC"], 100, 0.5
                 )
-                for idx, (m, u, l) in enumerate(zip(mean, upper, lower)):
+                for idx, (m, u, l) in enumerate(  # noqa
+                    zip(mean, upper, lower)
+                ):
                     x = "{},{},{},{},{}".format(
                         "T_AUC_mean", checkpoint, iteration, idx, m
                     )
@@ -369,7 +371,7 @@ def main(arguments):
                 samples=10000,
                 sample_size=0.5,
             )
-            for idx, (m, u, l) in enumerate(zip(mean, upper, lower)):
+            for idx, (m, u, l) in enumerate(zip(mean, upper, lower)):  # noqa
                 x = "{},{},{},{},{}".format(
                     "T_AUC_mean", "ensemble", iteration, idx, m
                 )

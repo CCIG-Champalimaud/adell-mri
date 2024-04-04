@@ -100,7 +100,7 @@ class EarlyStopper:
         """
         try:
             validation_loss = validation_loss.numpy()
-        except:
+        except Exception:
             validation_loss = float(validation_loss)
         if validation_loss < self.min_validation_loss:
             self.min_validation_loss = validation_loss

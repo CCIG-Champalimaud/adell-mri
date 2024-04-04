@@ -870,7 +870,6 @@ class SWINUNet(UNet):
             adn_fn=self.adn_fn_mlp,
             use_pos_embed=True,
         )
-        sd = self.spatial_dimensions
         self.swin_blocks = torch.nn.ModuleList([])
         image_size = self.image_size
         for i in range(self.number_of_blocks - 1):
