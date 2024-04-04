@@ -22,6 +22,7 @@ class DeconfoundedNet(VGG):
         n_cat_deconfounder: int | List[int] = None,
         n_cont_deconfounder: int = None,
         exclude_surrogate_variables: bool = False,
+        deconfounder_structure: list[int] = None,
         *args,
         **kwargs,
     ):
@@ -37,11 +38,14 @@ class DeconfoundedNet(VGG):
                 confounders. Defaults to None (no continuous deconfounding).
             exclude_surrogate_variables (bool, optional): whether to exclude
                 surrogate variables
+            deconfounder_structure (list[int], optional): structure of the
+                deconfounder structure. Defaults to None (linear classifier).
         """
         self.n_features_deconfounder = n_features_deconfounder
         self.n_cat_deconfounder = n_cat_deconfounder
         self.n_cont_deconfounder = n_cont_deconfounder
         self.exclude_surrogate_variables = exclude_surrogate_variables
+        self.deconfounder_structure = deconfounder_structure
         if self.exclude_surrogate_variables:
             kwargs["output_features"] = 512 - self.n_features_deconfounder
         super().__init__(*args, **kwargs)
@@ -52,6 +56,8 @@ class DeconfoundedNet(VGG):
             self.n_cat_deconfounder = []
         if self.n_cont_deconfounder is None:
             self.n_cont_deconfounder = 0
+        if self.deconfounder_structure is None:
+            self.deconfounder_structure = []
 
         self.init_deconfounding_layers()
         self.gp = GlobalPooling()
@@ -67,14 +73,14 @@ class DeconfoundedNet(VGG):
                         MLP(
                             self.n_features_deconfounder,
                             n_class,
-                            [self.n_features_deconfounder],
+                            self.deconfounder_structure,
                         )
                     )
             if self.n_cont_deconfounder > 0:
                 self.confound_regressions = MLP(
                     self.n_features_deconfounder,
                     self.n_cont_deconfounder,
-                    [self.n_features_deconfounder],
+                    self.deconfounder_structure,
                 )
 
     def forward(
