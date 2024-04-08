@@ -88,6 +88,13 @@ def main(arguments):
         type=int,
         help="Target size for DICOM file cropping",
     )
+    parser.add_argument(
+        "--reduce",
+        type=str,
+        default="max",
+        help="Reduction mode",
+        choices=["max", "mean"],
+    )
 
     args = parser.parse_args(arguments)
 
@@ -116,15 +123,12 @@ def main(arguments):
 
         if args.crop_size is not None:
             t = crop_or_pad(t, args.crop_size)
-        f = (
-            model(t)
-            .flatten(start_dim=2)
-            .max(-1)
-            .values.squeeze()
-            .detach()
-            .cpu()
-            .numpy()
-        )
+        f = model(t).flatten(start_dim=2)
+        if args.reduce == "max":
+            f = f.max(-1).values
+        elif args.reduce == "mean":
+            f = f.mean(-1)
+        f = f.squeeze().detach().cpu().numpy()
         output.append(
             {
                 "file_name": str(dcm_path),
