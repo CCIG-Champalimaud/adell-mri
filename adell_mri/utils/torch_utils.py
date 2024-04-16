@@ -188,7 +188,27 @@ def get_segmentation_sample_weights(
     label_keys: List[str],
     n_workers: int = 1,
     base: str = "Calculating positive pixel counts",
-):
+) -> tuple[list[int], float, float]:
+    """
+    Calculates sample weights for the segmentation masks in a data list. The
+    data list is composed of a list of dictionaries, each containing label_keys
+    which correspond to paths to SimpleITK-readable segmentation masks.
+
+    Args:
+        data_list (List[Dict]): list of data elements.
+        label_keys (List[str]): keys corresponding to segmentation masks.
+        n_workers (int, optional): number of parallel workers. Defaults to 1.
+        base (str, optional): base for the tqdm progress bar. Defaults to
+            "Calculating positive pixel counts".
+
+    Returns:
+        list[int]: list with the same length as data_list where each value is
+            set to 1 if the corresponding segmentation mask has at least one
+            positive element and 0 otherwise.
+        float: number of elements divided by the number of elements with at
+            least a positive pixel.
+        float: a number of pixels divided by the number of positive pixels.
+    """
     cl = []
     pos_pixel_sum = 0
     total_pixel_sum = 0
