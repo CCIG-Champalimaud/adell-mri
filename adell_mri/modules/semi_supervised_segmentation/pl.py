@@ -1,5 +1,5 @@
+import numpy as np
 import torch
-
 from ..segmentation.pl import UNetBasePL, update_metrics
 from .unet import UNetSemiSL
 
@@ -124,7 +124,7 @@ class UNetContrastiveSemiSL(UNetSemiSL, UNetBasePL):
         self.all_true = []
 
         self.bn_mult = 0.1
-        self.ssl_weight = 0.1
+        self.ssl_weight = 0.01
 
         if (
             self.semi_sl_image_key_1 is not None
@@ -165,41 +165,110 @@ class UNetContrastiveSemiSL(UNetSemiSL, UNetBasePL):
         else:
             return op(**kwargs)
 
-    def calculate_loss_semi_sl(
-        self, output_1: torch.Tensor, output_2: torch.Tensor
-    ):
-        loss = self.loss_fn_semi_sl(output_1, output_2)
-        return loss.mean() * self.ssl_weight
+    def coherce_batch_size(self, *tensors):
+        batch_sizes = [
+            x.shape[0] if x is not None else np.inf for x in tensors
+        ]
+        min_batch_size = min(batch_sizes)
+        tensors = [
+            x[:min_batch_size] if x is not None else None
+            for x, bs in zip(tensors, batch_sizes)
+        ]
+        return tensors
 
-    def loss_wrapper_semi_sl(
+    def step_semi_sl_loco(
         self,
         x_1: torch.Tensor,
         x_2: torch.Tensor,
         x_cond: torch.Tensor,
         x_fc: torch.Tensor,
+        *args,
+        **kwargs,
     ):
-        output_1 = self.forward_features(
-            X=x_1, X_skip_layer=x_cond, X_feature_conditioning=x_fc
+        features_1 = self.forward_features(
+            X=x_1,
+            X_skip_layer=x_cond,
+            X_feature_conditioning=x_fc,
         )
-        output_2 = self.forward_features_ema_stop_grad(
-            X=x_2, X_skip_layer=x_cond, X_feature_conditioning=x_fc
+        features_2 = self.forward_features_ema_stop_grad(
+            X=x_2,
+            X_skip_layer=x_cond,
+            X_feature_conditioning=x_fc,
+            apply_linear_transformation=True,
         )
-        return self.calculate_loss_semi_sl(output_1, output_2)
+
+        return (
+            self.loss_fn_semi_sl(
+                features_1, features_2, *args, **kwargs
+            ).mean()
+            * self.ssl_weight
+        )
+
+    def step_semi_sl_anchors(
+        self,
+        x: torch.Tensor,
+        x_1: torch.Tensor,
+        x_2: torch.Tensor,
+        x_cond: torch.Tensor,
+        x_fc: torch.Tensor,
+        *args,
+        **kwargs,
+    ):
+        x, x_1, x_2, x_cond, x_fc = self.coherce_batch_size(
+            x, x_1, x_2, x_cond, x_fc
+        )
+        with torch.no_grad():
+            anchor_1 = (
+                self.forward_features(
+                    X=x_1,
+                    X_skip_layer=x_cond,
+                    X_feature_conditioning=x_fc,
+                )
+                if x_1 is not None
+                else None
+            )
+            anchor_2 = (
+                self.forward_features_ema_stop_grad(
+                    X=x_2,
+                    X_skip_layer=x_cond,
+                    X_feature_conditioning=x_fc,
+                    apply_linear_transformation=True,
+                )
+                if x_2 is not None
+                else None
+            )
+        features = self.forward_features(
+            X=x, X_skip_layer=x_cond, X_feature_conditioning=x_fc
+        )
+        return (
+            self.loss_fn_semi_sl(
+                features, anchor_1, anchor_2, *args, **kwargs
+            ).mean()
+            * self.ssl_weight
+        )
 
     def step_semi_sl(
         self,
+        x: torch.Tensor,
         x_1: torch.Tensor,
         x_2: torch.Tensor,
         x_cond: torch.Tensor,
         x_fc: torch.Tensor,
+        *args,
+        **kwargs,
     ):
-        loss_a = self.loss_wrapper_semi_sl(x_1, x_2, x_cond, x_fc)
-        # loss_b = self.loss_wrapper_semi_sl(x_2, x_1, x_cond, x_fc)
-        loss = loss_a  # + loss_b
-        return loss
+        if x is not None:
+            return self.step_semi_sl_anchors(
+                x, x_1, x_2, x_cond, x_fc, *args, **kwargs
+            )
+        else:
+            return self.step_semi_sl_loco(
+                x_1, x_2, x_cond, x_fc, *args, **kwargs
+            )
 
     def training_step(self, batch, batch_idx):
         # supervised bit
+        x = None
         if self.label_key is not None:
             x, x_cond, x_fc, y, y_class = self.unpack_batch(batch)
             pred_final, pred_class, loss, class_loss = self.step(
@@ -216,7 +285,8 @@ class UNetContrastiveSemiSL(UNetSemiSL, UNetBasePL):
             and self.semi_sl_image_key_2 is not None
         ):
             x_1, x_2, x_cond, x_fc = self.unpack_batch_semi_sl(batch)
-            self_sl_loss = self.step_semi_sl(x_1, x_2, x_cond, x_fc)
+            self_sl_loss = self.step_semi_sl(x, x_1, x_2, x_cond, x_fc)
+            print(self_sl_loss)
             self.log(
                 "train_self_sl_loss",
                 self_sl_loss,
@@ -311,7 +381,7 @@ class UNetContrastiveSemiSL(UNetSemiSL, UNetBasePL):
             and self.semi_sl_image_key_2 is not None
         ):
             x_1, x_2, x_cond, x_fc = self.unpack_batch_semi_sl(batch)
-            self_sl_loss = self.step_semi_sl(x_1, x_2, x_cond, x_fc)
+            self_sl_loss = self.step_semi_sl(x, x_1, x_2, x_cond, x_fc)
             self.log(
                 "val_self_sl_loss",
                 self_sl_loss,
