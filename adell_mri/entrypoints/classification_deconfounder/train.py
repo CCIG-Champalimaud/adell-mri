@@ -13,6 +13,7 @@ from lightning.pytorch.callbacks import (
 )
 
 import sys
+from ...utils.logging import CSVLogger
 from ..assemble_args import Parser
 from ...utils import (
     safe_collate,
@@ -127,8 +128,6 @@ def main(arguments):
     accelerator, devices, strategy = get_devices(args.dev)
     n_devices = len(devices) if isinstance(devices, list) else devices
     n_devices = 1 if isinstance(devices, str) else n_devices
-
-    output_file = open(args.metric_path, "w")
 
     data_dict = Dataset(args.dataset_json, rng=rng)
 
@@ -306,6 +305,7 @@ def main(arguments):
         args.n_folds = len(folds)
         fold_generator = iter(folds)
 
+    csv_logger = CSVLogger(args.metric_path, not args.resume_from_last)
     for val_fold in range(args.n_folds):
         train_idxs, val_idxs = next(fold_generator)
         if args.subsample_training_data is not None:
@@ -598,9 +598,17 @@ def main(arguments):
                         k, idx = "_".join(k), 0
                 else:
                     idx = 0
-                x = "{},{},{},{},{}".format(k, ckpt_key, val_fold, idx, value)
-                output_file.write(x + "\n")
+                x = {
+                    "metric": k,
+                    "checkpoint": ckpt_key,
+                    "val_fold": val_fold,
+                    "idx": idx,
+                    "value": value,
+                }
+                csv_logger.log(x)
                 print(x)
+
+        csv_logger.write()
 
         if args.delete_checkpoints is True:
             delete_checkpoints(trainer)
