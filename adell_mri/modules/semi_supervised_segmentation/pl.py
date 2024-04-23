@@ -286,7 +286,6 @@ class UNetContrastiveSemiSL(UNetSemiSL, UNetBasePL):
         ):
             x_1, x_2, x_cond, x_fc = self.unpack_batch_semi_sl(batch)
             self_sl_loss = self.step_semi_sl(x, x_1, x_2, x_cond, x_fc)
-            print(self_sl_loss)
             self.log(
                 "train_self_sl_loss",
                 self_sl_loss,
