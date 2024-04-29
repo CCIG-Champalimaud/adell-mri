@@ -11,6 +11,28 @@ class UNetSemiSL(UNet):
     `return_features`.
     """
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self.init_linear_transformation()
+
+    def init_linear_transformation(self, *args, **kwargs):
+        """
+        Initialise the linear transformation layer for predictions.
+        """
+        if self.spatial_dimensions == 2:
+            self.linear_transformation = torch.nn.Conv2d(
+                self.depth[0],
+                self.depth[0],
+                kernel_size=1,
+            )
+        elif self.spatial_dimensions == 3:
+            self.linear_transformation = torch.nn.Conv3d(
+                self.depth[0],
+                self.depth[0],
+                kernel_size=1,
+            )
+
     def forward(
         self,
         X: torch.Tensor,
@@ -105,6 +127,7 @@ class UNetSemiSL(UNet):
         X: torch.Tensor,
         X_skip_layer: torch.Tensor = None,
         X_feature_conditioning: torch.Tensor = None,
+        apply_linear_transformation: bool = False,
     ) -> torch.Tensor:
         """Forward pass for this class.
 
@@ -131,7 +154,6 @@ class UNetSemiSL(UNet):
             encoding_out.append(curr)
             curr = op_ds(curr)
 
-        deep_outputs = []
         for i in range(len(self.decoding_operations)):
             op = self.decoding_operations[i]
             link_op = self.link_ops[i]
@@ -159,6 +181,8 @@ class UNetSemiSL(UNet):
                 curr = crop_to_size(curr, sh2)
             curr = torch.concat((curr, encoded), dim=1)
             curr = op(curr)
-            deep_outputs.append(curr)
+
+        if apply_linear_transformation is True:
+            curr = self.linear_transformation(curr)
 
         return curr

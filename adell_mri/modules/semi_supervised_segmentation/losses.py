@@ -34,6 +34,19 @@ def derangement(
     return xs
 
 
+def anchors_from_derangement(
+    X: torch.Tensor, rng: np.random.Generator = None
+) -> torch.Tensor:
+    """Generate anchors from a derangement of the elements of X."""
+    if rng is None:
+        rng = np.random.default_rng()
+    anchors = []
+    for idx in derangement(X.shape[0], rng=rng):
+        anchors.append(X[idx])
+    anchors = torch.stack(anchors)
+    return anchors
+
+
 class AnatomicalContrastiveLoss(torch.nn.Module):
     """
     Implementation of the anatomical loss method suggested in "Bootstrapping
@@ -292,32 +305,6 @@ class LocalContrastiveLoss(torch.nn.Module):
         self.rng = np.random.default_rng(seed)
         self.eps = torch.as_tensor(1e-8)
 
-    def forward_with_anchors(
-        self,
-        X_1: torch.Tensor,
-        X_2: torch.Tensor,
-        anchors: torch.Tensor = None,
-    ) -> torch.Tensor:
-        if anchors is None:
-            # if no anchors are provided, the anchors are a random derangement
-            # of the input
-            anchors = []
-            for idx in derangement(X_1.shape[0], rng=self.rng):
-                anchors.append(
-                    X_1[idx] if self.rng.random() < 0.5 else X_2[idx]
-                )
-            anchors = torch.stack(anchors)
-        X_1 = X_1.flatten(start_dim=2)
-        X_2 = X_2.flatten(start_dim=2)
-        anchors = anchors.flatten(start_dim=2)
-        sim_1 = F.cosine_similarity(X_1, anchors, dim=1) / self.temperature
-        sim_2 = F.cosine_similarity(X_2, anchors, dim=1) / self.temperature
-        return F.kl_div(
-            F.softmax(sim_1, dim=1),
-            F.softmax(sim_2, dim=1),
-            reduction="none",
-        )
-
     def forward(
         self,
         X_1: torch.Tensor,
@@ -326,8 +313,6 @@ class LocalContrastiveLoss(torch.nn.Module):
     ) -> torch.Tensor:
         # based on LoCo [1]
         # [1] https://proceedings.neurips.cc/paper/2020/file/7fa215c9efebb3811a7ef58409907899-Paper.pdf
-        if anchors is not None:
-            return self.forward_with_anchors(X_1, X_2, anchors)
         X_1 = X_1.flatten(start_dim=2)[None, :, :, :]
         X_2 = X_2.flatten(start_dim=2)[:, None, :, :]
         sim = F.cosine_similarity(X_1, X_2, dim=2) / self.temperature
@@ -335,3 +320,50 @@ class LocalContrastiveLoss(torch.nn.Module):
             torch.max(F.softmax(sim, dim=1).diagonal().permute(1, 0), self.eps)
         ).mean(-1)
         return loss
+
+
+class LocalContrastiveLossWithAnchors(torch.nn.Module):
+    """
+    Implements a local contrastive loss function.
+    """
+
+    def __init__(self, temperature: float = 0.1, seed: int = 42):
+        super().__init__()
+        self.temperature = temperature
+        self.seed = seed
+        self.rng = np.random.default_rng(seed)
+        self.eps = torch.as_tensor(1e-8)
+
+    def anchors_from_derangement(self, X: torch.Tensor) -> torch.Tensor:
+        anchors = []
+        for idx in derangement(X.shape[0], rng=self.rng):
+            anchors.append(X[idx])
+        anchors = torch.stack(anchors)
+        return anchors
+
+    def forward(
+        self,
+        X: torch.Tensor,
+        anchors_1: torch.Tensor,
+        anchors_2: torch.Tensor = None,
+    ) -> torch.Tensor:
+        anchors_1 = (
+            anchors_from_derangement(X, self.rng)
+            if anchors_1 is None
+            else anchors_1
+        )
+        anchors_2 = (
+            anchors_from_derangement(X, self.rng)
+            if anchors_2 is None
+            else anchors_2
+        )
+        X = X.flatten(start_dim=2)
+        anchors_1 = anchors_1.flatten(start_dim=2)
+        anchors_2 = anchors_2.flatten(start_dim=2)
+        sim_1 = F.cosine_similarity(X, anchors_1, dim=1) / self.temperature
+        sim_2 = F.cosine_similarity(X, anchors_2, dim=1) / self.temperature
+        return F.kl_div(
+            F.softmax(sim_1, dim=1),
+            F.softmax(sim_2, dim=1),
+            reduction="none",
+        ).sum(-1)

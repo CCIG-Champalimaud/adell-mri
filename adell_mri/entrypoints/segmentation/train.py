@@ -613,6 +613,7 @@ def main(arguments):
             batch_size=network_config["batch_size"],
             shuffle=False,
             sampler=val_sampler,
+            drop_last=args.semi_supervised,
             num_workers=nw,
             collate_fn=collate_fn_train,
         )

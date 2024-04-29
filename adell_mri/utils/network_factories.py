@@ -38,7 +38,9 @@ from ..modules.segmentation.pl import (
 
 # semi-supervised segmentation
 from ..modules.semi_supervised_segmentation.pl import UNetContrastiveSemiSL
-from ..modules.semi_supervised_segmentation.losses import LocalContrastiveLoss
+from ..modules.semi_supervised_segmentation.losses import (
+    LocalContrastiveLossWithAnchors,
+)
 from ..utils import ExponentialMovingAverage
 
 # self-supervised learning
@@ -404,7 +406,7 @@ def get_segmentation_network(
             semi_sl_image_key_2="semi_sl_image_2",
             deep_supervision=deep_supervision,
             ema=ema,
-            loss_fn_semi_sl=LocalContrastiveLoss(seed=seed),
+            loss_fn_semi_sl=LocalContrastiveLossWithAnchors(seed=seed),
             **boilerplate,
             **network_config,
         )

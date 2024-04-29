@@ -56,7 +56,9 @@ def subsample_dataset(
             data_dict = {k: data_dict[k] for k in ss}
         else:
             s = subsample_size * len(data_dict)
-            ss = rng.choice(list(data_dict.keys()))
+            ss = rng.choice(
+                list(data_dict.keys()), subsample_size, replace=False
+            )
             data_dict = {k: data_dict[k] for k in ss}
     return data_dict
 
