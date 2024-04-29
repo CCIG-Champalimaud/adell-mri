@@ -340,7 +340,7 @@ def main(arguments):
 
         else:
             ensemble_network = AveragingEnsemblePL(
-                networks=all_networks, n_classes=n_classes
+                networks=all_networks, n_classes=n_classes, idx=0
             )
             ensemble_network = ensemble_network.eval()
             trainer = Trainer(accelerator=accelerator, devices=devices)

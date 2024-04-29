@@ -105,7 +105,7 @@ def main(arguments):
     parser.add_argument(
         "--patterns",
         dest="patterns",
-        default=["*nii.gz"],
+        default=[".*nii.gz"],
         nargs="+",
         help="Pattern to match for inputs (assumes each pattern corresponds to\
             a modality).",
