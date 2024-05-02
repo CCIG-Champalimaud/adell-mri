@@ -151,16 +151,19 @@ class AveragingEnsemble(torch.nn.Module):
         self,
         networks: list[torch.nn.Module],
         n_classes: int,
+        idx: int = None,
     ):
         """
         Args:
-            spatial_dimensions (int): spatial dimension of input.
             networks (list[torch.nn.Module]): list of Torch modules.
             n_classes (int): number of classes.
+            idx (int, optional): index for the output in case this is a tuple.
+                Defaults to None.
         """
         super().__init__()
         self.networks = torch.nn.ModuleList(networks)
         self.n_classes = n_classes
+        self.idx = idx
 
     def forward(
         self,
@@ -173,6 +176,8 @@ class AveragingEnsemble(torch.nn.Module):
         output = []
         for x, network in zip(X, self.networks):
             out = network(x)
+            if self.idx is not None:
+                out = out[0]
             output.append(out)
         output = sum(output) / len(output)
         if output.shape[1] == 1:
