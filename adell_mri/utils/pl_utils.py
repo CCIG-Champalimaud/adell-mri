@@ -671,7 +671,7 @@ def get_devices(
         Tuple[str,Union[List[int],int],str]: a tuple containing the accelerator
             ("cpu" or "gpu") the devices (None or a list of devices as
             specified after the ":" in the device_str) and the parallelization
-            strategy ("ddp" if len(devices) > 0, None otherwise)
+            strategy ("auto" if len(devices) > 0, None otherwise)
     """
     strategy_out = "auto"
     if ":" in device_str:
