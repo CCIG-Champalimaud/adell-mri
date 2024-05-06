@@ -322,7 +322,7 @@ def copy_information_nd(
     Returns:
         sitk.Image: target image with metadata copied from source image.
             The metadata information for the additional axes is set to 0 in the
-            case of the origin, 1.0 in the case of the spacing and to the 
+            case of the origin, 1.0 in the case of the spacing and to the
             identity in the case of the direction.
     """
     size_source = source_image.GetSize()

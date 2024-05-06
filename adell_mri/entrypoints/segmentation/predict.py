@@ -428,6 +428,7 @@ def main(arguments):
                     args.output_path, pred_id + ".nii.gz"
                 )
                 t_image = curr_dict[pred_id]["image"]
+
                 sitk_writer.put(output_path, pred, t_image)
             elif pred_mode == "deep_features":
                 pred = pred

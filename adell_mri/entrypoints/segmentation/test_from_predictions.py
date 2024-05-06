@@ -112,6 +112,7 @@ def softmax(x: np.ndarray, axis: int = 0) -> np.ndarray:
     """
     x = np.exp(x)
     x = x / x.sum(axis, keepdims=True)
+    return x
 
 
 def coherce_to_serializable(d: dict) -> dict:
@@ -341,7 +342,7 @@ class CalculateMetrics:
             elif isinstance(self.reduction, int):
                 pred = pred[self.reduction]
         if self.prediction_mode == "logits":
-            if pred.shape[0] == 1:
+            if (pred.shape[0] == 1) or (len(pred.shape) == self.n_dim):
                 pred = sigmoid(pred)
             else:
                 pred = softmax(pred)
