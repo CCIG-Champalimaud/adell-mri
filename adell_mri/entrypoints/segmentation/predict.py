@@ -326,7 +326,14 @@ def main(arguments):
             state_dict = {
                 k: state_dict[k]
                 for k in state_dict
-                if "deep_supervision_ops" not in k and "ema." not in k
+                if all(
+                    [
+                        "deep_supervision_ops" not in k,
+                        "ema." not in k,
+                        "linear_transformation.weight" not in k,
+                        "linear_transformation.bias" not in k,
+                    ]
+                )
             }
             unet = deepcopy(unet_base)
             unet.load_state_dict(state_dict)
@@ -421,6 +428,7 @@ def main(arguments):
                     args.output_path, pred_id + ".nii.gz"
                 )
                 t_image = curr_dict[pred_id]["image"]
+
                 sitk_writer.put(output_path, pred, t_image)
             elif pred_mode == "deep_features":
                 pred = pred

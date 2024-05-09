@@ -264,7 +264,7 @@ class UNet(torch.nn.Module):
         """
         Convenience wrapper for ResidualBlock2d."""
         if in_d > 32:
-            inter_d = int(in_d // 2)
+            inter_d = int(in_d)
         else:
             inter_d = None
         if stride is None:
@@ -297,7 +297,7 @@ class UNet(torch.nn.Module):
         """
         Convenience wrapper for ResidualBlock3d."""
         if in_d > 32:
-            inter_d = int(in_d // 2)
+            inter_d = int(in_d)
         else:
             inter_d = None
         if stride is None:
