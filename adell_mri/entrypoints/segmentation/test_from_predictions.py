@@ -468,7 +468,7 @@ class CalculateMetrics:
         }
 
     def select_class(self, pred: np.ndarray):
-        if len(pred.shape) == self.n_classes:
+        if len(pred.shape) == self.n_dim:
             return pred
         else:
             return pred[self.class_idx]
@@ -565,7 +565,7 @@ def main(arguments):
     )
     parser.add_argument(
         "--prediction_patterns",
-        default="*nii.gz",
+        default=["*nii.gz"],
         nargs="+",
         help="glob pattern which will be used to collect predictions.",
     )
@@ -611,6 +611,7 @@ def main(arguments):
     parser.add_argument(
         "--n_dim",
         default=3,
+        type=int,
         help="Number of dimensions",
     )
     parser.add_argument(
