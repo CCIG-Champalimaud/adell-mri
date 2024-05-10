@@ -134,7 +134,10 @@ class LogImageFromDiffusionProcess(Callback):
     ) -> None:
         ep = pl_module.current_epoch
         if ep % self.every_n_epochs == 0 and ep > 0:
-            images = pl_module.generate_image(size=self.size, n=self.n_images)
+            with torch.no_grad():
+                images = pl_module.generate_image(
+                    size=self.size, n=self.n_images
+                )
             log_image(
                 trainer,
                 key="Generated images",
@@ -351,6 +354,16 @@ def coerce_to_uint8(x: np.ndarray):
     return x.astype(np.uint8)
 
 
+def split_and_cat(x: np.ndarray, split_dim: int, cat_dim: int) -> np.ndarray:
+    print(x.shape)
+    arrays = np.split(x, x.shape[split_dim], axis=split_dim)
+    arrays = np.concatenate(
+        [arr.squeeze(split_dim) for arr in arrays], cat_dim
+    )
+    print(arrays.shape)
+    return arrays
+
+
 def log_image(
     trainer: Trainer,
     key: str,
@@ -377,7 +390,9 @@ def log_image(
     images = images.detach().to("cpu")
     if len(images.shape) == 5:
         n_slices = images.shape[slice_dim]
-        slice_idxs = np.arange(0, n_slices, n_slices_out + 2)[1:-1]
+        slice_idxs = np.linspace(
+            0, n_slices, num=n_slices_out + 2, dtype=np.int32
+        )[1:-1]
         images = torch.index_select(
             images, slice_dim, torch.as_tensor(slice_idxs)
         )
@@ -385,7 +400,7 @@ def log_image(
         images = torch.cat(images, -2).squeeze(-1)
     images = torch.split(images, 1, 0)
     images = [x.squeeze(0).permute(1, 2, 0).numpy() for x in images]
-    images = [coerce_to_uint8(x).squeeze(-1) for x in images]
+    images = [coerce_to_uint8(split_and_cat(x, -1, 0)) for x in images]
     images = [Image.fromarray(x) for x in images]
 
     if caption is not None:

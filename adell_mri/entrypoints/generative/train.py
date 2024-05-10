@@ -162,6 +162,7 @@ def main(arguments):
     )
     network_config["with_conditioning"] = with_conditioning
     network_config["cross_attention_dim"] = 256 if with_conditioning else None
+    network_config["in_channels"] = len(keys)
 
     all_pids = [k for k in data_dict]
 
@@ -320,7 +321,7 @@ def main(arguments):
         size = return_first_not_none(args.pad_size, args.crop_size)
         callbacks.append(
             LogImageFromDiffusionProcess(
-                n_images=2,
+                n_images=1,
                 size=[int(x) for x in size][: network_config["spatial_dims"]],
             )
         )
