@@ -355,12 +355,10 @@ def coerce_to_uint8(x: np.ndarray):
 
 
 def split_and_cat(x: np.ndarray, split_dim: int, cat_dim: int) -> np.ndarray:
-    print(x.shape)
     arrays = np.split(x, x.shape[split_dim], axis=split_dim)
     arrays = np.concatenate(
         [arr.squeeze(split_dim) for arr in arrays], cat_dim
     )
-    print(arrays.shape)
     return arrays
 
 
