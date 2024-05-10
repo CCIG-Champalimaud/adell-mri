@@ -134,7 +134,7 @@ class LogImageFromDiffusionProcess(Callback):
     ) -> None:
         ep = pl_module.current_epoch
         if ep % self.every_n_epochs == 0 and ep > 0:
-            with torch.no_grad():
+            with torch.inference_mode():
                 images = pl_module.generate_image(
                     size=self.size, n=self.n_images
                 )
