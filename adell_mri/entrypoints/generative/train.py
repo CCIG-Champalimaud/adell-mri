@@ -163,6 +163,7 @@ def main(arguments):
     network_config["with_conditioning"] = with_conditioning
     network_config["cross_attention_dim"] = 256 if with_conditioning else None
     network_config["in_channels"] = len(keys)
+    network_config["out_channels"] = len(keys)
 
     all_pids = [k for k in data_dict]
 
