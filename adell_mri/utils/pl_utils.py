@@ -143,7 +143,7 @@ class LogImageFromDiffusionProcess(Callback):
                 key="Generated images",
                 images=images,
                 slice_dim=self.slice_dim,
-                n_slices_out=self.slice_dim,
+                n_slices_out=self.n_slices,
             )
 
 
