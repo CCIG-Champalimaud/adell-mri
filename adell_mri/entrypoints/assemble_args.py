@@ -570,7 +570,14 @@ argument_factory = {
         default=1.0, type=float, help="Number of dataset iterations per epoch"
     ),
     "samples_per_epoch": dict(
-        default=None, type=int, help="Number of samples per epoch"
+        default=None,
+        type=int,
+        help="Number of training samples per epoch",
+    ),
+    "validation_samples_per_epoch": dict(
+        default=None,
+        type=int,
+        help="Number of validation samples per epoch",
     ),
     "picai_eval": dict(
         action="store_true", help="Validates model using PI-CAI metrics."

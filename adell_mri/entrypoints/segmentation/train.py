@@ -120,6 +120,7 @@ def main(arguments):
             "max_epochs",
             "dataset_iterations_per_epoch",
             "samples_per_epoch",
+            "validation_samples_per_epoch",
             "precision",
             "n_folds",
             "folds",
@@ -505,6 +506,13 @@ def main(arguments):
         )
 
         val_sampler = None
+        if args.validation_samples_per_epoch is not None:
+            val_sampler = torch.utils.data.RandomSampler(
+                ["element" for _ in val_idxs],
+                num_samples=args.validation_samples_per_epoch,
+                replacement=False,
+                generator=g,
+            )
         if isinstance(args.class_weights[0], str):
             ad = "adaptive" in args.class_weights[0]
         else:
@@ -616,6 +624,7 @@ def main(arguments):
                     pin_memory=True,
                     persistent_workers=True,
                     drop_last=True,
+                    shuffle=True,
                 )
                 train_loader = CombinedLoader(
                     {
@@ -630,7 +639,6 @@ def main(arguments):
         train_val_loader = monai.data.DataLoader(
             train_dataset_val,
             batch_size=network_config["batch_size"],
-            shuffle=False,
             sampler=val_sampler,
             drop_last=args.semi_supervised,
             num_workers=nw,
@@ -648,9 +656,9 @@ def main(arguments):
             train_val_semi_sl_loader = monai.data.DataLoader(
                 train_val_semi_sl_dataset,
                 batch_size=network_config["batch_size"],
-                shuffle=False,
                 collate_fn=collate_fn_train_semi_sl,
                 num_workers=args.n_workers,
+                shuffle=args.validation_samples_per_epoch is not None,
             )
             train_val_loader = CombinedLoader(
                 {
@@ -788,7 +796,6 @@ def main(arguments):
                 "network_config": network_config,
             }
 
-        print(len(iter(train_loader)) // n_devices, n_devices)
         trainer = Trainer(
             accelerator=dev,
             devices=devices,
