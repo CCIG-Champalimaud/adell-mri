@@ -80,13 +80,13 @@ class BatchEnsemble(torch.nn.Module):
                 self.mod = ResidualBlock2d(
                     in_channels=self.in_channels,
                     out_channels=self.out_channels,
-                    **self.op_kwargs
+                    **self.op_kwargs,
                 )
             elif self.spatial_dim == 3:
                 self.mod = ResidualBlock3d(
                     in_channels=self.in_channels,
                     out_channels=self.out_channels,
-                    **self.op_kwargs
+                    **self.op_kwargs,
                 )
         self.all_weights = torch.nn.ParameterDict(
             {
@@ -201,7 +201,7 @@ class BatchEnsembleWrapper(torch.nn.Module):
         idx: int = None,
         mod: torch.nn.Module = None,
         *args,
-        **kwargs
+        **kwargs,
     ):
         if mod is None:
             mod = self.mod

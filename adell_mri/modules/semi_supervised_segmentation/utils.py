@@ -30,11 +30,11 @@ def convert_arguments_pre(
     transform_arguments_semi_sl["intp"] = transform_arguments_semi_sl["intp"][
         : len(image_keys)
     ]
-    transform_arguments_semi_sl[
-        "intp_resampling_augmentations"
-    ] = transform_arguments_semi_sl["intp_resampling_augmentations"][
-        : len(image_keys)
-    ]
+    transform_arguments_semi_sl["intp_resampling_augmentations"] = (
+        transform_arguments_semi_sl["intp_resampling_augmentations"][
+            : len(image_keys)
+        ]
+    )
     return transform_arguments_semi_sl
 
 

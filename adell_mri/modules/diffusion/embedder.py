@@ -49,9 +49,11 @@ class CategoricalEmbedder(torch.nn.Module):
         if self.convert is True:
             for i in range(len(X)):
                 X[i] = [
-                    conversion[str(x[0])]
-                    if isinstance(x, np.ndarray)
-                    else conversion[str(x)]
+                    (
+                        conversion[str(x[0])]
+                        if isinstance(x, np.ndarray)
+                        else conversion[str(x)]
+                    )
                     for x, conversion in zip(X[i], self.conversions)
                 ]
             X = torch.as_tensor(X, device=self.device)

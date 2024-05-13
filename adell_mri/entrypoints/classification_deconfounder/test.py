@@ -319,9 +319,9 @@ def main(arguments):
                 mean, (upper, lower) = bootstrap_metric(
                     network.test_metrics["T_AUC"], 100, 0.5
                 )
-                for idx, (m, u, l) in enumerate(  # noqa
+                for idx, (m, u, l) in enumerate(
                     zip(mean, upper, lower)
-                ):
+                ):  # noqa
                     x = "{},{},{},{},{}".format(
                         "T_AUC_mean", checkpoint, iteration, idx, m
                     )

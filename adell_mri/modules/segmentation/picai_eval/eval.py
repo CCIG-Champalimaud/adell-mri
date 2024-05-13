@@ -165,9 +165,9 @@ def evaluate_case(
 
         # match lesion candidates to ground truth lesion (for documentation on how this works, please see
         # https://docs.scipy.org/doc/scipy-0.18.1/reference/generated/scipy.optimize.linear_sum_assignment.html)
-        overlap_matrix[
-            overlap_matrix < min_overlap
-        ] = 0  # don't match lesions with insufficient overlap
+        overlap_matrix[overlap_matrix < min_overlap] = (
+            0  # don't match lesions with insufficient overlap
+        )
         overlap_matrix[
             overlap_matrix > 0
         ] += 1  # prioritize matching over the amount of overlap
