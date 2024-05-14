@@ -548,20 +548,16 @@ def main(arguments):
                 )
                 if args.samples_per_epoch is not None:
                     sampler.set_n_samples(args.samples_per_epoch)
-                    # keep some approximate proportions
-                    n_val_samples = (
-                        args.samples_per_epoch / len(train_dataset)
-                    ) * len(train_dataset_val)
-                    n_val_samples = np.minimum(
-                        len(train_dataset_val), n_val_samples
-                    )
-                    val_sampler.set_n_samples(n_val_samples)
                 elif args.dataset_iterations_per_epoch != 1.0:
                     sampler.set_n_samples(
                         int(sampler.n * args.dataset_iterations_per_epoch)
                     )
                     val_sampler.set_n_samples(
                         int(val_sampler.n * args.dataset_iterations_per_epoch)
+                    )
+                if args.validation_samples_per_epoch is not None:
+                    val_sampler.set_n_samples(
+                        args.validation_samples_per_epoch
                     )
                 if args.class_weights[0] == "adaptive":
                     adaptive_weights = 1 + args.constant_ratio
