@@ -119,6 +119,7 @@ def main(arguments):
             "gradient_clip_val",
             "max_epochs",
             "dataset_iterations_per_epoch",
+            "samples_per_epoch",
             "precision",
             "n_folds",
             "folds",
@@ -490,13 +491,19 @@ def main(arguments):
         else:
             all_feature_params = None
 
-        n_samples = int(len(train_dataset) * args.dataset_iterations_per_epoch)
+        if args.samples_per_epoch is not None:
+            n_samples = args.samples_per_epoch
+        else:
+            n_samples = int(
+                len(train_dataset) * args.dataset_iterations_per_epoch
+            )
         sampler = torch.utils.data.RandomSampler(
             ["element" for _ in train_idxs],
             num_samples=n_samples,
             replacement=len(train_dataset) < n_samples,
             generator=g,
         )
+
         val_sampler = None
         if isinstance(args.class_weights[0], str):
             ad = "adaptive" in args.class_weights[0]
@@ -531,7 +538,17 @@ def main(arguments):
                 val_sampler = PartiallyRandomSampler(
                     cl_val, non_keep_ratio=args.constant_ratio, seed=args.seed
                 )
-                if args.dataset_iterations_per_epoch != 1.0:
+                if args.samples_per_epoch is not None:
+                    sampler.set_n_samples(args.samples_per_epoch)
+                    # keep some approximate proportions
+                    n_val_samples = (
+                        args.samples_per_epoch / len(train_dataset)
+                    ) * len(train_dataset_val)
+                    n_val_samples = np.minimum(
+                        len(train_dataset_val), n_val_samples
+                    )
+                    val_sampler.set_n_samples(n_val_samples)
+                elif args.dataset_iterations_per_epoch != 1.0:
                     sampler.set_n_samples(
                         int(sampler.n * args.dataset_iterations_per_epoch)
                     )
@@ -571,12 +588,14 @@ def main(arguments):
             network_config["loss_fn"].replace_item("eps", 1e-4)
 
         if isinstance(devices, list):
-            nw = args.n_workers // len(devices)
+            n_devices = len(devices)
+            nw = args.n_workers // n_devices
         else:
+            n_devices = 1
             nw = args.n_workers
 
         def train_loader_call(batch_size):
-            train_loader = monai.data.DataLoader(
+            train_loader = torch.utils.data.DataLoader(
                 dataset=train_dataset,  # noqa: F821
                 batch_size=batch_size,  # noqa: F821
                 num_workers=nw,
@@ -588,7 +607,7 @@ def main(arguments):
                 drop_last=True,
             )
             if args.semi_supervised is True:
-                train_semi_sl_loader = monai.data.DataLoader(
+                train_semi_sl_loader = torch.utils.data.DataLoader(
                     dataset=train_semi_sl_dataset,
                     batch_size=batch_size,  # noqa: F821
                     num_workers=nw,
@@ -768,6 +787,8 @@ def main(arguments):
                 "transform_arguments": transform_arguments,
                 "network_config": network_config,
             }
+
+        print(len(iter(train_loader)) // n_devices, n_devices)
         trainer = Trainer(
             accelerator=dev,
             devices=devices,
@@ -782,6 +803,10 @@ def main(arguments):
             precision=args.precision,
             gradient_clip_val=args.gradient_clip_val,
             detect_anomaly=False,
+            # some weird bug does not correctly infer the number of train/val
+            # batches so below we do it explicitly
+            limit_train_batches=len(iter(train_loader)) // n_devices,
+            limit_val_batches=len(iter(train_val_loader)) // n_devices,
         )
 
         trainer.fit(unet, train_loader, train_val_loader, ckpt_path=ckpt_path)

@@ -569,6 +569,9 @@ argument_factory = {
     "dataset_iterations_per_epoch": dict(
         default=1.0, type=float, help="Number of dataset iterations per epoch"
     ),
+    "samples_per_epoch": dict(
+        default=None, type=int, help="Number of samples per epoch"
+    ),
     "picai_eval": dict(
         action="store_true", help="Validates model using PI-CAI metrics."
     ),

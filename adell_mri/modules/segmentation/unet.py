@@ -205,6 +205,9 @@ class UNet(torch.nn.Module):
             if self.conv_type == "regular":
                 self.conv_op_enc = self.conv_block_2d
                 self.conv_op_dec = self.conv_block_2d
+            elif self.conv_type == "depthwise":
+                self.conv_op_enc = self.depthwise_conv_block_2d
+                self.conv_op_dec = self.depthwise_conv_block_2d
             elif self.conv_type == "resnet":
                 self.conv_op_enc = self.res_block_conv_2d
                 self.conv_op_dec = self.conv_block_2d
@@ -218,6 +221,9 @@ class UNet(torch.nn.Module):
             if self.conv_type == "regular":
                 self.conv_op_enc = self.conv_block_3d
                 self.conv_op_dec = self.conv_block_3d
+            elif self.conv_type == "depthwise":
+                self.conv_op_enc = self.depthwise_conv_block_3d
+                self.conv_op_dec = self.depthwise_conv_block_3d
             elif self.conv_type == "resnet":
                 self.conv_op_enc = self.res_block_conv_3d
                 self.conv_op_dec = self.conv_block_3d
@@ -256,6 +262,40 @@ class UNet(torch.nn.Module):
             torch.nn.Conv3d(in_d, in_d, kernel_size, stride, padding),
             self.adn_fn(in_d),
             torch.nn.Conv3d(in_d, out_d, kernel_size, 1, padding),
+        )
+
+    def depthwise_conv_block_2d(
+        self, in_d, out_d, kernel_size, stride=None, padding=None
+    ):
+        """
+        Convenience wrapper for 2d convolutional block."""
+        if padding is None:
+            padding = 0
+        if stride is None:
+            stride = 1
+        return torch.nn.Sequential(
+            torch.nn.Conv2d(
+                in_d, in_d, kernel_size, stride, padding, groups=in_d
+            ),
+            self.adn_fn(in_d),
+            torch.nn.Conv2d(in_d, out_d, 1, 1, padding),
+        )
+
+    def depthwise_conv_block_3d(
+        self, in_d, out_d, kernel_size, stride=None, padding=None
+    ):
+        """
+        Convenience wrapper for 3d convolutional block."""
+        if padding is None:
+            padding = 0
+        if stride is None:
+            stride = 1
+        return torch.nn.Sequential(
+            torch.nn.Conv3d(
+                in_d, in_d, kernel_size, stride, padding, groups=in_d
+            ),
+            self.adn_fn(in_d),
+            torch.nn.Conv3d(in_d, out_d, 1, 1, padding),
         )
 
     def res_block_conv_2d(
