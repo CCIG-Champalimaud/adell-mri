@@ -654,6 +654,8 @@ class ViTClassifier(ViT):
             torch.Tensor: output tensor.
         """
         embeded_X, _ = super().forward(X)
+        if self.n_registers > 0:
+            embeded_X = embeded_X[:, self.n_registers :]
         if self.use_seq_pool is True:
             embeded_X = self.seqpool(embeded_X).squeeze(1)
         elif self.use_class_token is True:
@@ -749,6 +751,8 @@ class FactorizedViTClassifier(FactorizedViT):
             torch.Tensor: output tensor.
         """
         embeded_X = super().forward(X)
+        if self.n_registers > 0:
+            embeded_X = embeded_X[:, self.n_registers :]
         if self.use_seq_pool is True:
             embeded_X = self.seqpool(embeded_X).squeeze(1)
         elif self.use_class_token is True:

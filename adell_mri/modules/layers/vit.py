@@ -228,6 +228,7 @@ class SliceLinearEmbedding(torch.nn.Module):
         dropout_rate: float = 0.0,
         embed_method: str = "linear",
         use_class_token: bool = False,
+        n_registers: int = 0,
         learnable_embedding: bool = True,
     ):
         super().__init__()
@@ -239,6 +240,7 @@ class SliceLinearEmbedding(torch.nn.Module):
         self.dropout_rate = dropout_rate
         self.embed_method = embed_method
         self.use_class_token = use_class_token
+        self.n_registers = n_registers
         self.learnable_embedding = learnable_embedding
 
         self.drop_op = torch.nn.Dropout(self.dropout_rate)
@@ -257,6 +259,7 @@ class SliceLinearEmbedding(torch.nn.Module):
         self.init_conv_layers_if_necessary()
         self.init_positional_embedding()
         self.init_class_token_if_necessary()
+        self.init_registers_if_necessary()
 
     def init_conv_layers_if_necessary(self):
         if self.embed_method == "convolutional":
@@ -275,6 +278,12 @@ class SliceLinearEmbedding(torch.nn.Module):
         if self.use_class_token is True:
             self.class_token = torch.nn.Parameter(
                 torch.zeros([1, 1, 1, self.true_n_features])
+            )
+
+    def init_registers_if_necessary(self):
+        if self.n_registers > 0:
+            self.registers = torch.nn.Parameter(
+                torch.zeros([1, self.n_registers, self.true_n_features])
             )
 
     def linearize_image_slices(self, image: torch.Tensor) -> torch.Tensor:
@@ -366,6 +375,11 @@ class SliceLinearEmbedding(torch.nn.Module):
                 self.class_token, "() () n e -> b s n e", b=b, s=s
             )
             X = torch.concat([class_token, X], 2)
+        if self.n_registers > 0:
+            registers = einops.repeat(
+                self.registers, "() n e -> b s n e", b=b, s=s
+            )
+            X = torch.concat([registers, X], 2)
         return self.drop_op(X)
 
 
@@ -401,6 +415,7 @@ class LinearEmbedding(torch.nn.Module):
         embed_method: str = "linear",
         use_pos_embed: bool = True,
         use_class_token: bool = False,
+        n_registers: int = 0,
         learnable_embedding: bool = True,
         channel_to_token: bool = False,
         channels_last: bool = False,
@@ -422,6 +437,8 @@ class LinearEmbedding(torch.nn.Module):
                 Defaults to True.
             use_class_token (bool, optional): whether a class token should be
                 used. Defaults to False.
+            n_registers (int, optional): number of registers to use as
+                suggested in Darcet (2024). Defaults to 0.
             learnable_embedding (bool, optional): if embedding is
                 non-trainable, a sinusoidal positional embedding is used.
                 Defaults to True.
@@ -441,6 +458,7 @@ class LinearEmbedding(torch.nn.Module):
         self.embed_method = embed_method
         self.use_pos_embed = use_pos_embed
         self.use_class_token = use_class_token
+        self.n_registers = n_registers
         self.learnable_embedding = learnable_embedding
         self.channel_to_token = channel_to_token
         self.channels_last = channels_last
@@ -469,6 +487,7 @@ class LinearEmbedding(torch.nn.Module):
         self.init_linear_layers_if_necessary()
         self.init_dropout()
         self.initialize_classification_token()
+        self.initialize_registers()
         self.initialize_positional_embeddings()
         self.get_einop_params()
         self.linearized_dim = [-1, self.n_patches, self.n_features]
@@ -550,6 +569,13 @@ class LinearEmbedding(torch.nn.Module):
         if self.use_class_token is True:
             self.class_token = torch.nn.Parameter(
                 torch.zeros([1, 1, self.true_n_features])
+            )
+
+    def initialize_registers(self):
+        """Initializes the transformer registers."""
+        if self.n_registers > 0:
+            self.registers = torch.nn.Parameter(
+                torch.zeros([1, self.n_registers, self.true_n_features])
             )
 
     def initialize_positional_embeddings(self):
@@ -833,6 +859,11 @@ class LinearEmbedding(torch.nn.Module):
                 self.class_token, "() n e -> b n e", b=X.shape[0]
             )
             X = torch.concat([class_token, X], 1)
+        if self.n_registers > 0:
+            registers = einops.repeat(
+                self.registers, "() n e -> b n e", b=X.shape[0]
+            )
+            X = torch.concat([registers, X], 1)
         return self.drop_op(X)
 
 
@@ -1574,6 +1605,7 @@ class ViT(torch.nn.Module):
         mlp_structure: Union[List[int], float] = [128],
         adn_fn=get_adn_fn(1, "identity", "gelu"),
         use_class_token: bool = False,
+        n_registers: int = 0,
         learnable_embedding: bool = True,
         channel_to_token: bool = False,
         patch_erasing: float = None,
@@ -1611,6 +1643,8 @@ class ViT(torch.nn.Module):
                 get_adn_fn(1,"identity","gelu").
             use_class_token (bool, optional): adds classification token to
                 embedding layer. Defaults to False.
+            n_registers (int, optional): number of registers to use as
+                suggested in Darcet (2024). Defaults to 0.
             learnable_embedding (bool, optional): if embedding is
                 non-trainable, a sinusoidal positional embedding is used.
                 Defaults to True.
@@ -1635,6 +1669,7 @@ class ViT(torch.nn.Module):
         self.mlp_structure = mlp_structure
         self.adn_fn = adn_fn
         self.use_class_token = use_class_token
+        self.n_registers = n_registers
         self.learnable_embedding = learnable_embedding
         self.channel_to_token = channel_to_token
         self.patch_erasing = patch_erasing
@@ -1649,6 +1684,7 @@ class ViT(torch.nn.Module):
             use_pos_embed=self.use_pos_embed,
             dropout_rate=self.dropout_rate,
             use_class_token=self.use_class_token,
+            n_registers=self.n_registers,
             learnable_embedding=self.learnable_embedding,
             channel_to_token=self.channel_to_token,
         )
@@ -1749,6 +1785,7 @@ class FactorizedViT(torch.nn.Module):
         mlp_structure: Union[List[int], float] = [128],
         adn_fn=get_adn_fn(1, "identity", "gelu"),
         use_class_token: bool = False,
+        n_registers: int = 0,
         learnable_embedding: bool = True,
         patch_erasing: float = None,
     ):
@@ -1783,6 +1820,8 @@ class FactorizedViT(torch.nn.Module):
                 get_adn_fn(1,"identity","gelu").
             use_class_token (bool, optional): adds classification token to
                 embedding layer. Defaults to False.
+            n_registers (int, optional): number of registers to use as
+                suggested in Darcet (2024). Defaults to 0.
             learnable_embedding (bool, optional): if embedding is
                 non-trainable, a sinusoidal positional embedding is used.
                 Defaults to True.
@@ -1803,6 +1842,7 @@ class FactorizedViT(torch.nn.Module):
         self.mlp_structure = mlp_structure
         self.adn_fn = adn_fn
         self.use_class_token = use_class_token
+        self.n_registers = n_registers
         self.learnable_embedding = learnable_embedding
         self.patch_erasing = patch_erasing
 
@@ -1814,6 +1854,7 @@ class FactorizedViT(torch.nn.Module):
             dropout_rate=self.dropout_rate,
             embed_method=self.embed_method,
             use_class_token=self.use_class_token,
+            n_registers=self.n_registers,
             learnable_embedding=self.learnable_embedding,
             out_dim=self.embedding_size,
         )
@@ -1863,6 +1904,11 @@ class FactorizedViT(torch.nn.Module):
                 torch.zeros([1, 1, input_dim_primary])
             )
 
+        if self.n_registers > 0:
+            self.slice_registers = torch.nn.Parameter(
+                torch.zeros([1, self.n_registers, input_dim_primary])
+            )
+
     def forward(self, X: torch.Tensor) -> Tuple[torch.Tensor, TensorList]:
         """Forward pass.
 
@@ -1880,7 +1926,12 @@ class FactorizedViT(torch.nn.Module):
         if self.patch_erasing_op is not None:
             embeded_X = self.patch_erasing_op(embeded_X)
         embeded_X, _ = self.transformer_block_within(embeded_X)
-        # extract the maximum value of each token for all slices
+        if self.n_registers > 0:
+            embeded_X = embeded_X[:, :, self.n_registers :]
+            registers = einops.repeat(
+                self.slice_registers, "() n e -> b n e", b=X.shape[0]
+            )
+            embeded_X = torch.concat([registers, embeded_X], 1)
         if self.use_class_token is True:
             embeded_X = embeded_X[:, :, 0]
             class_token = einops.repeat(

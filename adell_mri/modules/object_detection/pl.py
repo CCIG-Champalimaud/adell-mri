@@ -55,7 +55,7 @@ class YOLONet3dPL(YOLONet3d, pl.LightningModule):
         warmup_steps: Union[int, float] = 0,
         start_decay: int = None,
         *args,
-        **kwargs
+        **kwargs,
     ) -> torch.nn.Module:
         """YOLO-like network implementation for Pytorch Lightning.
 
@@ -193,7 +193,7 @@ class YOLONet3dPL(YOLONet3d, pl.LightningModule):
             cla_loss = self.classification_loss_fn(
                 pred_class_for_loss,
                 y_class_for_loss,
-                **self.classification_loss_params
+                **self.classification_loss_params,
             )
             output = output + cla_loss.mean()
         return output.mean()
@@ -440,7 +440,7 @@ class CoarseDetector3dPL(CoarseDetector3d, pl.LightningModule):
         object_loss_params: dict = {},
         iou_threshold: float = 0.5,
         *args,
-        **kwargs
+        **kwargs,
     ) -> torch.nn.Module:
         """YOLO-like network implementation for Pytorch Lightning.
 

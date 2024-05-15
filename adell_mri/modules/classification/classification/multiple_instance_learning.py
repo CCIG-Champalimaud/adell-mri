@@ -290,7 +290,7 @@ class TransformableTransformer(torch.nn.Module):
         use_class_token: bool = True,
         reduce_fn: str = "mean",
         *args,
-        **kwargs
+        **kwargs,
     ):
         """
         Args:
