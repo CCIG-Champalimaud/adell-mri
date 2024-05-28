@@ -77,7 +77,7 @@ def binary_cross_entropy(
     target: torch.Tensor,
     weight: float = 1.0,
     scale: float = 1.0,
-    smooth: float = 0.0,
+    label_smoothing: float = 0.0,
     eps: float = eps,
 ) -> torch.Tensor:
     """
@@ -89,7 +89,7 @@ def binary_cross_entropy(
         weight (float, optional): weight for the positive
             class. Defaults to 1.
         scale (float, optional): factor to scale loss before reducing.
-        smooth (float, optional): smoothing factor. Defaults to 0.0.
+        label_smoothing (float, optional): smoothing factor. Defaults to 0.0.
         eps (float, optional): epsilon factor to avoid floating-point
             imprecisions.
 
@@ -97,11 +97,11 @@ def binary_cross_entropy(
         torch.Tensor: a tensor with size equal to the batch size (first
         dimension of `pred`).
     """
-    target_smooth = target * (1 - smooth) + smooth / 2
+    target = target * (1 - label_smoothing) + label_smoothing / 2
     pred = torch.flatten(pred, start_dim=1)
-    target = torch.flatten(target_smooth, start_dim=1)
-    a = weight * target_smooth * torch.log(pred + eps)
-    b = (1 - target_smooth) * torch.log(1 - pred + eps)
+    target = torch.flatten(target, start_dim=1)
+    a = weight * target * torch.log(pred + eps)
+    b = (1 - target) * torch.log(1 - pred + eps)
     return -torch.mean((a + b) * scale, dim=1)
 
 
@@ -112,7 +112,7 @@ def binary_focal_loss(
     alpha: float = 1.0,
     threshold: float = 0.5,
     scale: float = 1.0,
-    smooth: float = 0.0,
+    label_smoothing: float = 0.0,
     eps: float = eps,
 ) -> torch.Tensor:
     """
@@ -133,7 +133,7 @@ def binary_focal_loss(
             focal loss. Helpful in cases where one is trying to model the
             probability explictly. Defaults to 0.5.
         scale (float, optional): factor to scale loss before reducing.
-        smooth (float, optional): smoothing factor. Defaults to 0.0.
+        label_smoothing (float, optional): smoothing factor. Defaults to 0.0.
         eps (float, optional): epsilon factor to avoid floating-point
             imprecisions.
 
@@ -148,11 +148,11 @@ def binary_focal_loss(
     pred = torch.maximum(pred, eps).flatten(start_dim=2)
     pred_inv = torch.maximum(1 - pred, eps)
     target = (target > threshold).long().flatten(start_dim=2)
-    target_smooth = target * (1 - smooth) + smooth / 2
+    target = target * (1 - label_smoothing) + label_smoothing / 2
     return (
         torch.add(
-            alpha * (pred**gamma) * torch.log(pred) * target_smooth,
-            (pred_inv**gamma) * torch.log(pred_inv) * (1 - target_smooth),
+            alpha * (pred**gamma) * torch.log(pred) * target,
+            (pred_inv**gamma) * torch.log(pred_inv) * (1 - target),
         )
         .negative()
         .multiply(scale)
@@ -526,7 +526,7 @@ def cat_cross_entropy(
     target: torch.Tensor,
     weight: Union[float, torch.Tensor] = 1.0,
     scale: float = 1.0,
-    smooth: float = 0.0,
+    label_smoothing: float = 0.0,
     eps: float = eps,
 ) -> torch.Tensor:
     """
@@ -538,7 +538,7 @@ def cat_cross_entropy(
         weight (Union[float,torch.Tensor], optional): class weights.
             Should be the same shape as the number of classes. Defaults to 1.
         scale (float, optional): factor to scale loss before reducing.
-        smooth (float, optional): smoothing factor. Defaults to 0.0.
+        label_smoothing (float, optional): smoothing factor. Defaults to 0.0.
         eps (float, optional): epsilon factor to avoid floating-point
             imprecisions.
 
@@ -550,7 +550,7 @@ def cat_cross_entropy(
 
     if pred.shape != target.shape:
         target = classes_to_one_hot(target)
-    target = target * (1 - smooth) + 1 / target.shape[1]
+    target = target * (1 - label_smoothing) + 1 / target.shape[1]
     if isinstance(weight, torch.Tensor) is True:
         weight = unsqueeze_to_shape(weight, pred.shape, 1)
     out = -target * torch.log(pred + eps)
@@ -564,7 +564,7 @@ def mc_focal_loss(
     alpha: torch.Tensor,
     gamma: Union[float, torch.Tensor],
     scale: float = 1.0,
-    smooth: float = 0.0,
+    label_smoothing: float = 0.0,
     eps: float = eps,
 ) -> torch.Tensor:
     """
@@ -582,7 +582,7 @@ def mc_focal_loss(
         alpha (torch.Tensor): class weights.
         gamma (Union[float,torch.Tensor]): focusing parameter.
         scale (float, optional): factor to scale loss before reducing.
-        smooth (float, optional): smoothing factor. Defaults to 0.0.
+        label_smoothing (float, optional): smoothing factor. Defaults to 0.0.
         eps (float, optional): epsilon factor to avoid floating-point
             imprecisions.
 
@@ -597,7 +597,7 @@ def mc_focal_loss(
     if pred.shape != target.shape:
         target = classes_to_one_hot(target)
     p = mc_pt(pred, target)
-    target = target * (1 - smooth) + 1 / target.shape[1]
+    target = target * (1 - label_smoothing) + 1 / target.shape[1]
     ce = -target * torch.log(pred + eps)
     out = torch.flatten(alpha * ((1 - p + eps) ** gamma) * ce, start_dim=1)
     return torch.mean(out * scale, dim=1)
