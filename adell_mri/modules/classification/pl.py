@@ -1547,7 +1547,7 @@ class DeconfoundedNetPL(DeconfoundedNet, ClassPLABC):
 
         self.loss_str = ["loss", "cat_loss", "cont_loss", "feat_loss"]
 
-        self.conf_mult = 1.0
+        self.conf_mult = 0.1
 
         self.save_hyperparameters(ignore=["loss_fn"])
         self.setup_metrics()

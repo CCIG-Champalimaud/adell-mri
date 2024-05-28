@@ -16,7 +16,7 @@ def generalised_dice_score(
     eps: torch.Tensor = eps,
 ) -> torch.Tensor:
     """
-        Calculates the generalised dice score. Assumes pred and target have
+    Calculates the generalised dice score. Assumes pred and target have
     the same shape.
 
     Args:
@@ -54,7 +54,7 @@ def pt(
     pred: torch.Tensor, target: torch.Tensor, threshold: float = 0.5
 ) -> torch.Tensor:
     """
-        Convenience function to convert probabilities of predicting
+    Convenience function to convert probabilities of predicting
     the positive class to probability of predicting the corresponding
     target.
 
@@ -77,10 +77,11 @@ def binary_cross_entropy(
     target: torch.Tensor,
     weight: float = 1.0,
     scale: float = 1.0,
+    label_smoothing: float = 0.0,
     eps: float = eps,
 ) -> torch.Tensor:
     """
-        Standard implementation of binary cross entropy.
+    Standard implementation of binary cross entropy.
 
     Args:
         pred (torch.Tensor): prediction probabilities.
@@ -88,6 +89,7 @@ def binary_cross_entropy(
         weight (float, optional): weight for the positive
             class. Defaults to 1.
         scale (float, optional): factor to scale loss before reducing.
+        label_smoothing (float, optional): smoothing factor. Defaults to 0.0.
         eps (float, optional): epsilon factor to avoid floating-point
             imprecisions.
 
@@ -95,6 +97,7 @@ def binary_cross_entropy(
         torch.Tensor: a tensor with size equal to the batch size (first
         dimension of `pred`).
     """
+    target = target * (1 - label_smoothing) + label_smoothing / 2
     pred = torch.flatten(pred, start_dim=1)
     target = torch.flatten(target, start_dim=1)
     a = weight * target * torch.log(pred + eps)
@@ -109,10 +112,11 @@ def binary_focal_loss(
     alpha: float = 1.0,
     threshold: float = 0.5,
     scale: float = 1.0,
+    label_smoothing: float = 0.0,
     eps: float = eps,
 ) -> torch.Tensor:
     """
-        Binary focal loss. Uses `alpha` to weight the positive class and
+    Binary focal loss. Uses `alpha` to weight the positive class and
     `lambda` to suppress examples which are easy to classify (given that
     `lambda`>1). `lambda` is also known as the focusing parameter. In essence,
     `focal_loss = (1-pt(pred,target))**gamma*bce`, where `bce` is the binary
@@ -129,6 +133,7 @@ def binary_focal_loss(
             focal loss. Helpful in cases where one is trying to model the
             probability explictly. Defaults to 0.5.
         scale (float, optional): factor to scale loss before reducing.
+        label_smoothing (float, optional): smoothing factor. Defaults to 0.0.
         eps (float, optional): epsilon factor to avoid floating-point
             imprecisions.
 
@@ -143,6 +148,7 @@ def binary_focal_loss(
     pred = torch.maximum(pred, eps).flatten(start_dim=2)
     pred_inv = torch.maximum(1 - pred, eps)
     target = (target > threshold).long().flatten(start_dim=2)
+    target = target * (1 - label_smoothing) + label_smoothing / 2
     return (
         torch.add(
             alpha * (pred**gamma) * torch.log(pred) * target,
@@ -163,7 +169,7 @@ def binary_focal_loss_(
     eps: float = eps,
 ) -> torch.Tensor:
     """
-        Implementation of binary focal loss. Uses `alpha` to weight
+    Implementation of binary focal loss. Uses `alpha` to weight
     the positive class and `lambda` to suppress examples which are easy to
     classify (given that `lambda`>1). `lambda` is also known as the focusing
     parameter. In essence, `focal_loss = (1-pt(pred,target))**gamma*bce`, where
@@ -212,7 +218,7 @@ def weighted_mse(
     threshold: float = 0.5,
 ) -> torch.Tensor:
     """
-        Weighted MSE. Useful for object detection tasks.
+    Weighted MSE. Useful for object detection tasks.
 
     Args:
         pred (torch.Tensor): prediction probabilities.
@@ -247,7 +253,7 @@ def binary_generalized_dice_loss(
     eps: float = eps,
 ) -> torch.Tensor:
     """
-        Dice loss adapted to cases of very high class imbalance. In essence
+    Dice loss adapted to cases of very high class imbalance. In essence
     it adds class weights to the calculation of the Dice loss [1]. If
     `weights=1` it defaults to the regular Dice loss. This implementation
     works for the binary case.
@@ -278,7 +284,6 @@ def binary_generalized_dice_loss(
 
     target = torch.flatten(target, start_dim=2)
     pred = torch.flatten(pred, start_dim=2)
-    # adjusting the values of target and pred to avoid fp16 issues
     cl_dice = generalised_dice_score(pred, target, weight, smooth, scale, eps)
     return 1 - 2 * cl_dice
 
@@ -291,7 +296,7 @@ def binary_focal_tversky_loss(
     gamma: float = 1,
 ) -> torch.Tensor:
     """
-        Binary focal Tversky loss. Very similar to the original Tversky loss
+    Binary focal Tversky loss. Very similar to the original Tversky loss
     but features a `gamma` term similar to the focal loss to focus the
     learning on harder/rarer examples [1]. The Tversky loss itself is very
     similar to the Dice score loss but weighs false positives and false
@@ -337,7 +342,7 @@ def combo_loss(
     eps: float = eps,
 ) -> torch.Tensor:
     """
-        Combo loss. Simply put, it is a weighted combination of the Dice loss
+    Combo loss. Simply put, it is a weighted combination of the Dice loss
     and the weighted focal loss [1]. `alpha` is the weight for each loss
     and weight is the weight for the binary cross entropy.
 
@@ -382,7 +387,7 @@ def hybrid_focal_loss(
     tversky_params: dict = {},
 ) -> torch.Tensor:
     """
-        Hybrid focal loss. A combination of the focal loss and the focal
+    Hybrid focal loss. A combination of the focal loss and the focal
     Tversky loss. In essence, a weighted sum of both, where `lam` defines
     how both losses are combined.
 
@@ -419,7 +424,7 @@ def unified_focal_loss(
     scale: float = 1.0,
 ) -> torch.Tensor:
     """
-        Unified focal loss. A combination of the focal loss and the focal
+    Unified focal loss. A combination of the focal loss and the focal
     Tversky loss. In essence, a weighted sum of both, where `lam` defines
     how both losses are combined but with fewer parameters than the hybrid
     focal loss (`gamma` and `weight` parametrize different aspects of each
@@ -454,7 +459,7 @@ def unified_focal_loss(
 
 def mc_pt(pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
     """
-        Convenience function to convert probabilities of each class
+    Convenience function to convert probabilities of each class
     to probability of predicting the corresponding target. Also works with
     one hot-encoded classes.
 
@@ -471,7 +476,7 @@ def mc_pt(pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
 
 def classes_to_one_hot(X: torch.Tensor) -> torch.Tensor:
     """
-        Converts classes to one-hot and permutes the dimension so that the
+    Converts classes to one-hot and permutes the dimension so that the
     channels (classes) are in second.
 
     Args:
@@ -494,7 +499,7 @@ def unsqueeze_to_shape(
     X: torch.Tensor, target_shape: Union[list, tuple], dim: int = 1
 ) -> torch.Tensor:
     """
-        Unsqueezes a vector `X` into a shape that is castable to a given
+    Unsqueezes a vector `X` into a shape that is castable to a given
     target_shape.
 
     Args:
@@ -521,10 +526,11 @@ def cat_cross_entropy(
     target: torch.Tensor,
     weight: Union[float, torch.Tensor] = 1.0,
     scale: float = 1.0,
+    label_smoothing: float = 0.0,
     eps: float = eps,
 ) -> torch.Tensor:
     """
-        Standard implementation of categorical cross entropy.
+    Standard implementation of categorical cross entropy.
 
     Args:
         pred (torch.Tensor): prediction probabilities.
@@ -532,6 +538,7 @@ def cat_cross_entropy(
         weight (Union[float,torch.Tensor], optional): class weights.
             Should be the same shape as the number of classes. Defaults to 1.
         scale (float, optional): factor to scale loss before reducing.
+        label_smoothing (float, optional): smoothing factor. Defaults to 0.0.
         eps (float, optional): epsilon factor to avoid floating-point
             imprecisions.
 
@@ -543,6 +550,7 @@ def cat_cross_entropy(
 
     if pred.shape != target.shape:
         target = classes_to_one_hot(target)
+    target = target * (1 - label_smoothing) + 1 / target.shape[1]
     if isinstance(weight, torch.Tensor) is True:
         weight = unsqueeze_to_shape(weight, pred.shape, 1)
     out = -target * torch.log(pred + eps)
@@ -556,10 +564,11 @@ def mc_focal_loss(
     alpha: torch.Tensor,
     gamma: Union[float, torch.Tensor],
     scale: float = 1.0,
+    label_smoothing: float = 0.0,
     eps: float = eps,
 ) -> torch.Tensor:
     """
-        Categorical focal loss. Uses `alpha` to weight classes and `lambda` to
+    Categorical focal loss. Uses `alpha` to weight classes and `lambda` to
     suppress examples which are easy to classify (given that `lambda`>1).
     `lambda` is also known as the focusing parameter. In essence,
     `focal_loss = (1-mc_pt(pred,target))**gamma*ce`, where `ce` is the
@@ -573,6 +582,7 @@ def mc_focal_loss(
         alpha (torch.Tensor): class weights.
         gamma (Union[float,torch.Tensor]): focusing parameter.
         scale (float, optional): factor to scale loss before reducing.
+        label_smoothing (float, optional): smoothing factor. Defaults to 0.0.
         eps (float, optional): epsilon factor to avoid floating-point
             imprecisions.
 
@@ -587,6 +597,7 @@ def mc_focal_loss(
     if pred.shape != target.shape:
         target = classes_to_one_hot(target)
     p = mc_pt(pred, target)
+    target = target * (1 - label_smoothing) + 1 / target.shape[1]
     ce = -target * torch.log(pred + eps)
     out = torch.flatten(alpha * ((1 - p + eps) ** gamma) * ce, start_dim=1)
     return torch.mean(out * scale, dim=1)
@@ -601,7 +612,7 @@ def mc_generalized_dice_loss(
     eps: float = eps,
 ) -> torch.Tensor:
     """
-        Dice loss adapted to cases of very high class imbalance. In essence
+    Dice loss adapted to cases of very high class imbalance. In essence
     it adds class weights to the calculation of the Dice loss [1]. If
     `weights=1` it defaults to the regular Dice loss. This implementation
     works for both the binary and categorical cases.
@@ -646,7 +657,7 @@ def mc_focal_tversky_loss(
     gamma: Union[torch.Tensor, float] = 1.0,
 ) -> torch.Tensor:
     """
-        Categorical focal Tversky loss. Very similar to the original Tversky
+    Categorical focal Tversky loss. Very similar to the original Tversky
     loss but features a `gamma` term similar to the focal loss to focus the
     learning on harder/rarer examples [1]. The Tversky loss itself is very
     similar to the Dice score loss but weighs false positives and false
@@ -691,7 +702,7 @@ def mc_combo_loss(
     scale: float = 1.0,
 ) -> torch.Tensor:
     """
-        Combo loss. Simply put, it is a weighted combination of the Dice loss
+    Combo loss. Simply put, it is a weighted combination of the Dice loss
     and the weighted cross entropy [1]. `alpha` is the weight for each loss
     and weights is the weight for the binary cross entropy.
 
@@ -727,7 +738,7 @@ def mc_hybrid_focal_loss(
     tversky_params: dict = {},
 ) -> torch.Tensor:
     """
-        Hybrid focal loss. A combination of the focal loss and the focal
+    Hybrid focal loss. A combination of the focal loss and the focal
     Tversky loss. In essence, a weighted sum of both, where `lam` defines
     how both losses are combined.
 
@@ -763,7 +774,7 @@ def mc_unified_focal_loss(
     scale: float = 1.0,
 ) -> torch.Tensor:
     """
-        Unified focal loss. A combination of the focal loss and the focal
+    Unified focal loss. A combination of the focal loss and the focal
     Tversky loss. In essence, a weighted sum of both, where `lam` defines
     how both losses are combined but with fewer parameters than the hybrid
     focal loss (`gamma` and `delta` parametrize different aspects of each
