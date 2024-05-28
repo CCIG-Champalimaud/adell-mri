@@ -315,9 +315,11 @@ class LocalContrastiveLoss(torch.nn.Module):
         # [1] https://proceedings.neurips.cc/paper/2020/file/7fa215c9efebb3811a7ef58409907899-Paper.pdf
         X_1 = X_1.flatten(start_dim=2)[None, :, :, :]
         X_2 = X_2.flatten(start_dim=2)[:, None, :, :]
-        sim = F.cosine_similarity(X_1, X_2, dim=2) / self.temperature
+        sim = F.softmax(
+            F.cosine_similarity(X_1, X_2, dim=2) / self.temperature, dim=1
+        )
         loss = -torch.log(
-            torch.max(F.softmax(sim, dim=1).diagonal().permute(1, 0), self.eps)
+            torch.max(sim.diagonal().permute(1, 0), self.eps)
         ).mean(-1)
         return loss
 

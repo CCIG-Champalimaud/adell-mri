@@ -285,7 +285,7 @@ class UNetContrastiveSemiSL(UNetSemiSL, UNetBasePL):
             and self.semi_sl_image_key_2 is not None
         ):
             x_1, x_2, x_cond, x_fc = self.unpack_batch_semi_sl(batch)
-            self_sl_loss = self.step_semi_sl(x, x_1, x_2, x_cond, x_fc)
+            self_sl_loss = self.step_semi_sl(None, x_1, x_2, x_cond, x_fc)
             self.log(
                 "train_self_sl_loss",
                 self_sl_loss,
@@ -380,7 +380,7 @@ class UNetContrastiveSemiSL(UNetSemiSL, UNetBasePL):
             and self.semi_sl_image_key_2 is not None
         ):
             x_1, x_2, x_cond, x_fc = self.unpack_batch_semi_sl(batch)
-            self_sl_loss = self.step_semi_sl(x, x_1, x_2, x_cond, x_fc)
+            self_sl_loss = self.step_semi_sl(None, x_1, x_2, x_cond, x_fc)
             self.log(
                 "val_self_sl_loss",
                 self_sl_loss,

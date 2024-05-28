@@ -8,6 +8,7 @@ from adell_mri.modules.semi_supervised_segmentation.losses import (
     AnatomicalContrastiveLoss,
     PseudoLabelCrossEntropy,
     NearestNeighbourLoss,
+    LocalContrastiveLoss,
 )
 
 bs, c, h, w, nc = 2, 1, 32, 32, 5
@@ -65,3 +66,20 @@ def test_nearest_neighbour_loss():
 
         assert len(result.shape) == 0
         assert torch.isnan(result) == False
+
+
+def test_local_contrastive_loss():
+    for _ in range(trials):
+        lcl = LocalContrastiveLoss()
+
+        def get_features():
+            y = (torch.rand([bs, nc, h, w]) > 0.5).float()
+            features = torch.rand([bs, n_features, h, w])
+            return features
+
+        features_1 = get_features()
+        features_2 = get_features()
+        result = lcl.forward(features_1, features_2)
+
+        assert len(result.shape) == 1
+        assert torch.all(torch.isnan(result) == False)
