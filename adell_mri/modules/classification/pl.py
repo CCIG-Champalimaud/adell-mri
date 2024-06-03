@@ -24,7 +24,7 @@ from .classification import (
     HybridClassifier,
     VGG,
 )
-from .classification.deconfounded_classification import DeconfoundedNet
+from .classification.deconfounded_classification import DeconfoundedNetGeneric
 from ..conformal_prediction import AdaptivePredictionSets
 from ..learning_rate import CosineAnnealingWithWarmupLR
 
@@ -1461,7 +1461,7 @@ class HybridClassifierPL(HybridClassifier, ClassPLABC):
         return loss
 
 
-class DeconfoundedNetPL(DeconfoundedNet, ClassPLABC):
+class DeconfoundedNetPL(DeconfoundedNetGeneric, ClassPLABC):
     """
     Feature deconfounder net for PyTorch Lightning.
     """
@@ -1592,6 +1592,7 @@ class DeconfoundedNetPL(DeconfoundedNet, ClassPLABC):
         features = prediction[3]
         cat_conf_loss = None
         cont_conf_loss = None
+        feature_loss = None
         if self.cat_confounder_key is not None:
             y_cat_confounder = batch[self.cat_confounder_key]
             cat_conf_loss = self.loss_cat_confounder(
@@ -1602,7 +1603,8 @@ class DeconfoundedNetPL(DeconfoundedNet, ClassPLABC):
             cont_conf_loss = self.loss_cont_confounder(
                 confounder_regression, y_cont_confounder
             )
-        feature_loss = self.loss_features(features)
+        if self.cat_confounder_key or self.cont_confounder_key:
+            feature_loss = self.loss_features(features)
         classification_loss = self.calculate_loss(
             classification.squeeze(1), y, with_params=with_params
         )

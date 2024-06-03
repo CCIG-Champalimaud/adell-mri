@@ -735,6 +735,11 @@ argument_factory = {
         action="store_true",
         help="Excludes variables used in deconfounding from prediction.",
     ),
+    "n_features_deconfounder": dict(
+        default=64,
+        type=int,
+        help="Number of features used for deconfounding during training.",
+    ),
     # semi-supervised segmentation
     "semi_supervised": dict(
         action="store_true",

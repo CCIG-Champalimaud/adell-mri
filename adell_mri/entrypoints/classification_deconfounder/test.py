@@ -37,6 +37,7 @@ def main(arguments):
             "cat_confounder_keys",
             "cont_confounder_keys",
             "exclude_surrogate_variables",
+            "n_features_deconfounder",
             "image_masking",
             "image_crop_from_mask",
             "filter_on_keys",
@@ -280,7 +281,7 @@ def main(arguments):
                 label_smoothing=None,
                 mixup_alpha=None,
                 partial_mixup=None,
-                n_features_deconfounder=128,
+                n_features_deconfounder=args.n_features_deconfounder,
                 exclude_surrogate_variables=args.exclude_surrogate_variables,
             )
             load_checkpoint_to_model(
