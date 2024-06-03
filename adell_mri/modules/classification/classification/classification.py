@@ -71,6 +71,7 @@ class VGG(torch.nn.Module):
         spatial_dimensions: int = 3,
         n_channels: int = 1,
         n_classes: int = 2,
+        depth_mult: float = 1.0,
         feature_extraction=None,
         resnet_structure=None,
         maxpool_structure=None,
@@ -87,6 +88,8 @@ class VGG(torch.nn.Module):
             n_channels (int, optional): number of input channels. Defaults to
                 1.
             n_classes (int, optional): number of classes. Defaults to 2.
+            depth_mult (float, optional): multiplies the feature extractor
+                depths. Defaults to 1.0 (64, 128, 256).
             classification_structure (List[int], optional): structure of the
                 classifier. Defaults to [512,512,512].
             batch_ensemble (int, optional): number of batch ensemble modules.
@@ -98,13 +101,19 @@ class VGG(torch.nn.Module):
         super().__init__()
         self.in_channels = n_channels
         self.n_classes = n_classes
+        self.depth_mult = depth_mult
         self.batch_ensemble = batch_ensemble
         self.classification_structure = classification_structure
         self.output_features = output_features
 
-        self.conv1 = VGGConvolution3d(self.in_channels, 64)
-        self.conv2 = VGGConvolution3d(128, 128)
-        self.conv3 = VGGConvolution3d(256, 256, batch_ensemble=batch_ensemble)
+        depths = [int(x * self.depth_mult) for x in [64, 128, 256]]
+        self.output_features = int(self.output_features * self.depth_mult)
+
+        self.conv1 = VGGConvolution3d(self.in_channels, depths[0])
+        self.conv2 = VGGConvolution3d(depths[1], depths[1])
+        self.conv3 = VGGConvolution3d(
+            depths[2], depths[2], batch_ensemble=batch_ensemble
+        )
 
         if self.n_classes == 2:
             final_n = 1
