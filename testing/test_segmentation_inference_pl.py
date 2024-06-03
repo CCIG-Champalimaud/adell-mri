@@ -19,22 +19,32 @@ spatial_dims = [2, 3]
 
 
 def test_sliding_window_inference():
-    unet = UNetPL(
-        spatial_dimensions=3,
-        depth=depth,
-        kernel_sizes=kernel_sizes,
-        strides=strides,
-        interpolation="trilinear",
-        padding=1,
-    )
-    input_tensor = torch.ones([1, c, h, w, d])
+    unet = torch.nn.Identity()
+    input_tensor = torch.rand([1, c, h, w, d])
     sli = SlidingWindowSegmentation(
-        [8, 8, 8], lambda x: unet.forward(x)[0], n_classes=1
+        [8, 8, 8], lambda x: unet.forward(x), n_classes=1
     )
     output = sli(input_tensor)
     assert list(output.shape) == [1, 1, h, w, d]
     assert output.max() <= 1
     assert output.min() >= 0
+    assert torch.all(torch.isclose(output, input_tensor))
+
+
+def test_segmentation_inference():
+    unet = torch.nn.Identity()
+    input_tensor = torch.rand([1, c, h, w, d])
+    sli = SegmentationInference(
+        base_inference_function=lambda x: unet.forward(x),
+        sliding_window_size=[8, 8, 8],
+        n_classes=1,
+        flip=True,
+    )
+    output = sli(input_tensor)
+    assert list(output.shape) == [1, 1, h, w, d]
+    assert output.max() <= 1
+    assert output.min() >= 0
+    assert torch.all(torch.isclose(output, input_tensor))
 
 
 def test_sliding_window_inference_pl():
