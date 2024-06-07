@@ -1547,7 +1547,7 @@ class DeconfoundedNetPL(DeconfoundedNetGeneric, ClassPLABC):
 
         self.loss_str = ["loss", "cat_loss", "cont_loss", "feat_loss"]
 
-        self.conf_mult = 0.1
+        self.conf_mult = 1.0
 
         self.save_hyperparameters(ignore=["loss_fn"])
         self.setup_metrics()
@@ -1574,11 +1574,14 @@ class DeconfoundedNetPL(DeconfoundedNetGeneric, ClassPLABC):
             deconf_f = features[:, None, self.n_features_deconfounder :]
             conf_f_norm = conf_f - conf_f.mean(0, keepdim=True)
             deconf_f_norm = deconf_f - deconf_f.mean(0, keepdim=True)
-            n = conf_f_norm * deconf_f_norm
-            n = n.sum(0)
-            d1 = conf_f_norm.square().sum(0).sqrt()
-            d2 = deconf_f_norm.square().sum(0).sqrt()
-            return torch.mean(torch.square(n / torch.clamp(d1 * d2, min=1e-8)))
+            n = (conf_f_norm * deconf_f_norm).sum(0)
+            d = torch.multiply(
+                conf_f_norm.square().sum(0).sqrt(),
+                deconf_f_norm.square().sum(0).sqrt(),
+            ) # applying sqrt separately prevents overflows with low precision
+            return torch.mean(
+                torch.square(n / torch.clamp(torch.sqrt(d), min=1e-8))
+            )
 
     def step(self, batch: Dict[str, torch.Tensor], with_params: bool):
         x, y = batch[self.image_key], batch[self.label_key]
