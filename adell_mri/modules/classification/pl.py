@@ -1576,12 +1576,11 @@ class DeconfoundedNetPL(DeconfoundedNetGeneric, ClassPLABC):
             deconf_f_norm = deconf_f - deconf_f.mean(0, keepdim=True)
             n = (conf_f_norm * deconf_f_norm).sum(0)
             d = torch.multiply(
+                # applying sqrt separately prevents overflows with low precision
                 conf_f_norm.square().sum(0).sqrt(),
                 deconf_f_norm.square().sum(0).sqrt(),
-            ) # applying sqrt separately prevents overflows with low precision
-            return torch.mean(
-                torch.square(n / torch.clamp(torch.sqrt(d), min=1e-8))
-            )
+            ).clamp(min=1e-8)
+            return n.divide(d).clamp(-1.0, 1.0).square().mean()
 
     def step(self, batch: Dict[str, torch.Tensor], with_params: bool):
         x, y = batch[self.image_key], batch[self.label_key]
@@ -1682,3 +1681,35 @@ class DeconfoundedNetPL(DeconfoundedNetGeneric, ClassPLABC):
             metrics[k](prediction, y)
             if log is True:
                 self.log(k, metrics[k], **kwargs)
+
+    def configure_optimizers(self):
+        params_confounder = []
+        params_classifier = []
+        for n, p in self.named_parameters():
+            if "confound" in n:
+                params_confounder.append(p)
+            else:
+                params_classifier.append(p)
+        parameters = [
+            {
+                "params": params_confounder,
+                "weight_decay": self.weight_decay / 10,
+            },
+            {
+                "params": params_classifier,
+                "weight_decay": self.weight_decay,
+            },
+        ]
+        optimizer = torch.optim.Adam(parameters, lr=self.learning_rate)
+        lr_schedulers = CosineAnnealingWithWarmupLR(
+            optimizer,
+            T_max=self.n_epochs,
+            start_decay=self.start_decay,
+            n_warmup_steps=self.warmup_steps,
+        )
+
+        return {
+            "optimizer": optimizer,
+            "lr_scheduler": lr_schedulers,
+            "monitor": "val_loss",
+        }
