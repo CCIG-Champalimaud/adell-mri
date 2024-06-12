@@ -61,6 +61,83 @@ def ordinal_prediction_to_class(x: torch.Tensor) -> torch.Tensor:
     return output
 
 
+class VGGBackbone(torch.nn.Module):
+    """
+    Very simple and naive VGG backbone for standard categorical classification.
+    """
+
+    def __init__(
+        self,
+        spatial_dimensions: int = 3,
+        n_channels: int = 1,
+        depth_mult: float = 1.0,
+        feature_extraction=None,
+        resnet_structure=None,
+        maxpool_structure=None,
+        adn_fn=None,
+        res_type=None,
+        batch_ensemble: int = 0,
+    ):
+        """
+        Args:
+            spatial_dimensions (int, optional): number of spatial dimensions.
+                Defaults to 3.
+            n_channels (int, optional): number of input channels. Defaults to
+                1.
+            depth_mult (float, optional): multiplies the feature extractor
+                depths. Defaults to 1.0 (64, 128, 256).
+            batch_ensemble (int, optional): number of batch ensemble modules.
+                Defautls to 0.
+        """
+        super().__init__()
+        self.in_channels = n_channels
+        self.depth_mult = depth_mult
+        self.batch_ensemble = batch_ensemble
+
+        depths = [int(x * self.depth_mult) for x in [64, 128, 256]]
+
+        self.conv1 = VGGConvolution3d(self.in_channels, depths[0])
+        self.conv2 = VGGConvolution3d(depths[1], depths[1])
+        self.conv3 = VGGConvolution3d(
+            depths[2], depths[2], batch_ensemble=batch_ensemble
+        )
+        self.output_features = int(self.output_features * self.depth_mult)
+
+    def forward_features(
+        self, X: torch.Tensor, batch_idx: int = None
+    ) -> torch.Tensor:
+        """Forward method for features only.
+
+        Args:
+            X (torch.Tensor): input tensor
+            batch_idx (int, optional): uses a specific batch ensemble
+                transformation. Defaults to None (usually random).
+
+        Returns:
+            torch.Tensor: output (classification)
+        """
+        return self.forward(X, batch_idx=batch_idx)
+
+    def forward(
+        self,
+        X: torch.Tensor,
+        batch_idx: int = None,
+    ) -> torch.Tensor:
+        """Forward method.
+
+        Args:
+            X (torch.Tensor): input tensor
+            batch_idx (int, optional): uses a specific batch ensemble
+                transformation. Defaults to None (usually random).
+
+        Returns:
+            torch.Tensor: output (classification)
+        """
+        X = self.conv1(X)
+        X = self.conv2(X)
+        return self.conv3(X, batch_idx=batch_idx)
+
+
 class VGG(torch.nn.Module):
     """
     Very simple and naive VGG net for standard categorical classification.
@@ -79,7 +156,7 @@ class VGG(torch.nn.Module):
         res_type=None,
         classification_structure: List[int] = [512, 512, 512],
         batch_ensemble: int = 0,
-        output_features: int = 512,
+        output_features: int = None,
     ):
         """
         Args:
@@ -96,7 +173,7 @@ class VGG(torch.nn.Module):
                 Defautls to 0.
             output_features (int, optional): number of output features. Used
                 only when adapting this class to other methods. Defaults to
-                512.
+                None (512).
         """
         super().__init__()
         self.in_channels = n_channels
@@ -105,6 +182,8 @@ class VGG(torch.nn.Module):
         self.batch_ensemble = batch_ensemble
         self.classification_structure = classification_structure
         self.output_features = output_features
+        if output_features is None:
+            self.output_features = 512
 
         depths = [int(x * self.depth_mult) for x in [64, 128, 256]]
         self.output_features = int(self.output_features * self.depth_mult)
@@ -274,6 +353,7 @@ class CatNet(torch.nn.Module):
                 input_shape.append(32)
             example_tensor = torch.ones(input_shape)
             self.last_size = self.feature_extraction(example_tensor).shape[1]
+        self.output_features = self.last_size
 
     def init_classification_layer(self):
         if self.n_classes == 2:
@@ -539,6 +619,7 @@ class UNetEncoder(UNet):
             self.prediction_head = None
 
         self.initialize_head()
+        self.output_features = self.n_features
 
     def initialize_head(self):
         if self.n_classes == 2:
@@ -635,6 +716,7 @@ class ViTClassifier(ViT):
                 adn_fn=get_adn_fn(1, "layer", "gelu"),
             )
         )
+        self.output_features = self.input_dim_primary
 
     def forward_features(self, X: torch.Tensor) -> torch.Tensor:
         """Forward pass.
@@ -732,6 +814,7 @@ class FactorizedViTClassifier(FactorizedViT):
                 adn_fn=get_adn_fn(1, "layer", "gelu"),
             )
         )
+        self.output_features = self.input_dim_primary
 
     def forward_features(self, X: torch.Tensor) -> torch.Tensor:
         """Forward pass for features.
@@ -853,6 +936,7 @@ class TabularClassifier(torch.nn.Module):
 
         self.init_mlp()
         self.init_normalization_parameters()
+        self.output_features = self.mlp_structure[-1]
 
     def init_mlp(self):
         nc = 1 if self.n_classes == 2 else self.n_classes

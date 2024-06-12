@@ -92,6 +92,8 @@ class ResNetBackbone(torch.nn.Module):
         self.get_ops()
         self.init_layers()
 
+        self.output_features = self.structure[-1][0]
+
     def get_ops(self):
         if self.spatial_dim == 2:
             if self.res_type == "resnet":
