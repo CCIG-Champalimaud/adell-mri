@@ -1,5 +1,6 @@
 import torch
 from .generator import Generator
+from typing import Callable
 
 
 class VAE(Generator):
@@ -22,6 +23,26 @@ class VAE(Generator):
         std = torch.exp(0.5 * logvar)
         eps = torch.normal(0, 1, std.shape)
         return mu + eps * std
+
+    def apply_to_channels_as_last(
+        self, x: torch.Tensor, fn: Callable
+    ) -> torch.Tensor:
+        """
+        Applies function to the permuted version of a tensor such that the 1st
+        channel is placed at the last position, the function is applied and the
+        input format is returned.
+
+        Args:
+            x (torch.Tensor): input tensor.
+            fn (Callable): callable function.
+
+        Returns:
+            torch.Tensor: output tensor.
+        """
+        dims = [i for i in range(len(x.shape))]
+        return torch.permute(
+            fn(torch.permute(x, [0, *dims[1:-1], 1])), [0, -1, *dims[1:-1]]
+        )
 
     def forward(
         self,
@@ -65,8 +86,10 @@ class VAE(Generator):
 
         # VAE-specific
         bottleneck = down_block_res_samples[-1]
-        mu = self.predict_mu(bottleneck)
-        logvar = self.predict_logvar(bottleneck)
+        mu = self.apply_to_channels_as_last(bottleneck, self.predict_mu)
+        logvar = self.apply_to_channels_as_last(
+            bottleneck, self.predict_logvar
+        )
         down_block_res_samples[-1] = self.sample(mu, logvar)
 
         # 4. mid
