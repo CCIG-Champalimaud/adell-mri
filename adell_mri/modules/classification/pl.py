@@ -1693,7 +1693,7 @@ class DeconfoundedNetPL(DeconfoundedNetGeneric, ClassPLABC):
         parameters = [
             {
                 "params": params_confounder,
-                "weight_decay": self.weight_decay / 10,
+                "weight_decay": 0,
             },
             {
                 "params": params_classifier,

@@ -162,7 +162,7 @@ def test_discriminator_convnext_additional_classifiers_and_features():
     assert list(class_target[1].shape) == [1, 4]
 
 
-def test_gan():
+def test_gan_complete():
     generator = Generator(
         spatial_dims=2,
         in_channels=1,

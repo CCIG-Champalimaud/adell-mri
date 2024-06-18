@@ -1997,6 +1997,7 @@ class Generator(torch.nn.Module):
                 )
             ),
         )
+        self.out_activation = torch.nn.Tanh()
 
     def forward(
         self,
@@ -2055,6 +2056,7 @@ class Generator(torch.nn.Module):
 
             down_block_res_samples = new_down_block_res_samples
 
+
         # 4. mid
         h = self.middle_block(hidden_states=h, emb=class_emb, context=context)
 
@@ -2079,5 +2081,6 @@ class Generator(torch.nn.Module):
 
         # 6. output block
         h = self.out(h)
+        h = self.out_activation(h)
 
         return h
