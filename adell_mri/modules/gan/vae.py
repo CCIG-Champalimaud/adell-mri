@@ -3,7 +3,7 @@ from .generator import Generator
 from typing import Callable
 
 
-class VAE(Generator):
+class VariationalAutoEncoder(Generator):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.bottleneck_dim = self.block_out_channels[-1]
@@ -21,7 +21,7 @@ class VAE(Generator):
             logvar (torch.Tensor): log variance tensor (N, C).
         """
         std = torch.exp(0.5 * logvar)
-        eps = torch.normal(0, 1, std.shape)
+        eps = torch.normal(0, 1, std.shape).to(std)
         return mu + eps * std
 
     def apply_to_channels_as_last(
@@ -40,9 +40,9 @@ class VAE(Generator):
             torch.Tensor: output tensor.
         """
         dims = [i for i in range(len(x.shape))]
-        return torch.permute(
-            fn(torch.permute(x, [0, *dims[1:-1], 1])), [0, -1, *dims[1:-1]]
-        )
+        a = [0, *dims[2:], 1]
+        b = [0, -1, *dims[1:-1]]
+        return torch.permute(fn(torch.permute(x, a)), b)
 
     def forward(
         self,
@@ -72,7 +72,6 @@ class VAE(Generator):
             class_emb = class_emb.to(dtype=x.dtype)
 
         # 2. initial convolution
-
         h = self.conv_in(x)
 
         # 3. down
@@ -84,16 +83,17 @@ class VAE(Generator):
             for residual in res_samples:
                 down_block_res_samples.append(residual)
 
+        # 4. mid
+        h = self.middle_block(hidden_states=h, emb=class_emb, context=context)
+
         # VAE-specific
-        bottleneck = down_block_res_samples[-1]
+        bottleneck = h
         mu = self.apply_to_channels_as_last(bottleneck, self.predict_mu)
         logvar = self.apply_to_channels_as_last(
             bottleneck, self.predict_logvar
         )
-        down_block_res_samples[-1] = self.sample(mu, logvar)
-
-        # 4. mid
-        h = self.middle_block(hidden_states=h, emb=class_emb, context=context)
+        h = self.sample(mu, logvar)
+        self.last_bottleneck_shape = h.shape
 
         # 5. up
         for upsample_block in self.up_blocks:
@@ -103,6 +103,8 @@ class VAE(Generator):
             down_block_res_samples = down_block_res_samples[
                 : -len(upsample_block.resnets)
             ]
+            if self.no_skip_connection:
+                res_samples = None
             h = upsample_block(
                 hidden_states=h,
                 emb=class_emb,
@@ -115,3 +117,37 @@ class VAE(Generator):
         h = self.out_activation(h)
 
         return h, mu, logvar
+
+    @torch.inference_mode()
+    def generate(
+        self,
+        shape: list[int] | tuple[int],
+        class_labels: torch.Tensor | None = None,
+        context: torch.Tensor | None = None,
+    ):
+        if self.no_skip_connection is False:
+            raise NotImplementedError(
+                f"no_skip_connection must be False for {self.__name__} generation"
+            )
+        if shape is None:
+            if self.last_bottleneck_shape is None:
+                raise ValueError(
+                    "At least one forward pass required for generation with shape=None"
+                )
+            shape = self.last_bottleneck_shape
+        mu = torch.zeros(*shape)
+        logvar = torch.zeros(*shape)
+        h = self.sample(mu, logvar)
+        class_emb = self.get_class_embeddings(h, class_labels)
+        for upsample_block in self.up_blocks:
+            res_samples = None
+            h = upsample_block(
+                hidden_states=h,
+                emb=class_emb,
+                res_hidden_states_list=res_samples,
+                context=context,
+            )
+        h = self.out(h)
+        h = self.out_activation(h)
+
+        return h

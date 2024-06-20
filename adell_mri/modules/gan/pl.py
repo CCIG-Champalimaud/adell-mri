@@ -2,9 +2,10 @@ import torch
 import lightning.pytorch as pl
 from abc import ABC
 from typing import Any
-from .losses import AdversarialLoss
+from .losses import AdversarialLoss, GaussianKLLoss
 from .gan import GAN, Generator
-from .vae import VAE
+from .ae import AutoEncoder
+from .vae import VariationalAutoEncoder
 
 
 class GANPLABC(pl.LightningModule, ABC):
@@ -63,7 +64,7 @@ class GANPLABC(pl.LightningModule, ABC):
         return loss
 
 
-class AutoEncoderPL(Generator, pl.LightningModule):
+class AutoEncoderPL(AutoEncoder, pl.LightningModule):
     def __init__(
         self,
         input_image_key: str = "input_image",
@@ -138,7 +139,7 @@ class AutoEncoderPL(Generator, pl.LightningModule):
         )
 
 
-class VariationalAutoEncoderPL(VAE, pl.LightningModule):
+class VariationalAutoEncoderPL(VariationalAutoEncoder, pl.LightningModule):
     def __init__(
         self,
         input_image_key: str = "input_image",
@@ -148,6 +149,7 @@ class VariationalAutoEncoderPL(VAE, pl.LightningModule):
         learning_rate: float = 0.0002,
         momentum_beta1: float = 0.5,
         momentum_beta2: float = 0.99,
+        var_loss_mult: float = 1.0,
         *args,
         **kwargs,
     ):
@@ -159,8 +161,10 @@ class VariationalAutoEncoderPL(VAE, pl.LightningModule):
         self.learning_rate = learning_rate
         self.momentum_beta1 = momentum_beta1
         self.momentum_beta2 = momentum_beta2
+        self.var_loss_mult = var_loss_mult
 
         self.loss_fn = torch.nn.MSELoss()
+        self.variational_loss_fn = GaussianKLLoss()
         self.init_routine()
 
     def init_routine(self):
@@ -168,9 +172,10 @@ class VariationalAutoEncoderPL(VAE, pl.LightningModule):
 
     def step(self, batch):
         x = batch[self.input_image_key]
-        output = self.forward(x)
+        output, mu, logvar = self.forward(x)
+        var_loss = self.variational_loss_fn(mu, logvar)
         loss = self.loss_fn(output, x)
-        return {"loss": loss}
+        return {"rec_loss": loss, "var_loss": self.var_loss_mult * var_loss}
 
     def training_step(self, batch, batch_idx):
         loss_dict = self.step(batch)

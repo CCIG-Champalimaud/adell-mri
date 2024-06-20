@@ -1273,15 +1273,19 @@ class UpBlock(torch.nn.Module):
         norm_eps: float = 1e-6,
         add_upsample: bool = True,
         resblock_updown: bool = False,
+        no_skip_connection: bool = False,
     ) -> None:
         super().__init__()
         self.resblock_updown = resblock_updown
+        self.no_skip_connection = no_skip_connection
         resnets = []
 
         for i in range(num_res_blocks):
             res_skip_channels = (
                 in_channels if (i == num_res_blocks - 1) else out_channels
             )
+            if self.no_skip_connection:
+                res_skip_channels = 0
             resnet_in_channels = (
                 prev_output_channel if i == 0 else out_channels
             )
@@ -1323,18 +1327,19 @@ class UpBlock(torch.nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        res_hidden_states_list: list[torch.Tensor],
         emb: torch.Tensor,
+        res_hidden_states_list: list[torch.Tensor] | None = None,
         context: torch.Tensor | None = None,
     ) -> torch.Tensor:
         del context
         for resnet in self.resnets:
             # pop res hidden states
-            res_hidden_states = res_hidden_states_list[-1]
-            res_hidden_states_list = res_hidden_states_list[:-1]
-            hidden_states = torch.cat(
-                [hidden_states, res_hidden_states], dim=1
-            )
+            if self.no_skip_connection is False:
+                res_hidden_states = res_hidden_states_list[-1]
+                res_hidden_states_list = res_hidden_states_list[:-1]
+                hidden_states = torch.cat(
+                    [hidden_states, res_hidden_states], dim=1
+                )
 
             hidden_states = resnet(hidden_states, emb)
 
@@ -1377,9 +1382,11 @@ class AttnUpBlock(torch.nn.Module):
         resblock_updown: bool = False,
         num_head_channels: int = 1,
         use_flash_attention: bool = False,
+        no_skip_connection: bool = False,
     ) -> None:
         super().__init__()
         self.resblock_updown = resblock_updown
+        self.no_skip_connection = no_skip_connection
 
         resnets = []
         attentions = []
@@ -1388,6 +1395,8 @@ class AttnUpBlock(torch.nn.Module):
             res_skip_channels = (
                 in_channels if (i == num_res_blocks - 1) else out_channels
             )
+            if self.no_skip_connection:
+                res_skip_channels = 0
             resnet_in_channels = (
                 prev_output_channel if i == 0 else out_channels
             )
@@ -1440,18 +1449,19 @@ class AttnUpBlock(torch.nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        res_hidden_states_list: list[torch.Tensor],
         emb: torch.Tensor,
+        res_hidden_states_list: list[torch.Tensor] | None = None,
         context: torch.Tensor | None = None,
     ) -> torch.Tensor:
         del context
         for resnet, attn in zip(self.resnets, self.attentions):
             # pop res hidden states
-            res_hidden_states = res_hidden_states_list[-1]
-            res_hidden_states_list = res_hidden_states_list[:-1]
-            hidden_states = torch.cat(
-                [hidden_states, res_hidden_states], dim=1
-            )
+            if self.no_skip_connection is False:
+                res_hidden_states = res_hidden_states_list[-1]
+                res_hidden_states_list = res_hidden_states_list[:-1]
+                hidden_states = torch.cat(
+                    [hidden_states, res_hidden_states], dim=1
+                )
 
             hidden_states = resnet(hidden_states, emb)
             hidden_states = attn(hidden_states)
@@ -1501,9 +1511,11 @@ class CrossAttnUpBlock(torch.nn.Module):
         cross_attention_dim: int | None = None,
         upcast_attention: bool = False,
         use_flash_attention: bool = False,
+        no_skip_connection: bool = False,
     ) -> None:
         super().__init__()
         self.resblock_updown = resblock_updown
+        self.no_skip_connection = no_skip_connection
 
         resnets = []
         attentions = []
@@ -1512,6 +1524,8 @@ class CrossAttnUpBlock(torch.nn.Module):
             res_skip_channels = (
                 in_channels if (i == num_res_blocks - 1) else out_channels
             )
+            if self.no_skip_connection:
+                res_skip_channels = 0
             resnet_in_channels = (
                 prev_output_channel if i == 0 else out_channels
             )
@@ -1568,17 +1582,18 @@ class CrossAttnUpBlock(torch.nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        res_hidden_states_list: list[torch.Tensor],
         emb: torch.Tensor,
+        res_hidden_states_list: list[torch.Tensor] | None = None,
         context: torch.Tensor | None = None,
     ) -> torch.Tensor:
         for resnet, attn in zip(self.resnets, self.attentions):
             # pop res hidden states
-            res_hidden_states = res_hidden_states_list[-1]
-            res_hidden_states_list = res_hidden_states_list[:-1]
-            hidden_states = torch.cat(
-                [hidden_states, res_hidden_states], dim=1
-            )
+            if self.no_skip_connection is False:
+                res_hidden_states = res_hidden_states_list[-1]
+                res_hidden_states_list = res_hidden_states_list[:-1]
+                hidden_states = torch.cat(
+                    [hidden_states, res_hidden_states], dim=1
+                )
 
             hidden_states = resnet(hidden_states, emb)
             hidden_states = attn(hidden_states, context=context)
@@ -1708,6 +1723,7 @@ def get_up_block(
     cross_attention_dim: int | None,
     upcast_attention: bool = False,
     use_flash_attention: bool = False,
+    no_skip_connection: bool = False,
 ) -> torch.nn.Module:
     if with_attn:
         return AttnUpBlock(
@@ -1723,6 +1739,7 @@ def get_up_block(
             resblock_updown=resblock_updown,
             num_head_channels=num_head_channels,
             use_flash_attention=use_flash_attention,
+            no_skip_connection=no_skip_connection,
         )
     elif with_cross_attn:
         return CrossAttnUpBlock(
@@ -1741,6 +1758,7 @@ def get_up_block(
             cross_attention_dim=cross_attention_dim,
             upcast_attention=upcast_attention,
             use_flash_attention=use_flash_attention,
+            no_skip_connection=no_skip_connection,
         )
     else:
         return UpBlock(
@@ -1754,6 +1772,7 @@ def get_up_block(
             norm_eps=norm_eps,
             add_upsample=add_upsample,
             resblock_updown=resblock_updown,
+            no_skip_connection=no_skip_connection,
         )
 
 
@@ -1781,6 +1800,7 @@ class Generator(torch.nn.Module):
         classes.
         upcast_attention: if True, upcast attention operations to full precision.
         use_flash_attention: if True, use flash attention for a memory efficient attention mechanism.
+        no_skip_connection: if True, do not add skip connections between up/down blocks.
     """
 
     def __init__(
@@ -1801,6 +1821,7 @@ class Generator(torch.nn.Module):
         num_class_embeds: int | None = None,
         upcast_attention: bool = False,
         use_flash_attention: bool = False,
+        no_skip_connection: bool = False,
     ) -> None:
         super().__init__()
         if with_conditioning is True:
@@ -1869,6 +1890,9 @@ class Generator(torch.nn.Module):
         self.num_head_channels = num_head_channels
         self.with_conditioning = with_conditioning
         self.cross_attention_dim = cross_attention_dim
+        self.no_skip_connection = no_skip_connection
+
+        self.last_bottleneck_shape = None
 
         # input
         self.conv_in = Convolution(
@@ -1972,6 +1996,7 @@ class Generator(torch.nn.Module):
                 cross_attention_dim=cross_attention_dim,
                 upcast_attention=upcast_attention,
                 use_flash_attention=use_flash_attention,
+                no_skip_connection=self.no_skip_connection,
             )
 
             self.up_blocks.append(up_block)
@@ -1999,6 +2024,19 @@ class Generator(torch.nn.Module):
         )
         self.out_activation = torch.nn.Tanh()
 
+    def get_class_embeddings(
+        self, x: torch.Tensor, class_labels: torch.Tensor
+    ) -> torch.Tensor:
+        class_emb = None
+        if self.num_class_embeds is not None:
+            if class_labels is None:
+                raise ValueError(
+                    "class_labels should be provided when num_class_embeds > 0"
+                )
+            class_emb = self.class_embedding(class_labels)
+            class_emb = class_emb.to(dtype=x.dtype)
+        return class_emb
+
     def forward(
         self,
         x: torch.Tensor,
@@ -2021,14 +2059,7 @@ class Generator(torch.nn.Module):
                 "model should have with_conditioning = True if context is provided"
             )
         # 1. class
-        class_emb = None
-        if self.num_class_embeds is not None:
-            if class_labels is None:
-                raise ValueError(
-                    "class_labels should be provided when num_class_embeds > 0"
-                )
-            class_emb = self.class_embedding(class_labels)
-            class_emb = class_emb.to(dtype=x.dtype)
+        class_emb = self.get_class_embeddings(x, class_labels)
 
         # 2. initial convolution
 
@@ -2056,9 +2087,9 @@ class Generator(torch.nn.Module):
 
             down_block_res_samples = new_down_block_res_samples
 
-
         # 4. mid
         h = self.middle_block(hidden_states=h, emb=class_emb, context=context)
+        self.last_bottleneck_shape = h.shape
 
         # Additional residual conections for Controlnets
         if mid_block_additional_residual is not None:
@@ -2072,6 +2103,8 @@ class Generator(torch.nn.Module):
             down_block_res_samples = down_block_res_samples[
                 : -len(upsample_block.resnets)
             ]
+            if self.no_skip_connection:
+                res_samples = None
             h = upsample_block(
                 hidden_states=h,
                 emb=class_emb,
@@ -2082,5 +2115,44 @@ class Generator(torch.nn.Module):
         # 6. output block
         h = self.out(h)
         h = self.out_activation(h)
+
+        return h
+
+    def forward_bottleneck(
+        self,
+        x: torch.Tensor,
+        context: torch.Tensor | None = None,
+        class_labels: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        """
+        Args:
+            x: input tensor (N, C, SpatialDims).
+            timesteps: timestep tensor (N,).
+            context: context tensor (N, 1, ContextDim).
+            class_labels: context tensor (N, ).
+        """
+        if context is not None and self.with_conditioning is False:
+            raise ValueError(
+                "model should have with_conditioning = True if context is provided"
+            )
+        # 1. class
+        class_emb = self.get_class_embeddings(x, class_labels)
+
+        # 2. initial convolution
+
+        h = self.conv_in(x)
+
+        # 3. down
+        down_block_res_samples: list[torch.Tensor] = [h]
+        for downsample_block in self.down_blocks:
+            h, res_samples = downsample_block(
+                hidden_states=h, emb=class_emb, context=context
+            )
+            for residual in res_samples:
+                down_block_res_samples.append(residual)
+
+        # 4. mid
+        h = self.middle_block(hidden_states=h, emb=class_emb, context=context)
+        self.last_bottleneck_shape = h.shape
 
         return h
