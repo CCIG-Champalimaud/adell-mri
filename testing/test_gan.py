@@ -92,7 +92,7 @@ def test_discriminator_convnext():
 
     input_tensor = torch.rand(1, 1, 32, 32)
     out, class_target, reg_target = disc(input_tensor)
-    assert list(out.shape) == [1, 2]
+    assert list(out.shape) == [1, 1]
 
 
 def test_discriminator_convnext_additional_classifiers():
@@ -106,7 +106,7 @@ def test_discriminator_convnext_additional_classifiers():
 
     input_tensor = torch.rand(1, 1, 32, 32)
     out, class_target, reg_target = disc(input_tensor)
-    assert list(out.shape) == [1, 2]
+    assert list(out.shape) == [1, 1]
     assert list(class_target[0].shape) == [1, 2]
     assert list(class_target[1].shape) == [1, 4]
 
@@ -122,7 +122,7 @@ def test_discriminator_convnext_additional_regressors():
 
     input_tensor = torch.rand(1, 1, 32, 32)
     out, class_target, reg_target = disc(input_tensor)
-    assert list(out.shape) == [1, 2]
+    assert list(out.shape) == [1, 1]
     assert list(reg_target.shape) == [1, 4]
 
 
@@ -138,7 +138,7 @@ def test_discriminator_convnext_additional_regressors_and_classifiers():
 
     input_tensor = torch.rand(1, 1, 32, 32)
     out, class_target, reg_target = disc(input_tensor)
-    assert list(out.shape) == [1, 2]
+    assert list(out.shape) == [1, 1]
     assert list(class_target[0].shape) == [1, 2]
     assert list(class_target[1].shape) == [1, 4]
     assert list(reg_target.shape) == [1, 4]
@@ -157,7 +157,7 @@ def test_discriminator_convnext_additional_classifiers_and_features():
     input_tensor = torch.rand(1, 1, 32, 32)
     additional_input_tensor = torch.rand(1, 4)
     out, class_target, reg_target = disc(input_tensor, additional_input_tensor)
-    assert list(out.shape) == [1, 2]
+    assert list(out.shape) == [1, 1]
     assert list(class_target[0].shape) == [1, 2]
     assert list(class_target[1].shape) == [1, 4]
 
