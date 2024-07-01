@@ -48,6 +48,7 @@ def main(arguments):
             "t2_keys",
             "label_keys",
             "filter_on_keys",
+            "fill_missing_with_placeholder",
             "possible_labels",
             "positive_labels",
             "label_groups",
@@ -126,6 +127,7 @@ def main(arguments):
     output_file = open(args.metric_path, "w")
 
     data_dict = Dataset(args.dataset_json, rng=rng)
+    data_dict.fill_missing_with_value(args.fill_missing_with_placeholder)
 
     if args.excluded_ids_from_training_data is not None:
         excluded_ids_from_training_data = parse_ids(
@@ -208,7 +210,7 @@ def main(arguments):
     transforms_common = get_transforms("pre", **transform_arguments)
     transforms_train = monai.transforms.Compose(
         [
-            get_augmentations(**augment_arguments),
+            get_augmentations(**augment_arguments, mask_key=None),
             *get_transforms("post", **transform_arguments),
             EinopsRearranged("image", "c h w d -> 1 h w (d c)"),
             ScaleIntensityAlongDimd("image", dim=-1),
