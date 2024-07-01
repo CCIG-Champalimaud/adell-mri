@@ -3,7 +3,7 @@ import lightning.pytorch as pl
 from abc import ABC
 from typing import Any
 from .losses import AdversarialLoss, GaussianKLLoss
-from .gan import GAN, Generator
+from .gan import GAN
 from .ae import AutoEncoder
 from .vae import VariationalAutoEncoder
 
@@ -42,7 +42,6 @@ class GANPLABC(pl.LightningModule, ABC):
         x_sh[1] = self.generator.in_channels
         return torch.randn(*x_sh).to(x)
 
-    # optimizer_idx = 0
     def step_generator(self, input_tensor: torch.Tensor):
         gen_samples = self.generator(input_tensor)
         gen_pred = self.discriminator(gen_samples)
@@ -51,7 +50,6 @@ class GANPLABC(pl.LightningModule, ABC):
         loss = self.adversarial_loss.generator_loss(gen_pred)
         return loss
 
-    # optimizer_idx = 1
     def step_discriminator(self, x: torch.Tensor, input_tensor: torch.Tensor):
         gen_samples = self.generator(input_tensor)
         gen_pred = self.discriminator(gen_samples)
@@ -228,6 +226,7 @@ class GANPL(GAN, GANPLABC):
         learning_rate: float = 0.0002,
         momentum_beta1: float = 0.5,
         momentum_beta2: float = 0.99,
+        smoothing: float = 0.0,
         *args,
         **kwargs,
     ):
@@ -239,8 +238,9 @@ class GANPL(GAN, GANPLABC):
         self.learning_rate = learning_rate
         self.momentum_beta1 = momentum_beta1
         self.momentum_beta2 = momentum_beta2
+        self.smoothing = smoothing
 
-        self.loss_fn = AdversarialLoss()
+        self.adversarial_loss = AdversarialLoss(smoothing=self.smoothing)
         self.init_routine()
 
         self.automatic_optimization = False

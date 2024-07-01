@@ -1,4 +1,5 @@
 import torch
+import torch.nn.functional as F
 from ..layers.conv_next import ConvNeXtBackbone
 from ..layers.res_net import ResNetBackbone
 from ..layers.vit import ViT
@@ -15,6 +16,7 @@ class Discriminator(torch.nn.Module):
         additional_features: int = 0,
         additional_classification_targets: list[int] = None,
         additional_regression_targets: int = None,
+        noise_std: float = 0.0,
         *args,
         **kwargs,
     ):
@@ -26,6 +28,7 @@ class Discriminator(torch.nn.Module):
             additional_classification_targets
         )
         self.additional_regression_targets = additional_regression_targets
+        self.noise_std = noise_std
         self.network_args = args
         self.network_kwargs = kwargs
 
@@ -56,7 +59,7 @@ class Discriminator(torch.nn.Module):
     def init_classifier(self):
         self.classifier = MLP(
             self.backbone.output_features + self.additional_features,
-            2,
+            1,
             structure=[
                 self.backbone.output_features,
                 self.backbone.output_features,
@@ -108,7 +111,13 @@ class Discriminator(torch.nn.Module):
                     "additional_features > 0 but X_features is None"
                 )
             X = torch.cat([X, X_features], dim=1)
-        classification = self.classifier(X)
+        classification = F.sigmoid(
+            self.classifier(
+                X
+                if self.noise_std == 0
+                else X + torch.randn_like(X) * self.noise_std
+            )
+        )
         if self.additional_classification_targets:
             additional_classifications = [
                 cl(X) for cl in self.additional_classifiers

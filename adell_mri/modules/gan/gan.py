@@ -15,3 +15,8 @@ class GAN(torch.nn.Module):
 
     def forward(self, x: torch.Tensor, *args, **kwargs) -> torch.Tensor:
         return self.generator(x, *args, **kwargs)
+
+    def generate(self, x: torch.Tensor, *args, **kwargs) -> torch.Tensor:
+        if x is None:
+            x = self.generate_noise()
+        return self.generator(x, *args, **kwargs)
