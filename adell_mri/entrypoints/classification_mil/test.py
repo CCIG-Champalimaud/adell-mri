@@ -37,6 +37,7 @@ def main(arguments):
             "adc_keys",
             "label_keys",
             "filter_on_keys",
+            "fill_missing_with_placeholder",
             "possible_labels",
             "positive_labels",
             "label_groups",
@@ -79,6 +80,7 @@ def main(arguments):
     accelerator, devices, strategy = get_devices(args.dev)
 
     data_dict = Dataset(args.dataset_json, rng=rng, verbose=True)
+    data_dict.fill_missing_with_value(args.fill_missing_with_placeholder)
     if args.excluded_ids is not None:
         data_dict.subsample_dataset(excluded_key_list=args.excluded_ids)
 

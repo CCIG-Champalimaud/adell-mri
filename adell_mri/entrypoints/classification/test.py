@@ -37,6 +37,7 @@ def main(arguments):
             "image_masking",
             "image_crop_from_mask",
             "filter_on_keys",
+            "fill_missing_with_placeholder",
             "possible_labels",
             "positive_labels",
             "label_groups",
@@ -82,6 +83,7 @@ def main(arguments):
         clinical_feature_keys = args.clinical_feature_keys
 
     data_dict = Dataset(args.dataset_json, rng=rng, verbose=True)
+    data_dict.fill_missing_with_value(args.fill_missing_with_placeholder)
     presence_keys = args.image_keys + [args.label_keys] + clinical_feature_keys
     if args.mask_key is not None:
         presence_keys.append(args.mask_key)
