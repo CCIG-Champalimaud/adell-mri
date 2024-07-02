@@ -64,6 +64,7 @@ def main(arguments):
             "subsample_training_data",
             "filter_on_keys",
             "fill_missing_with_placeholder",
+            "fill_conditional",
             "val_from_train",
             "config_file",
             "dev",
@@ -129,7 +130,6 @@ def main(arguments):
     n_devices = 1 if isinstance(devices, str) else n_devices
 
     data_dict = Dataset(args.dataset_json, rng=rng)
-    data_dict.fill_missing_with_value(args.fill_missing_with_placeholder)
 
     if args.clinical_feature_keys is None:
         clinical_feature_keys = []

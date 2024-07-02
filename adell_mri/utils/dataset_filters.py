@@ -36,6 +36,42 @@ def fill_missing_with_value(
     return D
 
 
+def fill_conditional(
+    D: DatasetDict, filters: List[str], verbose: bool = False
+) -> DatasetDict:
+    """
+    Imputes missing values with a given value, both present in filters as a
+    list of strings specified as key_to_fill:value_to_fill pairs if
+    key_to_check:value_to_check evaluates to True.
+
+    Args:
+        D (DatasetDict): dataset dictionary.
+        filters (List[str]): list of with
+            key_to_fill:value_to_fill^key_to_check:value_to_check pairs.
+        verbose (bool, optional): verbosity. Defaults to False.
+
+    Returns:
+        DatasetDict: imputed dataset dictionary.
+    """
+    print_verbose(f"Filling keys conditionally: {filters}", verbose=verbose)
+    n = 0
+    filters = [k.split("^") for k in filters]
+    filters = [(k[0].split(":"), k[1].split(":")) for k in filters]
+    for key in D:
+        for filter in filters:
+            new_key = filter[0][0]
+            new_value = filter[0][1]
+            filter_key = filter[1][0]
+            filter_value = filter[1][1]
+            if filter_key in D[key]:
+                if str(D[key][filter_key]) == str(filter_value):
+                    if new_key not in D[key]:
+                        D[key][new_key] = new_value
+                        n += 1
+    print_verbose(f"\tFilled keys: {n}", verbose=verbose)
+    return D
+
+
 def filter_dictionary_with_presence(
     D: DatasetDict, filters: List[str], verbose: bool = False
 ) -> DatasetDict:

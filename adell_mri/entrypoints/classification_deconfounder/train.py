@@ -51,6 +51,7 @@ def main(arguments):
             "cont_confounder_keys",
             "exclude_surrogate_variables",
             "fill_missing_with_placeholder",
+            "fill_conditional",
             "n_features_deconfounder",
             "mask_key",
             "image_masking",
@@ -132,7 +133,6 @@ def main(arguments):
     n_devices = 1 if isinstance(devices, str) else n_devices
 
     data_dict = Dataset(args.dataset_json, rng=rng)
-    data_dict.fill_missing_with_value(args.fill_missing_with_placeholder)
 
     if args.excluded_ids_from_training_data is not None:
         excluded_ids_from_training_data = parse_ids(

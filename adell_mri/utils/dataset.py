@@ -7,6 +7,7 @@ from typing import Any
 
 from .dataset_filters import (
     fill_missing_with_value,
+    fill_conditional,
     filter_dictionary,
     print_verbose,
 )
@@ -95,6 +96,12 @@ class Dataset:
             for k in dataset:
                 self.dataset[k] = dataset[k]
 
+    def fill_conditional(self, filters: list[str]):
+        if filters is not None:
+            self.dataset = fill_conditional(
+                self.dataset, filters, verbose=self.verbose
+            )
+
     def fill_missing_with_value(self, filters: list[str]):
         if filters is not None:
             self.dataset = fill_missing_with_value(
@@ -177,6 +184,12 @@ class Dataset:
         print_verbose(*args, **kwargs, verbose=self.verbose)
 
     def apply_filters(self, **filter_dict: dict[str, Any]):
+        if "fill_conditional" in filter_dict:
+            self.fill_conditional(filters=filter_dict["fill_conditional"])
+        if "fill_missing_with_placeholder" in filter_dict:
+            self.fill_missing_with_value(
+                filters=filter_dict["fill_missing_with_placeholder"]
+            )
         self.filter_dictionary(
             possible_labels=filter_dict.get("possible_labels", None),
             label_key=filter_dict.get("label_keys", None),
@@ -193,10 +206,6 @@ class Dataset:
             self.subsample_dataset(
                 subsample_size=filter_dict["subsample_size"],
                 strata_key=filter_dict.get("label_keys", None),
-            )
-        if "fill_missing_with_placeholder" in filter_dict:
-            self.fill_missing_with_value(
-                filters=filter_dict["fill_missing_with_placeholder"]
             )
 
     def __getitem__(self, key: str | list[str]):

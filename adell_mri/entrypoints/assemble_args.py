@@ -693,6 +693,14 @@ argument_factory = {
         nargs="+",
         help="Fills missing keys with value (key1:value1, key2:value2)",
     ),
+    "fill_conditional": dict(
+        type=str,
+        default=None,
+        nargs="+",
+        help="Fills missing keys with value (key1:value1, key2:value2) if a \
+            condition (key:value) is met, i.e. \
+            key_fill:value_fill^key_cond:value_cond",
+    ),
     "cat_condition": dict(
         type=str,
         default=None,

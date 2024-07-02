@@ -43,6 +43,7 @@ def main(arguments):
             "label_groups",
             "filter_on_keys",
             "fill_missing_with_placeholder",
+            "fill_conditional",
             "excluded_ids",
             "cache_rate",
             "target_spacing",
@@ -75,7 +76,6 @@ def main(arguments):
     output_file = open(args.metric_path, "w")
 
     data_dict = json.load(open(args.dataset_json, "r"))
-    data_dict.fill_missing_with_value(args.fill_missing_with_placeholder)
 
     if args.clinical_feature_keys is None:
         clinical_feature_keys = []
