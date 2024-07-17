@@ -344,6 +344,14 @@ class DeconfoundedNetGeneric(torch.nn.Module):
 
 class CategoricalConversion(torch.nn.Module):
     def __init__(self, key_lists: List[List[str]]):
+        """
+        Converts categorical variables into integer Tensors.
+
+        Args:
+            key_lists (List[List[str]]): nested list of lists, where each
+            outter list element should be a list and each inner list element
+            should be a categorical variable.
+        """
         super().__init__()
         self.key_lists = key_lists
 

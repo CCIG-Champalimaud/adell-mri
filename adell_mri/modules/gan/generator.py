@@ -2050,7 +2050,7 @@ class Generator(torch.nn.Module):
             x: input tensor (N, C, SpatialDims).
             timesteps: timestep tensor (N,).
             context: context tensor (N, 1, ContextDim).
-            class_labels: context tensor (N, ).
+            class_labels: class label tensor tensor (N, ).
             down_block_additional_residuals: additional residual tensors for down blocks (N, C, FeatureMapsDims).
             mid_block_additional_residual: additional residual tensor for mid block (N, C, FeatureMapsDims).
         """

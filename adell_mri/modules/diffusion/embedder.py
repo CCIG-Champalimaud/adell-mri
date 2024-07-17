@@ -14,6 +14,20 @@ class CategoricalEmbedder(torch.nn.Module):
     def __init__(
         self, cat_feats: List[int | List[Any]], embedding_size: int = 512
     ):
+        """
+        Embeds categorical features. If cat_feats is specified as a list of
+        n integers, alocates n embeddings, one for each integer with input size
+        identical to each embedding. If cat_feats is specified as a list of
+        lists or tuples, first alocates a dictionary converting between
+        list/tuple elements to a number and then allocates embeddings for each
+        one.
+
+        Args:
+            cat_feats (List[int  |  List[Any]]): list of categorical
+                specifications.
+            embedding_size (int, optional): size of the embedding. Defaults to
+                512.
+        """
         super().__init__()
         self.cat_feats = cat_feats
         self.embedding_size = embedding_size
@@ -45,8 +59,16 @@ class CategoricalEmbedder(torch.nn.Module):
     def device(self):
         return next(self.embedders[-1].parameters()).device
 
-    def forward(self, X: List[torch.Tensor]):
-        if self.convert is True:
+    def forward(self, X: List[torch.Tensor], return_X: bool = False):
+        if isinstance(X, torch.Tensor):
+            ndim = len(X.shape)
+            if ndim == 1:
+                X = X[:, None]
+            elif ndim != 2:
+                raise ValueError(
+                    f"If X is a tensor it should have 1 or 2 dimensions but X has {ndim} ({X.shape})"
+                )
+        elif self.convert is True:
             for i in range(len(X)):
                 X[i] = [
                     (
@@ -61,6 +83,10 @@ class CategoricalEmbedder(torch.nn.Module):
         for x, embedder in zip(X.permute(1, 0).contiguous(), self.embedders):
             out.append(embedder(x))
         out = torch.cat(out, axis=1)
+        if len(out.shape) == 2:
+            out = out[:, None, :]
+        if return_X is True:
+            return out, X
         return out
 
 
@@ -73,6 +99,31 @@ class Embedder(torch.nn.Module):
         max_queue_size: int = 512,
         device: torch.device = None,
     ):
+        """
+        Embedder for categorical and numerical features. For the categorical
+        feature specification (cat_feat) check CategoricalEmbedder, the
+        numerical embedding is simply performed with a linear layer
+        transforming n features to embedding_size * n features.
+
+        This also features a queue which is used to define values for the
+        generative approach, the size of the queue is defined using
+        max_queue_size.
+
+        All embeddings are concatenated and a linear layer is applied to them
+        such that the output of the forward pass is always [B, embedding_size],
+        where B is the batch size.
+
+        Args:
+            cat_feat (List[int  |  List[Any]], optional): categorical feature
+                specification. Defaults to None.
+            n_num_feat (int, optional): number of numerical features. Defaults
+                to None.
+            embedding_size (int, optional): size of the embedding. Defaults to
+                512.
+            max_queue_size (int, optional): maximum queue size. Defaults to
+                512.
+            device (torch.device, optional): device. Defaults to None.
+        """
         super().__init__()
         self.cat_feat = cat_feat
         self.n_num_feat = n_num_feat
@@ -160,14 +211,40 @@ class Embedder(torch.nn.Module):
         X_num: torch.Tensor = None,
         batch_size: int = 1,
         update_queues: bool = True,
-    ):
+        return_X: bool = False,
+    ) -> torch.Tensor:
+        """
+        Forward method for embeddings. If X_cat is None, the expected value
+        (mode) is produced as a placeholder. If X_num is None, the expected
+        value (mean) is produced as a placeholder. The size of the batch
+        corresponds to batch_size.
+
+        Args:
+            X_cat (List[torch.LongTensor], optional): categorical features.
+                Defaults to None.
+            X_num (torch.Tensor, optional): numerical features. Defaults to
+                None.
+            batch_size (int, optional): size of the batch. Defaults to 1.
+            update_queues (bool, optional): whether queues should be updated.
+                Defaults to True.
+            return_X (bool, optional): whether the converted categorical input
+                should be returned.
+
+        Returns:
+            torch.Tensor: final embedding.
+        """
         if update_queues is True:
             self.update_queues(X_cat=X_cat, X_num=X_num)
         embeddings = []
         if self.cat_feat is not None:
             if X_cat is None:
                 X_cat = self.get_expected_cat(batch_size)
-            embeddings.append(self.cat_embedder(X_cat))
+            if return_X:
+                embedded_X = self.cat_embedder(X_cat, return_X=True)
+                embedded_X, converted_X = embedded_X
+            else:
+                embedded_X = self.cat_embedder(X_cat)
+            embeddings.append(embedded_X)
             if self.device is None:
                 self.device = embeddings[-1].device
 
@@ -178,4 +255,6 @@ class Embedder(torch.nn.Module):
             if self.device is None:
                 self.device = embeddings[-1].device
         out = self.final_embedding(torch.cat(embeddings, 1))
+        if return_X:
+            return out, converted_X
         return out
