@@ -6,6 +6,7 @@ from .losses import AdversarialLoss, GaussianKLLoss
 from .gan import GAN
 from .ae import AutoEncoder
 from .vae import VariationalAutoEncoder
+from .losses import apply_discriminator
 
 
 class GANPLABC(pl.LightningModule, ABC):
@@ -30,7 +31,7 @@ class GANPLABC(pl.LightningModule, ABC):
             betas=(self.momentum_beta1, self.momentum_beta2),
         )
         opt_discriminator = torch.optim.Adam(
-            self.generator.parameters(),
+            self.discriminator.parameters(),
             lr=self.learning_rate,
             betas=(self.momentum_beta1, self.momentum_beta2),
         )
@@ -44,21 +45,17 @@ class GANPLABC(pl.LightningModule, ABC):
 
     def step_generator(self, input_tensor: torch.Tensor):
         gen_samples = self.generator(input_tensor)
-        gen_pred = self.discriminator(gen_samples)
-        if isinstance(gen_pred, tuple):
-            gen_pred = gen_pred[0]
-        loss = self.adversarial_loss.generator_loss(gen_pred)
+        gen_pred = apply_discriminator(gen_samples, self.discriminator)
+        loss = self.adversarial_loss.generator_loss(gen_pred=gen_pred)
         return loss
 
     def step_discriminator(self, x: torch.Tensor, input_tensor: torch.Tensor):
         gen_samples = self.generator(input_tensor)
-        gen_pred = self.discriminator(gen_samples)
-        if isinstance(gen_pred, tuple):
-            gen_pred = gen_pred[0]
-        real_pred = self.discriminator(x)
-        if isinstance(real_pred, tuple):
-            real_pred = real_pred[0]
-        loss = self.adversarial_loss(gen_pred, real_pred)
+        loss = self.adversarial_loss.discriminator_loss(
+            gen_samples=gen_samples,
+            real_samples=x,
+            discriminator=self.discriminator,
+        )
         return loss
 
 
@@ -224,7 +221,7 @@ class GANPL(GAN, GANPLABC):
         additional_class_target_key: str = None,
         additional_reg_target_key: str = None,
         learning_rate: float = 0.0002,
-        momentum_beta1: float = 0.5,
+        momentum_beta1: float = 0.9,
         momentum_beta2: float = 0.99,
         smoothing: float = 0.0,
         *args,
@@ -251,19 +248,21 @@ class GANPL(GAN, GANPLABC):
         x = batch[self.input_image_key]
         noise = self.generate_noise(x)
 
-        self.toggle_optimizer(optimizer_g)
-        loss_g = self.step_generator(noise)
-        self.manual_backward(loss_g)
-        optimizer_g.step()
-        optimizer_g.zero_grad()
-        self.untoggle_optimizer(optimizer_g)
-
+        # optimize discriminator
         self.toggle_optimizer(optimizer_d)
         loss_d = self.step_discriminator(x, noise)
         self.manual_backward(loss_d)
         optimizer_d.step()
         optimizer_d.zero_grad()
         self.untoggle_optimizer(optimizer_d)
+
+        # optimize generator
+        self.toggle_optimizer(optimizer_g)
+        loss_g = self.step_generator(noise)
+        self.manual_backward(loss_g)
+        optimizer_g.step()
+        optimizer_g.zero_grad()
+        self.untoggle_optimizer(optimizer_g)
 
         self.log("loss_g", loss_g, on_epoch=True, prog_bar=True)
         self.log("loss_d", loss_d, on_epoch=True, prog_bar=True)
@@ -280,7 +279,7 @@ class GANPL(GAN, GANPLABC):
         )
         self.log(
             "val_loss_d",
-            self.step_discriminator(noise, x),
+            self.step_discriminator(x, noise),
             on_epoch=True,
             prog_bar=True,
         )
@@ -296,6 +295,6 @@ class GANPL(GAN, GANPLABC):
         )
         self.log(
             "test_loss_d",
-            self.step_discriminator(noise, x),
+            self.step_discriminator(x, noise),
             on_epoch=True,
         )
