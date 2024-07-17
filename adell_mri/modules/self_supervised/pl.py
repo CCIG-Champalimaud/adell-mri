@@ -16,8 +16,11 @@ from .losses import (
     simsiam_loss,
     VICRegLoss,
     NTXentLoss,
+    DinoLoss,
 )
+from .dino import DINO
 from .jepa import IJEPA
+from .ibot import iBOT
 from ..segmentation.unet import UNet
 from ..learning_rate import CosineAnnealingWithWarmupLR
 
@@ -234,7 +237,7 @@ class SelfSLBasePL(pl.LightningModule, ABC):
             "monitor": "val_loss",
         }
 
-    def on_validation_epoch_end(self):
+    def on_train_epoch_end(self):
         sch = self.lr_schedulers().state_dict()
         lr = self.learning_rate
         last_lr = sch["_last_lr"][0] if "_last_lr" in sch else lr
@@ -968,8 +971,6 @@ class IJEPAPL(IJEPA, SelfSLBasePL):
         """
         Args:
             image_key (str, optional): key for image. Defaults to "image".
-            aug_image_key_2 (str, optional): key for augmented image 2.
-                Defaults to "aug_image_2".
             box_key_1 (str, optional): key for bounding box mapping
                 aug_image_key_1 to its original, uncropped image. (used only
                 when vic_reg_local == True)
@@ -1014,11 +1015,12 @@ class IJEPAPL(IJEPA, SelfSLBasePL):
         self.n_steps = n_steps
         self.warmup_steps = warmup_steps
         self.start_decay = start_decay
-        self.ssl_method = ssl_method
         self.temperature = temperature
         self.vic_reg_loss_params = vic_reg_loss_params
         self.stop_gradient = stop_gradient
         self.channels_to_batch = channels_to_batch
+
+        self.ssl_method = "ijepa"
 
         if channels_to_batch is True:
             kwargs["backbone_args"]["in_channels"] = 1
@@ -1113,3 +1115,273 @@ class IJEPAPL(IJEPA, SelfSLBasePL):
             },
             "monitor": "val_loss",
         }
+
+
+class DINOPL(DINO, SelfSLBasePL):
+    def __init__(
+        self,
+        aug_image_key_1: str = "aug_image_1",
+        aug_image_key_2: str = "aug_image_2",
+        learning_rate: float = 1e-3,
+        batch_size: int = 1,
+        weight_decay: float = 1e-6,
+        training_dataloader_call: Callable = None,
+        n_epochs: int = 100,
+        n_steps: int = None,
+        warmup_steps: int = 0,
+        start_decay: int = 0,
+        temperature: float = 1.0,
+        stop_gradient: bool = True,
+        channels_to_batch: bool = False,
+        ema: torch.nn.Module = None,
+        centers_m: float = 0.9,
+        *args,
+        **kwargs,
+    ):
+        super().__init__(*args, **kwargs)
+        self.aug_image_key_1 = aug_image_key_1
+        self.aug_image_key_2 = aug_image_key_2
+        self.learning_rate = learning_rate
+        self.batch_size = batch_size
+        self.weight_decay = weight_decay
+        self.training_dataloader_call = training_dataloader_call
+        self.n_epochs = n_epochs
+        self.n_steps = n_steps
+        self.warmup_steps = warmup_steps
+        self.start_decay = start_decay
+        self.temperature = temperature
+        self.stop_gradient = stop_gradient
+        self.channels_to_batch = channels_to_batch
+        self.ema = ema
+        self.centers_m = centers_m
+
+        self.ssl_method = "dino"
+
+        if channels_to_batch is True:
+            kwargs["in_channels"] = 1
+
+        super().__init__(*args, **kwargs)
+
+        self.centers = torch.nn.Parameter(
+            torch.zeros([1, self.out_dim]),
+            requires_grad=False,
+        )
+
+        # self.save_hyperparameters()
+        self.setup_metrics()
+        self.init_loss()
+
+        self.ema = ema
+        if self.ema is not None:
+            self.ema.update(self, exclude_keys=["centers"])
+        else:
+            self.ema = None
+
+    def init_loss(self):
+        self.loss = DinoLoss(temperatures=(0.1, 0.1))
+
+    def calculate_loss(self, y_1, y_2, *args):
+        loss = self.loss(y_1, y_2, self.centers)
+        return loss
+
+    def update_centers(self, x: torch.Tensor):
+        x_mean = x.mean(0, keepdim=True)
+        self.centers.data = torch.add(
+            self.centers_m * self.centers.data,
+            (1 - self.centers_m) * x_mean,
+        )
+
+    def step(
+        self, batch, loss_str: str, metrics: dict | None = None, train=False
+    ):
+        x1, x2 = batch[self.aug_image_key_1], batch[self.aug_image_key_2]
+        if self.channels_to_batch is True:
+            x1 = x1.reshape(-1, 1, *x1.shape[2:])
+            x2 = x2.reshape(-1, 1, *x2.shape[2:])
+        stacked_x = torch.cat([x1, x2])
+        sh = [x1.shape[0], x2.shape[0]]
+        s_1, s_2 = self.forward(stacked_x).split(sh, dim=0)
+        with torch.no_grad():
+            t_1, t_2 = self.ema(stacked_x).detach().split(sh, dim=0)
+        loss_value = torch.add(
+            self.calculate_loss(s_1, t_2) / 2.0,
+            self.calculate_loss(s_2, t_1) / 2.0,
+        )
+        if metrics is not None:
+            self.update_metrics(
+                torch.cat([s_1, s_2]),
+                torch.cat([t_1, t_2]),
+                metrics,
+                log=True,
+            )
+        self.log(
+            loss_str, loss_value, on_step=True, on_epoch=True, prog_bar=True
+        )
+        if self.ema is not None and train is True:
+            self.ema.update(self, exclude_keys=["centers"])
+        self.update_centers(torch.cat([t_1, t_2]))
+        return loss_value
+
+    def training_step(self, batch, batch_idx):
+        loss = self.step(batch, "loss", train=True)
+        return loss
+
+    def validation_step(self, batch, batch_idx):
+        loss = self.step(batch, "val_loss")
+        return loss
+
+    def test_step(self, batch, batch_idx):
+        loss = self.step(batch, "test_loss")
+        return loss
+
+
+class iBOTPL(iBOT, SelfSLBasePL):
+    def __init__(
+        self,
+        aug_image_key_1: str = "aug_image_1",
+        aug_image_key_2: str = "aug_image_2",
+        learning_rate: float = 1e-3,
+        batch_size: int = 1,
+        weight_decay: float = 1e-6,
+        training_dataloader_call: Callable = None,
+        n_epochs: int = 100,
+        n_steps: int = None,
+        warmup_steps: int = 0,
+        start_decay: int = 0,
+        temperature: float = 1.0,
+        stop_gradient: bool = True,
+        channels_to_batch: bool = False,
+        ema: torch.nn.Module = None,
+        centers_m: float = 0.9,
+        *args,
+        **kwargs,
+    ):
+        super().__init__(*args, **kwargs)
+        self.aug_image_key_1 = aug_image_key_1
+        self.aug_image_key_2 = aug_image_key_2
+        self.learning_rate = learning_rate
+        self.batch_size = batch_size
+        self.weight_decay = weight_decay
+        self.training_dataloader_call = training_dataloader_call
+        self.n_epochs = n_epochs
+        self.n_steps = n_steps
+        self.warmup_steps = warmup_steps
+        self.start_decay = start_decay
+        self.temperature = temperature
+        self.stop_gradient = stop_gradient
+        self.channels_to_batch = channels_to_batch
+        self.ema = ema
+        self.centers_m = centers_m
+
+        self.ssl_method = "dino"
+
+        if channels_to_batch is True:
+            kwargs["in_channels"] = 1
+
+        super().__init__(*args, **kwargs)
+
+        self.centers_global = torch.nn.Parameter(
+            torch.zeros([1, self.out_dim]),
+            requires_grad=False,
+        )
+        self.centers_token = torch.nn.Parameter(
+            torch.zeros([1, 1, self.out_dim]),
+            requires_grad=False,
+        )
+
+        # self.save_hyperparameters()
+        self.setup_metrics()
+        self.init_loss()
+
+        self.ema = ema
+        if self.ema is not None:
+            self.ema.update(self, exclude_keys=["centers"])
+        else:
+            self.ema = None
+
+    def init_loss(self):
+        self.loss = DinoLoss(temperatures=(0.1, 0.1))
+
+    def calculate_loss_global(
+        self, y_red_1: torch.Tensor, y_red_2: torch.Tensor
+    ):
+        return self.loss(
+            a=y_red_1,
+            b=y_red_2.detach(),
+            C=self.centers_global,
+        )
+
+    def calculate_loss_mask(
+        self, a: torch.Tensor, b: torch.Tensor, m: list[int]
+    ):
+        return self.loss(a[:, m], b[:, m].detach(), C=self.centers_token)
+
+    def update_centers(self, centers: torch.Tensor, x: torch.Tensor):
+        x_mean = x.mean(0, keepdim=True)
+        centers.data = torch.add(
+            self.centers_m * centers.data,
+            (1 - self.centers_m) * x_mean,
+        )
+
+    def step(
+        self, batch, loss_str: str, metrics: dict | None = None, train=False
+    ):
+        x1, x2 = batch[self.aug_image_key_1], batch[self.aug_image_key_2]
+        if self.channels_to_batch is True:
+            x1 = x1.reshape(-1, 1, *x1.shape[2:])
+            x2 = x2.reshape(-1, 1, *x2.shape[2:])
+        s_red_1, s_1, mc_1 = self.forward_training(x1, mask=True)
+        s_red_2, s_2, mc_2 = self.forward_training(x2, mask=True)
+        with torch.no_grad():
+            t_red_1, t_1 = self.ema.shadow.forward_training(x1)
+            t_red_2, t_2 = self.ema.shadow.forward_training(x2)
+
+        loss_global = torch.add(
+            self.calculate_loss_global(s_red_1, t_red_2) / 2.0,
+            self.calculate_loss_global(s_red_2, t_red_1) / 2.0,
+        )
+        loss_mask = torch.add(
+            self.calculate_loss_mask(s_1, t_1, mc_1) / 2.0,
+            self.calculate_loss_mask(s_2, t_2, mc_2) / 2.0,
+        )
+        if metrics is not None:
+            self.update_metrics(
+                torch.cat([s_red_1, s_red_2]),
+                torch.cat([t_red_1, t_red_2]),
+                metrics,
+                log=True,
+            )
+        self.log(
+            loss_str + "_global",
+            loss_global,
+            on_step=True,
+            on_epoch=True,
+            prog_bar=True,
+        )
+        self.log(
+            loss_str + "_mask",
+            loss_mask,
+            on_step=True,
+            on_epoch=True,
+            prog_bar=True,
+        )
+        if self.ema is not None and train is True:
+            self.ema.update(self, exclude_keys=["centers"])
+
+        self.update_centers(self.centers_global, torch.cat([t_red_1, t_red_2]))
+        self.update_centers(
+            self.centers_token, torch.cat([t_1, t_2]).flatten(end_dim=-2)
+        )
+        return loss_mask + loss_global
+
+    def training_step(self, batch, batch_idx):
+        loss = self.step(batch, "loss", train=True)
+        return loss
+
+    def validation_step(self, batch, batch_idx):
+        loss = self.step(batch, "val_loss")
+        return loss
+
+    def test_step(self, batch, batch_idx):
+        loss = self.step(batch, "test_loss")
+        return loss

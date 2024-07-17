@@ -948,7 +948,7 @@ class TransformerBlock(torch.nn.Module):
     def init_mlp(self):
         """Initializes the MLP in the last step of the transformer."""
         if isinstance(self.mlp_structure, list):
-            struc = self.mlp_structure[0]
+            struc = max(self.mlp_structure)
         else:
             struc = self.mlp_structure
         self.mlp = torch.nn.Sequential(
@@ -1293,6 +1293,8 @@ class TransformerBlockStack(torch.nn.Module):
         Returns:
             List[List[int]]: list of MLP structures.
         """
+        if isinstance(x, list) is False:
+            x = [x]
         if isinstance(x[0], list) is False:
             return [x for _ in range(self.number_of_blocks)]
         else:
@@ -1663,6 +1665,7 @@ class ViT(torch.nn.Module):
         self.hidden_dim = hidden_dim
         self.window_size = window_size
         self.n_heads = n_heads
+        self.embedding_size = embedding_size
         self.dropout_rate = dropout_rate
         self.use_pos_embed = use_pos_embed
         self.embed_method = embed_method
@@ -1689,10 +1692,12 @@ class ViT(torch.nn.Module):
             channel_to_token=self.channel_to_token,
         )
         self.input_dim_primary = self.embedding.true_n_features
-        if self.patch_erasing is not None:
-            self.patch_erasing_op = ChannelDropout(self.patch_erasing)
-        else:
+        if self.patch_erasing is None:
             self.patch_erasing_op = None
+        elif callable(self.patch_erasing):
+            self.patch_erasing_op = self.patch_erasing
+        else:
+            self.patch_erasing_op = ChannelDropout(self.patch_erasing)
 
         if isinstance(self.mlp_structure, float):
             self.mlp_structure = [

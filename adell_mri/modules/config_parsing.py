@@ -75,7 +75,7 @@ def parse_config_ensemble(config_file: str, n_classes: int):
 
 
 def parse_config_ssl(
-    config_file: str, dropout_param: float, n_keys: int, is_ijepa=False
+    config_file: str, dropout_param: float, n_keys: int, is_vit=False
 ):
     with open(config_file, "r") as o:
         network_config = yaml.safe_load(o)
@@ -83,12 +83,12 @@ def parse_config_ssl(
     if "batch_size" not in network_config:
         network_config["batch_size"] = 1
 
-    if is_ijepa is False:
+    if is_vit is False:
         sd = network_config["backbone_args"]["spatial_dim"]
     else:
         sd = len(network_config["backbone_args"]["patch_size"])
 
-    if is_ijepa is False:
+    if is_vit is False:
         network_config["backbone_args"]["adn_fn"] = get_adn_fn(
             sd,
             network_config["norm_fn"],
@@ -110,12 +110,19 @@ def parse_config_ssl(
             network_config["act_fn"],
             dropout_param=dropout_param,
         )
+    if "projection_head_args" in network_config:
+        network_config["projection_head_args"]["adn_fn"] = get_adn_fn(
+            1,
+            network_config["norm_fn"],
+            network_config["act_fn"],
+            dropout_param=dropout_param,
+        )
     network_config_correct = {
         k: network_config[k]
         for k in network_config
         if k not in ["norm_fn", "act_fn"]
     }
-    if is_ijepa is False:
+    if is_vit is False:
         n_c = network_config["backbone_args"]["in_channels"]
         network_config["backbone_args"]["in_channels"] = n_keys * n_c
     else:

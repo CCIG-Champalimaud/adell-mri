@@ -439,7 +439,7 @@ class ExponentialMovingAverage(torch.nn.Module):
                 p.requires_grad = False
 
     @torch.no_grad()
-    def update(self, model: torch.nn.Module):
+    def update(self, model: torch.nn.Module, exclude_keys: List[str] = None):
         """
         Updates the shadow version of the model using an exponential moving
         average.
@@ -454,17 +454,25 @@ class ExponentialMovingAverage(torch.nn.Module):
             self.shadow.training = False
             self.set_requires_grad_false(self.shadow)
         else:
+            if exclude_keys is None:
+                exclude_keys = []
             model_params = OrderedDict(model.named_parameters())
             shadow_params = OrderedDict(self.shadow.named_parameters())
 
-            shadow_params_keys = list(shadow_params.keys())
-
-            different_params = set.difference(
-                set(shadow_params_keys), set(model_params.keys())
+            sd_model_shadow = set.difference(
+                set(shadow_params.keys()), set(model_params.keys())
             )
-            assert len(different_params) == 0
+            sd_shadow_model = set.difference(
+                set(model_params.keys()), set(shadow_params.keys())
+            )
+            sd_shadow_model = [x for x in sd_shadow_model if "shadow" not in x]
+
+            assert len(sd_model_shadow) == 0
+            assert len(sd_shadow_model) == 0
 
             for name, param in model_params.items():
+                if name in exclude_keys:
+                    continue
                 if "shadow" not in name:
                     shadow_params[name].sub_(
                         (1.0 - self.decay) * (shadow_params[name] - param)
@@ -474,6 +482,9 @@ class ExponentialMovingAverage(torch.nn.Module):
             if self.decay > 1.0:
                 self.decay = 1.0
             self.step += 1
+
+    def forward(self, *args, **kwargs):
+        return self.shadow.forward(*args, **kwargs)
 
 
 def return_classes(paths: str | list[str]) -> dict[str | int, str]:

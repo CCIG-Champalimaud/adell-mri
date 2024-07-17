@@ -655,7 +655,16 @@ argument_factory = {
     ),
     "ssl_method": dict(
         type=str,
-        choices=["simsiam", "byol", "simclr", "vicreg", "vicregl", "ijepa"],
+        choices=[
+            "simsiam",
+            "byol",
+            "simclr",
+            "vicreg",
+            "vicregl",
+            "ijepa",
+            "dino",
+            "ibot",
+        ],
         help="SSL method",
     ),
     "unet_encoder": dict(action="store_true", help="Trains a UNet encoder"),

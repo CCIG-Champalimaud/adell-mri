@@ -179,8 +179,8 @@ def main(arguments):
         network_config, network_config_correct = parse_config_ssl(
             args.config_file,
             args.dropout_param,
-            len(keys),
-            args.ssl_method == "ijepa",
+            n_keys=len(keys),
+            is_vit=args.ssl_method in ["ijepa", "dino", "ibot"],
         )
 
     if args.batch_size is not None:
@@ -191,8 +191,6 @@ def main(arguments):
         roi_size = [128, 128]
     else:
         roi_size = [int(x) for x in args.random_crop_size]
-
-    # all_pids = [k for k in data_dict]
 
     is_ijepa = args.ssl_method == "ijepa"
     transform_pre_arguments = {
@@ -227,12 +225,13 @@ def main(arguments):
         "skip_augmentations": is_ijepa,
     }
 
-    if is_ijepa is True:
+    if args.ssl_method in ["ijepa", "dino", "ibot"]:
         image_size = keep_first_not_none(args.scaled_crop_size, args.crop_size)
         patch_size = network_config_correct["backbone_args"]["patch_size"]
         feature_map_size = [i // pi for i, pi in zip(image_size, patch_size)]
         network_config_correct["backbone_args"]["image_size"] = image_size
-        network_config_correct["feature_map_dimensions"] = feature_map_size
+        if args.ssl_method in ["ijepa", "ibot"]:
+            network_config_correct["feature_map_dimensions"] = feature_map_size
 
     transforms = [
         *get_pre_transforms_ssl(**transform_pre_arguments),
@@ -303,7 +302,7 @@ def main(arguments):
     max_steps_optim = int(max_steps_optim)
 
     if args.ema is True:
-        if is_ijepa is True:
+        if args.ssl_method == "ijepa":
             ema_params = {
                 "decay": 0.99,
                 "final_decay": 1.0,

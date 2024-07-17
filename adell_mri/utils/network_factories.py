@@ -53,6 +53,8 @@ from ..modules.self_supervised.pl import (
     ResNet,
     UNet,
     IJEPA,
+    DINOPL,
+    iBOTPL,
 )
 
 # diffusion
@@ -509,12 +511,39 @@ def get_ssl_network(
             "n_epochs": max_epochs,
             "n_steps": max_steps_optim,
             "warmup_steps": warmup_steps,
-            "ssl_method": ssl_method,  # redundant but helpful for compatibility
             "ema": ema,
             "stop_gradient": stop_gradient,
             "temperature": 0.1,
         }
         ssl = IJEPAPL(**boilerplate, **network_config_correct)
+
+    elif ssl_method == "dino":
+        boilerplate = {
+            "training_dataloader_call": train_loader_call,
+            "aug_image_key_1": "augmented_image_1",
+            "aug_image_key_2": "augmented_image_2",
+            "n_epochs": max_epochs,
+            "n_steps": max_steps_optim,
+            "warmup_steps": warmup_steps,
+            "ema": ema,
+            "stop_gradient": stop_gradient,
+            "temperature": 0.1,
+        }
+        ssl = DINOPL(**boilerplate, **network_config_correct)
+
+    elif ssl_method == "ibot":
+        boilerplate = {
+            "training_dataloader_call": train_loader_call,
+            "aug_image_key_1": "augmented_image_1",
+            "aug_image_key_2": "augmented_image_2",
+            "n_epochs": max_epochs,
+            "n_steps": max_steps_optim,
+            "warmup_steps": warmup_steps,
+            "ema": ema,
+            "stop_gradient": stop_gradient,
+            "temperature": 0.1,
+        }
+        ssl = iBOTPL(**boilerplate, **network_config_correct)
 
     else:
         if ssl_method == "simclr":

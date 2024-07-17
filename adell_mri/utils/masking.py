@@ -84,7 +84,7 @@ class TransformerMasker(torch.nn.Module):
             self.positional_embedding = None
 
     def sample_patches(self, n_patches: int) -> List[Coords]:
-        return [self.sample_patch() for _ in range(n_patches)]
+        return np.array([self.sample_patch() for _ in range(n_patches)])
 
     def retrieve_patch(
         self,
@@ -136,6 +136,7 @@ class TransformerMasker(torch.nn.Module):
             patch, long_coords = self.retrieve_patch(X, coords)
             all_patches.append(patch)
             full_coords.append(long_coords)
+        print(mask_vector)
         if mask_vector is not None:
             full_coords = np.unique(np.concatenate(full_coords))
             X[:, full_coords, :] = mask_vector.to(X)
@@ -143,6 +144,120 @@ class TransformerMasker(torch.nn.Module):
                 p = self.positional_embedding[None, full_coords, :]
                 X[:, full_coords, :] = X[:, full_coords, :] + p.to(X)
         return X, all_patches, patch_coords
+
+
+class GenericTransformerMasker(torch.nn.Module):
+    """
+    Masks a transformer-style tensor ([batch, n_tokens, embedding_size])
+    such that the output for each token is conditionally replaced by 0
+    as long as it belongs to a group of spatially-related patches. This is
+    performed randomly, and useful for masked auto-encoders.
+
+    Similar to the TransformerMasker but skips the retrieval of specific
+    patches.
+    """
+
+    def __init__(
+        self,
+        image_dimensions: List[int],
+        min_patch_size: List[int],
+        max_patch_size: List[int],
+        n_features: int = None,
+        n_patches: int = 4,
+        seed: int = 42,
+    ):
+        """
+        Args:
+            image_dimensions (List[int]): Image dimensions.
+            min_patch_size (List[int]): Minimum size of each patch side.
+            max_patch_size (List[int]): Maximum size of each patch side.
+            n_features (int, optional): Number of features. Defaults to None.
+            n_patches (int, optional): Number of patches to sample. Defaults to
+                4.
+            seed (int, optional): Random seed. Defaults to 42.
+        """
+        super().__init__()
+        self.image_dimensions = image_dimensions
+        self.min_patch_size = min_patch_size
+        self.max_patch_size = max_patch_size
+        self.n_features = n_features
+        self.n_patches = n_patches
+        self.seed = seed
+
+        self.rng = np.random.default_rng(seed)
+        self.n_dim = len(self.image_dimensions)
+
+        assert self.n_dim in [2, 3]
+
+    def sample_patch(self) -> Coords:
+        upper_sampling_bound = [
+            size - patch_size
+            for size, patch_size in zip(
+                self.image_dimensions, self.max_patch_size
+            )
+        ]
+        lower_bound = np.array(
+            [self.rng.integers(0, i) for i in upper_sampling_bound]
+        )
+        patch_size = np.array(
+            [
+                self.rng.integers(m, M)
+                for m, M in zip(self.min_patch_size, self.max_patch_size)
+            ]
+        )
+        upper_bound = lower_bound + patch_size
+        return [*lower_bound, *upper_bound]
+
+    def sample_patches(self, n_patches: int) -> List[Coords]:
+        return [self.sample_patch() for _ in range(n_patches)]
+
+    def retrieve_patch(
+        self, patch_coords: List[int]
+    ) -> Tuple[torch.Tensor, List[int]]:
+        upper_bound, lower_bound = (
+            patch_coords[: self.n_dim],
+            patch_coords[self.n_dim :],
+        )
+        patch_coords = [
+            c
+            for c in product(
+                *[
+                    range(upper_bound[i], lower_bound[i])
+                    for i in range(self.n_dim)
+                ]
+            )
+        ]
+        patch_coords = np.array(patch_coords)
+        if self.n_dim == 2:
+            h, w = self.image_dimensions
+            expression = np.array([w, 1])[None, :]
+            patch_idx = np.sum(patch_coords * expression, 1)
+        elif self.n_dim == 3:
+            h, w, d = self.image_dimensions
+            expression = np.array([w, 1, w * h])[None, :]
+        patch_idx = np.sum(patch_coords * expression, 1)
+        return patch_idx
+
+    def __call__(
+        self,
+        X: torch.Tensor,
+        mask_vector: torch.Tensor = None,
+        n_patches: int = None,
+        patch_coords: List[Coords] = None,
+        skip_n: int = 0,  # in case class tokens or registers are used
+    ) -> Tuple[torch.Tensor, List[torch.Tensor]]:
+        if n_patches is None:
+            n_patches = self.n_patches
+        if patch_coords is None:
+            patch_coords = self.sample_patches(n_patches)
+        full_coords = []
+        for coords in patch_coords:
+            long_coords = self.retrieve_patch(coords)
+            full_coords.append(long_coords)
+        if mask_vector is not None:
+            full_coords = np.unique(np.concatenate(full_coords) + skip_n)
+            X[:, full_coords, :] = mask_vector.to(X)
+        return X, full_coords
 
 
 class ConvolutionalMasker:
@@ -237,6 +352,8 @@ class ConvolutionalMasker:
 
 
 def get_masker(model_type: str, *args, **kwargs):
+    if model_type == "generic_transformer":
+        return GenericTransformerMasker(*args, **kwargs)
     if model_type == "transformer":
         return TransformerMasker(*args, **kwargs)
     elif model_type == "convolutional":
