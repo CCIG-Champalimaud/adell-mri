@@ -1135,6 +1135,7 @@ class DINOPL(DINO, SelfSLBasePL):
         channels_to_batch: bool = False,
         ema: torch.nn.Module = None,
         centers_m: float = 0.9,
+        teacher_score_method: str = "center",
         *args,
         **kwargs,
     ):
@@ -1154,6 +1155,7 @@ class DINOPL(DINO, SelfSLBasePL):
         self.channels_to_batch = channels_to_batch
         self.ema = ema
         self.centers_m = centers_m
+        self.teacher_score_method = teacher_score_method
 
         self.ssl_method = "dino"
 
@@ -1161,11 +1163,6 @@ class DINOPL(DINO, SelfSLBasePL):
             kwargs["in_channels"] = 1
 
         super().__init__(*args, **kwargs)
-
-        self.centers = torch.nn.Parameter(
-            torch.zeros([1, self.out_dim]),
-            requires_grad=False,
-        )
 
         # self.save_hyperparameters()
         self.setup_metrics()
@@ -1178,18 +1175,16 @@ class DINOPL(DINO, SelfSLBasePL):
             self.ema = None
 
     def init_loss(self):
-        self.loss = DinoLoss(temperatures=(0.1, 0.1))
+        self.loss = DinoLoss(
+            temperatures=(0.1, 0.1),
+            n_features=self.out_dim,
+            center_m=self.centers_m,
+            teacher_score_method=self.teacher_score_method,
+        )
 
     def calculate_loss(self, y_1, y_2, *args):
-        loss = self.loss(y_1, y_2, self.centers)
+        loss = self.loss(y_1, y_2)
         return loss
-
-    def update_centers(self, x: torch.Tensor):
-        x_mean = x.mean(0, keepdim=True)
-        self.centers.data = torch.add(
-            self.centers_m * self.centers.data,
-            (1 - self.centers_m) * x_mean,
-        )
 
     def step(
         self, batch, loss_str: str, metrics: dict | None = None, train=False
@@ -1253,6 +1248,7 @@ class iBOTPL(iBOT, SelfSLBasePL):
         channels_to_batch: bool = False,
         ema: torch.nn.Module = None,
         centers_m: float = 0.9,
+        teacher_score_method: str = "center",
         *args,
         **kwargs,
     ):
@@ -1272,6 +1268,7 @@ class iBOTPL(iBOT, SelfSLBasePL):
         self.channels_to_batch = channels_to_batch
         self.ema = ema
         self.centers_m = centers_m
+        self.teacher_score_method = teacher_score_method
 
         self.ssl_method = "dino"
 
@@ -1279,15 +1276,6 @@ class iBOTPL(iBOT, SelfSLBasePL):
             kwargs["in_channels"] = 1
 
         super().__init__(*args, **kwargs)
-
-        self.centers_global = torch.nn.Parameter(
-            torch.zeros([1, self.out_dim]),
-            requires_grad=False,
-        )
-        self.centers_token = torch.nn.Parameter(
-            torch.zeros([1, 1, self.out_dim]),
-            requires_grad=False,
-        )
 
         # self.save_hyperparameters()
         self.setup_metrics()
@@ -1300,28 +1288,28 @@ class iBOTPL(iBOT, SelfSLBasePL):
             self.ema = None
 
     def init_loss(self):
-        self.loss = DinoLoss(temperatures=(0.1, 0.1))
+        self.loss_mask = DinoLoss(
+            temperatures=(0.1, 0.1),
+            n_features=self.out_dim,
+            center_m=self.centers_m,
+            teacher_score_method=self.teacher_score_method,
+        )
+        self.loss_global = DinoLoss(
+            temperatures=(0.1, 0.1),
+            n_features=self.out_dim,
+            center_m=self.centers_m,
+            teacher_score_method=self.teacher_score_method,
+        )
 
     def calculate_loss_global(
         self, y_red_1: torch.Tensor, y_red_2: torch.Tensor
     ):
-        return self.loss(
-            a=y_red_1,
-            b=y_red_2.detach(),
-            C=self.centers_global,
-        )
+        return self.loss_global(a=y_red_1, b=y_red_2.detach())
 
     def calculate_loss_mask(
         self, a: torch.Tensor, b: torch.Tensor, m: list[int]
     ):
-        return self.loss(a[:, m], b[:, m].detach(), C=self.centers_token)
-
-    def update_centers(self, centers: torch.Tensor, x: torch.Tensor):
-        x_mean = x.mean(0, keepdim=True)
-        centers.data = torch.add(
-            self.centers_m * centers.data,
-            (1 - self.centers_m) * x_mean,
-        )
+        return self.loss_mask(a[:, m], b[:, m].detach())
 
     def step(
         self, batch, loss_str: str, metrics: dict | None = None, train=False
@@ -1335,6 +1323,10 @@ class iBOTPL(iBOT, SelfSLBasePL):
         with torch.no_grad():
             t_red_1, t_1 = self.ema.shadow.forward_training(x1)
             t_red_2, t_2 = self.ema.shadow.forward_training(x2)
+
+        # update centers
+        self.loss_global.update_centers(torch.cat([t_red_1, t_red_2]))
+        self.loss_mask.update_centers(torch.cat([t_1, t_2]))
 
         loss_global = torch.add(
             self.calculate_loss_global(s_red_1, t_red_2) / 2.0,
@@ -1368,10 +1360,6 @@ class iBOTPL(iBOT, SelfSLBasePL):
         if self.ema is not None and train is True:
             self.ema.update(self, exclude_keys=["centers"])
 
-        self.update_centers(self.centers_global, torch.cat([t_red_1, t_red_2]))
-        self.update_centers(
-            self.centers_token, torch.cat([t_1, t_2]).flatten(end_dim=-2)
-        )
         return loss_mask + loss_global
 
     def training_step(self, batch, batch_idx):
