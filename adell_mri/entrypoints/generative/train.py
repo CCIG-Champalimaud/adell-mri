@@ -14,12 +14,8 @@ from ...utils import (
     RandomSlices,
     collate_last_slice,
 )
-from ...utils.pl_utils import (
-    get_ckpt_callback,
-    get_logger,
-    get_devices,
-    LogImageFromDiffusionProcess,
-)
+from ...utils.pl_utils import get_ckpt_callback, get_logger, get_devices
+from ...utils.pl_callbacks import LogImageFromDiffusionProcess
 from ...utils.torch_utils import load_checkpoint_to_model
 from ...utils.dataset import Dataset
 from ...monai_transforms import (

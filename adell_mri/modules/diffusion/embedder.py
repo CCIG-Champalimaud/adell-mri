@@ -150,12 +150,16 @@ class Embedder(torch.nn.Module):
             self.final_n_features += self.cat_embedder.output_length
         if self.n_num_feat is not None:
             self.num_embedder = torch.nn.Linear(
-                self.n_num_feat, self.embedding_size
+                self.n_num_feat,
+                self.embedding_size,
+                bias=False,
             )
             self.final_n_features += self.embedding_size
 
         self.final_embedding = torch.nn.Linear(
-            self.final_n_features, self.embedding_size
+            self.final_n_features,
+            self.embedding_size,
+            bias=False,
         )
 
     def update_queues(

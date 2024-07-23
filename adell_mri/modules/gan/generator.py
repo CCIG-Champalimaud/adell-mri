@@ -2044,6 +2044,7 @@ class Generator(torch.nn.Module):
         class_labels: torch.Tensor | None = None,
         down_block_additional_residuals: tuple[torch.Tensor] | None = None,
         mid_block_additional_residual: torch.Tensor | None = None,
+        return_features: bool = False,
     ) -> torch.Tensor:
         """
         Args:
@@ -2051,8 +2052,12 @@ class Generator(torch.nn.Module):
             timesteps: timestep tensor (N,).
             context: context tensor (N, 1, ContextDim).
             class_labels: class label tensor tensor (N, ).
-            down_block_additional_residuals: additional residual tensors for down blocks (N, C, FeatureMapsDims).
-            mid_block_additional_residual: additional residual tensor for mid block (N, C, FeatureMapsDims).
+            down_block_additional_residuals: additional residual tensors for
+                down blocks (N, C, FeatureMapsDims).
+            mid_block_additional_residual: additional residual tensor for mid
+                block (N, C, FeatureMapsDims).
+            return_features (bool, optional). Whether the features for the last
+                layer should be returned. Defaults to False.
         """
         if context is not None and self.with_conditioning is False:
             raise ValueError(
@@ -2113,9 +2118,12 @@ class Generator(torch.nn.Module):
             )
 
         # 6. output block
+        out_features = h
         h = self.out(h)
         h = self.out_activation(h)
 
+        if return_features is True:
+            return h, out_features
         return h
 
     def forward_bottleneck(

@@ -1,23 +1,99 @@
+import numpy as np
 import torch
+import torch.nn.functional as F
 import lightning.pytorch as pl
 from abc import ABC
-from typing import Any, Mapping
+from typing import Any
 from .losses import (
     AdversarialLoss,
     WGANGPLoss,
     SemiSLAdversarialLoss,
+    SemiSLWGANGPLoss,
     GaussianKLLoss,
 )
 from .gan import GAN
 from .ae import AutoEncoder
 from .vae import VariationalAutoEncoder
-from .losses import apply_discriminator
 from ..diffusion.embedder import Embedder
+
+
+def patchify(
+    x: torch.Tensor,
+    patch_size: tuple[int, int] | tuple[int, int, int],
+    stride: tuple[int, int] | tuple[int, int, int] | None = None,
+    y: torch.Tensor | list[torch.Tensor] | None = None,
+) -> tuple[torch.Tensor, torch.Tensor | None]:
+    """
+    Produces a patched version of the input tensor X and repeats y accordingly.
+
+    Args:
+        x (torch.Tensor): input image tensor. Can be 2D or 3D.
+        patch_size (tuple[int, int] | tuple[int, int, int]): size of patch.
+        stride (tuple[int, int] | tuple[int, int, int] | None, optional):
+            stride for the patching. Defaults to None (same as patch_size).
+        y (torch.Tensor | list[torch.Tensor] | None, optional): classification
+            tensor(s). Defaults to None.
+
+    Returns:
+        tuple[torch.Tensor, torch.Tensor | None]: patched X and repeated y if
+            y is provided.
+    """
+    n_dim = len(patch_size)
+    dims = [2, 3, 4][: len(patch_size)]
+    if stride is None:
+        stride = patch_size
+    for p, s, d in zip(patch_size, stride, dims):
+        print(d)
+        x = x.unfold(d, p, s)
+    if n_dim == 2:
+        x = x.permute(0, *dims, 1, -2, -1)
+    elif n_dim == 3:
+        x = x.permute(0, *dims, 1, -3, -2, -1)
+    n_patches = np.prod(x.shape[1 : n_dim + 1])
+    x = x.flatten(end_dim=-n_dim - 2)
+    if y is not None:
+        if isinstance(y, list):
+            y = [
+                (
+                    torch.repeat_interleave(y_, n_patches, 0)
+                    if y_ is not None
+                    else None
+                )
+                for y_ in y
+            ]
+        else:
+            y = torch.repeat_interleave(y, n_patches, 0)
+    return x, y
 
 
 class GANPLABC(pl.LightningModule, ABC):
     def __init__(self):
         super().__init__()
+
+    def optimization_step_and_logging(
+        self,
+        optimizer: torch.optim.Optimizer,
+        step_fn: callable,
+        suffix: str,
+        *step_fn_args,
+        **step_fn_kwargs,
+    ):
+        self.toggle_optimizer(optimizer)
+        losses = step_fn(*step_fn_args, **step_fn_kwargs)
+        loss_sum = sum([losses[k] for k in losses]) / len(losses)
+        self.manual_backward(loss_sum)
+        optimizer.step()
+        optimizer.zero_grad()
+        self.untoggle_optimizer(optimizer)
+        for k in losses:
+            self.log(
+                f"loss_{k}_{suffix}",
+                losses[k],
+                on_epoch=True,
+                prog_bar=True,
+                on_step=False,
+            )
+        return loss_sum
 
     def init_routine(self):
         if hasattr(self, "generator") is False:
@@ -113,11 +189,6 @@ class GANPLABC(pl.LightningModule, ABC):
                 )
         return super().on_train_batch_start(batch, batch_idx)
 
-    def generate_noise(self, x: torch.Tensor):
-        x_sh = list(x.shape)
-        x_sh[1] = self.generator.in_channels
-        return torch.randn(*x_sh).to(x)
-
     def apply_generator(
         self,
         input_tensor: torch.Tensor,
@@ -132,20 +203,19 @@ class GANPLABC(pl.LightningModule, ABC):
         else:
             return self.generator(input_tensor)
 
-    def step_generator(self, input_tensor: torch.Tensor):
-        gen_samples = self.apply_generator(input_tensor)
-        gen_pred = apply_discriminator(gen_samples, self.discriminator)
-        loss = self.adversarial_loss.generator_loss(gen_pred=gen_pred)
-        return loss
-
-    def step_discriminator(self, x: torch.Tensor, input_tensor: torch.Tensor):
-        gen_samples = self.apply_generator(input_tensor)
-        loss = self.adversarial_loss.discriminator_loss(
-            gen_samples=gen_samples,
-            real_samples=x,
-            discriminator=self.discriminator,
-        )
-        return loss
+    def apply_discriminator(
+        self,
+        x: torch.Tensor,
+        y: torch.Tensor | list[torch.Tensor] | None = None,
+    ):
+        if hasattr(self, "patch_size"):
+            if self.patch_size is not None:
+                x, y = patchify(
+                    x, patch_size=self.patch_size, stride=self.patch_size, y=y
+                )
+        if y is None:
+            return self.discriminator(x)
+        return self.discriminator(x), y
 
 
 class AutoEncoderPL(AutoEncoder, pl.LightningModule):
@@ -291,13 +361,16 @@ class VariationalAutoEncoderPL(VariationalAutoEncoder, pl.LightningModule):
 class GANPL(GAN, GANPLABC):
     def __init__(
         self,
-        input_image_key: str = "input_image",
+        real_image_key: str = "real_image",
+        input_image_key: str = None,
         learning_rate: float = 0.0002,
         momentum_beta1: float = 0.9,
         momentum_beta2: float = 0.99,
         n_critic: int = 1,
         n_generator: int = 1,
         lambda_gp: float = 0.0,
+        lambda_feature_matching: float = 0.0,
+        patch_size: tuple[int, int] | tuple[int, int, int] = None,
         epochs: int = None,
         steps_per_epoch: int = None,
         pct_start: float = 0.1,
@@ -305,6 +378,7 @@ class GANPL(GAN, GANPLABC):
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
+        self.real_image_key = real_image_key
         self.input_image_key = input_image_key
         self.learning_rate = learning_rate
         self.momentum_beta1 = momentum_beta1
@@ -312,6 +386,8 @@ class GANPL(GAN, GANPLABC):
         self.n_critic = n_critic
         self.n_generator = n_generator
         self.lambda_gp = lambda_gp
+        self.lambda_feature_matching = lambda_feature_matching
+        self.patch_size = patch_size
         self.epochs = epochs
         self.steps_per_epoch = steps_per_epoch
         self.pct_start = pct_start
@@ -324,64 +400,89 @@ class GANPL(GAN, GANPLABC):
 
         self.automatic_optimization = False
 
+    def step_generator(self, x: torch.Tensor, input_tensor: torch.Tensor):
+        gen_samples = self.apply_generator(input_tensor)
+        gen_pred = self.apply_discriminator(gen_samples)
+        gen_pred, _, _, gen_feat = gen_pred
+        losses = self.adversarial_loss.generator_loss(gen_pred=gen_pred)
+        if self.lambda_feature_matching > 0.0:
+            _, _, _, real_feat = self.apply_discriminator(x)
+            losses["feature_matching"] = (
+                F.mse_loss(gen_feat.mean(0), real_feat.mean(0))
+                * self.lambda_feature_matching
+            )
+        return losses
+
+    def step_discriminator(self, x: torch.Tensor, input_tensor: torch.Tensor):
+        gen_samples = self.apply_generator(input_tensor)
+        real_pred, _, _, _ = self.apply_discriminator(x)
+        gen_pred, _, _, _ = self.apply_discriminator(gen_samples)
+        losses = self.adversarial_loss.discriminator_loss(
+            gen_samples=gen_samples,
+            real_samples=x,
+            real_pred=real_pred,
+            gen_pred=gen_pred,
+            discriminator=self.discriminator,
+        )
+        return losses
+
     def training_step(self, batch: dict[str, Any], batch_idx: int):
         optimizer_g, optimizer_d = self.optimizers()
 
-        x = batch[self.input_image_key]
+        x = batch[self.real_image_key]
         noise = self.generate_noise(x)
 
         # optimize discriminator
-        self.toggle_optimizer(optimizer_d)
-        loss_d = self.step_discriminator(x, noise)
-        self.manual_backward(loss_d)
-        optimizer_d.step()
-        optimizer_d.zero_grad()
-        self.untoggle_optimizer(optimizer_d)
-        self.log("loss_d", loss_d, on_epoch=True, prog_bar=True, on_step=False)
+        self.optimization_step_and_logging(
+            optimizer=optimizer_d,
+            step_fn=self.step_discriminator,
+            suffix="d",
+            x=x,
+            input_tensor=noise,
+        )
 
+        # optimize generator
         if batch_idx % self.n_critic == 0:
-            self.toggle_optimizer(optimizer_g)
-            loss_g = self.step_generator(noise)
-            self.manual_backward(loss_g)
-            optimizer_g.step()
-            optimizer_g.zero_grad()
-            self.untoggle_optimizer(optimizer_g)
-            self.log(
-                "loss_g", loss_g, on_epoch=True, prog_bar=True, on_step=False
+            self.optimization_step_and_logging(
+                optimizer=optimizer_g,
+                step_fn=self.step_generator,
+                suffix="g",
+                x=x,
+                input_tensor=noise,
             )
 
     def validation_step(self, batch: dict[str, Any], batch_idx: int):
-        x = batch[self.input_image_key]
+        x = batch[self.real_image_key]
         noise = self.generate_noise(x)
 
         self.log(
             "val_loss_g",
-            self.step_generator(noise),
+            self.step_generator(x=x, input_tensor=noise),
             on_epoch=True,
             prog_bar=True,
             on_step=False,
         )
         self.log(
             "val_loss_d",
-            self.step_discriminator(x, noise),
+            self.step_discriminator(x=x, input_tensor=noise),
             on_epoch=True,
             prog_bar=True,
             on_step=False,
         )
 
     def test_step(self, batch: dict[str, Any], batch_idx: int):
-        x = batch[self.input_image_key]
+        x = batch[self.real_image_key]
         noise = self.generate_noise(x)
 
         self.log(
             "test_loss_g",
-            self.step_generator(noise),
+            self.step_generator(x=x, input_tensor=noise),
             on_epoch=True,
             on_step=False,
         )
         self.log(
             "test_loss_d",
-            self.step_discriminator(x, noise),
+            self.step_discriminator(x=x, input_tensor=noise),
             on_epoch=True,
             on_step=False,
         )
@@ -390,7 +491,8 @@ class GANPL(GAN, GANPLABC):
 class ClassGANPL(GAN, GANPLABC):
     def __init__(
         self,
-        input_image_key: str = "input_image",
+        real_image_key: str = "real_image",
+        input_image_key: str = None,
         classification_target_key: str = None,
         regression_target_key: str = None,
         class_target_specification: str = None,
@@ -401,6 +503,8 @@ class ClassGANPL(GAN, GANPLABC):
         smoothing: float = 0.0,
         n_critic: int = 1,
         lambda_gp: float = 0.0,
+        lambda_feature_matching: float = 0.0,
+        patch_size: tuple[int, int] | tuple[int, int, int] = None,
         epochs: int = None,
         steps_per_epoch: int = None,
         pct_start: float = 0.3,
@@ -408,6 +512,7 @@ class ClassGANPL(GAN, GANPLABC):
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
+        self.real_image_key = real_image_key
         self.input_image_key = input_image_key
         self.classification_target_key = classification_target_key
         self.regression_target_key = regression_target_key
@@ -419,12 +524,14 @@ class ClassGANPL(GAN, GANPLABC):
         self.smoothing = smoothing
         self.n_critic = n_critic
         self.lambda_gp = lambda_gp
+        self.lambda_feature_matching = lambda_feature_matching
+        self.patch_size = patch_size
         self.epochs = epochs
         self.steps_per_epoch = steps_per_epoch
         self.pct_start = pct_start
 
         if self.lambda_gp > 0.0:
-            self.adversarial_loss = WGANGPLoss(lambda_gp=self.lambda_gp)
+            self.adversarial_loss = SemiSLWGANGPLoss(lambda_gp=self.lambda_gp)
         else:
             self.adversarial_loss = SemiSLAdversarialLoss()
         self.init_routine()
@@ -433,6 +540,7 @@ class ClassGANPL(GAN, GANPLABC):
 
     def step_generator(
         self,
+        x: torch.Tensor,
         input_tensor: torch.Tensor,
         class_target: torch.Tensor | None = None,
         reg_target: torch.Tensor | None = None,
@@ -440,11 +548,14 @@ class ClassGANPL(GAN, GANPLABC):
         gen_samples, class_target = self.apply_generator(
             input_tensor, class_target, reg_target
         )
-        gen_pred = self.discriminator(gen_samples, self.discriminator)
-        gen_pred, class_pred, reg_pred = (
+        gen_pred, (class_target, reg_target) = self.apply_discriminator(
+            gen_samples, [class_target, reg_target]
+        )
+        gen_pred, class_pred, reg_pred, gen_feat = (
             gen_pred[0],
             gen_pred[1] if gen_pred[1] is not None else None,
             gen_pred[2] if gen_pred[1] is not None else None,
+            gen_pred[3] if gen_pred[3] is not None else None,
         )
         losses = self.adversarial_loss.generator_loss(
             gen_pred=gen_pred,
@@ -453,6 +564,12 @@ class ClassGANPL(GAN, GANPLABC):
             class_target=class_target,
             reg_target=reg_target,
         )
+        if self.lambda_feature_matching > 0.0:
+            _, _, _, real_feat = self.apply_discriminator(x)
+            losses["feature_matching"] = (
+                F.mse_loss(gen_feat.mean(0), real_feat.mean(0))
+                * self.lambda_feature_matching
+            )
         return losses
 
     def step_discriminator(
@@ -465,11 +582,24 @@ class ClassGANPL(GAN, GANPLABC):
         gen_samples, class_target = self.apply_generator(
             input_tensor, class_target, reg_target
         )
+        (gen_pred, gen_class_pred, gen_reg_pred, _) = self.apply_discriminator(
+            gen_samples
+        )
+        (real_pred, real_class_pred, real_reg_pred, _), (
+            class_target,
+            reg_target,
+        ) = self.apply_discriminator(gen_samples, [class_target, reg_target])
         losses = self.adversarial_loss.discriminator_loss(
             gen_samples=gen_samples,
             real_samples=x,
             class_target=class_target,
             reg_target=reg_target,
+            gen_pred=gen_pred,
+            gen_class_pred=gen_class_pred,
+            gen_reg_pred=gen_reg_pred,
+            real_pred=real_pred,
+            real_class_pred=real_class_pred,
+            real_reg_pred=real_reg_pred,
             discriminator=self.discriminator,
         )
         return losses
@@ -490,58 +620,49 @@ class ClassGANPL(GAN, GANPLABC):
     def training_step(self, batch: dict[str, Any], batch_idx: int):
         optimizer_g, optimizer_d = self.optimizers()
 
-        x = batch[self.input_image_key]
+        x = batch[self.real_image_key]
         class_target, reg_target = self.get_targets(batch)
         noise = self.generate_noise(x)
 
         # optimize discriminator
-        self.toggle_optimizer(optimizer_d)
-        losses = self.step_discriminator(
-            x, noise, class_target=class_target, reg_target=reg_target
+        self.optimization_step_and_logging(
+            optimizer=optimizer_d,
+            step_fn=self.step_discriminator,
+            suffix="d",
+            x=x,
+            input_tensor=noise,
+            class_target=class_target,
+            reg_target=reg_target,
         )
-        loss_d = sum([losses[k] for k in losses]) / len(losses)
-        self.manual_backward(loss_d)
-        optimizer_d.step()
-        optimizer_d.zero_grad()
-        self.untoggle_optimizer(optimizer_d)
-        for k in losses:
-            self.log(
-                f"loss_{k}_d",
-                losses[k],
-                on_epoch=True,
-                prog_bar=True,
-                on_step=False,
-            )
 
+        # optimize generator
         if batch_idx % self.n_critic == 0:
-            self.toggle_optimizer(optimizer_g)
-            losses = self.step_generator(
-                noise, class_target=class_target, reg_target=reg_target
+            self.optimization_step_and_logging(
+                optimizer=optimizer_g,
+                step_fn=self.step_generator,
+                suffix="g",
+                x=x,
+                input_tensor=noise,
+                class_target=class_target,
+                reg_target=reg_target,
             )
-            loss_g = sum([losses[k] for k in losses]) / len(losses)
-            self.manual_backward(loss_g)
-            optimizer_g.step()
-            optimizer_g.zero_grad()
-            self.untoggle_optimizer(optimizer_g)
-            for k in losses:
-                self.log(
-                    f"loss_{k}_g",
-                    losses[k],
-                    on_epoch=True,
-                    prog_bar=True,
-                    on_step=False,
-                )
 
     def validation_step(self, batch: dict[str, Any], batch_idx: int):
-        x = batch[self.input_image_key]
+        x = batch[self.real_image_key]
         noise = self.generate_noise(x)
         class_target, reg_target = self.get_targets(batch)
 
         losses_g = self.step_generator(
-            noise, class_target=class_target, reg_target=reg_target
+            x=x,
+            input_tensor=noise,
+            class_target=class_target,
+            reg_target=reg_target,
         )
         losses_d = self.step_discriminator(
-            x, noise, class_target=class_target, reg_target=reg_target
+            x=x,
+            input_tensor=noise,
+            class_target=class_target,
+            reg_target=reg_target,
         )
         losses_log = {
             **{f"val_loss_{k}_g": losses_g[k] for k in losses_g},
@@ -550,15 +671,21 @@ class ClassGANPL(GAN, GANPLABC):
         self.log_dict(losses_log, on_epoch=True, prog_bar=True, on_step=False)
 
     def test_step(self, batch: dict[str, Any], batch_idx: int):
-        x = batch[self.input_image_key]
+        x = batch[self.real_image_key]
         noise = self.generate_noise(x)
         class_target, reg_target = self.get_targets(batch)
 
         losses_g = self.step_generator(
-            noise, class_target=class_target, reg_target=reg_target
+            x=x,
+            input_tensor=noise,
+            class_target=class_target,
+            reg_target=reg_target,
         )
         losses_d = self.step_discriminator(
-            x, noise, class_target=class_target, reg_target=reg_target
+            x=x,
+            input_tensor=noise,
+            class_target=class_target,
+            reg_target=reg_target,
         )
         losses_log = {
             **{f"test_loss_{k}_g": losses_g[k] for k in losses_g},
@@ -567,8 +694,11 @@ class ClassGANPL(GAN, GANPLABC):
         self.log_dict(losses_log, on_epoch=True, prog_bar=True, on_step=False)
 
     def generate(
-        self, x: torch.Tensor | None, *args, **kwargs
+        self,
+        x: torch.Tensor | None = None,
+        size: list[int] | None = None,
+        *args,
+        **kwargs,
     ) -> torch.Tensor:
-        if x is None:
-            x = self.generate_noise()
+        x = self.generate_noise(x=x, size=size)
         return self.apply_generator(x, *args, **kwargs)[0]

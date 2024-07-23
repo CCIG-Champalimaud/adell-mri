@@ -99,24 +99,25 @@ class Discriminator(torch.nn.Module):
 
     def forward(
         self, X: torch.Tensor, X_features: torch.Tensor = None
-    ) -> torch.Tensor:
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         additional_classifications = None
         additional_regressions = None
         X = self.backbone(X)
+        if isinstance(X, (tuple, list)):
+            X = X[0]
         if len(X.shape) > 2:
             X = X.flatten(start_dim=2).max(-1).values
+        bottleneck = X
         if self.additional_features > 0:
             if X_features is None:
                 raise ValueError(
                     "additional_features > 0 but X_features is None"
                 )
             X = torch.cat([X, X_features], dim=1)
-        classification = F.sigmoid(
-            self.classifier(
-                X
-                if self.noise_std == 0
-                else X + torch.randn_like(X) * self.noise_std
-            )
+        classification = self.classifier(
+            X
+            if self.noise_std == 0
+            else X + torch.randn_like(X) * self.noise_std
         )
         if self.additional_classification_targets:
             additional_classifications = [
@@ -129,4 +130,5 @@ class Discriminator(torch.nn.Module):
             classification,
             additional_classifications,
             additional_regressions,
+            bottleneck,
         )
