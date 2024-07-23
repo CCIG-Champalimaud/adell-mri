@@ -4,6 +4,16 @@ import torch.nn.functional as F
 from typing import Callable
 
 
+def cat_if_none(tensors: list[torch.Tensor | None], *args, **kwargs):
+    if all([t is not None for t in tensors]):
+        tensors = [
+            torch.stack(t, axis=-1) if isinstance(t, list) else t
+            for t in tensors
+        ]
+        return torch.cat(tensors, *args, **kwargs)
+    return None
+
+
 def apply_loss(
     pred: torch.Tensor | list[torch.Tensor],
     target: torch.Tensor | list[torch.Tensor],
@@ -122,22 +132,13 @@ class AdversarialLoss(torch.nn.Module):
 
     def discriminator_loss(
         self,
-        gen_samples: torch.Tensor,
-        real_samples: torch.Tensor,
+        gen_pred: torch.Tensor,
+        real_pred: torch.Tensor,
+        # these are kept for compatibility
+        gen_samples: torch.Tensor | None = None,
+        real_samples: torch.Tensor | None = None,
         discriminator: torch.nn.Module | None = None,
-        gen_pred: torch.Tensor | None = None,
-        real_pred: torch.Tensor | None = None,
-        *args,
-        **kwargs,
     ) -> torch.Tensor:
-        if gen_pred is None:
-            gen_pred = apply_discriminator(
-                gen_samples, discriminator, *args, **kwargs
-            )
-        if real_pred is None:
-            real_pred = apply_discriminator(
-                real_samples, discriminator, *args, **kwargs
-            )
         loss = F.binary_cross_entropy_with_logits(
             torch.cat([real_pred, gen_pred]),
             torch.cat(
@@ -194,17 +195,7 @@ class WGANGPLoss(torch.nn.Module):
         discriminator: torch.nn.Module,
         gen_pred: torch.Tensor | None = None,
         real_pred: torch.Tensor | None = None,
-        *args,
-        **kwargs,
     ) -> torch.Tensor:
-        if gen_pred is None:
-            gen_pred = apply_discriminator(
-                gen_samples, discriminator, *args, **kwargs
-            )
-        if real_pred is None:
-            real_pred = apply_discriminator(
-                real_samples, discriminator, *args, **kwargs
-            )
         loss = torch.add(
             F.sigmoid(gen_pred).mean() - F.sigmoid(real_pred).mean(),
             self.lambda_gp
@@ -272,15 +263,6 @@ class SemiSLAdversarialLoss(torch.nn.Module):
         else:
             return loss_fn(pred, target)
 
-    def cat_if_none(self, tensors: list[torch.Tensor | None], *args, **kwargs):
-        if all([t is not None for t in tensors]):
-            tensors = [
-                torch.stack(t, axis=-1) if isinstance(t, list) else t
-                for t in tensors
-            ]
-            return torch.cat(tensors, *args, **kwargs)
-        return None
-
     def pred(
         self, x: torch.Tensor, discriminator: torch.nn.Module, *args, **kwargs
     ) -> torch.Tensor:
@@ -299,6 +281,8 @@ class SemiSLAdversarialLoss(torch.nn.Module):
         class_target: torch.Tensor | None = None,
         reg_pred: torch.Tensor | None = None,
         reg_target: torch.Tensor | None = None,
+        # keep gen_samples here for compatibility
+        gen_samples: torch.Tensor | None = None,
     ) -> torch.Tensor:
         losses = {}
         losses["adversarial"] = F.binary_cross_entropy_with_logits(
@@ -315,33 +299,23 @@ class SemiSLAdversarialLoss(torch.nn.Module):
 
     def discriminator_loss(
         self,
-        gen_samples: torch.Tensor,
-        real_samples: torch.Tensor,
-        discriminator: torch.nn.Module | None = None,
-        gen_pred: torch.Tensor | None = None,
-        real_pred: torch.Tensor | None = None,
+        gen_pred: torch.Tensor,
+        real_pred: torch.Tensor,
         gen_class_pred: torch.Tensor | list[torch.Tensor] | None = None,
         real_class_pred: torch.Tensor | list[torch.Tensor] | None = None,
         class_target: torch.Tensor | list[torch.Tensor] | None = None,
         gen_reg_pred: torch.Tensor | list[torch.Tensor] | None = None,
         real_reg_pred: torch.Tensor | list[torch.Tensor] | None = None,
         reg_target: torch.Tensor | list[torch.Tensor] | None = None,
-        *args,
-        **kwargs,
+        # keep these here for compatibility
+        gen_samples: torch.Tensor | None = None,
+        real_samples: torch.Tensor | None = None,
+        discriminator: torch.nn.Module | None = None,
     ) -> torch.Tensor:
-        if gen_pred is None:
-            gen_pred, gen_class_pred, gen_reg_pred = self.pred(
-                gen_samples, discriminator, *args, **kwargs
-            )
-        if real_pred is None:
-            real_pred, real_class_pred, real_reg_pred = self.pred(
-                real_samples, discriminator, *args, **kwargs
-            )
-
-        class_pred = self.cat_if_none([gen_class_pred, real_class_pred])
-        class_target = self.cat_if_none([class_target, class_target])
-        reg_pred = self.cat_if_none([gen_reg_pred, real_reg_pred])
-        reg_target = self.cat_if_none([class_target, class_target])
+        class_pred = cat_if_none([gen_class_pred, real_class_pred])
+        class_target = cat_if_none([class_target, class_target])
+        reg_pred = cat_if_none([gen_reg_pred, real_reg_pred])
+        reg_target = cat_if_none([class_target, class_target])
 
         losses = {}
         losses["adversarial"] = F.binary_cross_entropy_with_logits(
@@ -475,22 +449,11 @@ class SemiSLWGANGPLoss(torch.nn.Module):
         gen_reg_pred: torch.Tensor | list[torch.Tensor] | None = None,
         real_reg_pred: torch.Tensor | list[torch.Tensor] | None = None,
         reg_target: torch.Tensor | list[torch.Tensor] | None = None,
-        *args,
-        **kwargs,
     ) -> torch.Tensor:
-        if gen_pred is None:
-            gen_pred, gen_class_pred, gen_reg_pred = self.pred(
-                gen_samples, discriminator, *args, **kwargs
-            )
-        if real_pred is None:
-            real_pred, real_class_pred, real_reg_pred = self.pred(
-                real_samples, discriminator, *args, **kwargs
-            )
-
-        class_pred = self.cat_if_none([gen_class_pred, real_class_pred])
-        class_target = self.cat_if_none([class_target, class_target])
-        reg_pred = self.cat_if_none([gen_reg_pred, real_reg_pred])
-        reg_target = self.cat_if_none([reg_target, reg_target])
+        class_pred = cat_if_none([gen_class_pred, real_class_pred])
+        class_target = cat_if_none([class_target, class_target])
+        reg_pred = cat_if_none([gen_reg_pred, real_reg_pred])
+        reg_target = cat_if_none([reg_target, reg_target])
 
         losses = {}
         losses["adversarial"] = torch.add(

@@ -12,7 +12,10 @@ def mode(X: np.ndarray):
 
 class CategoricalEmbedder(torch.nn.Module):
     def __init__(
-        self, cat_feats: List[int | List[Any]], embedding_size: int = 512
+        self,
+        cat_feats: List[int | List[Any]],
+        embedding_size: int = 512,
+        max_norm: float | None = None,
     ):
         """
         Embeds categorical features. If cat_feats is specified as a list of
@@ -27,10 +30,13 @@ class CategoricalEmbedder(torch.nn.Module):
                 specifications.
             embedding_size (int, optional): size of the embedding. Defaults to
                 512.
+            max_norm (float, optional): maximum norm for the embeddings.
+                Defaults to None.
         """
         super().__init__()
         self.cat_feats = cat_feats
         self.embedding_size = embedding_size
+        self.max_norm = max_norm
 
         self.output_length = len(self.cat_feats) * self.embedding_size
 
@@ -44,14 +50,20 @@ class CategoricalEmbedder(torch.nn.Module):
             if isinstance(cat_feat, int):
                 self.conversions.append(None)
                 self.embedders.append(
-                    torch.nn.Embedding(cat_feat, self.embedding_size)
+                    torch.nn.Embedding(
+                        cat_feat, self.embedding_size, max_norm=self.max_norm
+                    )
                 )
             elif isinstance(cat_feat, (list, tuple)):
                 self.conversions.append(
                     {str(k): i for i, k in enumerate(cat_feat)}
                 )
                 self.embedders.append(
-                    torch.nn.Embedding(len(cat_feat), self.embedding_size)
+                    torch.nn.Embedding(
+                        len(cat_feat),
+                        self.embedding_size,
+                        max_norm=self.max_norm,
+                    )
                 )
                 self.convert = True
 
@@ -95,6 +107,7 @@ class Embedder(torch.nn.Module):
         self,
         cat_feat: List[int | List[Any]] = None,
         n_num_feat: int = None,
+        max_norm: float | None = None,
         embedding_size: int = 512,
         max_queue_size: int = 512,
         device: torch.device = None,
@@ -118,6 +131,8 @@ class Embedder(torch.nn.Module):
                 specification. Defaults to None.
             n_num_feat (int, optional): number of numerical features. Defaults
                 to None.
+            max_norm (float, optional): maximum norm for the categorical
+                embeddings. Defaults to None.
             embedding_size (int, optional): size of the embedding. Defaults to
                 512.
             max_queue_size (int, optional): maximum queue size. Defaults to
@@ -127,6 +142,7 @@ class Embedder(torch.nn.Module):
         super().__init__()
         self.cat_feat = cat_feat
         self.n_num_feat = n_num_feat
+        self.max_norm = max_norm
         self.embedding_size = embedding_size
         self.max_queue_size = max_queue_size
         self.device = device
@@ -145,21 +161,17 @@ class Embedder(torch.nn.Module):
         self.final_n_features = 0
         if self.cat_feat is not None:
             self.cat_embedder = CategoricalEmbedder(
-                self.cat_feat, self.embedding_size
+                self.cat_feat, self.embedding_size, max_norm=self.max_norm
             )
             self.final_n_features += self.cat_embedder.output_length
         if self.n_num_feat is not None:
             self.num_embedder = torch.nn.Linear(
-                self.n_num_feat,
-                self.embedding_size,
-                bias=False,
+                self.n_num_feat, self.embedding_size
             )
             self.final_n_features += self.embedding_size
 
         self.final_embedding = torch.nn.Linear(
-            self.final_n_features,
-            self.embedding_size,
-            bias=False,
+            self.final_n_features, self.embedding_size
         )
 
     def update_queues(

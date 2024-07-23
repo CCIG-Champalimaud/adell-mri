@@ -49,6 +49,8 @@ def log_image(
             Defaults to None but must be specified for 3D images.
         caption (list[str]): Optional list of captions, one for each image.
     """
+    if hasattr(trainer.logger, "log_image") is False:
+        return None
     images = images.detach().to("cpu")
     if len(images.shape) == 5:
         n_slices = images.shape[slice_dim]
