@@ -121,8 +121,8 @@ class SpectralNorm(pl.Callback):
         self.eps = eps
         self.name = name
 
-        self.u_dict = torch.nn.Parameterdict({})
-        self.v_dict = torch.nn.Parameterdict({})
+        self.u_dict = torch.nn.ParameterDict({})
+        self.v_dict = torch.nn.ParameterDict({})
 
     def on_train_batch_start(
         self,
