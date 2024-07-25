@@ -30,6 +30,7 @@ def log_image(
     slice_dim: int | None = None,
     n_slices_out: int | None = None,
     caption: list[str] = None,
+    rgb: bool = False,
 ):
     """Logs images to the PyTorch Lightning logger.
 
@@ -47,7 +48,10 @@ def log_image(
             images.
         n_slices_out (int, optional): number of image slices to output.
             Defaults to None but must be specified for 3D images.
-        caption (list[str]): Optional list of captions, one for each image.
+        caption (list[str], optional): Optional list of captions, one for each
+            image.
+        RGB (bool, optional): Whether 3-channel images should be considered
+            RGB. Defaults to False.
     """
     if hasattr(trainer.logger, "log_image") is False:
         return None
@@ -62,9 +66,23 @@ def log_image(
         )
         images = torch.split(images, 1, dim=slice_dim)
         images = torch.cat(images, -2).squeeze(-1)
+    # do some form of acceptable conversion here if images are not BW, RGB or
+    # RGBA
+    if images.shape[1] not in [1, 3, 4]:
+        images = torch.argmax(images, dim=1, keepdim=True)
     images = torch.split(images, 1, 0)
-    images = [x.squeeze(0).permute(1, 2, 0).numpy() for x in images]
-    images = [coerce_to_uint8(split_and_cat(x, -1, 0)) for x in images]
+    # squeeze only  if necessary
+    images = [x.squeeze(0) if len(x.shape) > 3 else x for x in images]
+    images = [x.permute(1, 2, 0).numpy() for x in images]
+    images = [
+        (
+            coerce_to_uint8(split_and_cat(x, -1, 0))
+            if rgb is False
+            else coerce_to_uint8(x)
+        )
+        for x in images
+    ]
+    images = [x.squeeze(-1) if x.shape[-1] == 1 else x for x in images]
     images = [Image.fromarray(x) for x in images]
 
     step = trainer.global_step
@@ -317,6 +335,11 @@ class LogImageFromGAN(Callback):
         n_images: int = 2,
         every_n_epochs: int = 1,
         generate_kwargs: dict[str, Any] = None,
+        caption: str = None,
+        conditional: bool = False,
+        conditional_key: str | int = None,
+        additional_image_keys: list[str | int] = None,
+        rgb: bool = False,
     ):
         """
         Args:
@@ -330,6 +353,16 @@ class LogImageFromGAN(Callback):
                 1.
             generate_kwargs (dict[str, Any], optional): keyword arguments for
                 generate function. Defaults to None.
+            caption (str | list[str], optional): caption for the logged images.
+                Defaults to None.
+            conditional (bool, optional): generates conditionally on a part of
+                the batch. Defaults to False.
+            conditional_key (str | int, optional): key for the conditional
+                generation on the batch. Defaults to None.
+            additional_image_keys (list[str | int], optional): keys for
+                additional images which should be logged. Defaults to None.
+            rgb (bool, optional): considers the images to be RGB. Defaults to
+                False.
         """
 
         self.size = size
@@ -338,29 +371,85 @@ class LogImageFromGAN(Callback):
         self.n_images = n_images
         self.every_n_epochs = every_n_epochs
         self.generate_kwargs = generate_kwargs
+        self.caption = caption
+        self.conditional = conditional
+        self.conditional_key = conditional_key
+        self.additional_image_keys = additional_image_keys
+        self.rgb = rgb
+
+        if isinstance(self.additional_image_keys, (str, int)):
+            self.additional_image_keys = [self.additional_image_keys]
+
+        if self.conditional:
+            assert (
+                self.conditional_key is not None
+            ), "conditional_key must be defined for conditional generation"
+
+    def on_train_epoch_start(self, trainer, pl_module):
+        self.storage = {}
+        if self.conditional_key is not None:
+            self.storage[self.conditional_key] = []
+        if self.additional_image_keys is not None:
+            for key in self.additional_image_keys:
+                self.storage[key] = []
+
+    def on_train_batch_start(self, trainer, pl_module, batch, batch_idx):
+        if self.conditional:
+            self.storage[self.conditional_key].extend(
+                batch[self.conditional_key].detach()
+            )
+        if self.additional_image_keys:
+            for key in self.additional_image_keys:
+                self.storage[key].extend(batch[key].detach())
 
     def on_train_epoch_end(
         self, trainer: Trainer, pl_module: LightningModule
     ) -> None:
         ep = pl_module.current_epoch
         if ep % self.every_n_epochs == 0 and ep > 0:
+            idxs = None
+            images_to_log = {}
             with torch.inference_mode():
                 if self.generate_kwargs is None:
-                    images = pl_module.generate(
-                        size=[self.n_images, *self.size]
-                    )
+                    kwargs = {}
                 else:
-                    images = pl_module.generate(
-                        size=[self.n_images, *self.size],
-                        **self.generate_kwargs,
+                    kwargs = self.generate_kwargs
+                if self.conditional:
+                    idxs = np.random.choice(
+                        len(self.storage[self.conditional_key]),
+                        size=self.n_images,
                     )
-            log_image(
-                trainer,
-                key="Generated images",
-                images=images,
-                slice_dim=self.slice_dim,
-                n_slices_out=self.n_slices,
-            )
+                    kwargs["input_tensor"] = torch.stack(
+                        [
+                            self.storage[self.conditional_key][idx]
+                            for idx in idxs
+                        ]
+                    )
+                    images_to_log["Input images"] = kwargs["input_tensor"]
+                else:
+                    kwargs["size"] = [self.n_images, *self.size]
+                if self.additional_image_keys:
+                    for key in self.additional_image_keys:
+                        if idxs is None:
+                            idxs = np.random.choice(
+                                len(self.storage[key]), size=self.n_images
+                            )
+                        images_to_log[f"{key} images"] = torch.stack(
+                            [self.storage[key][idx] for idx in idxs]
+                        )
+                images_to_log["Generated images"] = pl_module.generate(
+                    **kwargs
+                )
+            for key in images_to_log:
+                log_image(
+                    trainer,
+                    key=key,
+                    images=images_to_log[key],
+                    slice_dim=self.slice_dim,
+                    n_slices_out=self.n_slices,
+                    caption=self.caption,
+                    rgb=self.rgb,
+                )
 
 
 class ModelCheckpointWithMetadata(ModelCheckpoint):

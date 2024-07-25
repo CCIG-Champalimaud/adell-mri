@@ -5,17 +5,9 @@ import lightning.pytorch as pl
 from abc import ABC
 from itertools import chain
 from typing import Any
-from .losses import (
-    AdversarialLoss,
-    WGANGPLoss,
-    SemiSLAdversarialLoss,
-    SemiSLWGANGPLoss,
-    GaussianKLLoss,
-)
-from .gan import GAN
-from .ae import AutoEncoder
-from .vae import VariationalAutoEncoder
-from ..diffusion.embedder import Embedder
+from ..losses import SemiSLAdversarialLoss, SemiSLWGANGPLoss
+from ..gan import GAN
+from ...diffusion.embedder import Embedder
 
 
 def cat_not_none(tensors: list[torch.Tensor | None], *args, **kwargs):
@@ -149,7 +141,7 @@ class GANPLABC(pl.LightningModule, ABC):
             betas=(self.momentum_beta1, self.momentum_beta2),
         )
         opt_discriminator = torch.optim.Adam(
-            chain(self.discriminator.parameters(), embeding_parameters),
+            chain(self.discriminator.parameters()),
             lr=self.learning_rate,
             betas=(self.momentum_beta1, self.momentum_beta2),
         )
@@ -226,6 +218,24 @@ class GANPLABC(pl.LightningModule, ABC):
             return x
         return x, y
 
+    def feature_matching_loss(
+        self, x_1: torch.Tensor, x_2: torch.Tensor
+    ) -> torch.Tensor:
+        if hasattr(self, "lambda_feature_matching"):
+            lfm = self.lambda_feature_matching
+            return F.mse_loss(x_1.mean(0), x_2.mean(0)) * lfm
+        else:
+            raise ValueError("lambda_feature_matching should be defined")
+
+    def identity_loss(
+        self, x_1: torch.Tensor, x_2: torch.Tensor
+    ) -> torch.Tensor:
+        if hasattr(self, "lambda_identity"):
+            li = self.lambda_identity
+            return F.mse_loss(x_1, x_2) * li
+        else:
+            raise ValueError("lambda_identity should be defined")
+
     def prepare_image_data(self, batch: dict[str, Any]):
         input_tensor = None
         real_tensor = batch[self.real_image_key]
@@ -237,288 +247,7 @@ class GANPLABC(pl.LightningModule, ABC):
         return real_tensor, input_tensor
 
 
-class AutoEncoderPL(AutoEncoder, pl.LightningModule):
-    def __init__(
-        self,
-        input_image_key: str = "input_image",
-        learning_rate: float = 0.0002,
-        momentum_beta1: float = 0.5,
-        momentum_beta2: float = 0.99,
-        *args,
-        **kwargs,
-    ):
-        super().__init__(*args, **kwargs)
-        self.input_image_key = input_image_key
-        self.learning_rate = learning_rate
-        self.momentum_beta1 = momentum_beta1
-        self.momentum_beta2 = momentum_beta2
-
-        self.loss_fn = torch.nn.MSELoss()
-        self.init_routine()
-
-    def init_routine(self):
-        self.save_hyperparameters(ignore=["loss_fn", "loss_params"])
-
-    def step(self, batch):
-        x = batch[self.input_image_key]
-        output = self.forward(x)
-        loss = self.loss_fn(output, x)
-        return {"loss": loss}
-
-    def training_step(self, batch, batch_idx):
-        loss_dict = self.step(batch)
-        for k in loss_dict:
-            self.log(
-                k, loss_dict[k], on_epoch=True, prog_bar=True, on_step=False
-            )
-        return sum([loss_dict[k] for k in loss_dict])
-
-    def validation_step(self, batch, batch_idx):
-        loss_dict = self.step(batch)
-        for k in loss_dict:
-            self.log(
-                f"val_{k}",
-                loss_dict[k],
-                on_epoch=True,
-                prog_bar=True,
-                on_step=False,
-            )
-        return sum([loss_dict[k] for k in loss_dict])
-
-    def test_step(self, batch, batch_idx):
-        loss_dict = self.step(batch)
-        for k in loss_dict:
-            self.log(
-                f"test_{k}",
-                loss_dict[k],
-                on_epoch=True,
-                prog_bar=True,
-                on_step=False,
-            )
-        return sum([loss_dict[k] for k in loss_dict])
-
-    def configure_optimizers(self):
-        return torch.optim.Adam(
-            self.parameters(),
-            lr=self.learning_rate,
-            betas=(self.momentum_beta1, self.momentum_beta2),
-        )
-
-
-class VariationalAutoEncoderPL(VariationalAutoEncoder, pl.LightningModule):
-    def __init__(
-        self,
-        input_image_key: str = "input_image",
-        learning_rate: float = 0.0002,
-        momentum_beta1: float = 0.5,
-        momentum_beta2: float = 0.99,
-        var_loss_mult: float = 1.0,
-        *args,
-        **kwargs,
-    ):
-        super().__init__(*args, **kwargs)
-        self.input_image_key = input_image_key
-        self.learning_rate = learning_rate
-        self.momentum_beta1 = momentum_beta1
-        self.momentum_beta2 = momentum_beta2
-        self.var_loss_mult = var_loss_mult
-
-        self.loss_fn = torch.nn.MSELoss()
-        self.variational_loss_fn = GaussianKLLoss()
-        self.init_routine()
-
-    def init_routine(self):
-        self.save_hyperparameters(ignore=["loss_fn", "loss_params"])
-
-    def step(self, batch):
-        x = batch[self.input_image_key]
-        output, mu, logvar = self.forward(x)
-        var_loss = self.variational_loss_fn(mu, logvar)
-        loss = self.loss_fn(output, x)
-        return {"rec_loss": loss, "var_loss": self.var_loss_mult * var_loss}
-
-    def training_step(self, batch, batch_idx):
-        loss_dict = self.step(batch)
-        for k in loss_dict:
-            self.log(
-                k, loss_dict[k], on_epoch=True, prog_bar=True, on_step=False
-            )
-        return sum([loss_dict[k] for k in loss_dict])
-
-    def validation_step(self, batch, batch_idx):
-        loss_dict = self.step(batch)
-        for k in loss_dict:
-            self.log(
-                f"val_{k}",
-                loss_dict[k],
-                on_epoch=True,
-                prog_bar=True,
-                on_step=False,
-            )
-        return sum([loss_dict[k] for k in loss_dict])
-
-    def test_step(self, batch, batch_idx):
-        loss_dict = self.step(batch)
-        for k in loss_dict:
-            self.log(
-                f"test_{k}",
-                loss_dict[k],
-                on_epoch=True,
-                prog_bar=True,
-                on_step=False,
-            )
-        return sum([loss_dict[k] for k in loss_dict])
-
-    def configure_optimizers(self):
-        return torch.optim.Adam(
-            self.parameters(),
-            lr=self.learning_rate,
-            betas=(self.momentum_beta1, self.momentum_beta2),
-        )
-
-
 class GANPL(GAN, GANPLABC):
-    def __init__(
-        self,
-        real_image_key: str = "real_image",
-        input_image_key: str = None,
-        learning_rate: float = 0.0002,
-        momentum_beta1: float = 0.9,
-        momentum_beta2: float = 0.99,
-        n_critic: int = 1,
-        n_generator: int = 1,
-        lambda_gp: float = 0.0,
-        lambda_feature_matching: float = 0.0,
-        patch_size: tuple[int, int] | tuple[int, int, int] = None,
-        epochs: int = None,
-        steps_per_epoch: int = None,
-        pct_start: float = 0.1,
-        *args,
-        **kwargs,
-    ):
-        super().__init__(*args, **kwargs)
-        self.real_image_key = real_image_key
-        self.input_image_key = input_image_key
-        self.learning_rate = learning_rate
-        self.momentum_beta1 = momentum_beta1
-        self.momentum_beta2 = momentum_beta2
-        self.n_critic = n_critic
-        self.n_generator = n_generator
-        self.lambda_gp = lambda_gp
-        self.lambda_feature_matching = lambda_feature_matching
-        self.patch_size = patch_size
-        self.epochs = epochs
-        self.steps_per_epoch = steps_per_epoch
-        self.pct_start = pct_start
-
-        if self.lambda_gp > 0.0:
-            self.adversarial_loss = WGANGPLoss(lambda_gp=self.lambda_gp)
-        else:
-            self.adversarial_loss = AdversarialLoss()
-        self.init_routine()
-
-        self.automatic_optimization = False
-
-    def step_generator(
-        self,
-        x: torch.Tensor,
-        input_tensor: torch.Tensor,
-        x_condition: torch.Tensor | None = None,
-    ):
-        gen_samples = self.apply_generator(input_tensor)
-        gen_samples = cat_not_none([gen_samples, x_condition], 1)
-        x = cat_not_none([x, x_condition], 1)
-
-        gen_pred, _, _, gen_feat = self.apply_discriminator(gen_samples)
-        losses = self.adversarial_loss.generator_loss(gen_pred=gen_pred)
-        if self.lambda_feature_matching > 0.0:
-            _, _, _, real_feat = self.apply_discriminator(x)
-            losses["feature_matching"] = (
-                F.mse_loss(gen_feat.mean(0), real_feat.mean(0))
-                * self.lambda_feature_matching
-            )
-        return losses
-
-    def step_discriminator(
-        self,
-        x: torch.Tensor,
-        input_tensor: torch.Tensor,
-        x_condition: torch.Tensor | None = None,
-    ):
-        gen_samples = self.apply_generator(input_tensor)
-        gen_samples = cat_not_none([gen_samples, x_condition], 1)
-        x = cat_not_none([x, x_condition], 1)
-
-        real_pred, _, _, _ = self.apply_discriminator(x)
-        gen_pred, _, _, _ = self.apply_discriminator(gen_samples)
-        losses = self.adversarial_loss.discriminator_loss(
-            gen_samples=gen_samples,
-            real_samples=x,
-            real_pred=real_pred,
-            gen_pred=gen_pred,
-            discriminator=self.discriminator,
-        )
-        return losses
-
-    def training_step(self, batch: dict[str, Any], batch_idx: int):
-        optimizer_g, optimizer_d = self.optimizers()
-        x, input_tensor = self.prepare_image_data(batch)
-
-        # optimize discriminator
-        self.optimization_step_and_logging(
-            optimizer=optimizer_d,
-            step_fn=self.step_discriminator,
-            suffix="d",
-            x=x,
-            input_tensor=input_tensor,
-        )
-
-        # optimize generator
-        if batch_idx % self.n_critic == 0:
-            self.optimization_step_and_logging(
-                optimizer=optimizer_g,
-                step_fn=self.step_generator,
-                suffix="g",
-                x=x,
-                input_tensor=input_tensor,
-            )
-
-    def validation_step(self, batch: dict[str, Any], batch_idx: int):
-        x, input_tensor = self.prepare_image_data(batch)
-
-        self.log(
-            "val_loss_g",
-            self.step_generator(x=x, input_tensor=input_tensor),
-            on_epoch=True,
-            prog_bar=True,
-            on_step=False,
-        )
-        self.log(
-            "val_loss_d",
-            self.step_discriminator(x=x, input_tensor=input_tensor),
-            on_epoch=True,
-            prog_bar=True,
-            on_step=False,
-        )
-
-    def test_step(self, batch: dict[str, Any], batch_idx: int):
-        x, input_tensor = self.prepare_image_data(batch)
-
-        self.log(
-            "test_loss_g",
-            self.step_generator(x=x, input_tensor=input_tensor),
-            on_epoch=True,
-            on_step=False,
-        )
-        self.log(
-            "test_loss_d",
-            self.step_discriminator(x=x, input_tensor=input_tensor),
-            on_epoch=True,
-            on_step=False,
-        )
-
-
-class ClassGANPL(GAN, GANPLABC):
     def __init__(
         self,
         real_image_key: str = "real_image",
@@ -534,6 +263,7 @@ class ClassGANPL(GAN, GANPLABC):
         n_critic: int = 1,
         lambda_gp: float = 0.0,
         lambda_feature_matching: float = 0.0,
+        lambda_identity: float = 0.0,
         patch_size: tuple[int, int] | tuple[int, int, int] = None,
         epochs: int = None,
         steps_per_epoch: int = None,
@@ -555,6 +285,7 @@ class ClassGANPL(GAN, GANPLABC):
         self.n_critic = n_critic
         self.lambda_gp = lambda_gp
         self.lambda_feature_matching = lambda_feature_matching
+        self.lambda_identity = lambda_identity
         self.patch_size = patch_size
         self.epochs = epochs
         self.steps_per_epoch = steps_per_epoch
@@ -570,19 +301,21 @@ class ClassGANPL(GAN, GANPLABC):
 
     def step_generator(
         self,
-        x: torch.Tensor,
+        real_samples: torch.Tensor,
         input_tensor: torch.Tensor,
         class_target: torch.Tensor | None = None,
         reg_target: torch.Tensor | None = None,
-        x_condition: torch.Tensor | None = None,
     ):
         gen_samples = self.apply_generator(
             input_tensor, class_target, reg_target
         )
         if self.embed:
             gen_samples, class_target = gen_samples
+        if self.input_image_key:
+            x_condition = input_tensor
         gen_samples = cat_not_none([gen_samples, x_condition], 1)
-        x = cat_not_none([x, x_condition], 1)
+        if self.lambda_feature_matching > 0.0 or self.lambda_identity > 0.0:
+            real_samples = cat_not_none([real_samples, x_condition], 1)
 
         gen_pred, (class_target, reg_target) = self.apply_discriminator(
             gen_samples, [class_target, reg_target]
@@ -597,32 +330,34 @@ class ClassGANPL(GAN, GANPLABC):
             reg_target=reg_target,
         )
         if self.lambda_feature_matching > 0.0:
-            _, _, _, real_feat = self.apply_discriminator(x)
-            losses["feature_matching"] = (
-                F.mse_loss(gen_feat.mean(0), real_feat.mean(0))
-                * self.lambda_feature_matching
+            _, _, _, real_feat = self.apply_discriminator(real_samples)
+            losses["feature_matching"] = self.feature_matching_loss(
+                gen_feat, real_feat
             )
+        if self.lambda_identity > 0.0:
+            losses["identity"] = self.identity_loss(gen_samples, real_samples)
         return losses
 
     def step_discriminator(
         self,
-        x: torch.Tensor,
+        real_samples: torch.Tensor,
         input_tensor: torch.Tensor,
         class_target: torch.Tensor | list[torch.Tensor] | None = None,
         reg_target: torch.Tensor | list[torch.Tensor] | None = None,
-        x_condition: torch.Tensor | None = None,
     ):
         gen_samples = self.apply_generator(
             input_tensor, class_target, reg_target
         )
         if self.embed:
             gen_samples, class_target = gen_samples
+        if self.input_image_key:
+            x_condition = input_tensor
         gen_samples = cat_not_none([gen_samples, x_condition], 1)
-        x = cat_not_none([x, x_condition], 1)
+        real_samples = cat_not_none([real_samples, x_condition], 1)
 
         gen_pred = self.apply_discriminator(gen_samples)
         real_pred, (class_target, reg_target) = self.apply_discriminator(
-            x, [class_target, reg_target]
+            real_samples, [class_target, reg_target]
         )
 
         gen_pred, gen_class_pred, gen_reg_pred, _ = gen_pred
@@ -630,7 +365,7 @@ class ClassGANPL(GAN, GANPLABC):
 
         losses = self.adversarial_loss.discriminator_loss(
             gen_samples=gen_samples,
-            real_samples=x,
+            real_samples=real_samples,
             class_target=class_target,
             reg_target=reg_target,
             gen_pred=gen_pred,
@@ -659,7 +394,7 @@ class ClassGANPL(GAN, GANPLABC):
     def training_step(self, batch: dict[str, Any], batch_idx: int):
         optimizer_g, optimizer_d = self.optimizers()
 
-        x, input_tensor = self.prepare_image_data(batch)
+        real_samples, input_tensor = self.prepare_image_data(batch)
         class_target, reg_target = self.get_targets(batch)
 
         # optimize discriminator
@@ -667,7 +402,7 @@ class ClassGANPL(GAN, GANPLABC):
             optimizer=optimizer_d,
             step_fn=self.step_discriminator,
             suffix="d",
-            x=x,
+            real_samples=real_samples,
             input_tensor=input_tensor,
             class_target=class_target,
             reg_target=reg_target,
@@ -679,24 +414,24 @@ class ClassGANPL(GAN, GANPLABC):
                 optimizer=optimizer_g,
                 step_fn=self.step_generator,
                 suffix="g",
-                x=x,
+                real_samples=real_samples,
                 input_tensor=input_tensor,
                 class_target=class_target,
                 reg_target=reg_target,
             )
 
     def validation_step(self, batch: dict[str, Any], batch_idx: int):
-        x, input_tensor = self.prepare_image_data(batch)
+        real_samples, input_tensor = self.prepare_image_data(batch)
         class_target, reg_target = self.get_targets(batch)
 
         losses_g = self.step_generator(
-            x=x,
+            real_samples=real_samples,
             input_tensor=input_tensor,
             class_target=class_target,
             reg_target=reg_target,
         )
         losses_d = self.step_discriminator(
-            x=x,
+            real_samples=real_samples,
             input_tensor=input_tensor,
             class_target=class_target,
             reg_target=reg_target,
@@ -708,17 +443,17 @@ class ClassGANPL(GAN, GANPLABC):
         self.log_dict(losses_log, on_epoch=True, prog_bar=True, on_step=False)
 
     def test_step(self, batch: dict[str, Any], batch_idx: int):
-        x, input_tensor = self.prepare_image_data(batch)
+        real_samples, input_tensor = self.prepare_image_data(batch)
         class_target, reg_target = self.get_targets(batch)
 
         losses_g = self.step_generator(
-            x=x,
+            real_samples=real_samples,
             input_tensor=input_tensor,
             class_target=class_target,
             reg_target=reg_target,
         )
         losses_d = self.step_discriminator(
-            x=x,
+            real_samples=real_samples,
             input_tensor=input_tensor,
             class_target=class_target,
             reg_target=reg_target,
@@ -733,8 +468,13 @@ class ClassGANPL(GAN, GANPLABC):
         self,
         x: torch.Tensor | None = None,
         size: list[int] | None = None,
+        input_tensor: torch.Tensor | None = None,
         *args,
         **kwargs,
     ) -> torch.Tensor:
-        x = self.generate_noise(x=x, size=size)
-        return self.apply_generator(x, *args, **kwargs)[0]
+        if input_tensor is None:
+            input_tensor = self.generate_noise(x=x, size=size)
+        image = self.apply_generator(input_tensor, *args, **kwargs)
+        if isinstance(image, tuple):
+            image = image[0]
+        return image
