@@ -396,15 +396,16 @@ class LogImageFromGAN(Callback):
     def on_train_batch_start(self, trainer, pl_module, batch, batch_idx):
         if self.conditional:
             self.storage[self.conditional_key].extend(
-                batch[self.conditional_key].detach()
+                batch[self.conditional_key].detach().to("cpu")
             )
         if self.additional_image_keys:
             for key in self.additional_image_keys:
-                self.storage[key].extend(batch[key].detach())
+                self.storage[key].extend(batch[key].detach().to("cpu"))
 
     def on_train_epoch_end(
         self, trainer: Trainer, pl_module: LightningModule
     ) -> None:
+        dev = next(pl_module.parameters()).device
         ep = pl_module.current_epoch
         if ep % self.every_n_epochs == 0 and ep > 0:
             idxs = None
@@ -424,7 +425,7 @@ class LogImageFromGAN(Callback):
                             self.storage[self.conditional_key][idx]
                             for idx in idxs
                         ]
-                    )
+                    ).to(dev)
                     images_to_log["Input images"] = kwargs["input_tensor"]
                 else:
                     kwargs["size"] = [self.n_images, *self.size]
