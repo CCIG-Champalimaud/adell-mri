@@ -168,6 +168,7 @@ class MultipleInstanceClassifier(torch.nn.Module):
         elif self.reduce_fn == "max":
             return X.max(-1).values
 
+    @torch.no_grad()
     def v_module(self, X: torch.Tensor) -> torch.Tensor:
         X = self.vol_to_2d(X)
         X = self.module(X)
