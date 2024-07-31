@@ -1,6 +1,6 @@
 """
 Straightforward re-implementation of diffusion models in the MONAI generative
-package but replacing mandatory time embeddings with optional class embeddings
+package but replacing mandatory time embeddings with optional class embeddings.
 
 So this is essentially repackaging what the MONAI team did as a GAN generator.
 """
@@ -28,24 +28,54 @@ else:
 def zero_module(module: torch.nn.Module) -> torch.nn.Module:
     """
     Zero out the parameters of a module and return it.
+
+    Args:
+        module (torch.nn.Module): torch module.
+
+    Returns:
+        torch.nn.Module: module all parameters set to 0.
     """
     for p in module.parameters():
         p.detach().zero_()
     return module
 
 
+def get_timestep_embedding(
+    timesteps: torch.Tensor, embedding_dim: int, max_period: int = 10000
+) -> torch.Tensor:
+    """
+    Create sinusoidal timestep embeddings following the implementation in [1].
+
+    [1] https://arxiv.org/abs/2006.11239
+
+    Args:
+        timesteps (int): a 1-D Tensor of N indices, one per batch element.
+        embedding_dim (int): the dimension of the output.
+        max_period (int, optional): controls the minimum frequency of the
+            embeddings. Defaults to 10000.
+    """
+    if timesteps.ndim != 1:
+        raise ValueError("Timesteps should be a 1d-array")
+
+    half_dim = embedding_dim // 2
+    exponent = -math.log(max_period) * torch.arange(
+        start=0, end=half_dim, dtype=torch.float32, device=timesteps.device
+    )
+    freqs = torch.exp(exponent / half_dim)
+
+    args = timesteps[:, None].float() * freqs[None, :]
+    embedding = torch.cat([torch.cos(args), torch.sin(args)], dim=-1)
+
+    # zero pad
+    if embedding_dim % 2 == 1:
+        embedding = torch.nn.functional.pad(embedding, (0, 1, 0, 0))
+
+    return embedding
+
+
 class CrossAttention(torch.nn.Module):
     """
     A cross attention layer.
-
-    Args:
-        query_dim: number of channels in the query.
-        cross_attention_dim: number of channels in the context.
-        num_attention_heads: number of heads to use for multi-head attention.
-        num_head_channels: number of channels in each head.
-        dropout: dropout probability to use.
-        upcast_attention: if True, upcast attention operations to full precision.
-        use_flash_attention: if True, use flash attention for a memory efficient attention mechanism.
     """
 
     def __init__(
@@ -58,6 +88,22 @@ class CrossAttention(torch.nn.Module):
         upcast_attention: bool = False,
         use_flash_attention: bool = False,
     ) -> None:
+        """
+        Args:
+            query_dim (int): number of channels in the query.
+            cross_attention_dim (int | None, optional): number of channels in
+                the context. Defaults to None.
+            num_attention_heads (int, optional): number of heads to use for
+                multi-head attention. Defaults to 8.
+            num_head_channels (int, optional): number of channels in each head.
+                Defaults to 64.
+            dropout (float, optional): dropout probability to use. Defaults to
+                0.0.
+            upcast_attention (bool, optional): if True, upcast attention
+                operations to full precision. Defaults to False.
+            use_flash_attention (bool, optional): if True, use flash attention
+                for a memory efficient attention mechanism. Defaults to False.
+        """
         super().__init__()
         self.use_flash_attention = use_flash_attention
         inner_dim = num_head_channels * num_attention_heads
@@ -82,7 +128,8 @@ class CrossAttention(torch.nn.Module):
 
     def reshape_heads_to_batch_dim(self, x: torch.Tensor) -> torch.Tensor:
         """
-        Divide hidden state dimension to the multiple attention heads and reshape their input as instances in the batch.
+        Divide hidden state dimension to the multiple attention heads and
+        reshape their input as instances in the batch.
         """
         batch_size, seq_len, dim = x.shape
         x = x.reshape(
@@ -94,7 +141,10 @@ class CrossAttention(torch.nn.Module):
         return x
 
     def reshape_batch_dim_to_heads(self, x: torch.Tensor) -> torch.Tensor:
-        """Combine the output of the attention heads back into the hidden state dimension."""
+        """
+        Combine the output of the attention heads back into the hidden state
+        dimension.
+        """
         batch_size, seq_len, dim = x.shape
         x = x.reshape(
             batch_size // self.num_heads, self.num_heads, seq_len, dim
@@ -169,15 +219,6 @@ class CrossAttention(torch.nn.Module):
 class BasicTransformerBlock(torch.nn.Module):
     """
     A basic Transformer block.
-
-    Args:
-        num_channels: number of channels in the input and output.
-        num_attention_heads: number of heads to use for multi-head attention.
-        num_head_channels: number of channels in each attention head.
-        dropout: dropout probability to use.
-        cross_attention_dim: size of the context vector for cross attention.
-        upcast_attention: if True, upcast attention operations to full precision.
-        use_flash_attention: if True, use flash attention for a memory efficient attention mechanism.
     """
 
     def __init__(
@@ -190,6 +231,22 @@ class BasicTransformerBlock(torch.nn.Module):
         upcast_attention: bool = False,
         use_flash_attention: bool = False,
     ) -> None:
+        """
+        Args:
+            num_channels (int): number of channels in the input and output.
+            num_attention_heads (int, optional): number of heads to use for
+                multi-head attention. Defaults to 8.
+            num_head_channels (int, optional): number of channels in each head.
+                Defaults to 64.
+            dropout (float, optional): dropout probability to use. Defaults to
+                0.0.
+            cross_attention_dim (int | None, optional): number of channels in
+                the context. Defaults to None.
+            upcast_attention (bool, optional): if True, upcast attention
+                operations to full precision. Defaults to False.
+            use_flash_attention (bool, optional): if True, use flash attention
+                for a memory efficient attention mechanism. Defaults to False.
+        """
         super().__init__()
         self.attn1 = CrossAttention(
             query_dim=num_channels,
@@ -234,21 +291,9 @@ class BasicTransformerBlock(torch.nn.Module):
 
 class SpatialTransformer(torch.nn.Module):
     """
-    Transformer block for image-like data. First, project the input (aka embedding) and reshape to b, t, d. Then apply
-    standard transformer action. Finally, reshape to image.
-
-    Args:
-        spatial_dims: number of spatial dimensions.
-        in_channels: number of channels in the input and output.
-        num_attention_heads: number of heads to use for multi-head attention.
-        num_head_channels: number of channels in each attention head.
-        num_layers: number of layers of Transformer blocks to use.
-        dropout: dropout probability to use.
-        norm_num_groups: number of groups for the normalization.
-        norm_eps: epsilon for the normalization.
-        cross_attention_dim: number of context dimensions to use.
-        upcast_attention: if True, upcast attention operations to full precision.
-        use_flash_attention: if True, use flash attention for a memory efficient attention mechanism.
+    Transformer block for image-like data. First, project the input (aka
+    embedding) and reshape to b, t, d. Then apply standard transformer action.
+    Finally, reshape to image.
     """
 
     def __init__(
@@ -265,6 +310,28 @@ class SpatialTransformer(torch.nn.Module):
         upcast_attention: bool = False,
         use_flash_attention: bool = False,
     ) -> None:
+        """
+        Args:
+            spatial_dim (int): number of spatial dimensions.
+            in_channels (int): number of channels in the input and output.
+            num_attention_heads (int, optional): number of heads to use for
+                multi-head attention. Defaults to 8.
+            num_head_channels (int, optional): number of channels in each head.
+                Defaults to 64.
+            num_layers (int): number of layers of Transformer blocks to use.
+            dropout (float, optional): dropout probability to use. Defaults to
+                0.0.
+            norm_num_groups (int, optional): number of groups for the
+                normalization. Defaults to 32.
+            norm_eps (float, optional): epsilon for the normalization. Defaults
+                to 1e-6.
+            cross_attention_dim (int | None, optional): number of channels in
+                the context. Defaults to None.
+            upcast_attention (bool, optional): if True, upcast attention
+                operations to full precision. Defaults to False.
+            use_flash_attention (bool, optional): if True, use flash attention
+                for a memory efficient attention mechanism. Defaults to False.
+        """
         super().__init__()
         self.spatial_dims = spatial_dims
         self.in_channels = in_channels
@@ -359,17 +426,8 @@ class SpatialTransformer(torch.nn.Module):
 
 class AttentionBlock(torch.nn.Module):
     """
-    An attention block that allows spatial positions to attend to each other. Uses three q, k, v linear layers to
-    compute attention.
-
-    Args:
-        spatial_dims: number of spatial dimensions.
-        num_channels: number of input channels.
-        num_head_channels: number of channels in each attention head.
-        norm_num_groups: number of groups involved for the group normalisation layer. Ensure that your number of
-            channels is divisible by this number.
-        norm_eps: epsilon value to use for the normalisation.
-        use_flash_attention: if True, use flash attention for a memory efficient attention mechanism.
+    An attention block that allows spatial positions to attend to each other.
+    Uses three q, k, v linear layers to compute attention.
     """
 
     def __init__(
@@ -381,6 +439,20 @@ class AttentionBlock(torch.nn.Module):
         norm_eps: float = 1e-6,
         use_flash_attention: bool = False,
     ) -> None:
+        """
+        Args:
+            spatial_dims (int): number of spatial dimensions.
+            num_channels (int): number of input channels.
+            num_head_channels (int | None, optional): number of channels in
+                each attention head. Defaults to None.
+            norm_num_groups (int, optional): number of groups involved for the
+                group normalisation layer. Ensure that your number of channels
+                is divisible by this number. Defaults to 32.
+            norm_eps (float, optional): epsilon value to use for the
+                normalisation. Defaults to 1e-6.
+            use_flash_attention (bool, optional): if True, use flash attention
+                for a memory efficient attention mechanism. Defaults to True.
+        """
         super().__init__()
         self.use_flash_attention = use_flash_attention
         self.spatial_dims = spatial_dims
@@ -502,49 +574,9 @@ class AttentionBlock(torch.nn.Module):
         return x + residual
 
 
-def get_timestep_embedding(
-    timesteps: torch.Tensor, embedding_dim: int, max_period: int = 10000
-) -> torch.Tensor:
-    """
-    Create sinusoidal timestep embeddings following the implementation in Ho et al. "Denoising Diffusion Probabilistic
-    Models" https://arxiv.org/abs/2006.11239.
-
-    Args:
-        timesteps: a 1-D Tensor of N indices, one per batch element.
-        embedding_dim: the dimension of the output.
-        max_period: controls the minimum frequency of the embeddings.
-    """
-    if timesteps.ndim != 1:
-        raise ValueError("Timesteps should be a 1d-array")
-
-    half_dim = embedding_dim // 2
-    exponent = -math.log(max_period) * torch.arange(
-        start=0, end=half_dim, dtype=torch.float32, device=timesteps.device
-    )
-    freqs = torch.exp(exponent / half_dim)
-
-    args = timesteps[:, None].float() * freqs[None, :]
-    embedding = torch.cat([torch.cos(args), torch.sin(args)], dim=-1)
-
-    # zero pad
-    if embedding_dim % 2 == 1:
-        embedding = torch.nn.functional.pad(embedding, (0, 1, 0, 0))
-
-    return embedding
-
-
 class Downsample(torch.nn.Module):
     """
     Downsampling layer.
-
-    Args:
-        spatial_dims: number of spatial dimensions.
-        num_channels: number of input channels.
-        use_conv: if True uses Convolution instead of Pool average to perform downsampling. In case that use_conv is
-            False, the number of output channels must be the same as the number of input channels.
-        out_channels: number of output channels.
-        padding: controls the amount of implicit zero-paddings on both sides for padding number of points
-            for each dimension.
     """
 
     def __init__(
@@ -555,6 +587,20 @@ class Downsample(torch.nn.Module):
         out_channels: int | None = None,
         padding: int = 1,
     ) -> None:
+        """
+        Args:
+            spatial_dims (int): number of spatial dimensions.
+            num_channels (int): number of input channels.
+            use_conv (bool): if True uses Convolution instead of Pool average
+                to perform downsampling. In case that use_conv is False, the
+                number of output channels must be the same as the number of
+                input channels.
+            out_channels (int | None, optional): number of output channels.
+                Defaults to None.
+            padding (int, optional): controls the amount of implicit
+                zero-paddings on both sides for padding number of points for
+                each dimension. Defaults to 1.
+        """
         super().__init__()
         self.num_channels = num_channels
         self.out_channels = out_channels or num_channels
@@ -591,14 +637,6 @@ class Downsample(torch.nn.Module):
 class Upsample(torch.nn.Module):
     """
     Upsampling layer with an optional convolution.
-
-    Args:
-        spatial_dims: number of spatial dimensions.
-        num_channels: number of input channels.
-        use_conv: if True uses Convolution instead of Pool average to perform downsampling.
-        out_channels: number of output channels.
-        padding: controls the amount of implicit zero-paddings on both sides for padding number of points for each
-            dimension.
     """
 
     def __init__(
@@ -609,6 +647,19 @@ class Upsample(torch.nn.Module):
         out_channels: int | None = None,
         padding: int = 1,
     ) -> None:
+        """
+
+        Args:
+            spatial_dims (int): number of spatial dimensions.
+            num_channels (int): number of input channels.
+            use_conv (bool): if True uses Convolution instead of Pool average
+                to perform downsampling.
+            out_channels (int | None, optional): number of output channels.
+                Defaults to None.
+            padding (int, optional): controls the amount of implicit
+                zero-paddings on both sides for padding number of points for
+                each dimension. Defaults to 1.
+        """
         super().__init__()
         self.num_channels = num_channels
         self.out_channels = out_channels or num_channels
@@ -653,16 +704,6 @@ class Upsample(torch.nn.Module):
 class ResnetBlock(torch.nn.Module):
     """
     Residual block with class conditioning.
-
-    Args:
-        spatial_dims: The number of spatial dimensions.
-        in_channels: number of input channels.
-        class_emb_channels: number of class embedding channels.
-        out_channels: number of output channels.
-        up: if True, performs upsampling.
-        down: if True, performs downsampling.
-        norm_num_groups: number of groups for the group normalization.
-        norm_eps: epsilon for the group normalization.
     """
 
     def __init__(
@@ -676,6 +717,22 @@ class ResnetBlock(torch.nn.Module):
         norm_num_groups: int = 32,
         norm_eps: float = 1e-6,
     ) -> None:
+        """
+        Args:
+            spatial_dims (int): The number of spatial dimensions.
+            in_channels (int): number of input channels.
+            class_emb_channels (int): number of class embedding channels.
+            out_channels (int | None, optional): number of output channels.
+                Defaults to None.
+            up (bool, optional): if True, performs upsampling. Defaults to
+                False.
+            down (bool, optional): if True, performs downsampling. Defaults to
+                False.
+            norm_num_groups (int, optional): number of groups for the group
+                normalization. Defaults to 32.
+            norm_eps (float, optional): epsilon for the group normalization.
+                Defaults to 1e-6.
+        """
         super().__init__()
         self.spatial_dims = spatial_dims
         self.channels = in_channels
@@ -785,18 +842,6 @@ class ResnetBlock(torch.nn.Module):
 class DownBlock(torch.nn.Module):
     """
     Unet's down block containing resnet and downsamplers blocks.
-
-    Args:
-        spatial_dims: The number of spatial dimensions.
-        in_channels: number of input channels.
-        out_channels: number of output channels.
-        class_emb_channels: number of class embedding channels.
-        num_res_blocks: number of residual blocks.
-        norm_num_groups: number of groups for the group normalization.
-        norm_eps: epsilon for the group normalization.
-        add_downsample: if True add downsample block.
-        resblock_updown: if True use residual blocks for downsampling.
-        downsample_padding: padding used in the downsampling block.
     """
 
     def __init__(
@@ -812,6 +857,25 @@ class DownBlock(torch.nn.Module):
         resblock_updown: bool = False,
         downsample_padding: int = 1,
     ) -> None:
+        """
+        Args:
+            spatial_dims (int): The number of spatial dimensions.
+            in_channels  (int): number of input channels.
+            out_channels (int): number of output channels.
+            class_emb_channels (int): number of class embedding channels.
+            num_res_blocks (int, optional): number of residual blocks. Defaults
+                to 1.
+            norm_num_groups (int, optional): number of groups for the group
+                normalization. Defaults to 32.
+            norm_eps (float, optional): epsilon for the group normalization.
+                Defaults to 1e-6.
+            add_downsample (bool, True): if True add downsample block. Defaults
+                to True.
+            resblock_updown (bool, False): if True use residual blocks for
+                downsampling. Defaults to False.
+            downsample_padding (int, optional): padding used in the
+                downsampling block. Defaults to 1.
+        """
         super().__init__()
         self.resblock_updown = resblock_updown
 
@@ -877,20 +941,6 @@ class DownBlock(torch.nn.Module):
 class AttnDownBlock(torch.nn.Module):
     """
     Unet's down block containing resnet, downsamplers and self-attention blocks.
-
-    Args:
-        spatial_dims: The number of spatial dimensions.
-        in_channels: number of input channels.
-        out_channels: number of output channels.
-        class_emb_channels: number of class embedding channels.
-        num_res_blocks: number of residual blocks.
-        norm_num_groups: number of groups for the group normalization.
-        norm_eps: epsilon for the group normalization.
-        add_downsample: if True add downsample block.
-        resblock_updown: if True use residual blocks for downsampling.
-        downsample_padding: padding used in the downsampling block.
-        num_head_channels: number of channels in each attention head.
-        use_flash_attention: if True, use flash attention for a memory efficient attention mechanism.
     """
 
     def __init__(
@@ -908,6 +958,29 @@ class AttnDownBlock(torch.nn.Module):
         num_head_channels: int = 1,
         use_flash_attention: bool = False,
     ) -> None:
+        """
+        Args:
+            spatial_dims (int): The number of spatial dimensions.
+            in_channels (int): number of input channels.
+            out_channels (int): number of output channels.
+            class_emb_channels (int): number of class embedding channels.
+            num_res_blocks (int, optional): number of residual blocks. Defaults
+                to 1.
+            norm_num_groups (int, optional): number of groups for the group
+                normalization. Defaults to 32.
+            norm_eps (float, optional): epsilon for the group normalization.
+                Defaults to 1e-6.
+            add_downsample (bool, optional): if True add downsample block.
+                Defaults to True.
+            resblock_updown (bool, optional): if True use residual blocks for
+                downsampling. Defaults to False.
+            downsample_padding (int, optional): padding used in the downsampling
+                block. Defaults to 1.
+            num_head_channels (int, optional): number of channels in each
+                attention head. Defaults to 1.
+            use_flash_attention (bool, optional): if True, use flash attention
+                for a memory efficient attention mechanism. Defaults to False.
+        """
         super().__init__()
         self.resblock_updown = resblock_updown
 
@@ -986,23 +1059,6 @@ class AttnDownBlock(torch.nn.Module):
 class CrossAttnDownBlock(torch.nn.Module):
     """
     Unet's down block containing resnet, downsamplers and cross-attention blocks.
-
-    Args:
-        spatial_dims: number of spatial dimensions.
-        in_channels: number of input channels.
-        out_channels: number of output channels.
-        class_emb_channels: number of class embedding channels.
-        num_res_blocks: number of residual blocks.
-        norm_num_groups: number of groups for the group normalization.
-        norm_eps: epsilon for the group normalization.
-        add_downsample: if True add downsample block.
-        resblock_updown: if True use residual blocks for downsampling.
-        downsample_padding: padding used in the downsampling block.
-        num_head_channels: number of channels in each attention head.
-        transformer_num_layers: number of layers of Transformer blocks to use.
-        cross_attention_dim: number of context dimensions to use.
-        upcast_attention: if True, upcast attention operations to full precision.
-        use_flash_attention: if True, use flash attention for a memory efficient attention mechanism.
     """
 
     def __init__(
@@ -1023,6 +1079,35 @@ class CrossAttnDownBlock(torch.nn.Module):
         upcast_attention: bool = False,
         use_flash_attention: bool = False,
     ) -> None:
+        """
+        Args:
+            spatial_dims (int): The number of spatial dimensions.
+            in_channels (int): number of input channels.
+            out_channels (int): number of output channels.
+            class_emb_channels (int): number of class embedding channels.
+            num_res_blocks (int, optional): number of residual blocks. Defaults
+                to 1.
+            norm_num_groups (int, optional): number of groups for the group
+                normalization. Defaults to 32.
+            norm_eps (float, optional): epsilon for the group normalization.
+                Defaults to 1e-6.
+            add_downsample (bool, optional): if True add downsample block.
+                Defaults to True.
+            resblock_updown (bool, optional): if True use residual blocks for
+                downsampling. Defaults to False.
+            downsample_padding (int, optional): padding used in the downsampling
+                block. Defaults to 1.
+            num_head_channels (int, optional): number of channels in each
+                attention head. Defaults to 1.
+            transformer_num_layers (int, optional): number of layers of
+                Transformer blocks to use. Defaults to 1.
+            cross_attention_dim (int | None, optional): number of context
+                dimensions to use. Defaults to None.
+            upcast_attention (bool, optional): if True, upcast attention
+                operations to full precision. Defaults to False.
+            use_flash_attention (bool, optional): if True, use flash attention
+                for a memory efficient attention mechanism. Defaults to False.
+        """
         super().__init__()
         self.resblock_updown = resblock_updown
 
@@ -1105,15 +1190,6 @@ class CrossAttnDownBlock(torch.nn.Module):
 class AttnMidBlock(torch.nn.Module):
     """
     Unet's mid block containing resnet and self-attention blocks.
-
-    Args:
-        spatial_dims: The number of spatial dimensions.
-        in_channels: number of input channels.
-        class_emb_channels: number of class embedding channels.
-        norm_num_groups: number of groups for the group normalization.
-        norm_eps: epsilon for the group normalization.
-        num_head_channels: number of channels in each attention head.
-        use_flash_attention: if True, use flash attention for a memory efficient attention mechanism.
     """
 
     def __init__(
@@ -1126,6 +1202,20 @@ class AttnMidBlock(torch.nn.Module):
         num_head_channels: int = 1,
         use_flash_attention: bool = False,
     ) -> None:
+        """
+        Args:
+            spatial_dims (int): The number of spatial dimensions.
+            in_channels (int): number of input channels.
+            class_emb_channels (int): number of class embedding channels.
+            norm_num_groups (int, optional): number of groups for the group
+                normalization. Defaults to 32.
+            norm_eps (float, optional): epsilon for the group normalization.
+                Defaults to 1e-6.
+            num_head_channels (int, optional): number of channels in each
+                attention head. Defaults to 1.
+            use_flash_attention (bool, optional): if True, use flash attention
+                for a memory efficient attention mechanism. Defaults to False.
+        """
         super().__init__()
         self.attention = None
 
@@ -1172,18 +1262,6 @@ class AttnMidBlock(torch.nn.Module):
 class CrossAttnMidBlock(torch.nn.Module):
     """
     Unet's mid block containing resnet and cross-attention blocks.
-
-    Args:
-        spatial_dims: The number of spatial dimensions.
-        in_channels: number of input channels.
-        class_emb_channels: number of class embedding channels
-        norm_num_groups: number of groups for the group normalization.
-        norm_eps: epsilon for the group normalization.
-        num_head_channels: number of channels in each attention head.
-        transformer_num_layers: number of layers of Transformer blocks to use.
-        cross_attention_dim: number of context dimensions to use.
-        upcast_attention: if True, upcast attention operations to full precision.
-        use_flash_attention: if True, use flash attention for a memory efficient attention mechanism.
     """
 
     def __init__(
@@ -1199,6 +1277,27 @@ class CrossAttnMidBlock(torch.nn.Module):
         upcast_attention: bool = False,
         use_flash_attention: bool = False,
     ) -> None:
+        """
+        Args:
+            spatial_dims (int): The number of spatial dimensions.
+            in_channels (int): number of input channels.
+            out_channels (int): number of output channels.
+            class_emb_channels (int): number of class embedding channels.
+            norm_num_groups (int, optional): number of groups for the group
+                normalization. Defaults to 32.
+            norm_eps (float, optional): epsilon for the group normalization.
+                Defaults to 1e-6.
+            num_head_channels (int, optional): number of channels in each
+                attention head. Defaults to 1.
+            transformer_num_layers (int, optional): number of layers of
+                Transformer blocks to use. Defaults to 1.
+            cross_attention_dim (int | None, optional): number of context
+                dimensions to use. Defaults to None.
+            upcast_attention (bool, optional): if True, upcast attention
+                operations to full precision. Defaults to False.
+            use_flash_attention (bool, optional): if True, use flash attention
+                for a memory efficient attention mechanism. Defaults to False.
+        """
         super().__init__()
         self.attention = None
 
@@ -1247,18 +1346,6 @@ class CrossAttnMidBlock(torch.nn.Module):
 class UpBlock(torch.nn.Module):
     """
     Unet's up block containing resnet and upsamplers blocks.
-
-    Args:
-        spatial_dims: The number of spatial dimensions.
-        in_channels: number of input channels.
-        prev_output_channel: number of channels from residual connection.
-        out_channels: number of output channels.
-        class_emb_channels: number of class embedding channels.
-        num_res_blocks: number of residual blocks.
-        norm_num_groups: number of groups for the group normalization.
-        norm_eps: epsilon for the group normalization.
-        add_upsample: if True add downsample block.
-        resblock_updown: if True use residual blocks for upsampling.
     """
 
     def __init__(
@@ -1275,6 +1362,24 @@ class UpBlock(torch.nn.Module):
         resblock_updown: bool = False,
         no_skip_connection: bool = False,
     ) -> None:
+        """
+        Args:
+            spatial_dims (int): The number of spatial dimensions.
+            in_channels (int): number of input channels.
+            prev_output_channel (int): number of channels from residual
+                connection.
+            out_channels (int): number of output channels.
+            class_emb_channels (int): number of class embedding channels.
+            num_res_blocks (int): number of residual blocks. Defaults to 1.
+            norm_num_groups (int, optional): number of groups for the group
+                normalization. Defaults to 32.
+            norm_eps (float, optional): epsilon for the group normalization.
+                Defaults to 1e-6.
+            add_upsample (bool, optional): if True add downsample block.
+                Defaults to False.
+            resblock_updown (bool, optional): if True use residual blocks for
+                upsampling. Defaults to False.
+        """
         super().__init__()
         self.resblock_updown = resblock_updown
         self.no_skip_connection = no_skip_connection
@@ -1352,20 +1457,6 @@ class UpBlock(torch.nn.Module):
 class AttnUpBlock(torch.nn.Module):
     """
     Unet's up block containing resnet, upsamplers, and self-attention blocks.
-
-    Args:
-        spatial_dims: The number of spatial dimensions.
-        in_channels: number of input channels.
-        prev_output_channel: number of channels from residual connection.
-        out_channels: number of output channels.
-        class_emb_channels: number of class embedding channels.
-        num_res_blocks: number of residual blocks.
-        norm_num_groups: number of groups for the group normalization.
-        norm_eps: epsilon for the group normalization.
-        add_upsample: if True add downsample block.
-        resblock_updown: if True use residual blocks for upsampling.
-        num_head_channels: number of channels in each attention head.
-        use_flash_attention: if True, use flash attention for a memory efficient attention mechanism.
     """
 
     def __init__(
@@ -1384,6 +1475,29 @@ class AttnUpBlock(torch.nn.Module):
         use_flash_attention: bool = False,
         no_skip_connection: bool = False,
     ) -> None:
+        """
+        Args:
+            spatial_dims (int): The number of spatial dimensions.
+            in_channels (int): number of input channels.
+            prev_output_channel (int): number of channels from residual
+                connection.
+            out_channels (int): number of output channels.
+            class_emb_channels (int): number of class embedding channels.
+            num_res_blocks (int, optional): number of residual blocks. Defaults
+                to 1.
+            norm_num_groups (int, optional): number of groups for the group
+                normalization. Defaults to 32.
+            norm_eps (float, optional): epsilon for the group normalization.
+                Defaults to 1e-6.
+            add_upsample (bool, optional): if True add upsample block. Defaults
+                to True.
+            resblock_updown (bool, optional): if True use residual blocks for
+                downsampling. Defaults to False.
+            num_head_channels (int, optional): number of channels in each
+                attention head. Defaults to 1.
+            use_flash_attention (bool, optional): if True, use flash attention
+                for a memory efficient attention mechanism. Defaults to False.
+        """
         super().__init__()
         self.resblock_updown = resblock_updown
         self.no_skip_connection = no_skip_connection
@@ -1475,23 +1589,6 @@ class AttnUpBlock(torch.nn.Module):
 class CrossAttnUpBlock(torch.nn.Module):
     """
     Unet's up block containing resnet, upsamplers, and self-attention blocks.
-
-    Args:
-        spatial_dims: The number of spatial dimensions.
-        in_channels: number of input channels.
-        prev_output_channel: number of channels from residual connection.
-        out_channels: number of output channels.
-        class_emb_channels: number of class embedding channels.
-        num_res_blocks: number of residual blocks.
-        norm_num_groups: number of groups for the group normalization.
-        norm_eps: epsilon for the group normalization.
-        add_upsample: if True add downsample block.
-        resblock_updown: if True use residual blocks for upsampling.
-        num_head_channels: number of channels in each attention head.
-        transformer_num_layers: number of layers of Transformer blocks to use.
-        cross_attention_dim: number of context dimensions to use.
-        upcast_attention: if True, upcast attention operations to full precision.
-        use_flash_attention: if True, use flash attention for a memory efficient attention mechanism.
     """
 
     def __init__(
@@ -1513,6 +1610,35 @@ class CrossAttnUpBlock(torch.nn.Module):
         use_flash_attention: bool = False,
         no_skip_connection: bool = False,
     ) -> None:
+        """
+        Args:
+            spatial_dims (int): The number of spatial dimensions.
+            in_channels (int): number of input channels.
+            prev_output_channel (int): number of channels from residual
+                connection.
+            out_channels (int): number of output channels.
+            class_emb_channels (int): number of class embedding channels.
+            num_res_blocks (int, optional): number of residual blocks. Defaults
+                to 1.
+            norm_num_groups (int, optional): number of groups for the group
+                normalization. Defaults to 32.
+            norm_eps (float, optional): epsilon for the group normalization.
+                Defaults to 1e-6.
+            add_upsample (bool, optional): if True add upsample block. Defaults
+                to True.
+            resblock_updown (bool, optional): if True use residual blocks for
+                downsampling. Defaults to False.
+            num_head_channels (int, optional): number of channels in each
+                attention head. Defaults to 1.
+            transformer_num_layers (int, optional): number of layers of
+                Transformer blocks to use. Defaults to 1.
+            cross_attention_dim (int | None, optional): number of context
+                dimensions to use. Defaults to None.
+            upcast_attention (bool, optional): if True, upcast attention
+                operations to full precision. Defaults to False.
+            use_flash_attention (bool, optional): if True, use flash attention
+                for a memory efficient attention mechanism. Defaults to False.
+        """
         super().__init__()
         self.resblock_updown = resblock_updown
         self.no_skip_connection = no_skip_connection
@@ -1622,6 +1748,38 @@ def get_down_block(
     upcast_attention: bool = False,
     use_flash_attention: bool = False,
 ) -> torch.nn.Module:
+    """
+    Args:
+        spatial_dims (int): The number of spatial dimensions.
+        in_channels (int): number of input channels.
+        out_channels (int): number of output channels.
+        class_emb_channels (int): number of class embedding channels.
+        num_res_blocks (int, optional): number of residual blocks. Defaults
+            to 1.
+        norm_num_groups (int, optional): number of groups for the group
+            normalization. Defaults to 32.
+        norm_eps (float, optional): epsilon for the group normalization.
+            Defaults to 1e-6.
+        add_downsample (bool, optional): if True add downsample block. Defaults
+            to True.
+        resblock_updown (bool, optional): if True use residual blocks for
+            downsampling. Defaults to False.
+        with_attn (bool): if True adds attention.
+        with_cross_attn (bool): if True adds cross-attention.
+        num_head_channels (int, optional): number of channels in each
+            attention head. Defaults to 1.
+        transformer_num_layers (int, optional): number of layers of
+            Transformer blocks to use. Defaults to 1.
+        cross_attention_dim (int | None, optional): number of context
+            dimensions to use. Defaults to None.
+        upcast_attention (bool, optional): if True, upcast attention
+            operations to full precision. Defaults to False.
+        use_flash_attention (bool, optional): if True, use flash attention
+            for a memory efficient attention mechanism. Defaults to False.
+
+    Returns:
+        torch.nn.Module: downsampling block.
+    """
     if with_attn:
         return AttnDownBlock(
             spatial_dims=spatial_dims,
@@ -1680,6 +1838,31 @@ def get_mid_block(
     upcast_attention: bool = False,
     use_flash_attention: bool = False,
 ) -> torch.nn.Module:
+    """
+    Args:
+        spatial_dims (int): The number of spatial dimensions.
+        in_channels (int): number of input channels.
+        out_channels (int): number of output channels.
+        class_emb_channels (int): number of class embedding channels.
+        norm_num_groups (int, optional): number of groups for the group
+            normalization. Defaults to 32.
+        norm_eps (float, optional): epsilon for the group normalization.
+            Defaults to 1e-6.
+        with_conditioning (bool): if True uses cross-attention blocks.
+        num_head_channels (int, optional): number of channels in each
+            attention head. Defaults to 1.
+        transformer_num_layers (int, optional): number of layers of
+            Transformer blocks to use. Defaults to 1.
+        cross_attention_dim (int | None, optional): number of context
+            dimensions to use. Defaults to None.
+        upcast_attention (bool, optional): if True, upcast attention
+            operations to full precision. Defaults to False.
+        use_flash_attention (bool, optional): if True, use flash attention
+            for a memory efficient attention mechanism. Defaults to False.
+
+    Returns:
+        torch.nn.Module: middle block.
+    """
     if with_conditioning:
         return CrossAttnMidBlock(
             spatial_dims=spatial_dims,
@@ -1725,6 +1908,42 @@ def get_up_block(
     use_flash_attention: bool = False,
     no_skip_connection: bool = False,
 ) -> torch.nn.Module:
+    """
+    Args:
+        spatial_dims (int): The number of spatial dimensions.
+        in_channels (int): number of input channels.
+        prev_output_channel (int): number of channels from residual
+            connection.
+        out_channels (int): number of output channels.
+        class_emb_channels (int): number of class embedding channels.
+        num_res_blocks (int, optional): number of residual blocks. Defaults
+            to 1.
+        norm_num_groups (int, optional): number of groups for the group
+            normalization. Defaults to 32.
+        norm_eps (float, optional): epsilon for the group normalization.
+            Defaults to 1e-6.
+        add_upsample (bool, optional): if True add upsample block. Defaults
+            to True.
+        resblock_updown (bool, optional): if True use residual blocks for
+            downsampling. Defaults to False.
+        with_attn (bool): if True adds attention.
+        with_cross_attn (bool): if True adds cross-attention.
+        num_head_channels (int, optional): number of channels in each
+            attention head. Defaults to 1.
+        transformer_num_layers (int, optional): number of layers of
+            Transformer blocks to use. Defaults to 1.
+        cross_attention_dim (int | None, optional): number of context
+            dimensions to use. Defaults to None.
+        upcast_attention (bool, optional): if True, upcast attention
+            operations to full precision. Defaults to False.
+        use_flash_attention (bool, optional): if True, use flash attention
+            for a memory efficient attention mechanism. Defaults to False.
+        no_skip_connection (bool): if True does not consider prev_output_channel
+            features.
+
+    Returns:
+        torch.nn.Module: downsampling block.
+    """
     if with_attn:
         return AttnUpBlock(
             spatial_dims=spatial_dims,
@@ -1778,29 +1997,8 @@ def get_up_block(
 
 class Generator(torch.nn.Module):
     """
-    Quite literally just a wrapper around DiffusionModelUNet as this already
-    contains the required class/context conditioning steps. This is here purely
-    to make any changes easier in the future. Excludes the timestep stuff.
-
-    Args:
-        spatial_dims: number of spatial dimensions.
-        in_channels: number of input channels.
-        out_channels: number of output channels.
-        num_res_blocks: number of residual blocks (see ResnetBlock) per level.
-        num_channels: tuple of block output channels.
-        attention_levels: list of levels to add attention.
-        norm_num_groups: number of groups for the normalization.
-        norm_eps: epsilon for the normalization.
-        resblock_updown: if True use residual blocks for up/downsampling.
-        num_head_channels: number of channels in each attention head.
-        with_conditioning: if True add spatial transformers to perform conditioning.
-        transformer_num_layers: number of layers of Transformer blocks to use.
-        cross_attention_dim: number of context dimensions to use.
-        num_class_embeds: if specified (as an int), then this model will be class-conditional with `num_class_embeds`
-        classes.
-        upcast_attention: if True, upcast attention operations to full precision.
-        use_flash_attention: if True, use flash attention for a memory efficient attention mechanism.
-        no_skip_connection: if True, do not add skip connections between up/down blocks.
+    A wrapper for most of DiffusionModelUNet with some modifications (no
+    timestep-encoding stuff).
     """
 
     def __init__(
@@ -1823,6 +2021,37 @@ class Generator(torch.nn.Module):
         use_flash_attention: bool = False,
         no_skip_connection: bool = False,
     ) -> None:
+        """
+        Args:
+            spatial_dims (int): number of spatial dimensions.
+            in_channels (int): number of input channels.
+            out_channels (int): number of output channels.
+            num_res_blocks (Sequence[int]): number of residual blocks (see
+                ResnetBlock) per level.
+            num_channels (Sequence[int]): tuple of block output channels.
+            attention_levels (Sequence[bool]): list of levels to add attention.
+            norm_num_groups (int): number of groups for the normalization.
+            norm_eps (float): epsilon for the normalization.
+            resblock_updown (bool): if True use residual blocks for
+                up/downsampling.
+            num_head_channels (int | Sequence[int]): number of channels in each
+                attention head.
+            with_conditioning (bool): if True add spatial transformers to
+                perform conditioning.
+            transformer_num_layers (int): number of layers of Transformer
+                blocks to use.
+            cross_attention_dim (int | None): number of context dimensions to
+                use.
+            num_class_embeds (int | None): if specified (as an int), then this
+                model will be class-conditional with `num_class_embeds`
+                classes.
+            upcast_attention (bool): if True, upcast attention operations to
+                full precision.
+            use_flash_attention (bool): if True, use flash attention for a
+                memory efficient attention mechanism.
+            no_skip_connection (bool): if True, do not add skip connections
+                between up/down blocks.
+        """
         super().__init__()
         if with_conditioning is True:
             if cross_attention_dim is None and num_class_embeds is None:
@@ -2025,8 +2254,22 @@ class Generator(torch.nn.Module):
         self.out_activation = torch.nn.Tanh()
 
     def get_class_embeddings(
-        self, x: torch.Tensor, class_labels: torch.Tensor
+        self, x: torch.Tensor, class_labels: torch.Tensor | None
     ) -> torch.Tensor:
+        """
+        Returns the classification embeddings.
+
+        Args:
+            x (torch.Tensor): input tensor.
+            class_labels (torch.Tensor): class labels.
+
+        Raises:
+            ValueError: if class labels are not provided and
+                num_class_embeds > 0.
+
+        Returns:
+            torch.Tensor: class embeddings.
+        """
         class_emb = None
         if self.num_class_embeds is not None:
             if class_labels is None:
@@ -2045,19 +2288,27 @@ class Generator(torch.nn.Module):
         down_block_additional_residuals: tuple[torch.Tensor] | None = None,
         mid_block_additional_residual: torch.Tensor | None = None,
         return_features: bool = False,
-    ) -> torch.Tensor:
+    ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
         """
         Args:
-            x: input tensor (N, C, SpatialDims).
-            timesteps: timestep tensor (N,).
-            context: context tensor (N, 1, ContextDim).
-            class_labels: class label tensor tensor (N, ).
-            down_block_additional_residuals: additional residual tensors for
-                down blocks (N, C, FeatureMapsDims).
-            mid_block_additional_residual: additional residual tensor for mid
-                block (N, C, FeatureMapsDims).
+            x (torch.Tensor): input tensor (N, C, SpatialDims).
+            context (torch.Tensor | None, optional): context tensor
+                (N, 1, ContextDim).
+            class_labels (torch.Tensor | None, optional): class label tensor
+                tensor (N, ).
+            down_block_additional_residuals (tuple[torch.Tensor] | None,
+                optional): additional residual tensors for down blocks
+                (N, C, FeatureMapsDims).
+            mid_block_additional_residual (torch.Tensor | None, optional):
+                additional residual tensor for mid block
+                (N, C, FeatureMapsDims).
             return_features (bool, optional). Whether the features for the last
                 layer should be returned. Defaults to False.
+
+        Returns:
+            torch.Tensor | tuple[torch.Tensor, torch.Tensor]: the output
+                prediction map or the output prediction map and the bottleneck
+                features.
         """
         if context is not None and self.with_conditioning is False:
             raise ValueError(
@@ -2134,10 +2385,16 @@ class Generator(torch.nn.Module):
     ) -> torch.Tensor:
         """
         Args:
-            x: input tensor (N, C, SpatialDims).
-            timesteps: timestep tensor (N,).
-            context: context tensor (N, 1, ContextDim).
-            class_labels: context tensor (N, ).
+            x (torch.Tensor): input tensor (N, C, SpatialDims).
+            context (torch.Tensor | None, optional): context tensor
+                (N, 1, ContextDim).
+            class_labels (torch.Tensor | None, optional): class label tensor
+                tensor (N, ).
+            down_block_additional_residuals (tuple[torch.Tensor] | None,
+                optional): additional residual tensors for down blocks
+                (N, C, FeatureMapsDims).
+        Returns:
+            torch.Tensor: bottleneck features.
         """
         if context is not None and self.with_conditioning is False:
             raise ValueError(
