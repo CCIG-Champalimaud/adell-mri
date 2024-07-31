@@ -7,7 +7,7 @@ import pytest
 import torch
 from adell_mri.modules.gan.discriminator import Discriminator
 from adell_mri.modules.gan.generator import Generator
-from adell_mri.modules.gan.gan import GAN
+from adell_mri.modules.gan.pl import GANPL
 
 context_dim = 32
 n_class_embeds = 4
@@ -173,7 +173,6 @@ def test_gan_complete():
         spatial_dims=2,
         in_channels=1,
         out_channels=1,
-        num_class_embeds=n_class_embeds,
         cross_attention_dim=context_dim,
         with_conditioning=True,
     )
@@ -185,15 +184,16 @@ def test_gan_complete():
         structure=[[16, 16, 3, 3], [32, 32, 3, 3]],
     )
 
-    gan = GAN(generator=generator, discriminator=disc)
+    gan = GANPL(
+        generator=generator,
+        discriminator=disc,
+        classification_target_key="class",
+        class_target_specification=[n_class_embeds],
+    )
 
-    cl = torch.randint(low=0, high=n_class_embeds, size=(1,))
+    cl = torch.randint(low=0, high=n_class_embeds, size=(1, 1))
 
     input_tensor = torch.rand(1, 1, 32, 32)
-    gen_output = gan(
-        input_tensor,
-        context=torch.randn(1, 1, gan.generator.cross_attention_dim),
-        class_labels=cl,
-    )
+    gen_output, _ = gan(input_tensor, class_target=cl)
 
     gan.discriminator(gen_output)
