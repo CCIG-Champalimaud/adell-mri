@@ -1,3 +1,7 @@
+"""
+Implementation of the NTXent loss.
+"""
+
 import torch
 import torch.nn.functional as F
 

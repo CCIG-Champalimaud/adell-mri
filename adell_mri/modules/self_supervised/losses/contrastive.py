@@ -7,9 +7,10 @@ from copy import deepcopy
 
 class KLDivergence(torch.nn.Module):
     """
-    Implementation of the KL divergence method suggested in "Bootstrapping
-    Semi-supervised Medical Image Segmentation with Anatomical-aware Contrastive
-    Distillation". Allow for both local and global KL divergence calculation.
+    Implementation of the KL divergence method suggested in [1]. Allow for both
+    local and global KL divergence calculation.
+
+    [1] https://dl.acm.org/doi/10.1007/978-3-031-34048-2_49
     """
 
     def __init__(self, mode: str = "global"):

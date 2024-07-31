@@ -1,3 +1,7 @@
+"""
+Variance-Invariance-Covariance (VIC) regularisation loss implementation.
+"""
+
 import torch
 import torch.nn.functional as F
 from math import sqrt
@@ -6,7 +10,16 @@ from .functional import unravel_index
 from typing import Tuple
 
 
-def off_diagonal(x: torch.Tensor):
+def off_diagonal(x: torch.Tensor) -> torch.Tensor:
+    """
+    Extracts the elements outside of the diagonal of a given square tensor.
+
+    Args:
+        x (torch.Tensor): square tensor.
+
+    Returns:
+        torch.Tensor: tensor containing off-diagonal elements.
+    """
     # from https://github.com/facebookresearch/vicreg/blob/a73f567660ae507b0667c68f685945ae6e2f62c3/main_vicreg.py
     n, m = x.shape
     assert n == m

@@ -2,7 +2,20 @@ import torch
 
 
 class BarlowTwinsLoss(torch.nn.Module):
+    """
+    The Barlow Twins loss. It works contrastively and attempts to maximise
+    the feature correlation between different views of the same instance and
+    minimises the correlation to other instances.
+    """
+
     def __init__(self, moving: bool = False, lam=0.2):
+        """
+        Args:
+            moving (bool, optional): whether the average should be calculated
+                as a moving average. Defaults to False.
+            lam (float, optional): weight for minimisation of correlation with
+                other instances. Defaults to 0.2.
+        """
         super().__init__()
         self.moving = moving
         self.lam = lam

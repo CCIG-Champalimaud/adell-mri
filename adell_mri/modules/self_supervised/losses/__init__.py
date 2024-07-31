@@ -13,3 +13,4 @@ from .functional import (
 from .ntxent import NTXentLoss
 from .vicreg import VICRegLoss, VICRegLocalLoss
 from .dino import DinoLoss
+from .koleo import KoLeoLoss
