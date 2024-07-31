@@ -10,7 +10,7 @@ from skimage.morphology import convex_hull_image
 from skimage import measure
 from sklearn.cluster import DBSCAN
 from pydicom import dcmread
-from typing import List, Iterable, Tuple, Dict, Union, Any, Optional
+from typing import List, Iterable, Tuple, Dict, Union, Any, Optional, Generator
 from ..custom_types import (
     TensorDict,
     TensorOrNDarray,
@@ -92,11 +92,15 @@ class LoadIndividualDICOM(monai.transforms.Transform):
     DICOM files and reshape them to NCHW format for batch processing.
     """
 
-    def __init__(self):
-        pass
+    def __init__(self, metadata_keys: list = None):
+        self.metadata_keys = metadata_keys
 
     def __call__(self, X: str):
-        out = dcmread(X).pixel_array
+        metadata = {}
+        out = dcmread(X)
+        if self.metadata_keys is not None:
+            metadata
+        out = out.pixel_array
         if len(out.shape) == 2:
             out = out[None, :, :, None]
         elif len(out.shape) == 3:
@@ -2026,7 +2030,9 @@ class GetAllCrops(monai.transforms.Transform):
         X = np.pad(X, pad_size, "constant", constant_values=0)
         return X
 
-    def get_all_crops_2d(self, X: torch.Tensor) -> torch.Tensor:
+    def get_all_crops_2d(
+        self, X: torch.Tensor
+    ) -> Generator[torch.Tensor, None, None]:
         sh = X.shape[1:]
         X = self.pad(X)
         for i_1 in range(0, sh[0], self.size[0]):
@@ -2036,7 +2042,9 @@ class GetAllCrops(monai.transforms.Transform):
                 if all([i_2 < (sh[0] + 1), j_2 < (sh[1] + 1)]):
                     yield X[:, i_1:i_2, j_1:j_2]
 
-    def get_all_crops_3d(self, X: torch.Tensor) -> torch.Tensor:
+    def get_all_crops_3d(
+        self, X: torch.Tensor
+    ) -> Generator[torch.Tensor, None, None]:
         sh = [x for x in X.shape[1:]]
         X = self.pad(X)
         for i_1 in range(0, sh[0], self.size[0]):
@@ -2054,7 +2062,9 @@ class GetAllCrops(monai.transforms.Transform):
                     ):
                         yield X[:, i_1:i_2, j_1:j_2, k_1:k_2]
 
-    def get_all_crops(self, X: torch.Tensor) -> torch.Tensor:
+    def get_all_crops(
+        self, X: torch.Tensor
+    ) -> Generator[torch.Tensor, None, None]:
         if self.ndim == 2:
             yield from self.get_all_crops_2d(X)
         if self.ndim == 3:
