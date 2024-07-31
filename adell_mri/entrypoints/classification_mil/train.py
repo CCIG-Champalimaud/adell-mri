@@ -408,11 +408,12 @@ def main(arguments):
             batch_size=network_config["batch_size"],
             shuffle=False,
             num_workers=n_workers,
+            persistent_workers=args.n_workers > 0,
             collate_fn=safe_collate,
         )
         validation_loader = monai.data.ThreadDataLoader(
             validation_dataset,
-            batch_size=network_config["batch_size"],
+            batch_size=1,
             shuffle=False,
             num_workers=n_workers,
             collate_fn=safe_collate,
@@ -526,6 +527,8 @@ def main(arguments):
             neg = len(classes) - pos
             set_classification_layer_bias(pos, neg, network)
 
+        torch.cuda.empty_cache()
+
         trainer = Trainer(
             accelerator=accelerator,
             devices=devices,
@@ -551,6 +554,7 @@ def main(arguments):
         else:
             ckpt_list = ["last"]
         for ckpt_key in ckpt_list:
+            torch.cuda.empty_cache()
             test_metrics = trainer.test(
                 network, validation_loader, ckpt_path=ckpt_key
             )[0]
@@ -573,3 +577,6 @@ def main(arguments):
                         )
                         output_file.write(x + "\n")
                         print(x)
+
+        del network
+        del network_config["module"]
