@@ -3,7 +3,7 @@ import torch
 import torch.nn.functional as F
 import lightning.pytorch as pl
 from itertools import chain
-from typing import Any
+from typing import Any, Callable
 from ..losses import SemiSLAdversarialLoss, SemiSLWGANGPLoss
 from ..discriminator import Discriminator
 from ..generator import Generator
@@ -117,6 +117,7 @@ class GANPL(pl.LightningModule):
         n_critic: int = 1,
         lambda_gp: float = 0.0,
         lambda_feature_matching: float = 0.0,
+        lambda_feature_map_matching: float = 0.0,
         lambda_identity: float = 0.0,
         cycle_consistency: bool = False,
         patch_size: tuple[int, int] | tuple[int, int, int] | None = None,
@@ -168,6 +169,11 @@ class GANPL(pl.LightningModule):
                 Wasserstein GAN with gradient penalty. Defaults to 0.0.
             lambda_feature_matching (float, optional): weight for feature
                 matching loss. Defaults to 0.0 (no feature matching).
+            lambda_feature_map_matching (float, optional): weight for feature
+                map matching loss (identical to feature matching but works at
+                the feature map level rather than at the feature vector level;
+                may be useful if there is an expected spatial structure).
+                Defaults to 0.0 (no feature map matching)
             lambda_identity (float, optional): weight for identity loss (for
                 image-to-image conditional generation). Defaults to 0.0.
             cycle_consistency (bool, optional): triggers cycle-consistent GAN.
@@ -202,6 +208,7 @@ class GANPL(pl.LightningModule):
         self.n_critic = n_critic
         self.lambda_gp = lambda_gp
         self.lambda_feature_matching = lambda_feature_matching
+        self.lambda_feature_map_matching = lambda_feature_map_matching
         self.lambda_identity = lambda_identity
         self.cycle_consistency = cycle_consistency
         self.patch_size = patch_size
@@ -275,36 +282,53 @@ class GANPL(pl.LightningModule):
     # optimizations and ad-hoc steps
     def optimization_step_and_logging(
         self,
-        optimizer: torch.optim.Optimizer,
-        step_fn: callable,
-        suffix: str,
-        additional_losses: dict[str, torch.Tensor] | None = None,
-        *step_fn_args,
-        **step_fn_kwargs,
+        optimizers: torch.optim.Optimizer | list[torch.optim.Optimizer],
+        step_fns: dict[str, Callable | list | dict],
     ):
-        self.toggle_optimizer(optimizer)
-        output = step_fn(*step_fn_args, **step_fn_kwargs)
-        if isinstance(output, (tuple, list)):
-            losses = output[0]
-        else:
-            losses = output
-        if additional_losses is not None:
-            losses = {**losses, **additional_losses}
-        loss_sum = sum([losses[k] for k in losses]) / len(losses)
+        """
+        Generic optimization function supporting multiple optimizers and "step"
+        functions. Each step function should return a dictionary with losses.
+
+        To accomodate for steps requiring gradient accumulation across diferent
+        steps, the ``step`` method is called for all optimizers before the
+        ``zero_grad`` method is called. This allows for the same gradients to
+        be used for different gradients.
+
+        Args:
+            optimizers (torch.optim.Optimizer | list[torch.optim.Optimizer]):
+                an optimizer or a list of optimizers which are toggled before
+                running any step and untoggled at the end of all steps.
+            step_fns (dict[str, Callable  |  list  |  dict]): a dictionary with
+                one obligatory key ("step_fn", which should be a callable) and
+                two optional keys ("args" and "kwargs" for arguments and keyword
+                arguments for ``step_fn``)
+        """
+        self.toggle_optimizers(optimizers)
+        all_losses = {}
+        for step_key in step_fns:
+            step_fn = step_fns[step_key]["step_fn"]
+            step_fn_args = step_fns[step_key].get("args", [])
+            step_fn_kwargs = step_fns[step_key].get("kwargs", {})
+            output = step_fn(*step_fn_args, **step_fn_kwargs)
+            if isinstance(output, (tuple, list)):
+                losses = output[0]
+            else:
+                losses = output
+            for k in losses:
+                all_losses[f"{step_key}_{k}"] = losses[k]
+            for k in all_losses:
+                self.log(
+                    k,
+                    all_losses[k],
+                    on_epoch=True,
+                    prog_bar=True,
+                    on_step=False,
+                    sync_dist=True,
+                )
+        loss_sum = sum([all_losses[k] for k in all_losses]) / len(all_losses)
         self.manual_backward(loss_sum)
-        optimizer.step()
-        optimizer.zero_grad()
-        self.untoggle_optimizer(optimizer)
-        for k in losses:
-            self.log(
-                f"loss_{k}_{suffix}",
-                losses[k],
-                on_epoch=True,
-                prog_bar=True,
-                on_step=False,
-                sync_dist=True,
-            )
-        return output
+        self.step_zero_grad_optimizers(optimizers)
+        self.untoggle_optimizers(optimizers)
 
     def step_generator(
         self,
@@ -316,6 +340,7 @@ class GANPL(pl.LightningModule):
         class_target: torch.Tensor | None = None,
         reg_target: torch.Tensor | None = None,
     ):
+        real_feat = None
         if generator is None:
             generator = self.generator
         if discriminator is None:
@@ -350,6 +375,14 @@ class GANPL(pl.LightningModule):
                 real_samples, discriminator
             )
             losses["feature_matching"] = self.feature_matching_loss(
+                gen_feat, real_feat
+            )
+        if self.lambda_feature_map_matching > 0.0:
+            if real_feat is None:
+                _, _, _, real_feat = self.apply_discriminator(
+                    real_samples, discriminator
+                )
+            losses["feature_map_matching"] = self.feature_map_matching_loss(
                 gen_feat, real_feat
             )
         if self.lambda_identity > 0.0:
@@ -405,26 +438,29 @@ class GANPL(pl.LightningModule):
 
     def step_cycle(
         self,
-        gen_samples_a: torch.Tensor,
-        gen_samples_b: torch.Tensor,
+        input_samples_a: torch.Tensor,
+        input_samples_b: torch.Tensor,
         generator_a_to_b: torch.nn.Module,
         generator_b_to_a: torch.nn.Module,
         class_target: torch.Tensor | None,
         reg_target: torch.Tensor | None,
     ):
-        recon_samples_b = self.apply_generator(
-            gen_samples_a,
-            generator=generator_a_to_b,
-            class_tensor=class_target,
+        boilerplate = dict(
+            class_target=class_target,
             reg_target=reg_target,
             return_converted_x=False,
         )
+        gen_samples_a = self.apply_generator(
+            input_samples_b, generator=generator_b_to_a, **boilerplate
+        )
+        gen_samples_b = self.apply_generator(
+            input_samples_a, generator=generator_a_to_b, **boilerplate
+        )
+        recon_samples_b = self.apply_generator(
+            gen_samples_a, generator=generator_a_to_b, **boilerplate
+        )
         recon_samples_a = self.apply_generator(
-            gen_samples_b,
-            generator=generator_b_to_a,
-            class_tensor=class_target,
-            reg_target=reg_target,
-            return_converted_x=False,
+            gen_samples_b, generator=generator_b_to_a, **boilerplate
         )
         losses = {
             "cyc_b_to_a": self.identity_loss(recon_samples_a, gen_samples_a),
@@ -452,34 +488,43 @@ class GANPL(pl.LightningModule):
         class_target: torch.Tensor | None,
         reg_target: torch.Tensor | None,
         batch_idx: int,
-        extra_suffix: str | None = None,
     ):
         opt_g, opt_d = self.optimizers()
         # optimize discriminator
         self.optimization_step_and_logging(
-            optimizer=opt_d,
-            step_fn=self.step_discriminator,
-            suffix="d" if extra_suffix is None else f"d_{extra_suffix}",
-            generator=self.generator,
-            discriminator=self.discriminator,
-            real_samples=real_samples,
-            input_tensor=input_tensor,
-            class_target=class_target,
-            reg_target=reg_target,
+            optimizers=opt_d,
+            step_fns={
+                "d": {
+                    "step_fn": self.step_discriminator,
+                    "kwargs": {
+                        "generator": self.generator,
+                        "discriminator": self.discriminator,
+                        "real_samples": real_samples,
+                        "input_tensor": input_tensor,
+                        "class_target": class_target,
+                        "reg_target": reg_target,
+                    },
+                }
+            },
         )
 
         # optimize generator
         if batch_idx % self.n_critic == 0:
             self.optimization_step_and_logging(
-                optimizer=opt_g,
-                step_fn=self.step_generator,
-                suffix="g" if extra_suffix is None else f"g_{extra_suffix}",
-                generator=self.generator,
-                discriminator=self.discriminator,
-                real_samples=real_samples,
-                input_tensor=input_tensor,
-                class_target=class_target,
-                reg_target=reg_target,
+                optimizers=opt_g,
+                step_fns={
+                    "g": {
+                        "step_fn": self.step_generator,
+                        "kwargs": {
+                            "generator": self.generator,
+                            "discriminator": self.discriminator,
+                            "real_samples": real_samples,
+                            "input_tensor": input_tensor,
+                            "class_target": class_target,
+                            "reg_target": reg_target,
+                        },
+                    }
+                },
             )
 
     def cycle_consistency_optimization(
@@ -490,104 +535,115 @@ class GANPL(pl.LightningModule):
         reg_target: torch.Tensor | None,
         batch_idx: int,
     ):
+        targets = {"class_target": class_target, "reg_target": reg_target}
         opt_g, opt_d, opt_g_cyc, opt_d_cyc = self.optimizers()
         # optimize discriminator
         self.optimization_step_and_logging(
-            optimizer=opt_d,
-            step_fn=self.step_discriminator,
-            suffix="d",
-            generator=self.generator,
-            discriminator=self.discriminator,
-            real_samples=real_samples,
-            input_tensor=input_tensor,
-            class_target=class_target,
-            reg_target=reg_target,
+            optimizers=opt_d,
+            step_fns={
+                "d": {
+                    "step_fn": self.step_discriminator,
+                    "kwargs": {
+                        "generator": self.generator,
+                        "discriminator": self.discriminator,
+                        "real_samples": real_samples,
+                        "input_tensor": input_tensor,
+                        **targets,
+                    },
+                },
+            },
         )
 
         # optimize discriminator for cycle
         self.optimization_step_and_logging(
-            optimizer=opt_d_cyc,
-            step_fn=self.step_discriminator,
-            suffix="cycle_d",
-            generator=self.generator_cycle,
-            discriminator=self.discriminator_cycle,
-            real_samples=input_tensor,
-            input_tensor=real_samples,
-            class_target=class_target,
-            reg_target=reg_target,
+            optimizers=opt_d_cyc,
+            step_fns={
+                "cycle_d": {
+                    "step_fn": self.step_discriminator,
+                    "kwargs": {
+                        "generator": self.generator_cycle,
+                        "discriminator": self.discriminator_cycle,
+                        "real_samples": input_tensor,
+                        "input_tensor": real_samples,
+                        **targets,
+                    },
+                },
+            },
         )
 
         # optimize generator
         if batch_idx % self.n_critic == 0:
-            # generate samples and register gradients
-            self.toggle_optimizer(opt_g)
-            self.toggle_optimizer(opt_g_cyc)
-            gen_samples = self.apply_generator(
-                input_tensor, self.generator, class_target, reg_target
-            )
-            gen_samples_cycle = self.apply_generator(
-                real_samples, self.generator_cycle, class_target, reg_target
-            )
-
-            # calculate cycle-consistency loss to include in both backward steps
-            cycle_losses = self.step_cycle(
-                gen_samples_a=gen_samples_cycle,
-                gen_samples_b=gen_samples,
-                generator_a_to_b=self.generator,
-                generator_b_to_a=self.generator_cycle,
-                class_target=class_target,
-                reg_target=reg_target,
-            )
-
-            # optimize generator with CL loss
             self.optimization_step_and_logging(
-                optimizer=opt_g,
-                step_fn=self.step_generator,
-                suffix="g",
-                additional_losses=cycle_losses,
-                gen_samples=gen_samples,
-                generator=self.generator,
-                discriminator=self.discriminator,
-                real_samples=real_samples,
-                input_tensor=input_tensor,
-                class_target=class_target,
-                reg_target=reg_target,
-            )
-
-            # optimize generator for cycle with CL loss
-            self.optimization_step_and_logging(
-                optimizer=opt_g_cyc,
-                step_fn=self.step_generator,
-                suffix="cycle_g",
-                additional_losses=cycle_losses,
-                gen_samples=gen_samples_cycle,
-                generator=self.generator_cycle,
-                discriminator=self.discriminator_cycle,
-                real_samples=input_tensor,
-                input_tensor=real_samples,
-                class_target=class_target,
-                reg_target=reg_target,
+                optimizers=[opt_g, opt_g_cyc],
+                step_fns={
+                    "cycle_consistency": {
+                        "step_fn": self.step_cycle,
+                        "kwargs": {
+                            "input_samples_a": input_tensor,
+                            "input_samples_b": real_samples,
+                            "generator_a_to_b": self.generator,
+                            "generator_b_to_a": self.generator_cycle,
+                            **targets,
+                        },
+                    },
+                    "g": {
+                        "step_fn": self.step_generator,
+                        "kwargs": {
+                            "generator": self.generator,
+                            "discriminator": self.discriminator,
+                            "real_samples": real_samples,
+                            "input_tensor": input_tensor,
+                            **targets,
+                        },
+                    },
+                    "g_cycle": {
+                        "step_fn": self.step_generator,
+                        "kwargs": {
+                            "generator": self.generator_cycle,
+                            "discriminator": self.discriminator_cycle,
+                            "real_samples": input_tensor,
+                            "input_tensor": real_samples,
+                            **targets,
+                        },
+                    },
+                },
             )
 
     # loss definitions
 
     def feature_matching_loss(
-        self, x_1: torch.Tensor, x_2: torch.Tensor
+        self,
+        x_1: torch.Tensor,
+        x_2: torch.Tensor,
     ) -> torch.Tensor:
-        if hasattr(self, "lambda_feature_matching"):
-            lfm = self.lambda_feature_matching
-            return F.mse_loss(x_1.mean(0), x_2.mean(0)) * lfm
-        else:
-            raise ValueError("lambda_feature_matching should be defined")
+        def pool_if_necessary(x: torch.Tensor) -> torch.Tensor:
+            if len(x.shape) > 2:
+                x = x.flatten(start_dim=2).mean(-1)
+            return x
+
+        return torch.multiply(
+            F.mse_loss(
+                pool_if_necessary(x_1).mean(0), pool_if_necessary(x_2).mean(0)
+            ),
+            self.lambda_feature_matching,
+        )
+
+    def feature_map_matching_loss(
+        self,
+        x_1: torch.Tensor,
+        x_2: torch.Tensor,
+    ) -> torch.Tensor:
+
+        return torch.multiply(
+            F.mse_loss(x_1.mean(0), x_2.mean(0)),
+            self.lambda_feature_matching,
+        )
 
     def identity_loss(
         self, x_1: torch.Tensor, x_2: torch.Tensor
     ) -> torch.Tensor:
-        if hasattr(self, "lambda_identity"):
-            li = self.lambda_identity
-            return F.mse_loss(x_1, x_2) * li
-        else:
-            raise ValueError("lambda_identity should be defined")
+        li = self.lambda_identity
+        return F.mse_loss(x_1, x_2) * li
 
     # generation, data processing, functional bits
 
@@ -665,6 +721,43 @@ class GANPL(pl.LightningModule):
 
     # lightning-specific stuff
 
+    def set_require_grad(
+        self, optimizer: torch.optim.Optimizer, requires_grad: bool
+    ):
+        for group in optimizer.param_groups:
+            for param in group["params"]:
+                param.requires_grad_(requires_grad)
+
+    def toggle_optimizers(
+        self, optimizers: list[torch.optim.Optimizer] | torch.optim.Optimizer
+    ):
+        if isinstance(optimizers, list):
+            for optimizer in optimizers:
+                self.set_require_grad(optimizer, True)
+        else:
+            self.set_require_grad(optimizers, True)
+
+    def untoggle_optimizers(
+        self, optimizers: list[torch.optim.Optimizer] | torch.optim.Optimizer
+    ):
+        if isinstance(optimizers, list):
+            for optimizer in optimizers:
+                self.set_require_grad(optimizer, False)
+        else:
+            self.set_require_grad(optimizers, False)
+
+    def step_zero_grad_optimizers(
+        self, optimizers: list[torch.optim.Optimizer] | torch.optim.Optimizer
+    ):
+        if isinstance(optimizers, list):
+            for optimizer in optimizers:
+                optimizer.step()
+            for optimizer in optimizers:
+                optimizer.zero_grad()
+        else:
+            optimizers.step()
+            optimizers.zero_grad()
+
     def training_step(self, batch: dict[str, Any], batch_idx: int):
         real_samples, input_tensor = self.prepare_image_data(batch)
         class_target, reg_target = self.get_targets(batch)
@@ -679,8 +772,8 @@ class GANPL(pl.LightningModule):
             )
         else:
             self.cycle_consistency_optimization(
-                real_samples=input_tensor,
-                input_tensor=real_samples,
+                real_samples=real_samples,
+                input_tensor=input_tensor,
                 class_target=class_target,
                 reg_target=reg_target,
                 batch_idx=batch_idx,
@@ -789,6 +882,7 @@ class GANPL(pl.LightningModule):
                     prog_bar=True,
                     sync_dist=True,
                 )
+        self.untoggle_optimizers(self.optimizers())
         return super().on_train_batch_start(batch, batch_idx)
 
     # forward for the sake of having a forward

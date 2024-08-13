@@ -174,9 +174,9 @@ class Discriminator(torch.nn.Module):
         X = self.backbone(X)
         if isinstance(X, (tuple, list)):
             X = X[0]
+        bottleneck = X
         if len(X.shape) > 2:
             X = X.flatten(start_dim=2).max(-1).values
-        bottleneck = X
         if self.additional_features > 0:
             if X_features is None:
                 raise ValueError(
