@@ -105,7 +105,8 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
                 num_condition = None
             # expects three dimensions (batch, seq, embedding size)
             condition = self.embedder(cat_condition, num_condition)
-            condition = condition.unsqueeze(1)
+            if len(condition.shape) < 3:
+                condition = condition.unsqueeze(1)
         else:
             condition = None
         return x, condition

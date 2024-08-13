@@ -267,10 +267,10 @@ class Embedder(torch.nn.Module):
         if self.n_num_feat is not None:
             if X_num is None:
                 X_num = self.get_expected_num(batch_size)
-            embeddings.append(self.num_embedder(X_num))
+            embeddings.append(self.num_embedder(X_num)[:, None, :])
             if self.device is None:
                 self.device = embeddings[-1].device
-        out = self.final_embedding(torch.cat(embeddings, 1))
+        out = self.final_embedding(torch.cat(embeddings, -1))
         if return_X:
             return out, converted_X
         return out
