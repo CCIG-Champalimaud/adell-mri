@@ -70,6 +70,7 @@ def main(arguments):
             "n_workers",
             "seed",
             "max_epochs",
+            "steps_per_epoch",
             "precision",
             "check_val_every_n_epoch",
             "gradient_clip_val",
@@ -250,13 +251,17 @@ def main(arguments):
         return monai.data.ThreadDataLoader(
             train_dataset,
             batch_size=bs,
-            shuffle=True,
             num_workers=n_workers,
-            generator=g,
             collate_fn=collate_fn,
             pin_memory=True,
             persistent_workers=args.n_workers > 0,
             drop_last=True,
+            sampler=torch.utils.data.RandomSampler(
+                train_dataset,
+                replacement=False,
+                num_samples=args.steps_per_epoch * bs,
+                generator=g,
+            ),
         )
 
     train_loader = train_loader_call()
