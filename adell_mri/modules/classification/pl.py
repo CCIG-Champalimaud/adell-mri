@@ -1,4 +1,5 @@
 import numpy as np
+import gc
 import torch
 import torch.nn.functional as F
 import torchmetrics
@@ -239,6 +240,7 @@ class ClassPLABC(pl.LightningModule, ABC):
         lr = self.learning_rate
         last_lr = sch["_last_lr"][0] if "_last_lr" in sch else lr
         self.log("lr", last_lr, sync_dist=True, prog_bar=True)
+        gc.collect()
 
     def on_fit_end(self):
         if hasattr(self, "gaussian_process"):
