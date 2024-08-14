@@ -158,19 +158,21 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
                 ),
             )
         if self.embedder is not None:
-            conditioning = self.embedder(
+            condition = self.embedder(
                 X_cat=cat_condition,
                 X_num=num_condition,
                 batch_size=n,
                 update_queues=False,
-            ).unsqueeze(1)
+            )
+            if len(condition.shape) < 3:
+                condition = condition.unsqueeze(1)
         else:
-            conditioning = None
+            condition = None
         sample = self.inferer.sample(
             input_noise=input_image,
             diffusion_model=self,
             scheduler=self.scheduler,
-            conditioning=conditioning,
+            conditioning=condition,
             skip_steps=skip_steps,
         )
 

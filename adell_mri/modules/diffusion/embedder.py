@@ -223,8 +223,8 @@ class Embedder(torch.nn.Module):
 
     def forward(
         self,
-        X_cat: List[torch.LongTensor] = None,
-        X_num: torch.Tensor = None,
+        X_cat: List[torch.LongTensor] | None = None,
+        X_num: torch.Tensor | None = None,
         batch_size: int = 1,
         update_queues: bool = True,
         return_X: bool = False,
