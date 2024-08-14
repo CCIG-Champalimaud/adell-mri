@@ -1,9 +1,14 @@
+"""
+Lightning modules of semi-supervised learning methods.
+"""
+
 import numpy as np
 import torch
 from ..segmentation.pl import UNetBasePL, update_metrics
 from .unet import UNetSemiSL
 
-from typing import Callable, Dict
+from typing import Callable
+from ...custom_types import TensorDict, TensorList
 
 
 class UNetContrastiveSemiSL(UNetSemiSL, UNetBasePL):
@@ -134,12 +139,38 @@ class UNetContrastiveSemiSL(UNetSemiSL, UNetBasePL):
         else:
             self.semi_supervised = False
 
-    def unpack_batch(self, batch):
+    def unpack_batch(
+        self, batch: dict[str, TensorDict] | TensorDict
+    ) -> TensorDict:
+        """
+        Unpacks batch for supervised learning.
+
+        Args:
+            batch (dict[str, TensorDict] | TensorDict): dictionary containing
+                "supervised" element or containing tensors.
+
+        Returns:
+            TensorDict: returns batch["supervised"] or batch after unpacking
+                either.
+        """
         if self.semi_supervised is True and "supervised" in batch:
             batch = batch["supervised"]
         return super().unpack_batch(batch)
 
-    def unpack_batch_semi_sl(self, batch: Dict[str, torch.Tensor]):
+    def unpack_batch_semi_sl(
+        self, batch: dict[str, TensorDict] | TensorDict
+    ) -> TensorDict:
+        """
+        Unpacks batch for semi-supervised learning.
+
+        Args:
+            batch (dict[str, TensorDict] | TensorDict): dictionary containing
+                "unsupervised" element or containing tensors.
+
+        Returns:
+            TensorDict: returns batch["unsupervised"] or batch after unpacking
+                either.
+        """
         if self.semi_supervised is True:
             batch = batch["self_supervised"]
         x_1 = batch[self.semi_sl_image_key_1]
@@ -155,6 +186,15 @@ class UNetContrastiveSemiSL(UNetSemiSL, UNetBasePL):
         return x_1, x_2, x_cond, x_fc
 
     def forward_features_ema_stop_grad(self, **kwargs):
+        """
+        Forward operation for kwargs using either EMA module (self.ema) or with
+        regular module with or without gradient stopping (depending on whether
+        self.stop_gradient is True).
+
+        Returns:
+            Output from self.forward_features or from
+                self.ema.shadow.forward_features
+        """
         if self.ema is not None:
             op = self.ema.shadow.forward_features
         else:
@@ -165,7 +205,16 @@ class UNetContrastiveSemiSL(UNetSemiSL, UNetBasePL):
         else:
             return op(**kwargs)
 
-    def coherce_batch_size(self, *tensors):
+    def coherce_batch_size(self, *tensors: TensorList) -> TensorList:
+        """
+        Ensures that all tensors have at most min(batch size) elements.
+
+        Args:
+            *tensors (TensorList): list of tensors.
+
+        Returns:
+            TensorList: list of tensors with at most min(batch_size) elements.
+        """
         batch_sizes = [
             x.shape[0] if x is not None else np.inf for x in tensors
         ]
@@ -184,7 +233,21 @@ class UNetContrastiveSemiSL(UNetSemiSL, UNetBasePL):
         x_fc: torch.Tensor,
         *args,
         **kwargs,
-    ):
+    ) -> torch.Tensor:
+        """
+        Loss calculation step for local contrastive learning.
+
+        Args:
+            x_1 (torch.Tensor): first view a tensor.
+            x_2 (torch.Tensor): second view of a tensor.
+            x_cond (torch.Tensor): tensor conditioning for skip connection
+                conditioning (i.e. should be the same size as x_1).
+            x_fc (torch.Tensor): feature conditioning for feature vector
+                conditioning (i.e. should be a batch of vectors).
+
+        Returns:
+            torch.Tensor: loss for self-supervised learning step.
+        """
         features_1 = self.forward_features(
             X=x_1,
             X_skip_layer=x_cond,
@@ -213,7 +276,23 @@ class UNetContrastiveSemiSL(UNetSemiSL, UNetBasePL):
         x_fc: torch.Tensor,
         *args,
         **kwargs,
-    ):
+    ) -> torch.Tensor:
+        """
+        Loss calculation step for local contrastive learning with anchors.
+
+        Args:
+            x (torch.Tensor): input tensor.
+            x_1 (torch.Tensor): first anchor tensor.
+            x_2 (torch.Tensor): second anchor tensor.
+            x_cond (torch.Tensor): tensor conditioning for skip connection
+                conditioning (i.e. should be the same size as x_1).
+            x_fc (torch.Tensor): feature conditioning for feature vector
+                conditioning (i.e. should be a batch of vectors).
+
+        Returns:
+            torch.Tensor: loss for self-supervised learning step.
+        """
+
         x, x_1, x_2, x_cond, x_fc = self.coherce_batch_size(
             x, x_1, x_2, x_cond, x_fc
         )
@@ -249,7 +328,7 @@ class UNetContrastiveSemiSL(UNetSemiSL, UNetBasePL):
 
     def step_semi_sl(
         self,
-        x: torch.Tensor,
+        x: torch.Tensor | None,
         x_1: torch.Tensor,
         x_2: torch.Tensor,
         x_cond: torch.Tensor,
@@ -257,6 +336,22 @@ class UNetContrastiveSemiSL(UNetSemiSL, UNetBasePL):
         *args,
         **kwargs,
     ):
+        """
+        Loss calculation step for local contrastive learning with anchors (if
+        x is not None) or for local constrative learning (if x is None).
+
+        Args:
+            x (torch.Tensor): input tensor.
+            x_1 (torch.Tensor): first anchor tensor.
+            x_2 (torch.Tensor): second anchor tensor.
+            x_cond (torch.Tensor): tensor conditioning for skip connection
+                conditioning (i.e. should be the same size as x_1).
+            x_fc (torch.Tensor): feature conditioning for feature vector
+                conditioning (i.e. should be a batch of vectors).
+
+        Returns:
+            torch.Tensor: loss for self-supervised learning step.
+        """
         if x is not None:
             return self.step_semi_sl_anchors(
                 x, x_1, x_2, x_cond, x_fc, *args, **kwargs
@@ -266,7 +361,19 @@ class UNetContrastiveSemiSL(UNetSemiSL, UNetBasePL):
                 x_1, x_2, x_cond, x_fc, *args, **kwargs
             )
 
-    def training_step(self, batch, batch_idx):
+    def training_step(
+        self, batch: dict[str, TensorDict | torch.Tensor], batch_idx: int
+    ) -> torch.Tensor:
+        """
+        Training step.
+
+        Args:
+            batch (dict[str, TensorDict  |  torch.Tensor]): batch.
+            batch_idx (int): batch index (not used).
+
+        Returns:
+            torch.Tensor: loss value.
+        """
         # supervised bit
         x = None
         if self.label_key is not None:
@@ -324,6 +431,17 @@ class UNetContrastiveSemiSL(UNetSemiSL, UNetBasePL):
         return output_loss
 
     def validation_step(self, batch, batch_idx):
+        """
+        Validation step.
+
+        Args:
+            batch (dict[str, TensorDict  |  torch.Tensor]): batch.
+            batch_idx (int): batch index (not used).
+
+        Returns:
+            torch.Tensor: loss value.
+        """
+
         output_loss = torch.as_tensor(0.0).to(self.device)
         if self.label_key is not None:
             x, x_cond, x_fc, y, y_class = self.unpack_batch(batch)
@@ -394,6 +512,17 @@ class UNetContrastiveSemiSL(UNetSemiSL, UNetBasePL):
         return output_loss
 
     def test_step(self, batch, batch_idx):
+        """
+        Testing step.
+
+        Args:
+            batch (dict[str, TensorDict  |  torch.Tensor]): batch.
+            batch_idx (int): batch index (not used).
+
+        Returns:
+            torch.Tensor: loss value.
+        """
+
         output_loss = torch.as_tensor(0.0).to(self.device)
         x, x_cond, x_fc, y, y_class = self.unpack_batch(batch)
 

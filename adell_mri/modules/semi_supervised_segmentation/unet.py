@@ -1,3 +1,8 @@
+"""
+UNet implementation with some minor modifications to support semi-supervised
+learning (i.e. return features).
+"""
+
 import torch
 import torch.nn.functional as F
 import numpy as np
@@ -12,6 +17,9 @@ class UNetSemiSL(UNet):
     """
 
     def __init__(self, *args, **kwargs):
+        """
+        Initializes the UNet module.
+        """
         super().__init__(*args, **kwargs)
 
         self.init_linear_transformation()
