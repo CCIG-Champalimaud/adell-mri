@@ -15,7 +15,7 @@ from ...utils import (
     collate_last_slice,
 )
 from ...utils.pl_utils import get_ckpt_callback, get_logger, get_devices
-from ...utils.pl_callbacks import LogImageFromDiffusionProcess
+from ...utils.pl_callbacks import LogImageFromDiffusionProcess, EMACallback
 from ...utils.torch_utils import load_checkpoint_to_model
 from ...utils.dataset import Dataset
 from ...monai_transforms import (
@@ -95,6 +95,7 @@ def main(arguments):
             "batch_size",
             "learning_rate",
             "diffusion_steps",
+            "ema_decay",
             "fill_missing_with_placeholder",
         ]
     )
@@ -297,6 +298,11 @@ def main(arguments):
 
     if ckpt_callback is not None:
         callbacks.append(ckpt_callback)
+
+    if args.ema_decay is not None:
+        callbacks.append(
+            EMACallback(decay=args.ema_decay, use_ema_weights=True)
+        )
 
     logger = get_logger(
         summary_name=args.summary_name,
