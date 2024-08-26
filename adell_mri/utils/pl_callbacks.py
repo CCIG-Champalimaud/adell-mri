@@ -8,6 +8,7 @@ from PIL import Image
 from lightning.pytorch import LightningModule, Trainer
 from lightning.pytorch.callbacks import Callback
 from lightning.pytorch.callbacks.model_checkpoint import ModelCheckpoint
+from .utils import ExponentialMovingAverage
 
 
 def coerce_to_uint8(x: np.ndarray):
@@ -523,3 +524,114 @@ class ModelCheckpointWithMetadata(ModelCheckpoint):
             trainer, previous, filepath
         ):
             self._remove_checkpoint(trainer, previous)
+
+
+class EMACallback(Callback):
+    """
+    Model Exponential Moving Average. Empirically it has been found that using the moving average
+    of the trained parameters of a deep network is better than using its trained parameters directly.
+
+    If `use_ema_weights`, then the ema parameters of the network is set after training end.
+    """
+
+    def __init__(
+        self,
+        decay: float = 0.9999,
+        final_decay: float | None = None,
+        n_steps: int = None,
+        use_ema_weights: bool = True,
+        update_train_weights: bool = False,
+    ):
+        self.decay = decay
+        self.final_decay = final_decay
+        self.n_steps = n_steps
+        self.ema = None
+        self.use_ema_weights = use_ema_weights
+        self.update_train_weights = update_train_weights
+
+    def on_fit_start(self, trainer: Trainer, pl_module: LightningModule):
+        """
+        Initialise exponential moving average of the model.
+        """
+        self.ema = ExponentialMovingAverage(
+            decay=self.decay,
+            final_decay=self.final_decay,
+            n_steps=self.n_steps,
+        )
+
+    def on_train_batch_end(
+        self,
+        trainer,
+        pl_module,
+        outputs,
+        batch,
+        batch_idx,
+    ):
+        """
+        Updates EMA of the model.
+        """
+        # Update currently maintained parameters.
+        self.ema.update(pl_module)
+        if self.update_train_weights:
+            self.copy_to(self.ema.parameters(), pl_module.parameters())
+
+    def on_validation_epoch_start(
+        self, trainer: Trainer, pl_module: LightningModule
+    ):
+        """
+        Validation is performed using EMA parameters.
+        """
+        if self.update_train_weights is False:
+            self.store(pl_module.parameters())
+            self.copy_to(self.ema.parameters(), pl_module.parameters())
+
+    def on_validation_end(self, trainer, pl_module):
+        """
+        Restores original parameters after validation.
+        """
+        if self.update_train_weights is False:
+            self.restore(pl_module.parameters())
+
+    def on_train_end(self, trainer: Trainer, pl_module: LightningModule):
+        """
+        Update module weights to EMA version.
+        """
+        if self.use_ema_weights:
+            self.copy_to(self.ema.parameters(), pl_module.parameters())
+
+    def on_save_checkpoint(self, trainer, pl_module, checkpoint):
+        """
+        Saves EMA weights.
+        """
+        if self.ema is not None:
+            return {"state_dict_ema": self.state_dict()}
+
+    def on_load_checkpoint(self, trainer, pl_module, checkpoint):
+        """
+        Restores EMA weights.
+        """
+        if self.ema is not None:
+            self.ema.load_state_dict(checkpoint["state_dict_ema"])
+
+    def store(self, parameters):
+        """
+        Saves EMA weights in ``self.collected_params``.
+        """
+        self.collected_params = [param.clone() for param in parameters]
+
+    def restore(self, parameters):
+        """
+        Restore the parameters stored with the `store` method.
+        Useful to validate the model with EMA parameters without affecting the
+        original optimization process.
+        """
+        for c_param, param in zip(self.collected_params, parameters):
+            param.data.copy_(c_param.data)
+
+    def copy_to(self, shadow_parameters, parameters):
+        """
+        Copy current parameters into given collection of parameters.
+        """
+        for s_param, param in zip(shadow_parameters, parameters):
+            if param.requires_grad:
+                param.data.copy_(s_param.data)
