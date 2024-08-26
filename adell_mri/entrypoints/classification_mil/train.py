@@ -210,6 +210,7 @@ def main(arguments):
     transforms_common = get_transforms("pre", **transform_arguments)
     transforms_train = monai.transforms.Compose(
         [
+            *transforms_common,
             get_augmentations(**augment_arguments, mask_key=None),
             *get_transforms("post", **transform_arguments),
             EinopsRearranged("image", "c h w d -> 1 h w (d c)"),
@@ -218,12 +219,15 @@ def main(arguments):
     )
     transforms_val = monai.transforms.Compose(
         [
+            *transforms_common,
             *get_transforms("post", **transform_arguments),
             EinopsRearranged("image", "c h w d -> 1 h w (d c)"),
             ScaleIntensityAlongDimd("image", dim=-1),
         ]
     )
+
     transforms_train.set_random_state(args.seed)
+    transforms_val.set_random_state(args.seed)
 
     all_pids = [k for k in data_dict]
     if args.folds is None:
@@ -266,13 +270,6 @@ def main(arguments):
         args.n_folds = len(folds)
         fold_generator = iter(folds)
 
-    full_dataset = monai.data.CacheDataset(
-        [data_dict[pid] for pid in data_dict],
-        transforms_common,
-        cache_rate=args.cache_rate,
-        num_workers=args.n_workers,
-    )
-
     for val_fold in range(args.n_folds):
         train_idxs, val_idxs = next(fold_generator)
 
@@ -294,14 +291,23 @@ def main(arguments):
         train_list = [data_dict[pid] for pid in train_pids]
         val_list = [data_dict[pid] for pid in val_pids]  # noqa
 
-        train_dataset = monai.data.Dataset(
-            [full_dataset[i] for i in train_idxs], transform=transforms_train
+        train_dataset = monai.data.CacheDataset(
+            [data_dict[pid] for pid in train_pids],
+            transforms_train,
+            cache_rate=args.cache_rate,
+            num_workers=args.n_workers,
         )
-        train_dataset_val = monai.data.Dataset(
-            [full_dataset[i] for i in val_idxs], transform=transforms_val
+        train_dataset_val = monai.data.CacheDataset(
+            [data_dict[pid] for pid in val_pids],
+            transforms_val,
+            cache_rate=args.cache_rate,
+            num_workers=args.n_workers,
         )
-        validation_dataset = monai.data.Dataset(
-            [full_dataset[i] for i in val_idxs], transform=transforms_val
+        validation_dataset = monai.data.CacheDataset(
+            [data_dict[pid] for pid in val_pids],
+            transforms_val,
+            cache_rate=args.cache_rate,
+            num_workers=args.n_workers,
         )
 
         classes = []
@@ -390,7 +396,7 @@ def main(arguments):
 
         def train_loader_call():
             return monai.data.ThreadDataLoader(
-                train_dataset,
+                train_dataset,  # noqa
                 batch_size=network_config["batch_size"],
                 shuffle=sampler is None,
                 num_workers=n_workers,
@@ -579,4 +585,8 @@ def main(arguments):
                         print(x)
 
         del network
+        del train_dataset
+        del train_loader
+        del validation_dataset
+        del validation_loader
         del network_config["module"]
