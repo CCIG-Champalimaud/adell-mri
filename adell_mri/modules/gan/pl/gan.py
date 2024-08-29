@@ -1,3 +1,7 @@
+"""
+Lightning modules for generative adversarial network training.
+"""
+
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -5,6 +9,8 @@ import lightning.pytorch as pl
 from copy import deepcopy
 from itertools import chain
 from typing import Any, Callable
+
+import torch.optim
 from ..losses import SemiSLAdversarialLoss, SemiSLWGANGPLoss
 from ..discriminator import Discriminator
 from ..generator import Generator
@@ -559,33 +565,6 @@ class GANPL(pl.LightningModule):
         }
         return losses
 
-    def get_targets(
-        self, batch: dict[str, Any]
-    ) -> tuple[list[list[Any]] | list[Any] | None, torch.Tensor | None]:
-        """
-        Convenience function to retrieve targets.
-
-        Args:
-            batch (dict[str, Any]): batch from dataloader.
-
-        Returns:
-            list[list[Any]] | list[Any] | None: classification target if
-                ``self.classification_target_key`` is not None, else None.
-            torch.Tensor | None: regression target if
-                ``self.regression_target_key`` is not None, else None.
-        """
-        class_target = (
-            batch[self.classification_target_key]
-            if self.classification_target_key is not None
-            else None
-        )
-        reg_target = (
-            batch[self.regression_target_key]
-            if self.regression_target_key is not None
-            else None
-        )
-        return class_target, reg_target
-
     def regular_optimization(
         self,
         real_samples: torch.Tensor,
@@ -942,7 +921,19 @@ class GANPL(pl.LightningModule):
             return x
         return x, y
 
-    def prepare_image_data(self, batch: dict[str, Any]):
+    def prepare_image_data(
+        self, batch: dict[str, Any]
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """
+        Retrieves input and target image tensors from input batch.
+
+        Args:
+            batch (dict[str, Any]): batch from dataloader.
+
+        Returns:
+            torch.Tensor: target tensor.
+            torch.Tensor: input tensor.
+        """
         input_tensor = None
         real_tensor = batch[self.real_image_key]
         if hasattr(self, "input_image_key"):
@@ -952,11 +943,46 @@ class GANPL(pl.LightningModule):
             input_tensor = self.generate_noise(real_tensor)
         return real_tensor, input_tensor
 
+    def get_targets(
+        self, batch: dict[str, Any]
+    ) -> tuple[list[list[Any]] | list[Any] | None, torch.Tensor | None]:
+        """
+        Convenience function to retrieve targets.
+
+        Args:
+            batch (dict[str, Any]): batch from dataloader.
+
+        Returns:
+            list[list[Any]] | list[Any] | None: classification target if
+                ``self.classification_target_key`` is not None, else None.
+            torch.Tensor | None: regression target if
+                ``self.regression_target_key`` is not None, else None.
+        """
+        class_target = (
+            batch[self.classification_target_key]
+            if self.classification_target_key is not None
+            else None
+        )
+        reg_target = (
+            batch[self.regression_target_key]
+            if self.regression_target_key is not None
+            else None
+        )
+        return class_target, reg_target
+
     # lightning-specific stuff
 
     def set_require_grad(
         self, optimizer: torch.optim.Optimizer, requires_grad: bool
     ):
+        """
+        Sets ``parameter.require_grad`` to ``requires_grad`` in an optimizer for
+        all groups.
+
+        Args:
+            optimizer (torch.optim.Optimizer): torch optimizer.
+            requires_grad (bool): target gradient requirement.
+        """
         for group in optimizer.param_groups:
             for param in group["params"]:
                 param.requires_grad_(requires_grad)
@@ -964,6 +990,14 @@ class GANPL(pl.LightningModule):
     def toggle_optimizers(
         self, optimizers: list[torch.optim.Optimizer] | torch.optim.Optimizer
     ):
+        """
+        Toggles an optimizer or list of optimizers (sets their parameters'
+        gradient requirements to True).
+
+        Args:
+            optimizers (list[torch.optim.Optimizer] | torch.optim.Optimizer): an
+                optimizer or a list of optimizers.
+        """
         if isinstance(optimizers, list):
             for optimizer in optimizers:
                 self.set_require_grad(optimizer, True)
@@ -973,6 +1007,14 @@ class GANPL(pl.LightningModule):
     def untoggle_optimizers(
         self, optimizers: list[torch.optim.Optimizer] | torch.optim.Optimizer
     ):
+        """
+        Untoggles an optimizer or list of optimizers (sets their parameters'
+        gradient requirements to True).
+
+        Args:
+            optimizers (list[torch.optim.Optimizer] | torch.optim.Optimizer): an
+                optimizer or a list of optimizers.
+        """
         if isinstance(optimizers, list):
             for optimizer in optimizers:
                 self.set_require_grad(optimizer, False)
@@ -982,6 +1024,14 @@ class GANPL(pl.LightningModule):
     def step_zero_grad_optimizers(
         self, optimizers: list[torch.optim.Optimizer] | torch.optim.Optimizer
     ):
+        """
+        Takes a step and sets gradients to zero for an optimizer or list of
+        optimizers.
+
+        Args:
+            optimizers (list[torch.optim.Optimizer] | torch.optim.Optimizer): an
+                optimizer or a list of optimizers.
+        """
         if isinstance(optimizers, list):
             for optimizer in optimizers:
                 optimizer.step()
@@ -992,6 +1042,13 @@ class GANPL(pl.LightningModule):
             optimizers.zero_grad()
 
     def training_step(self, batch: dict[str, Any], batch_idx: int):
+        """
+        Lightning manual training step.
+
+        Args:
+            batch (dict[str, Any]): batch dictionary.
+            batch_idx (int): batch index.
+        """
         real_samples, input_tensor = self.prepare_image_data(batch)
         class_target, reg_target = self.get_targets(batch)
 
@@ -1013,6 +1070,13 @@ class GANPL(pl.LightningModule):
             )
 
     def validation_step(self, batch: dict[str, Any], batch_idx: int):
+        """
+        Lightning manual validation step.
+
+        Args:
+            batch (dict[str, Any]): batch dictionary.
+            batch_idx (int): batch index.
+        """
         real_samples, input_tensor = self.prepare_image_data(batch)
         class_target, reg_target = self.get_targets(batch)
 
@@ -1035,6 +1099,13 @@ class GANPL(pl.LightningModule):
         self.log_dict(losses_log, on_epoch=True, prog_bar=True, on_step=False)
 
     def test_step(self, batch: dict[str, Any], batch_idx: int):
+        """
+        Lightning manual test step.
+
+        Args:
+            batch (dict[str, Any]): batch dictionary.
+            batch_idx (int): batch index.
+        """
         real_samples, input_tensor = self.prepare_image_data(batch)
         class_target, reg_target = self.get_targets(batch)
 
@@ -1056,7 +1127,16 @@ class GANPL(pl.LightningModule):
         }
         self.log_dict(losses_log, on_epoch=True, prog_bar=True, on_step=False)
 
-    def configure_optimizers(self):
+    def configure_optimizers(
+        self,
+    ) -> tuple[list[torch.optim.Optimizer], list[dict[str, Any]]]:
+        """
+        Optimizer configuration for lightning.
+
+        Returns:
+            list[torch.optim.Optimizer]: list of torch optimizers.
+            list[dict[str, Any]]: list of scheduler information.
+        """
         emb_pars = self.embedder.parameters() if self.embed else []
         opt_gen = torch.optim.Adam(
             chain(self.generator.parameters(), emb_pars),
@@ -1103,6 +1183,14 @@ class GANPL(pl.LightningModule):
         return optimizers, schedulers
 
     def on_train_batch_start(self, batch: Any, batch_idx: int) -> int | None:
+        """
+        Lightning hook for on train batch start for learning rate logging and
+        optimizer untoggling.
+
+        Args:
+            batch (Any): batch from dataloader.
+            batch_idx (int): batch index.
+        """
         schs = self.lr_schedulers()
         if schs is not None:
             for i, sch in enumerate(schs):
@@ -1118,13 +1206,39 @@ class GANPL(pl.LightningModule):
         self.untoggle_optimizers(self.optimizers())
         return super().on_train_batch_start(batch, batch_idx)
 
-    # forward for the sake of having a forward
     def forward(
         self,
-        X: torch.Tensor,
-        class_target: torch.Tensor | None = None,
+        input_tensor: torch.Tensor,
+        class_target: list[Any] | list[list[Any]] | None = None,
         reg_target: torch.Tensor | None = None,
-    ):
+        return_converted_x: bool = True,
+        symmetric: bool = False,
+    ) -> torch.Tensor | tuple[torch.Tensor, list[list[int]]]:
+        """
+        Foward wrapping ``self.apply_generator`` with core generator.
+
+        Args:
+            input_tensor (torch.Tensor): input tensor.
+            class_target (list[Any] | list[list[Any]] | None, optional):
+                classification target. Defaults to None.
+            reg_target (torch.Tensor | None, optional): regression target.
+                Defaults to None.
+            return_converted_x (bool, optional): also returns the classification
+                target converted to a list of lists of one-hot indices. Defaults
+                to True.
+            symmetric (bool, optional): symmetrizes the classification and
+                regression targets (details above). Defaults to False.
+
+        Returns:
+            torch.Tensor | tuple[torch.Tensor, list[list[int]]]: output tensor
+                if no targets are provided or if return_converted_x is False,
+                output tensor and converted classification target otherwise.
+        """
         return self.apply_generator(
-            X, self.generator, class_target, reg_target
+            input_tensor=input_tensor,
+            generator=self.generator,
+            class_target=class_target,
+            reg_target=reg_target,
+            return_converted_x=return_converted_x,
+            symmetric=symmetric,
         )
