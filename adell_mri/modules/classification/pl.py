@@ -7,7 +7,7 @@ import lightning.pytorch as pl
 import torchmetrics.classification as tmc
 
 from tqdm import tqdm
-from typing import Callable, List, Dict
+from typing import Callable
 from abc import ABC
 
 from .classification import (
@@ -64,16 +64,16 @@ def f1(prediction: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
 
 def get_metric_dict(
     nc: int,
-    metric_keys: List[str] = None,
+    metric_keys: list[str] = None,
     prefix: str = "",
     average: str = "macro",
-) -> Dict[str, torchmetrics.Metric]:
+) -> dict[str, torchmetrics.Metric]:
     """
     Constructs a metric dictionary.
 
     Args:
         nc (int): number of classes.
-        metric_keys (List[str], optional): keys corresponding to metrics.
+        metric_keys (list[str], optional): keys corresponding to metrics.
             Should be one of ["Rec","Spe","Pr","F1","AUC"]. Defaults to
             None (all keys).
         prefix (str, optional): which prefix should be added to the metric
@@ -82,7 +82,7 @@ def get_metric_dict(
             to "macro".
 
     Returns:
-        Dict[str,torchmetrics.Metric]: dictionary containing the metrics
+        dict[str,torchmetrics.Metric]: dictionary containing the metrics
             specified in metric_keys.
     """
     metric_dict = torch.nn.ModuleDict({})
@@ -801,7 +801,7 @@ class GenericEnsemblePL(GenericEnsemble, ClassPLABC):
 
     def __init__(
         self,
-        image_keys: List[str] = ["image"],
+        image_keys: list[str] = ["image"],
         label_key: str = "label",
         learning_rate: float = 0.001,
         batch_size: int = 4,
@@ -916,7 +916,7 @@ class AveragingEnsemblePL(AveragingEnsemble, ClassPLABC):
 
     def __init__(
         self,
-        image_keys: List[str] = ["image"],
+        image_keys: list[str] = ["image"],
         label_key: str = "label",
         learning_rate: float = 0.001,
         batch_size: int = 4,
@@ -1584,7 +1584,7 @@ class DeconfoundedNetPL(DeconfoundedNetGeneric, ClassPLABC):
             ).clamp(min=1e-8)
             return n.divide(d).clamp(-1.0, 1.0).square().mean()
 
-    def step(self, batch: Dict[str, torch.Tensor], with_params: bool):
+    def step(self, batch: dict[str, torch.Tensor], with_params: bool):
         x, y = batch[self.image_key], batch[self.label_key]
         if hasattr(self, "training_batch_preproc"):
             if self.training_batch_preproc is not None:
@@ -1621,7 +1621,7 @@ class DeconfoundedNetPL(DeconfoundedNetGeneric, ClassPLABC):
             y,
         )
 
-    def log_losses(self, losses: List[torch.Tensor], prefix: str):
+    def log_losses(self, losses: list[torch.Tensor], prefix: str):
         for loss_val, s in zip(losses, self.loss_str):
             if loss_val is not None:
                 self.log(f"{prefix}_{s}", loss_val, prog_bar=True)
