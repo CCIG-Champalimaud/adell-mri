@@ -1,11 +1,25 @@
+"""
+Semi-supervised learning loss modules.
+"""
+
 import numpy as np
 import torch
 import torch.nn.functional as F
 from queue import Queue
 from math import prod
 
+from typing import Sequence
 
-def swap(xs, a, b):
+
+def swap(xs: Sequence, a: int, b: int) -> None:
+    """
+    Swaps xs element a with element b.
+
+    Args:
+        xs (Sequence): sequence (list, tuple, etc).
+        a (int): first index.
+        b (int): second index.
+    """
     xs[a], xs[b] = xs[b], xs[a]
 
 
@@ -35,9 +49,19 @@ def derangement(
 
 
 def anchors_from_derangement(
-    X: torch.Tensor, rng: np.random.Generator = None
+    X: torch.Tensor, rng: np.random.Generator | None = None
 ) -> torch.Tensor:
-    """Generate anchors from a derangement of the elements of X."""
+    """
+    Generate anchors from a derangement of the elements of X.
+
+    Args:
+        X (torch.Tensor): tensor.
+        rng (np.random.Generator | None): random number generator. Defaults to
+            None (instantiates a default_rng).
+
+    Returns:
+        torch.Tensor: deranged X.
+    """
     if rng is None:
         rng = np.random.default_rng()
     anchors = []
@@ -67,6 +91,17 @@ class AnatomicalContrastiveLoss(torch.nn.Module):
         ema_theta: float = 0.9,
         tau: float = 0.1,
     ):
+        """
+        Args:
+            n_classes (int): number of classes.
+            n_features (int): number of features.
+            batch_size (int): size of batch.
+            top_k (int, optional): how many hard examples should be extracted.
+                Defaults to 100.
+            ema_theta (float, optional): theta for exponential moving average.
+                Defaults to 0.9.
+            tau (float, optional): temperature. Defaults to 0.1.
+        """
         super().__init__()
         self.n_classes = n_classes
         self.n_features = n_features
@@ -89,6 +124,15 @@ class AnatomicalContrastiveLoss(torch.nn.Module):
         c: torch.LongTensor,
         v: torch.LongTensor,
     ):
+        """
+        Updates exponential moving average class representation.
+
+        Args:
+            pred (torch.Tensor): prediction.
+            b (torch.LongTensor): batch indices.
+            c (torch.LongTensor): class indices.
+            v (torch.LongTensor): feature indices.
+        """
         for i in range(self.n_classes):
             rep = pred[b[c == i], :, v[c == i]]
             if prod(rep.shape) > 0:
@@ -105,6 +149,15 @@ class AnatomicalContrastiveLoss(torch.nn.Module):
         embeddings: torch.Tensor,
         labels: torch.LongTensor,
     ):
+        """
+        Updates the hard example list. ``proba``, ``embeddings`` and ``labels``
+        are expected to have shame shape (excluding the number of channels).
+
+        Args:
+            proba (torch.Tensor): probability tensor.
+            embeddings (torch.Tensor): embeddings tensor.
+            labels (torch.LongTensor): labels.
+        """
         weights = proba.prod(1)
         for i in range(self.batch_size):
             top_k = weights[i].topk(self.top_k)
@@ -113,10 +166,27 @@ class AnatomicalContrastiveLoss(torch.nn.Module):
             )
             self.hard_example_class[i] = labels[i, top_k.indices].unsqueeze(-1)
 
-    def delete(self, X, idx):
+    def delete(self, X: torch.Tensor, idx: int) -> torch.Tensor:
+        """
+        Deletes an index from a tensor in axis=1.
+
+        Args:
+            X (torch.Tensor): tensor.
+            idx (int): index to be deleted.
+
+        Returns:
+            torch.Tensor: tensor without index idx.
+        """
         return torch.cat([X[:, :idx], X[:, (idx + 1) :]], 1)
 
-    def l_anco(self):
+    def l_anco(self) -> torch.Tensor:
+        """
+        Anatomical contrastive loss between hard examples and average
+        representations.
+
+        Returns:
+            torch.Tensor: loss value for anatomical contrastive loss.
+        """
         output = torch.zeros([self.batch_size, self.n_classes]).to(
             self.average_representations
         )
@@ -137,7 +207,18 @@ class AnatomicalContrastiveLoss(torch.nn.Module):
 
     def forward(
         self, proba: torch.Tensor, y: torch.Tensor, embeddings: torch.Tensor
-    ):
+    ) -> torch.Tensor:
+        """
+        Forward method for anatomical contrastive loss.
+
+        Args:
+            proba (torch.Tensor): probabilities tensor.
+            y (torch.Tensor): ground truth.
+            embeddings (torch.Tensor): embeddings tensor.
+
+        Returns:
+            torch.Tensor: loss value.
+        """
         # expects y to be one hot encoded
         proba = proba.flatten(start_dim=2)
         y = y.flatten(start_dim=2)
@@ -183,6 +264,18 @@ class NearestNeighbourLoss(torch.nn.Module):
         temperature: float = 0.1,
         seed: int = 42,
     ):
+        """
+        Args:
+            maxsize (int): maximum queue size.
+            n_classes (int): number of classes.
+            max_elements_per_batch (int): maximum number of elements to be
+                retrieved for each batch.
+            n_samples_per_class (int): number of samples to be retrieved for
+                each class.
+            temperature (float, optional): temperature for softmax. Defaults to
+                0.1.
+            seed (int, optional): random seed. Defaults to 42.
+        """
         super().__init__()
         self.maxsize = maxsize
         self.n_classes = n_classes
@@ -195,6 +288,13 @@ class NearestNeighbourLoss(torch.nn.Module):
         self.rng = np.random.default_rng(seed)
 
     def put(self, X: torch.Tensor, y: torch.Tensor):
+        """
+        Adds elements to queue stratified by class.
+
+        Args:
+            X (torch.Tensor): embeddings tensor.
+            y (torch.Tensor): ground truth.
+        """
         X = X.flatten(start_dim=2)
         y = y.flatten(start_dim=2)
         b, c, v = torch.where(y > 0)
@@ -209,12 +309,35 @@ class NearestNeighbourLoss(torch.nn.Module):
             if n_elements > 0:
                 self.q[cl].put(elements.detach())
 
-    def get_from_class(self, n: int, cl: int):
+    def get_from_class(self, n: int, cl: int) -> torch.Tensor:
+        """
+        Retrieves ``n`` elements from queue with class ``cl``.
+
+
+        Args:
+            n (int): number of elements to be retrieved.
+            cl (int): class.
+
+        Returns:
+            torch.Tensor: ``n`` elements from class ``c``.
+        """
         q = self.q[cl]
         n_elements = q.qsize()
         return [q.get() for _ in self.rng.choice(n_elements, n)]
 
-    def get(self, n: int, cl: int = None):
+    def get(self, n: int, cl: int | None = None) -> None:
+        """
+        Gets a set of elements from the queue. If ``cl`` is specified, retrieves
+        elements from each class, otherwise retrieves a random set of elements.
+
+        Args:
+            n (int): number of elements to be retrieved.
+            cl (int | None, optional): class. Defaults to None.
+
+        Returns:
+            torch.Tensor: ``n`` elements from class ``c`` or ``n`` random
+                elements.
+        """
         if cl is not None:
             output = self.get_from_class(n, cl)
         else:
@@ -225,10 +348,29 @@ class NearestNeighbourLoss(torch.nn.Module):
                 output.append(self.get_from_class(n, cl))
         return torch.cat(output, 0)
 
-    def __len__(self):
+    def __len__(self) -> int:
+        """
+        Returns the size of the queue.
+
+        Returns:
+            int: size of queue.
+        """
         return sum([q.qsize() for q in self.q])
 
-    def get_past_samples(self, device="cuda"):
+    def get_past_samples(
+        self, device="cuda"
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """
+        Retrieves elements from queue (the same number of elements for each
+        class) and their respective one hot labels.
+
+        Args:
+            device (str, optional): device. Defaults to "cuda".
+
+        Returns:
+            torch.Tensor: past samples.
+            torch.Tensor: past sample classes.
+        """
         n_samples = [
             np.minimum(self.n_samples_per_class, self.q[cl].qsize())
             for cl in range(self.n_classes)
@@ -252,7 +394,17 @@ class NearestNeighbourLoss(torch.nn.Module):
         past_samples = torch.cat(past_samples)
         return past_samples, past_sample_labels
 
-    def forward(self, X: torch.Tensor, y: torch.Tensor):
+    def forward(self, X: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+        """
+        Forward method.
+
+        Args:
+            X (torch.Tensor): output tensor.
+            y (torch.Tensor): ground truth.
+
+        Returns:
+            torch.Tensor: value for nearest neighbour loss.
+        """
         X = X.flatten(start_dim=2).permute(0, 2, 1)
         y = y.flatten(start_dim=2).permute(0, 2, 1)
         b, c, v = torch.where(y > 0)
@@ -283,12 +435,26 @@ class PseudoLabelCrossEntropy(torch.nn.Module):
     """
 
     def __init__(self, threshold: float, *args, **kwargs):
+        """
+        Args:
+            threshold (float): threshold for probability threshold.
+        """
         super().__init__()
         self.threshold = threshold
 
         self.ce = torch.nn.CrossEntropyLoss(*args, **kwargs)
 
-    def forward(self, pred: torch.Tensor, proba: torch.Tensor):
+    def forward(self, pred: torch.Tensor, proba: torch.Tensor) -> torch.Tensor:
+        """
+        Forward method.
+
+        Args:
+            pred (torch.Tensor): predictions.
+            proba (torch.Tensor): probabilities.
+
+        Returns:
+            torch.Tensor: cross entropy between predictions and probabilities.
+        """
         pseudo_y = proba > self.threshold
         return self.ce(pred, pseudo_y.float())
 
@@ -299,6 +465,12 @@ class LocalContrastiveLoss(torch.nn.Module):
     """
 
     def __init__(self, temperature: float = 0.1, seed: int = 42):
+        """
+        Args:
+            temperature (float, optional): temperature for cross entropy.
+                Defaults to 0.1.
+            seed (int, optional): random seed. Defaults to 42.
+        """
         super().__init__()
         self.temperature = temperature
         self.seed = seed
@@ -311,8 +483,20 @@ class LocalContrastiveLoss(torch.nn.Module):
         X_2: torch.Tensor,
         anchors: torch.Tensor = None,
     ) -> torch.Tensor:
-        # based on LoCo [1]
-        # [1] https://proceedings.neurips.cc/paper/2020/file/7fa215c9efebb3811a7ef58409907899-Paper.pdf
+        """
+        Forward method. Based on original LoCo paper [1].
+
+        [1] https://proceedings.neurips.cc/paper/2020/file/7fa215c9efebb3811a7ef58409907899-Paper.pdf
+
+        Args:
+            X_1 (torch.Tensor): output for first view of tensor.
+            X_2 (torch.Tensor): output for second view of tensor.
+            anchors (torch.Tensor, optional): for compatibility. Defaults to
+                None.
+
+        Returns:
+            torch.Tensor: loss value.
+        """
         X_1 = X_1.flatten(start_dim=2)[None, :, :, :]
         X_2 = X_2.flatten(start_dim=2)[:, None, :, :]
         sim = F.softmax(
@@ -326,10 +510,16 @@ class LocalContrastiveLoss(torch.nn.Module):
 
 class LocalContrastiveLossWithAnchors(torch.nn.Module):
     """
-    Implements a local contrastive loss function.
+    Implements a local contrastive loss function with anchors.
     """
 
     def __init__(self, temperature: float = 0.1, seed: int = 42):
+        """
+        Args:
+            temperature (float, optional): temperature for cross validation.
+                Defaults to 0.1.
+            seed (int, optional): random seed. Defaults to 42.
+        """
         super().__init__()
         self.temperature = temperature
         self.seed = seed
@@ -337,6 +527,15 @@ class LocalContrastiveLossWithAnchors(torch.nn.Module):
         self.eps = torch.as_tensor(1e-8)
 
     def anchors_from_derangement(self, X: torch.Tensor) -> torch.Tensor:
+        """
+        Generates anchors from derangement of X.
+
+        Args:
+            X (torch.Tensor): tensor.
+
+        Returns:
+            torch.Tensor: deranged X.
+        """
         anchors = []
         for idx in derangement(X.shape[0], rng=self.rng):
             anchors.append(X[idx])
@@ -346,9 +545,22 @@ class LocalContrastiveLossWithAnchors(torch.nn.Module):
     def forward(
         self,
         X: torch.Tensor,
-        anchors_1: torch.Tensor,
-        anchors_2: torch.Tensor = None,
+        anchors_1: torch.Tensor | None = None,
+        anchors_2: torch.Tensor | None = None,
     ) -> torch.Tensor:
+        """
+        Forward method.
+
+        Args:
+            X (torch.Tensor): embeddings tensor.
+            anchors_1 (torch.Tensor, optional): anchor embeddings. Defaults to
+                None (generated from X through derangement).
+            anchors_2 (torch.Tensor, optional): anchor embeddings. Defaults to
+                None (generated from X through derangement).
+
+        Returns:
+            torch.Tensor: loss value.
+        """
         anchors_1 = (
             anchors_from_derangement(X, self.rng)
             if anchors_1 is None

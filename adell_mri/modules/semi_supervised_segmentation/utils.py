@@ -1,3 +1,7 @@
+"""
+Some minor utilities for semi-supervied learning modules.
+"""
+
 from typing import Dict, Any, List
 from itertools import product
 

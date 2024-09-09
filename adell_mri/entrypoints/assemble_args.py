@@ -734,6 +734,12 @@ argument_factory = {
         default=False,
         help="Saves original image along with conditionally generated images.",
     ),
+    "ema_decay": dict(
+        action="store",
+        default=None,
+        type=float,
+        help="Decay for exponential moving average (no EMA if not specified)",
+    ),
     # deconfounded classifier-specific
     "cat_confounder_keys": dict(
         type=str,

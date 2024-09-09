@@ -8,7 +8,6 @@ from copy import deepcopy
 from glob import glob
 from collections import OrderedDict
 
-from typing import Dict, List, Tuple
 from ..modules.segmentation.losses import (
     binary_cross_entropy,
     binary_focal_loss,
@@ -128,15 +127,15 @@ def get_prostatex_path_dictionary(base_path: str) -> DatasetDict:
 
 
 def get_size_spacing_dict(
-    path_dictionary: DatasetDict, keys: List[str]
-) -> Tuple[SizeDict, SpacingDict]:
+    path_dictionary: DatasetDict, keys: list[str]
+) -> tuple[SizeDict, SpacingDict]:
     """
     Retrieves the scan sizes and pixel spacings from a path dictionary.
 
     Args:
         path_dictionary (DatasetDict): a path dictionary (see
         `get_prostatex_path_dictionary` for details).
-        keys (List[str]): modality keys that should be considered in the
+        keys (list[str]): modality keys that should be considered in the
         path dictionary.
 
     Returns:
@@ -160,7 +159,7 @@ def get_size_spacing_dict(
 def get_loss_param_dict(
     loss_key: str,
     **kwargs,
-) -> Dict[str, Dict[str, FloatOrTensor]]:
+) -> dict[str, dict[str, FloatOrTensor]]:
     """
     Constructs a keyword dictionary that can be used with the losses in
     `losses.py`.
@@ -171,7 +170,7 @@ def get_loss_param_dict(
             will be appended.
 
     Returns:
-        Dict[str,Dict[str,Union[float,torch.Tensor]]]: dictionary where each
+        dict[str,dict[str,Union[float,torch.Tensor]]]: dictionary where each
         key refers to a loss function and each value is keyword dictionary for
         different losses.
     """
@@ -226,12 +225,12 @@ def get_loss_param_dict(
         )
 
 
-def unpack_crops(X: List[TensorIterable]) -> TensorList:
+def unpack_crops(X: list[TensorIterable]) -> TensorList:
     """
     Unpacks a list of nested tensor list into a single list.
 
     Args:
-        X (List[TensorIterable]): Outer list of cropped tensor iterables.
+        X (list[TensorIterable]): Outer list of cropped tensor iterables.
 
     Returns:
         TensorIterable: Flattened iterable of all innermost elements.
@@ -243,7 +242,7 @@ def unpack_crops(X: List[TensorIterable]) -> TensorList:
     return output
 
 
-def collate_last_slice(X: List[TensorIterable]) -> TensorIterable:
+def collate_last_slice(X: list[TensorIterable]) -> TensorIterable:
     """
     Collates the last slice of each tensor in a list of tensor interables along
     the batch dimension. So, given a TensorIterable of type list, where each
@@ -251,7 +250,7 @@ def collate_last_slice(X: List[TensorIterable]) -> TensorIterable:
     type list with shape [b * d, c, h, w].
 
     Args:
-        X (List[TensorIterable]): List of tensor iterables, each containing
+        X (list[TensorIterable]): list of tensor iterables, each containing
             tensors of the same shape.
 
     Returns:
@@ -278,7 +277,7 @@ def collate_last_slice(X: List[TensorIterable]) -> TensorIterable:
         position and concatenates them along the batch dimension.
 
         Args:
-            x (List[torch.Tensor]): List of input tensors, each with shape
+            x (list[torch.Tensor]): list of input tensors, each with shape
                 (N, C, H, W).
 
         Returns:
@@ -304,17 +303,17 @@ def collate_last_slice(X: List[TensorIterable]) -> TensorIterable:
     return output
 
 
-def safe_collate(X: List[TensorIterable]) -> List[TensorIterable]:
+def safe_collate(X: list[TensorIterable]) -> list[TensorIterable]:
     """
     Similar to the default collate but going only one level deep and
     returning a list if shapes are incompatible (helpful to return bounding
     boxes).
 
     Args:
-        X (List[TensorIterable]): a list of lists or dicts of tensors.
+        X (list[TensorIterable]): a list of lists or dicts of tensors.
 
     Returns:
-        List[TensorIterable]: a list or dict of tensors (depending on the
+        list[TensorIterable]: a list or dict of tensors (depending on the
         input).
     """
 
@@ -324,7 +323,7 @@ def safe_collate(X: List[TensorIterable]) -> List[TensorIterable]:
         tensor.
 
         Args:
-            x (List[torch.Tensor]): A list of tensors or tensor-like objects
+            x (list[torch.Tensor]): A list of tensors or tensor-like objects
                 to concatenate.
 
         Returns:
@@ -360,16 +359,16 @@ def safe_collate(X: List[TensorIterable]) -> List[TensorIterable]:
     return output
 
 
-def safe_collate_crops(X: List[List[TensorIterable]]) -> List[TensorIterable]:
+def safe_collate_crops(X: list[list[TensorIterable]]) -> list[TensorIterable]:
     """
     Similar to safe_collate but handles output from MONAI cropping
     functions.
 
     Args:
-        X (List[List[TensorIterable]]): a list of lists or dicts of tensors.
+        X (list[list[TensorIterable]]): a list of lists or dicts of tensors.
 
     Returns:
-        List[TensorIterable]: a list or dict of tensors (depending on the
+        list[TensorIterable]: a list or dict of tensors (depending on the
         input).
     """
     X = unpack_crops(X)
@@ -405,7 +404,9 @@ class ExponentialMovingAverage(torch.nn.Module):
     $v_{shadow}$ is the exponential moving average value (i.e. the shadow).
     """
 
-    def __init__(self, decay: float, final_decay: float = None, n_steps=None):
+    def __init__(
+        self, decay: float, final_decay: float | None = None, n_steps=None
+    ):
         """
         Args:
             decay (float): decay for the exponential moving average.
@@ -422,9 +423,11 @@ class ExponentialMovingAverage(torch.nn.Module):
         self.step = 0
 
         if self.final_decay is None:
-            self.final_decay = self.decay
-        self.slope = (self.final_decay - self.decay) / self.n_steps
-        self.intercept = self.decay
+            self.slope = None
+            self.intercept = None
+        else:
+            self.slope = (self.final_decay - self.decay) / self.n_steps
+            self.intercept = self.decay
 
     def set_requires_grad_false(self, model: torch.nn.Module):
         """
@@ -439,7 +442,7 @@ class ExponentialMovingAverage(torch.nn.Module):
                 p.requires_grad = False
 
     @torch.no_grad()
-    def update(self, model: torch.nn.Module, exclude_keys: List[str] = None):
+    def update(self, model: torch.nn.Module, exclude_keys: list[str] = None):
         """
         Updates the shadow version of the model using an exponential moving
         average.
@@ -447,6 +450,7 @@ class ExponentialMovingAverage(torch.nn.Module):
         Args:
             model (torch.nn.Module): torch module. Must have same parameters as
                 self.shadow.
+            exclude_keys (list[str]): excludes these keys from the update.
         """
         if self.shadow is None:
             # this effectively skips the first epoch
@@ -475,16 +479,41 @@ class ExponentialMovingAverage(torch.nn.Module):
                     continue
                 if "shadow" not in name:
                     shadow_params[name].sub_(
-                        (1.0 - self.decay) * (shadow_params[name] - param)
+                        (1 - self.decay) * (shadow_params[name] - param)
                     )
 
-            self.decay = self.step * self.slope + self.intercept
+            if self.final_decay:
+                self.decay = self.step * self.slope + self.intercept
             if self.decay > 1.0:
                 self.decay = 1.0
             self.step += 1
 
     def forward(self, *args, **kwargs):
+        """
+        Wrapper for the shadow model ``forward`` function.
+
+        Returns:
+            Output for ``self.shadow.forward`` with args and kwargs.
+        """
         return self.shadow.forward(*args, **kwargs)
+
+    def state_dict(self) -> dict[str, torch.Tensor]:
+        """
+        Wrapper for the shadow model ``state_dict`` function.
+
+        Returns:
+            dict[str, torch.Tensor]: returns the ``shadows``'s state dict.
+        """
+        return self.shadow.state_dict()
+
+    def load_state_dict(self, state_dict: dict[str, torch.Tensor]):
+        """
+        Wrapper for the shadow model ``load_state_dict`` function.
+
+        Args:
+            state_dict (dict[str, torch.Tensor]): state dictionary.
+        """
+        self.shadow.load_state_dict(state_dict)
 
 
 def return_classes(paths: str | list[str]) -> dict[str | int, str]:

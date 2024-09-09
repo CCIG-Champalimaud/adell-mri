@@ -318,7 +318,9 @@ def get_transforms_detection_pre(
             )
         )
     if len(non_adc_keys) > 0:
-        transforms.append(monai.transforms.ScaleIntensityd(non_adc_keys, 0, 1))
+        transforms.append(
+            monai.transforms.ScaleIntensityd(non_adc_keys, minv=0.0, maxv=1.0)
+        )
     if len(adc_keys) > 0:
         transforms.append(ConditionalRescalingd(adc_keys, 500, 0.001))
         transforms.append(Offsetd(adc_keys, None))
@@ -421,7 +423,9 @@ def get_transforms_classification(
 
         if len(non_adc_keys) > 0:
             transforms.append(
-                monai.transforms.ScaleIntensityd(non_adc_keys, 0, 1)
+                monai.transforms.ScaleIntensityd(
+                    non_adc_keys, minv=0.0, maxv=1.0
+                )
             )
         if len(adc_keys) > 0:
             transforms.append(ConditionalRescalingd(adc_keys, 500, 0.001))
@@ -562,7 +566,9 @@ def get_pre_transforms_generation(keys, target_spacing, crop_size, pad_size):
                 ),
             ]
         )
-    transforms.append(monai.transforms.ScaleIntensityd(keys))
+    transforms.append(
+        monai.transforms.ScaleIntensityd(keys, minv=0.0, maxv=1.0)
+    )
     if pad_size is not None:
         transforms.append(
             monai.transforms.SpatialPadd(keys, [int(j) for j in pad_size])
@@ -647,7 +653,9 @@ def get_pre_transforms_ssl(
             )
         )
     if len(non_adc_keys) > 0:
-        transforms.append(monai.transforms.ScaleIntensityd(non_adc_keys, 0, 1))
+        transforms.append(
+            monai.transforms.ScaleIntensityd(non_adc_keys, minv=0.0, maxv=1.0)
+        )
     if len(adc_keys) > 0:
         transforms.extend(
             [
