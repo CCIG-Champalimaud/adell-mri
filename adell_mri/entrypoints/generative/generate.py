@@ -187,9 +187,7 @@ def main(arguments):
             print("Removing IDs specified in --excluded_ids")
             prev_len = len(data_dict)
             data_dict = {
-                k: data_dict[k]
-                for k in data_dict
-                if k not in args.excluded_ids
+                k: data_dict[k] for k in data_dict if k not in args.excluded_ids
             }
             print("\tRemoved {} IDs".format(prev_len - len(data_dict)))
         data_dict.filter_dictionary(
@@ -270,9 +268,7 @@ def main(arguments):
             )
             sitk.WriteImage(output, output_path, useCompression=True)
             if args.keep_original:
-                image = (
-                    data["image"].detach().cpu().permute(3, 1, 2, 0).numpy()
-                )
+                image = data["image"].detach().cpu().permute(3, 1, 2, 0).numpy()
                 image = sitk.GetImageFromArray(image)
                 image.SetSpacing(spacing)
                 image_path = os.path.join(
