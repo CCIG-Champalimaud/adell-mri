@@ -128,6 +128,9 @@ def main(arguments):
         all_keys.append(args.input_image_keys)
         all_image_keys.append(args.input_image_keys)
 
+    data_dict = json.load(open(args.dataset_json, "r"))
+    data_dict = filter_dicom_dict_on_presence(data_dict, all_keys=all_keys)
+
     categorical_specification = None
     numerical_specification = None
     if args.cat_condition_keys is not None:
@@ -140,8 +143,6 @@ def main(arguments):
         numerical_specification = len(args.num_condition_keys)
         all_keys.extend(args.num_condition_keys)
 
-    data_dict = json.load(open(args.dataset_json, "r"))
-    data_dict = filter_dicom_dict_on_presence(data_dict, all_keys=all_keys)
     means, stds = get_mean_and_std(data_dict, args.num_condition_keys)
 
     for k in data_dict:

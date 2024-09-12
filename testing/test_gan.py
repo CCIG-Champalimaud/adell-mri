@@ -194,6 +194,6 @@ def test_gan_complete():
     cl = torch.randint(low=0, high=n_class_embeds, size=(1, 1))
 
     input_tensor = torch.rand(1, 1, 32, 32)
-    gen_output, _ = gan(input_tensor, class_target=cl)
+    gen_output, _, _ = gan(input_tensor, class_target=cl)
 
     gan.discriminator(gen_output)
