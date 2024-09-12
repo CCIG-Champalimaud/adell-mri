@@ -81,6 +81,8 @@ def compute_gradient_penalty(
     Returns:
         torch.Tensor: the value for the gradient penalty.
     """
+    if discriminator.training is False:
+        return 0.0
     epsilon_sh = [1 for _ in real_samples.shape]
     epsilon_sh[0] = real_samples.shape[0]
     epsilon = torch.rand(*epsilon_sh).to(real_samples.device)

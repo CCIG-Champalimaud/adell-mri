@@ -84,6 +84,17 @@ def patchify(
     return x, y
 
 
+def l2norm(x: torch.Tensor, axis=None):
+    """
+    L2 normalization of a tensor.
+
+    Args:
+        x (torch.Tensor): input tensor.
+        axis (int, optional): axis to normalize over. Defaults to None.
+    """
+    return x / torch.sqrt(torch.sum(x**2, axis=axis, keepdim=True))
+
+
 class GANPL(pl.LightningModule):
     """
     Generative adversarial network with support for:
@@ -117,6 +128,7 @@ class GANPL(pl.LightningModule):
         regression_target_key: str = None,
         class_target_specification: list[int, list[Any]] = None,
         reg_target_specification: int = None,
+        numerical_moments: tuple[list[float], list[float]] | None = None,
         learning_rate: float = 0.0002,
         momentum_beta1: float = 0.9,
         momentum_beta2: float = 0.99,
@@ -127,10 +139,13 @@ class GANPL(pl.LightningModule):
         lambda_feature_map_matching: float = 0.0,
         lambda_identity: float = 0.0,
         cycle_consistency: bool = False,
+        cycle_symmetry: bool = False,
+        batch_size: int = 1,
         patch_size: tuple[int, int] | tuple[int, int, int] | None = None,
         epochs: int | None = None,
         steps_per_epoch: int | None = None,
         pct_start: float = 0.3,
+        training_dataloader_call: Callable = None,
         *args,
         **kwargs,
     ):
@@ -163,6 +178,10 @@ class GANPL(pl.LightningModule):
             reg_target_specification (int, optional): number of variables to
                 be used for regression in conditional generation
                 generation/semi-SL training. Defaults to None.
+            numerical_moments (tuple[list[float], list[float]] | None,
+                optional): list of means and standard deviations for numerical
+                normalisation of the regression targets. Defaults to None (no
+                normalisation).
             learning_rate (float, optional): learning rate. Defaults to 0.0002.
             momentum_beta1 (float, optional): first momentum beta. Defaults to
                 0.9.
@@ -186,6 +205,9 @@ class GANPL(pl.LightningModule):
             cycle_consistency (bool, optional): triggers cycle-consistent GAN.
                 Requires specifying ``generator_cycle`` and
                 ``discriminator_cycle``. Defaults to False.
+            cycle_symmetry (bool, optional): triggers cycle symmetry in cycle
+                consistency. Defaults to False.
+            batch_size (int, optional): batch size. Defaults to 1.
             patch_size (tuple[int, int] | tuple[int, int, int], optional):
                 patch size for patchGAN discriminator loss. Defaults to None.
             epochs (int | None , optional): number of epochs. Specifying this
@@ -196,6 +218,8 @@ class GANPL(pl.LightningModule):
                 schedule. Defaults to None.
             pct_start (float, optional): fraction of steps for warm-up.
                 Defaults to 0.3.
+            training_dataloader_call (Callable, optional): call for the
+                training dataloader. Defaults to None.
         """
         super().__init__(*args, **kwargs)
         self.generator = generator
@@ -208,6 +232,7 @@ class GANPL(pl.LightningModule):
         self.regression_target_key = regression_target_key
         self.class_target_specification = class_target_specification
         self.reg_target_specification = reg_target_specification
+        self.numerical_moments = numerical_moments
         self.learning_rate = learning_rate
         self.momentum_beta1 = momentum_beta1
         self.momentum_beta2 = momentum_beta2
@@ -218,10 +243,13 @@ class GANPL(pl.LightningModule):
         self.lambda_feature_map_matching = lambda_feature_map_matching
         self.lambda_identity = lambda_identity
         self.cycle_consistency = cycle_consistency
+        self.cycle_symmetry = cycle_symmetry
+        self.batch_size = batch_size
         self.patch_size = patch_size
         self.epochs = epochs
         self.steps_per_epoch = steps_per_epoch
         self.pct_start = pct_start
+        self.training_dataloader_call = training_dataloader_call
 
         if self.lambda_gp > 0.0:
             self.adversarial_loss = SemiSLWGANGPLoss(lambda_gp=self.lambda_gp)
@@ -290,7 +318,7 @@ class GANPL(pl.LightningModule):
                 if self.class_target_specification is None:
                     raise ValueError(
                         "A class_target_specification must be passed to the \
-                        constructor if an additional_class_target_key is \
+                        constructor if an classification_target_key is \
                         specified."
                     )
                 self.embed = True
@@ -299,15 +327,22 @@ class GANPL(pl.LightningModule):
                 if self.reg_target_specification is None:
                     raise ValueError(
                         "A reg_target_specification must be passed to the \
-                        constructor if an additional_reg_target_key is \
+                        constructor if an regression_target_key is \
                         specified."
                     )
                 self.embed = True
         if self.embed:
+            if self.generator.cross_attention_dim is None:
+                raise ValueError(
+                    "cross_attention_dim must be specified in the \
+                        generator if an additional_class_target_key or \
+                        additional_reg_target_key is specified."
+                )
             self.embedder = Embedder(
                 self.class_target_specification,
                 self.reg_target_specification,
                 embedding_size=self.generator.cross_attention_dim,
+                numerical_moments=self.numerical_moments,
             )
 
     # optimizations and ad-hoc steps
@@ -355,6 +390,7 @@ class GANPL(pl.LightningModule):
                     prog_bar=True,
                     on_step=False,
                     sync_dist=True,
+                    batch_size=self.batch_size,
                 )
         loss_sum = sum([all_losses[k] for k in all_losses]) / len(all_losses)
         self.manual_backward(loss_sum)
@@ -405,7 +441,7 @@ class GANPL(pl.LightningModule):
                 input_tensor, generator, class_target, reg_target
             )
         if self.embed:
-            gen_samples, class_target = gen_samples
+            gen_samples, class_target, reg_target = gen_samples
         if self.input_image_key:
             x_condition = input_tensor
         else:
@@ -484,7 +520,7 @@ class GANPL(pl.LightningModule):
             input_tensor, generator, class_target, reg_target
         )
         if self.embed:
-            gen_samples, class_target = gen_samples
+            gen_samples, class_target, reg_target = gen_samples
         if self.input_image_key:
             x_condition = input_tensor
         else:
@@ -546,6 +582,7 @@ class GANPL(pl.LightningModule):
             class_target=class_target,
             reg_target=reg_target,
             return_converted_x=False,
+            symmetry=self.cycle_symmetry,
         )
         gen_samples_a = self.apply_generator(
             input_samples_b, generator=generator_b_to_a, **boilerplate
@@ -814,10 +851,12 @@ class GANPL(pl.LightningModule):
         if input_tensor is None:
             input_tensor = self.generate_noise(x=x, size=size)
         image = self.apply_generator(
-            input_tensor, self.generator, *args, **kwargs
+            input_tensor,
+            self.generator,
+            return_converted_x=False,
+            *args,
+            **kwargs,
         )
-        if isinstance(image, tuple):
-            image = image[0]
         return image
 
     def apply_generator(
@@ -895,11 +934,18 @@ class GANPL(pl.LightningModule):
                     reg_target = make_reg_target_symmetric(reg_target)
                 if class_target is not None:
                     class_target = make_class_target_symmetric(class_target)
-            context, converted_X = self.embedder(
-                class_target, reg_target, return_X=True
+            context, converted_class_X, converted_reg_X = self.embedder(
+                class_target,
+                reg_target,
+                batch_size=input_tensor.shape[0],
+                return_X=True,
             )
             if return_converted_x is True:
-                return generator(input_tensor, context=context), converted_X
+                return (
+                    generator(input_tensor, context=context),
+                    converted_class_X,
+                    converted_reg_X,
+                )
             else:
                 return generator(input_tensor, context=context)
         else:
@@ -971,6 +1017,9 @@ class GANPL(pl.LightningModule):
         return class_target, reg_target
 
     # lightning-specific stuff
+
+    def train_dataloader(self) -> torch.utils.data.DataLoader:
+        return self.training_dataloader_call(self.batch_size)
 
     def set_require_grad(
         self, optimizer: torch.optim.Optimizer, requires_grad: bool
@@ -1085,7 +1134,7 @@ class GANPL(pl.LightningModule):
             input_tensor=input_tensor,
             class_target=class_target,
             reg_target=reg_target,
-        )
+        )[0]
         losses_d = self.step_discriminator(
             real_samples=real_samples,
             input_tensor=input_tensor,
@@ -1094,8 +1143,9 @@ class GANPL(pl.LightningModule):
         )
         losses_log = {
             **{f"val_loss_{k}_g": losses_g[k] for k in losses_g},
-            **{f"val_loss_{k}_d": losses_d[k] for k in losses_g},
+            **{f"val_loss_{k}_d": losses_d[k] for k in losses_d},
         }
+        losses_log["val_loss"] = sum(losses_log.values()) / len(losses_log)
         self.log_dict(losses_log, on_epoch=True, prog_bar=True, on_step=False)
 
     def test_step(self, batch: dict[str, Any], batch_idx: int):
@@ -1114,7 +1164,7 @@ class GANPL(pl.LightningModule):
             input_tensor=input_tensor,
             class_target=class_target,
             reg_target=reg_target,
-        )
+        )[0]
         losses_d = self.step_discriminator(
             real_samples=real_samples,
             input_tensor=input_tensor,
@@ -1123,8 +1173,9 @@ class GANPL(pl.LightningModule):
         )
         losses_log = {
             **{f"test_loss_{k}_g": losses_g[k] for k in losses_g},
-            **{f"test_loss_{k}_d": losses_d[k] for k in losses_g},
+            **{f"test_loss_{k}_d": losses_d[k] for k in losses_d},
         }
+        losses_log["test_loss"] = sum(losses_log.values()) / len(losses_log)
         self.log_dict(losses_log, on_epoch=True, prog_bar=True, on_step=False)
 
     def configure_optimizers(

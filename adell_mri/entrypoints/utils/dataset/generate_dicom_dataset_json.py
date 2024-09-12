@@ -62,7 +62,7 @@ def process_dicom(dcm: str) -> DICOMInformation:
     study_uid, series_uid, dcm_root = str(dcm).split(os.sep)[-3:]
     dcm = str(dcm)
     try:
-        dcm_file = dcmread(dcm, stop_before_pixels=True)
+        dcm_file = dcmread(dcm)
     except errors.InvalidDicomError:
         return None
     # removes cases of segmentation
@@ -73,7 +73,7 @@ def process_dicom(dcm: str) -> DICOMInformation:
     # construction skip these files
     try:
         dcm_file.pixel_array
-    except AttributeError:
+    except ValueError:
         return None
     # signals poorly specified orientation
     orientation = get_float_list(dcm_file, PATIENT_ORIENTATION_TAG)
@@ -104,6 +104,7 @@ def update_dict(
     metadata: tuple[float, float, float],
     dcm: str,
     included_ids: list[str] = [],
+    max_bvalue: int = None,
 ) -> DICOMDictionary:
     add = False
     if included_ids is not None:
@@ -111,6 +112,10 @@ def update_dict(
             add = True
     else:
         add = True
+
+    if max_bvalue is not None:
+        if metadata["bvalue"] > max_bvalue:
+            return d
 
     if add is True:
         if study_uid not in d:
@@ -156,6 +161,12 @@ def main(arguments):
         type=int,
         help="Number of parallel processes for Pool",
     )
+    parser.add_argument(
+        "--max_bvalue",
+        type=int,
+        default=None,
+        help="Maximum bvalue. Helps exclude some aberrant b-values",
+    )
 
     args = parser.parse_args(arguments)
 
@@ -173,8 +184,8 @@ def main(arguments):
         all_dicoms = [str(x) for x in path.glob(pattern)]
         print("Iterating studies/series...")
         with tqdm(all_dicoms) as pbar:
-            if args.n_workers in [0, 1]:
-                for dcm in all_dicoms:
+            if args.n_workers < 2:
+                for dcm in pbar:
                     outs = process_dicom_directory(dcm)
                     for out in outs:
                         if out is not None:
@@ -186,23 +197,25 @@ def main(arguments):
                                 metadata,
                                 dcm,
                                 included_ids,
+                                max_bvalue=args.max_bvalue,
                             )
                     pbar.update()
             else:
-                pool = Pool(args.n_workers)
-                for outs in pool.imap(process_dicom_directory, all_dicoms):
-                    for out in outs:
-                        if out is not None:
-                            dcm, study_uid, series_uid, metadata = out
-                            update_dict(
-                                dicom_dict,
-                                study_uid,
-                                series_uid,
-                                metadata,
-                                dcm,
-                                included_ids,
-                            )
-                    pbar.update()
+                with Pool(args.n_workers) as p:
+                    for outs in p.imap(process_dicom_directory, pbar):
+                        for out in outs:
+                            if out is not None:
+                                dcm, study_uid, series_uid, metadata = out
+                                update_dict(
+                                    dicom_dict,
+                                    study_uid,
+                                    series_uid,
+                                    metadata,
+                                    dcm,
+                                    included_ids,
+                                    max_bvalue=args.max_bvalue,
+                                )
+                        pbar.update()
 
     pretty_dict = json.dumps(dicom_dict, indent=2)
     Path(args.output_json).parent.mkdir(exist_ok=True)
