@@ -165,3 +165,39 @@ def parse_config_2d_classifier_3d(
     }
 
     return network_config, network_config_correct
+
+
+def parse_config_gan(
+    config_file: str,
+    target_keys: list[str],
+    input_keys: list[str] = None,
+    **kwargs,
+):
+    with open(config_file, "r") as o:
+        network_config = yaml.safe_load(o)
+
+    if "batch_size" not in network_config:
+        network_config["batch_size"] = 1
+
+    generator_config = network_config["generator"]
+    discriminator_config = network_config["discriminator"]
+
+    del network_config["generator"]
+    del network_config["discriminator"]
+
+    if input_keys is None:
+        generator_config["in_channels"] = len(target_keys)
+        disc_channels = len(target_keys)
+    else:
+        generator_config["in_channels"] = len(input_keys)
+        disc_channels = len(target_keys) + len(input_keys)
+    generator_config["out_channels"] = len(target_keys)
+    generator_config["spatial_dims"] = 2
+    discriminator_config["spatial_dim"] = 2
+    discriminator_config["n_channels"] = disc_channels
+
+    for k in kwargs:
+        if kwargs[k] is not None:
+            network_config[k] = kwargs[k]
+
+    return network_config, generator_config, discriminator_config
