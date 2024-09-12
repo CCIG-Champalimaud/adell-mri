@@ -18,9 +18,7 @@ def coerce_to_uint8(x: np.ndarray):
 
 def split_and_cat(x: np.ndarray, split_dim: int, cat_dim: int) -> np.ndarray:
     arrays = np.split(x, x.shape[split_dim], axis=split_dim)
-    arrays = np.concatenate(
-        [arr.squeeze(split_dim) for arr in arrays], cat_dim
-    )
+    arrays = np.concatenate([arr.squeeze(split_dim) for arr in arrays], cat_dim)
     return arrays
 
 
@@ -439,9 +437,7 @@ class LogImageFromGAN(Callback):
                         images_to_log[f"{key} images"] = torch.stack(
                             [self.storage[key][idx] for idx in idxs]
                         )
-                images_to_log["Generated images"] = pl_module.generate(
-                    **kwargs
-                )
+                images_to_log["Generated images"] = pl_module.generate(**kwargs)
             for key in images_to_log:
                 log_image(
                     trainer,

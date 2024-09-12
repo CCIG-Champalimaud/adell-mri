@@ -63,6 +63,11 @@ from ..modules.diffusion.embedder import Embedder
 from ..modules.diffusion.inferer import DiffusionInfererSkipSteps
 from generative.networks.schedulers import DDPMScheduler
 
+# gan
+from ..modules.gan.pl import GANPL
+from ..modules.gan.discriminator import Discriminator
+from ..modules.gan.generator import Generator
+
 from typing import Dict, Any, List, Callable
 
 
@@ -649,5 +654,87 @@ def get_generative_network(
         **boilerplate_args,
         **network_config,
     )
+
+    return network
+
+
+def get_gan_network(
+    network_config: Dict[str, Any],
+    generator_config: Dict[str, Any],
+    discriminator_config: Dict[str, Any],
+    training_dataloader_call: Callable,
+    input_image_key: str,
+    categorical_specification: List[List[str] | int] | None,
+    numerical_specification: int | None,
+    numerical_moments: tuple[list[float], list[float]] | None,
+    max_epochs: int,
+    steps_per_epoch: int,
+    pct_start: int,
+) -> torch.nn.Module:
+    boilerplate_args = {
+        "real_image_key": "image",
+        "classification_target_key": None,
+        "regression_target_key": None,
+        "epochs": max_epochs,
+        "steps_per_epoch": steps_per_epoch,
+        "pct_start": pct_start,
+        "training_dataloader_call": training_dataloader_call,
+        "class_target_specification": categorical_specification,
+        "reg_target_specification": numerical_specification,
+        "numerical_moments": numerical_moments,
+    }
+
+    if network_config.get("cycle_consistency", False) is True:
+        if network_config.get("cycle_symmetry", False) is True:
+            boilerplate_args = {
+                **boilerplate_args,
+                "generator_cycle": boilerplate_args["generator"],
+                "discriminator_cycle": boilerplate_args["discriminator"],
+                "cycle_consistency": True,
+                "cycle_symmetry": True,
+            }
+        else:
+            cycle_gen_conf = {k: generator_config[k] for k in generator_config}
+            cycle_gen_conf["in_channels"] = generator_config["out_channels"]
+            cycle_gen_conf["out_channels"] = generator_config["in_channels"]
+            boilerplate_args = {
+                **boilerplate_args,
+                "generator_cycle": Generator(**cycle_gen_conf),
+                "discriminator_cycle": Discriminator(**discriminator_config),
+                "cycle_consistency": True,
+            }
+
+    for key in [
+        "lambda_gp",
+        "lambda_feature_matching",
+        "lambda_feature_map_matching",
+        "lambda_identity",
+        "n_critic",
+        "momentum_beta1",
+        "momentum_beta2",
+        "learning_rate",
+        "batch_size",
+        "patch_size",
+    ]:
+        if key in network_config:
+            boilerplate_args[key] = network_config[key]
+
+    if categorical_specification is not None:
+        boilerplate_args["classification_target_key"] = "cat"
+        discriminator_config["additional_classification_targets"] = [
+            x if isinstance(x, int) else len(x)
+            for x in categorical_specification
+        ]
+    if numerical_specification is not None:
+        num_spec = numerical_specification
+        boilerplate_args["regression_target_key"] = "num"
+        discriminator_config["additional_regression_targets"] = num_spec
+    if input_image_key is not None:
+        boilerplate_args["input_image_key"] = input_image_key
+
+    boilerplate_args["generator"] = Generator(**generator_config)
+    boilerplate_args["discriminator"] = Discriminator(**discriminator_config)
+
+    network = GANPL(**boilerplate_args)
 
     return network
