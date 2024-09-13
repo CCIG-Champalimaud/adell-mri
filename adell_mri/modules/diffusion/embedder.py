@@ -217,8 +217,10 @@ class Embedder(torch.nn.Module):
             for i in range(len(self.num_distributions)):
                 self.num_distributions[i].extend(X_num[:, i])
 
-    def get_expected_cat(self, n: int = 1):
+    def get_expected_cat(self, n: int = 1) -> list[np.ndarray] | None:
         # returns mode for all categorical features
+        if self.cat_feat is None:
+            return
         output = [[] for _ in range(n)]
         for i in range(len(self.cat_distributions)):
             curr = self.cat_distributions[i]
@@ -231,8 +233,10 @@ class Embedder(torch.nn.Module):
         output = [np.array(x) for x in output]
         return output
 
-    def get_random_cat(self, n: int = 1):
+    def get_random_cat(self, n: int = 1) -> list[np.ndarray] | None:
         # returns random categorical features
+        if self.cat_feat is None:
+            return
         output = [[] for _ in range(n)]
         for i in range(len(self.cat_distributions)):
             curr = self.cat_distributions[i]
@@ -242,8 +246,10 @@ class Embedder(torch.nn.Module):
         output = [np.array(x) for x in output]
         return output
 
-    def get_expected_num(self, n: int = 1):
+    def get_expected_num(self, n: int = 1) -> torch.Tensor | None:
         # returns mean for all numerical features
+        if self.n_num_feat is None:
+            return
         output = []
         for i in range(len(self.num_distributions)):
             curr = self.num_distributions[i]
@@ -254,8 +260,10 @@ class Embedder(torch.nn.Module):
         ).T
         return output
 
-    def get_random_num(self, n: int = 1):
+    def get_random_num(self, n: int = 1) -> torch.Tensor | None:
         # returns mean for all numerical features
+        if self.n_num_feat is None:
+            return
         output = []
         for i in range(len(self.num_distributions)):
             curr = self.num_distributions[i]
@@ -306,7 +314,7 @@ class Embedder(torch.nn.Module):
         converted_reg_X = None
         if self.cat_feat is not None:
             if X_cat is None:
-                X_cat = self.get_expected_cat(batch_size)
+                X_cat = self.get_random_cat(batch_size)
             if return_X:
                 embedded_X = self.cat_embedder(X_cat, return_X=True)
                 embedded_X, converted_class_X = embedded_X
@@ -318,7 +326,7 @@ class Embedder(torch.nn.Module):
 
         if self.n_num_feat is not None:
             if X_num is None:
-                X_num = self.get_expected_num(batch_size)
+                X_num = self.get_random_num(batch_size)
             X_num = self.normalize_numeric_features(X_num)
             embeddings.append(self.num_embedder(X_num)[:, None, :])
             converted_reg_X = X_num
