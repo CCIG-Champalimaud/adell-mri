@@ -840,6 +840,7 @@ class GANPL(pl.LightningModule):
         x_sh[1] = self.generator.in_channels
         return torch.randn(*x_sh).to(self.device)
 
+    @torch.no_grad
     def generate(
         self,
         x: torch.Tensor | None = None,
@@ -850,6 +851,13 @@ class GANPL(pl.LightningModule):
     ) -> torch.Tensor:
         if input_tensor is None:
             input_tensor = self.generate_noise(x=x, size=size)
+
+        if self.embed:
+            n = input_tensor.shape[0]
+            if "class_target" not in kwargs:
+                kwargs["class_target"] = self.embedder.get_random_cat(n)
+            if "reg_target" not in kwargs:
+                kwargs["reg_target"] = self.embedder.get_random_num(n)
         image = self.apply_generator(
             input_tensor,
             self.generator,
@@ -857,7 +865,7 @@ class GANPL(pl.LightningModule):
             *args,
             **kwargs,
         )
-        return image
+        return image, kwargs["class_target"], kwargs["reg_target"]
 
     def apply_generator(
         self,
