@@ -607,7 +607,7 @@ def get_post_transforms_generation(
     if crop_size is not None:
         transforms.append(
             monai.transforms.CenterSpatialCropd(
-                image_keys, [int(j) for j in crop_size]
+                "image", [int(j) for j in crop_size]
             )
         )
     if cat_keys is not None:
