@@ -2,8 +2,8 @@ import json
 import re
 import argparse
 import numpy as np
-import monai
 import os
+from monai.transforms import Compose, LoadImaged, Orientationd
 from pathlib import Path
 from skimage import measure
 from tqdm import tqdm
@@ -144,10 +144,10 @@ def main(arguments):
 
     args = parser.parse_args(arguments)
 
-    t = monai.transforms.Compose(
+    t = Compose(
         [
-            monai.transforms.LoadImaged(["image"], ensure_channel_first=True),
-            monai.transforms.Orientationd(["image"], "RAS"),
+            LoadImaged(["image"], ensure_channel_first=True),
+            Orientationd(["image"], "RAS"),
         ]
     )
 

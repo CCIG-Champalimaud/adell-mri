@@ -154,9 +154,7 @@ def get_transforms_unet(
         ]
         # "creates" empty images/masks if necessary
         if fill_missing is True:
-            transforms.append(
-                CreateImageAndWeightsd(all_keys, [1] + crop_size)
-            )
+            transforms.append(CreateImageAndWeightsd(all_keys, [1] + crop_size))
         # sets orientation
         transforms.append(monai.transforms.Orientationd(all_keys, "RAS"))
 
@@ -551,13 +549,28 @@ def get_transforms_classification(
     return transforms
 
 
-def get_pre_transforms_generation(keys, target_spacing, crop_size, pad_size):
+def get_pre_transforms_generation(
+    keys: list[str],
+    target_spacing: list[int],
+    crop_size: list[int],
+    pad_size: list[int],
+    n_dim: int = 3,
+):
     transforms = [
         monai.transforms.LoadImaged(
             keys, ensure_channel_first=True, image_only=True
-        ),
-        monai.transforms.Orientationd(keys, "RAS"),
+        )
     ]
+    if n_dim == 2:
+        transforms.extend(
+            [
+                SampleChannelDimd(keys, 1, 3),
+                monai.transforms.SqueezeDimd(keys, -1, update_meta=False),
+            ]
+        )
+    if n_dim == 3:
+        transforms.append(monai.transforms.Orientationd(keys, "RAS"))
+
     if target_spacing is not None:
         transforms.extend(
             [
@@ -594,7 +607,7 @@ def get_post_transforms_generation(
     if crop_size is not None:
         transforms.append(
             monai.transforms.CenterSpatialCropd(
-                image_keys, [int(j) for j in crop_size]
+                "image", [int(j) for j in crop_size]
             )
         )
     if cat_keys is not None:
@@ -816,9 +829,7 @@ def get_augmentations_unet(
     # ensures that flips are applied regardless of TrivialAugment trigger
     if "flip" in augment:
         flip_transform = [
-            monai.transforms.RandFlipd(
-                all_keys, spatial_axis=[axis], prob=0.25
-            )
+            monai.transforms.RandFlipd(all_keys, spatial_axis=[axis], prob=0.25)
             for axis in flip_axis
         ]
     else:
@@ -918,11 +929,7 @@ def get_augmentations_class(
 
     if "noise" in augment:
         augments.extend(
-            [
-                monai.transforms.RandRicianNoised(
-                    image_keys, std=0.02, prob=prob
-                )
-            ]
+            [monai.transforms.RandRicianNoised(image_keys, std=0.02, prob=prob)]
         )
 
     if "flip" in augment:
@@ -1010,11 +1017,7 @@ def get_augmentations_detection(
 
     if "noise" in augment:
         augments.extend(
-            [
-                monai.transforms.RandRicianNoised(
-                    image_keys, std=0.02, prob=prob
-                )
-            ]
+            [monai.transforms.RandRicianNoised(image_keys, std=0.02, prob=prob)]
         )
 
     if "rbf" in augment and len(t2_keys) > 0:

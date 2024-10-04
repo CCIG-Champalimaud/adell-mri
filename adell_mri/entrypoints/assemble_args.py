@@ -504,9 +504,7 @@ argument_factory = {
         default=None,
         help="Keys corresponding to tabular features in the JSON dataset",
     ),
-    "mask_keys": dict(
-        type=str, default=None, help="Mask keys in dataset JSON"
-    ),
+    "mask_keys": dict(type=str, default=None, help="Mask keys in dataset JSON"),
     "random_crop_size": dict(
         default=None,
         type=float,
@@ -781,6 +779,13 @@ argument_factory = {
         default=None,
         help="Ensembles predictions from different checkpoints.",
         choices=["mean"],
+    ),
+    # gan
+    "input_image_keys": dict(
+        type=str,
+        default=None,
+        nargs="+",
+        help="Keys corresponding to conditional input images.",
     ),
 }
 

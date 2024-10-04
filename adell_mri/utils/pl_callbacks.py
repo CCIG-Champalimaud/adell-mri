@@ -18,9 +18,7 @@ def coerce_to_uint8(x: np.ndarray):
 
 def split_and_cat(x: np.ndarray, split_dim: int, cat_dim: int) -> np.ndarray:
     arrays = np.split(x, x.shape[split_dim], axis=split_dim)
-    arrays = np.concatenate(
-        [arr.squeeze(split_dim) for arr in arrays], cat_dim
-    )
+    arrays = np.concatenate([arr.squeeze(split_dim) for arr in arrays], cat_dim)
     return arrays
 
 
@@ -336,7 +334,6 @@ class LogImageFromGAN(Callback):
         n_images: int = 2,
         every_n_epochs: int = 1,
         generate_kwargs: dict[str, Any] = None,
-        caption: str = None,
         conditional: bool = False,
         conditional_key: str | int = None,
         additional_image_keys: list[str | int] = None,
@@ -354,8 +351,6 @@ class LogImageFromGAN(Callback):
                 1.
             generate_kwargs (dict[str, Any], optional): keyword arguments for
                 generate function. Defaults to None.
-            caption (str | list[str], optional): caption for the logged images.
-                Defaults to None.
             conditional (bool, optional): generates conditionally on a part of
                 the batch. Defaults to False.
             conditional_key (str | int, optional): key for the conditional
@@ -372,7 +367,6 @@ class LogImageFromGAN(Callback):
         self.n_images = n_images
         self.every_n_epochs = every_n_epochs
         self.generate_kwargs = generate_kwargs
-        self.caption = caption
         self.conditional = conditional
         self.conditional_key = conditional_key
         self.additional_image_keys = additional_image_keys
@@ -439,9 +433,21 @@ class LogImageFromGAN(Callback):
                         images_to_log[f"{key} images"] = torch.stack(
                             [self.storage[key][idx] for idx in idxs]
                         )
-                images_to_log["Generated images"] = pl_module.generate(
-                    **kwargs
-                )
+                gen_images, cl, reg = pl_module.generate(**kwargs)
+                captions = []
+                for i in range(gen_images.shape[0]):
+                    caption = [None, None]
+                    if cl is not None:
+                        caption[0] = f"Class: {cl[i]}"
+                    if reg is not None:
+                        caption[1] = f"Reg: {reg[i].item()}"
+                    caption = [c for c in caption if c is not None]
+                    if len(caption) > 0:
+                        caption = ", ".join(caption)
+                    else:
+                        caption = ""
+                    captions.append(caption)
+                images_to_log["Generated images"] = gen_images
             for key in images_to_log:
                 log_image(
                     trainer,
@@ -449,7 +455,7 @@ class LogImageFromGAN(Callback):
                     images=images_to_log[key],
                     slice_dim=self.slice_dim,
                     n_slices_out=self.n_slices,
-                    caption=self.caption,
+                    caption=captions,
                     rgb=self.rgb,
                 )
 

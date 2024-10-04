@@ -9,9 +9,13 @@ from lightning.pytorch import Trainer
 from lightning.pytorch.callbacks import RichProgressBar
 
 from ...entrypoints.assemble_args import Parser
+from ...modules.config_parsing import parse_config_ssl, parse_config_unet
 from ...utils import safe_collate, ExponentialMovingAverage
 from ...utils.pl_utils import get_devices, get_ckpt_callback, get_logger
-from ...modules.config_parsing import parse_config_ssl, parse_config_unet
+from ...utils.dicom_dataset import (
+    filter_dicom_dict_on_presence,
+    filter_dicom_dict_by_size,
+)
 from ...utils.dicom_loader import DICOMDataset, SliceSampler
 from ...utils.network_factories import get_ssl_network
 from ...monai_transforms import (
@@ -39,36 +43,6 @@ def force_cudnn_initialization():
         torch.zeros(s, s, s, s, device=dev),
         torch.zeros(s, s, s, s, device=dev),
     )
-
-
-def filter_dicom_dict_on_presence(data_dict, all_keys):
-    def check_intersection(a, b):
-        return len(set.intersection(set(a), set(b))) == len(set(b))
-
-    for k in data_dict:
-        for kk in data_dict[k]:
-            data_dict[k][kk] = [
-                element
-                for element in data_dict[k][kk]
-                if check_intersection(element.keys(), all_keys)
-            ]
-    return data_dict
-
-
-def filter_dicom_dict_by_size(data_dict, max_size):
-    print("Filtering by size (max={})".format(max_size))
-    output_dict = {}
-    removed_series = 0
-    for k in data_dict:
-        for kk in data_dict[k]:
-            if len(data_dict[k][kk]) < max_size:
-                if k not in output_dict:
-                    output_dict[k] = {}
-                output_dict[k][kk] = data_dict[k][kk]
-            else:
-                removed_series += 1
-    print("Removed={}".format(removed_series))
-    return output_dict
 
 
 def main(arguments):

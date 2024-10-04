@@ -110,6 +110,7 @@ class Embedder(torch.nn.Module):
         max_norm: float | None = None,
         embedding_size: int = 512,
         max_queue_size: int = 512,
+        numerical_moments: int = None,
         device: torch.device = None,
     ):
         """
@@ -137,6 +138,10 @@ class Embedder(torch.nn.Module):
                 512.
             max_queue_size (int, optional): maximum queue size. Defaults to
                 512.
+            numerical_moments (tuple[list[float], list[float]] | None,
+                optional): list of means and standard deviations for numerical
+                normalisation of the regression targets. Defaults to None (no
+                normalisation).
             device (torch.device, optional): device. Defaults to None.
         """
         super().__init__()
@@ -145,7 +150,10 @@ class Embedder(torch.nn.Module):
         self.max_norm = max_norm
         self.embedding_size = embedding_size
         self.max_queue_size = max_queue_size
+        self.numerical_moments = numerical_moments
         self.device = device
+
+        self.rng = np.random.default_rng(42)
 
         self.init_embeddings()
         if self.cat_feat:
@@ -165,10 +173,24 @@ class Embedder(torch.nn.Module):
             )
             self.final_n_features += self.cat_embedder.output_length
         if self.n_num_feat is not None:
-            self.num_embedder = torch.nn.Linear(
-                self.n_num_feat, self.embedding_size
-            )
+            nnf = self.n_num_feat
+            self.num_embedder = torch.nn.Linear(nnf, self.embedding_size)
             self.final_n_features += self.embedding_size
+            if self.numerical_moments is not None:
+                means, stds = self.numerical_moments
+                if (len(means) != nnf) or (len(stds) != nnf):
+                    raise ValueError(
+                        "Number of means and stds in numerical_moments does not\
+                            match number of numerical features."
+                    )
+                self.means = torch.nn.Parameter(
+                    torch.as_tensor(means, dtype=torch.float32),
+                    requires_grad=False,
+                )
+                self.stds = torch.nn.Parameter(
+                    torch.as_tensor(stds, dtype=torch.float32),
+                    requires_grad=False,
+                )
 
         self.final_embedding = torch.nn.Linear(
             self.final_n_features, self.embedding_size
@@ -195,8 +217,10 @@ class Embedder(torch.nn.Module):
             for i in range(len(self.num_distributions)):
                 self.num_distributions[i].extend(X_num[:, i])
 
-    def get_expected_cat(self, n: int = 1):
+    def get_expected_cat(self, n: int = 1) -> list[np.ndarray] | None:
         # returns mode for all categorical features
+        if self.cat_feat is None:
+            return
         output = [[] for _ in range(n)]
         for i in range(len(self.cat_distributions)):
             curr = self.cat_distributions[i]
@@ -209,8 +233,23 @@ class Embedder(torch.nn.Module):
         output = [np.array(x) for x in output]
         return output
 
-    def get_expected_num(self, n: int = 1):
+    def get_random_cat(self, n: int = 1) -> list[np.ndarray] | None:
+        # returns random categorical features
+        if self.cat_feat is None:
+            return
+        output = [[] for _ in range(n)]
+        for i in range(len(self.cat_distributions)):
+            curr = self.cat_distributions[i]
+            tmp = self.rng.choice(curr, n)
+            for j in range(n):
+                output[j].append(tmp[j])
+        output = [np.array(x) for x in output]
+        return output
+
+    def get_expected_num(self, n: int = 1) -> torch.Tensor | None:
         # returns mean for all numerical features
+        if self.n_num_feat is None:
+            return
         output = []
         for i in range(len(self.num_distributions)):
             curr = self.num_distributions[i]
@@ -220,6 +259,25 @@ class Embedder(torch.nn.Module):
             output, device=self.device, dtype=torch.float32
         ).T
         return output
+
+    def get_random_num(self, n: int = 1) -> torch.Tensor | None:
+        # returns mean for all numerical features
+        if self.n_num_feat is None:
+            return
+        output = []
+        for i in range(len(self.num_distributions)):
+            curr = self.num_distributions[i]
+            output.append(self.rng.choice(curr, n))
+        output = torch.as_tensor(
+            output, device=self.device, dtype=torch.float32
+        ).T
+        return output
+
+    def normalize_numeric_features(self, X: torch.Tensor):
+        if self.numerical_moments is None:
+            return X
+        else:
+            return (X - self.means[None, :]) / self.stds[None, :]
 
     def forward(
         self,
@@ -252,12 +310,14 @@ class Embedder(torch.nn.Module):
         if update_queues is True:
             self.update_queues(X_cat=X_cat, X_num=X_num)
         embeddings = []
+        converted_class_X = None
+        converted_reg_X = None
         if self.cat_feat is not None:
             if X_cat is None:
-                X_cat = self.get_expected_cat(batch_size)
+                X_cat = self.get_random_cat(batch_size)
             if return_X:
                 embedded_X = self.cat_embedder(X_cat, return_X=True)
-                embedded_X, converted_X = embedded_X
+                embedded_X, converted_class_X = embedded_X
             else:
                 embedded_X = self.cat_embedder(X_cat)
             embeddings.append(embedded_X)
@@ -266,11 +326,13 @@ class Embedder(torch.nn.Module):
 
         if self.n_num_feat is not None:
             if X_num is None:
-                X_num = self.get_expected_num(batch_size)
+                X_num = self.get_random_num(batch_size)
+            X_num = self.normalize_numeric_features(X_num)
             embeddings.append(self.num_embedder(X_num)[:, None, :])
+            converted_reg_X = X_num
             if self.device is None:
                 self.device = embeddings[-1].device
         out = self.final_embedding(torch.cat(embeddings, -1))
         if return_X:
-            return out, converted_X
+            return out, converted_class_X, converted_reg_X
         return out
