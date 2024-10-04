@@ -90,6 +90,8 @@ def main(arguments):
         possible_labels=args.possible_labels,
         label_key=args.label_keys,
         filters=args.filter_on_keys,
+        fill_conditional=args.fill_conditional,
+        fill_missing_with_value=args.fill_missing_with_placeholder,
     )
     data_dict.subsample_dataset(
         subsample_size=args.subsample_size,
