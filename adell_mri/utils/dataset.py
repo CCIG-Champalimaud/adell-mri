@@ -116,7 +116,11 @@ class Dataset:
         label_key: str = None,
         filters: list[str] = None,
         filter_is_optional: bool = False,
+        fill_conditional: list[str] = None,
+        fill_missing_with_value: list[str] = None,
     ):
+        self.fill_conditional(fill_conditional)
+        self.fill_missing_with_value(fill_missing_with_value)
         self.dataset = filter_dictionary(
             self.dataset,
             filters_presence=filters_presence,
