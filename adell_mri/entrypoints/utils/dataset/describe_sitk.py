@@ -9,7 +9,7 @@ def main(arguments):
     parser = argparse.ArgumentParser(description=desc)
 
     parser.add_argument(
-        "--sitk_paths",
+        "--paths",
         required=True,
         help="Paths to SITK images.",
         nargs="+",
@@ -17,7 +17,7 @@ def main(arguments):
 
     args = parser.parse_args(arguments)
 
-    for sitk_image_path in args.sitk_paths:
+    for sitk_image_path in args.paths:
         image = sitk.ReadImage(sitk_image_path)
         image_array = sitk.GetArrayFromImage(image)
         u, c = np.unique(image_array, return_counts=True)
