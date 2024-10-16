@@ -26,6 +26,7 @@ supported_modes = {
     "merge_json_datasets": ".dataset.merge_json_datasets",
     "remove_constant_masks": ".dataset.remove_constant_masks",
     "describe_sitk": ".dataset.describe_sitk",
+    "describe_dicom_dataset": ".dataset.describe_dicom_dataset",
     # other
     "random_image_panel": ".other.random_image_panel",
     "test_traced_model": ".other.test_traced_model",
