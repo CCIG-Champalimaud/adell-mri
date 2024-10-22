@@ -34,10 +34,12 @@ def fetch_specifications(state_dict: dict[str, Any]):
     else:
         network_config = None
     if "categorical_specification" in metadata:
-        cat_spec = metadata["categorical_specification"]
-        cat_spec = [[str(v) for v in C] for C in cat_spec]
+        if metadata["categorical_specification"] is not None:
+            cat_spec = metadata["categorical_specification"]
+            cat_spec = [[str(v) for v in C] for C in cat_spec]
     if "numerical_specification" in metadata:
-        num_spec = metadata["numerical_specification"]
+        if metadata["numerical_specification"] is not None:
+            num_spec = metadata["numerical_specification"]
     transform_args = metadata["transform_arguments"]
     spacing = metadata["transform_arguments"]["pre"]["target_spacing"]
     return network_config, cat_spec, num_spec, spacing, transform_args
