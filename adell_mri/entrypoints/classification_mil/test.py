@@ -116,9 +116,8 @@ def main(arguments):
 
     if len(data_dict) == 0:
         raise Exception(
-            "No data available for training \
-                (dataset={}; keys={}; labels={})".format(
-                args.dataset_json, args.image_keys, args.label_keys()
+            "No data available for training (dataset={}; keys={}; labels={})".format(
+                args.dataset_json, args.image_keys, args.label_keys
             )
         )
 
