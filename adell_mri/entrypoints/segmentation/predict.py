@@ -1,20 +1,21 @@
-import json
 import gc
+import json
 import os
+from copy import deepcopy
+
+import monai
 import numpy as np
 import torch
-import monai
-from copy import deepcopy
 from tqdm import tqdm
 
 from ...entrypoints.assemble_args import Parser
-from ...monai_transforms import get_transforms_unet as get_transforms
+from ...modules.config_parsing import parse_config_ssl, parse_config_unet
 from ...modules.layers import ResNet
-from ...modules.config_parsing import parse_config_unet, parse_config_ssl
-from ...utils import collate_last_slice, SlicesToFirst, safe_collate
+from ...monai_transforms import get_transforms_unet as get_transforms
+from ...utils import SlicesToFirst, collate_last_slice, safe_collate
 from ...utils.dataset import Dataset
-from ...utils.network_factories import get_segmentation_network
 from ...utils.inference import SegmentationInference, TensorListReduction
+from ...utils.network_factories import get_segmentation_network
 from ...utils.parser import parse_ids
 from ...utils.sitk_utils import SitkWriter
 

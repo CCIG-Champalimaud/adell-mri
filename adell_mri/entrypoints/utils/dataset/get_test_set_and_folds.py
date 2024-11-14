@@ -1,7 +1,9 @@
 import argparse
 import json
+
 import numpy as np
-from sklearn.model_selection import StratifiedKFold, KFold, train_test_split
+from sklearn.model_selection import KFold, StratifiedKFold, train_test_split
+
 from ....utils.parser import parse_ids
 
 desc = "Splits JSON dataset entries into test set and folds"

@@ -1,6 +1,8 @@
-import torch
-from .generator import Generator
 from typing import Callable
+
+import torch
+
+from .generator import Generator
 
 
 class VariationalAutoEncoder(Generator):
@@ -89,17 +91,13 @@ class VariationalAutoEncoder(Generator):
         # VAE-specific
         bottleneck = h
         mu = self.apply_to_channels_as_last(bottleneck, self.predict_mu)
-        logvar = self.apply_to_channels_as_last(
-            bottleneck, self.predict_logvar
-        )
+        logvar = self.apply_to_channels_as_last(bottleneck, self.predict_logvar)
         h = self.sample(mu, logvar)
         self.last_bottleneck_shape = h.shape
 
         # 5. up
         for upsample_block in self.up_blocks:
-            res_samples = down_block_res_samples[
-                -len(upsample_block.resnets) :
-            ]
+            res_samples = down_block_res_samples[-len(upsample_block.resnets) :]
             down_block_res_samples = down_block_res_samples[
                 : -len(upsample_block.resnets)
             ]

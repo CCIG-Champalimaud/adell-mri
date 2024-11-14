@@ -1,8 +1,9 @@
-import torch
-import numpy as np
 from typing import Callable
-from .res_blocks import ResidualBlock2d
-from .res_blocks import ResidualBlock3d
+
+import numpy as np
+import torch
+
+from .res_blocks import ResidualBlock2d, ResidualBlock3d
 from .utils import unsqueeze_to_target
 
 

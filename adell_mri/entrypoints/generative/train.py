@@ -1,30 +1,32 @@
 import random
+import sys
+
+import monai
 import numpy as np
 import torch
-import monai
-from ..assemble_args import Parser
-
 from lightning.pytorch import Trainer
 from lightning.pytorch.callbacks import RichProgressBar
 
-import sys
-from ...utils import (
-    safe_collate,
-    conditional_parameter_freezing,
-    RandomSlices,
-    collate_last_slice,
+from ...monai_transforms import get_augmentations_class as get_augmentations
+from ...monai_transforms import (
+    get_post_transforms_generation as get_post_transforms,
 )
-from ...utils.pl_utils import get_ckpt_callback, get_logger, get_devices
-from ...utils.pl_callbacks import LogImageFromDiffusionProcess, EMACallback
-from ...utils.torch_utils import load_checkpoint_to_model
-from ...utils.dataset import Dataset
 from ...monai_transforms import (
     get_pre_transforms_generation as get_pre_transforms,
-    get_post_transforms_generation as get_post_transforms,
-    get_augmentations_class as get_augmentations,
 )
+from ...utils import (
+    RandomSlices,
+    collate_last_slice,
+    conditional_parameter_freezing,
+    safe_collate,
+)
+from ...utils.dataset import Dataset
 from ...utils.network_factories import get_generative_network
-from ...utils.parser import get_params, merge_args, compose
+from ...utils.parser import compose, get_params, merge_args
+from ...utils.pl_callbacks import EMACallback, LogImageFromDiffusionProcess
+from ...utils.pl_utils import get_ckpt_callback, get_devices, get_logger
+from ...utils.torch_utils import get_generator_and_rng, load_checkpoint_to_model
+from ..assemble_args import Parser
 
 
 def get_conditional_specification(d: dict, cond_key: str):
@@ -106,12 +108,7 @@ def main(arguments):
         param_dict = get_params(args.params_from)
         args = merge_args(args, param_dict, sys.argv[1:])
 
-    torch.manual_seed(args.seed)
-    random.seed(args.seed)
-    np.random.seed(args.seed)
-    g = torch.Generator()
-    g.manual_seed(args.seed)
-    rng = np.random.default_rng(args.seed)
+    g, rng = get_generator_and_rng(args.seed)
 
     accelerator, devices, strategy = get_devices(args.dev)
     n_devices = len(devices) if isinstance(devices, list) else devices

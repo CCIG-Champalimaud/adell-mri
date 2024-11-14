@@ -1,8 +1,9 @@
-import torch
-from generative.inferers import DiffusionInferer
-
 from typing import Callable
+
+import torch
 from tqdm import tqdm
+
+from generative.inferers import DiffusionInferer
 
 
 class DiffusionInfererSkipSteps(DiffusionInferer):

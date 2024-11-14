@@ -1,8 +1,9 @@
+from typing import Tuple
+
 import torch
 from torch.distributions.multivariate_normal import MultivariateNormal
-from .utils import unsqueeze_to_target
 
-from typing import Tuple
+from .utils import unsqueeze_to_target
 
 
 class GaussianProcessLayer(torch.nn.Module):
@@ -44,9 +45,7 @@ class GaussianProcessLayer(torch.nn.Module):
         o = self.out_channels
         self.scaling_term = torch.sqrt(torch.as_tensor(2.0 / i))
         self.W = torch.nn.Parameter(
-            torch.normal(
-                torch.zeros([1, o, i]), torch.ones([1, o, i])
-            ).float(),
+            torch.normal(torch.zeros([1, o, i]), torch.ones([1, o, i])).float(),
             requires_grad=False,
         )
         self.b = torch.nn.Parameter(

@@ -1,24 +1,23 @@
+from copy import deepcopy
+from itertools import product
+from typing import Sequence
+
+import einops
 import numpy as np
 import torch
-import einops
-from itertools import product
-from copy import deepcopy
 
-from .linear_blocks import MultiHeadSelfAttention
-from .linear_blocks import MLP
-from .regularization import ChannelDropout
-from .adn_fn import get_adn_fn
 from ...custom_types import (
-    List,
-    Dict,
-    Tuple,
-    Union,
     Callable,
+    Dict,
+    List,
     Size2dOr3d,
     TensorList,
+    Tuple,
+    Union,
 )
-
-from typing import Sequence
+from .adn_fn import get_adn_fn
+from .linear_blocks import MLP, MultiHeadSelfAttention
+from .regularization import ChannelDropout
 
 
 def move_axis(X: torch.Tensor, axis1: int, axis2: int) -> torch.Tensor:
@@ -587,9 +586,7 @@ class LinearEmbedding(torch.nn.Module):
                 self.positional_embedding = torch.nn.Parameter(
                     torch.rand(1, self.n_patches, self.true_n_features)
                 )
-                torch.nn.init.trunc_normal_(
-                    self.positional_embedding, std=0.02
-                )
+                torch.nn.init.trunc_normal_(self.positional_embedding, std=0.02)
             else:
                 sin_embed = sinusoidal_positional_encoding(
                     self.n_patches, self.true_n_features

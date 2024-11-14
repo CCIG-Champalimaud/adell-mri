@@ -1,4 +1,5 @@
 import math
+
 import numpy as np
 import torch
 
@@ -125,9 +126,7 @@ class DiffusionUNet(UNet):
             t = t + cls
         encoding_out = []
         curr = X
-        for (op, op_ds), eca in zip(
-            self.encoding_operations, self.encoder_eca
-        ):
+        for (op, op_ds), eca in zip(self.encoding_operations, self.encoder_eca):
             curr = op(curr)
             curr = eca(curr, t)
             encoding_out.append(curr)

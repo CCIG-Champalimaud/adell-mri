@@ -1,11 +1,13 @@
-import numpy as np
+import random
 import re
-import torch
 from multiprocessing import Pool
-from .utils import return_classes
+from typing import Any, Dict, List, Union
+
+import numpy as np
+import torch
 from tqdm import tqdm
 
-from typing import Dict, Union, List, Any
+from .utils import return_classes
 
 
 def load_checkpoint_to_model(
@@ -239,3 +241,27 @@ def get_segmentation_sample_weights(
     adaptive_pixel_weights = total_pixel_sum / pos_pixel_sum
 
     return cl, adaptive_weights, adaptive_pixel_weights
+
+
+def get_generator_and_rng(
+    seed: int,
+) -> tuple[torch.Generator, np.random.Generator]:
+    """
+    Returns a torch generator and a numpy RNG.
+
+    Args:
+        seed (int): seed to use.
+
+    Returns:
+        torch.Generator: torch generator.
+        np.random.Generator: numpy random number generator.
+    """
+
+    torch.manual_seed(seed)
+    random.seed(seed)
+    np.random.seed(seed)
+    g = torch.Generator()
+    g.manual_seed(seed)
+    rng = np.random.default_rng(seed)
+
+    return g, rng

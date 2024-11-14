@@ -1,16 +1,16 @@
 import time
+from typing import Callable, List, Tuple
+
 import torch
 import torch.nn.functional as F
 
 from ....custom_types import TensorList
 from ...layers.adn_fn import ActDropNorm, get_adn_fn
-from ...layers.standard_blocks import GlobalPooling, VGGConvolution3d
-from ...layers.res_net import ResNet, ResNetBackbone, ProjectionHead
-from ...segmentation.unet import UNet
 from ...layers.linear_blocks import MLP, SeqPool
-from ...layers.vit import ViT, FactorizedViT
-
-from typing import List, Tuple, Callable
+from ...layers.res_net import ProjectionHead, ResNet, ResNetBackbone
+from ...layers.standard_blocks import GlobalPooling, VGGConvolution3d
+from ...layers.vit import FactorizedViT, ViT
+from ...segmentation.unet import UNet
 
 resnet_default = [(64, 128, 5, 2), (128, 256, 3, 5)]
 maxpool_default = [(2, 2, 2), (2, 2, 2)]
@@ -566,9 +566,7 @@ class SegCatNet(torch.nn.Module):
             )
         times["b"] = time.time()
 
-        class_fl = self.final_layer_classifier(
-            torch.cat([final_layer], axis=1)
-        )
+        class_fl = self.final_layer_classifier(torch.cat([final_layer], axis=1))
         times["c"] = time.time()
         class_bn = self.bottleneck_classifier(bottleneck)
         times["d"] = time.time()
@@ -957,9 +955,7 @@ class TabularClassifier(torch.nn.Module):
         else:
             feature_stds = torch.as_tensor(self.feature_stds).reshape(1, -1)
 
-        self.mu = torch.nn.Parameter(
-            feature_means.float(), requires_grad=False
-        )
+        self.mu = torch.nn.Parameter(feature_means.float(), requires_grad=False)
         self.sigma = torch.nn.Parameter(
             feature_stds.float(), requires_grad=False
         )

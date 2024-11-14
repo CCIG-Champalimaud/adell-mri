@@ -2,7 +2,7 @@ import numpy as np
 import torch
 import torchmetrics
 
-from .utils import check_overlap, calculate_iou
+from .utils import calculate_iou, check_overlap
 
 
 class mAP(torchmetrics.metric.Metric):

@@ -1,9 +1,10 @@
+from typing import Any
+
 import torch
+
+from ...utils.masking import get_masker
 from ..layers.linear_blocks import MLP
 from ..layers.vit import ViT
-from ...utils.masking import get_masker
-
-from typing import Any
 
 iBOTOut = torch.Tensor
 
@@ -97,9 +98,7 @@ class iBOT(torch.nn.Module):
             torch.nn.Linear(self.mlp_out_dim, self.out_dim, bias=False)
         )
         self.last_layer_.parametrizations.weight.original0.data.fill_(1)
-        self.last_layer_.parametrizations.weight.original0.requires_grad = (
-            False
-        )
+        self.last_layer_.parametrizations.weight.original0.requires_grad = False
 
     def initialize_mask_token(self):
         self.mask_token_ = torch.nn.Parameter(

@@ -9,11 +9,11 @@ Based on:
     https://huggingface.co/blog/annotated-diffusion
 """
 
-import torch
 from math import sqrt
-from tqdm.auto import tqdm
+from typing import List, Tuple, Union
 
-from typing import Union, Tuple, List
+import torch
+from tqdm.auto import tqdm
 
 
 def cosine_beta_schedule(
@@ -301,9 +301,7 @@ class Diffusion:
         elif self.step_key == "ddim":
             return self.ddim_reverse_step(x, epsilon=epsilon, t=t, eta=eta)
         elif self.step_key == "alpha_deblending":
-            return self.alpha_deblending_step(
-                x, epsilon=epsilon, t=t, eta=None
-            )
+            return self.alpha_deblending_step(x, epsilon=epsilon, t=t, eta=None)
 
     @torch.no_grad()
     def sample(

@@ -6,13 +6,14 @@ So this is essentially repackaging what the MONAI team did as a GAN generator.
 """
 
 import importlib
+import math
+from typing import Sequence
+
 import torch
 import torch.nn.functional as F
-import math
 from monai.networks.blocks import Convolution, MLPBlock
-from monai.utils import ensure_tuple_rep
 from monai.networks.layers.factories import Pool
-from typing import Sequence
+from monai.utils import ensure_tuple_rep
 
 # To install xformers, use pip install xformers==0.0.16rc401
 if importlib.util.find_spec("xformers") is not None:
@@ -1391,9 +1392,7 @@ class UpBlock(torch.nn.Module):
             )
             if self.no_skip_connection:
                 res_skip_channels = 0
-            resnet_in_channels = (
-                prev_output_channel if i == 0 else out_channels
-            )
+            resnet_in_channels = prev_output_channel if i == 0 else out_channels
 
             resnets.append(
                 ResnetBlock(
@@ -1511,9 +1510,7 @@ class AttnUpBlock(torch.nn.Module):
             )
             if self.no_skip_connection:
                 res_skip_channels = 0
-            resnet_in_channels = (
-                prev_output_channel if i == 0 else out_channels
-            )
+            resnet_in_channels = prev_output_channel if i == 0 else out_channels
 
             resnets.append(
                 ResnetBlock(
@@ -1652,9 +1649,7 @@ class CrossAttnUpBlock(torch.nn.Module):
             )
             if self.no_skip_connection:
                 res_skip_channels = 0
-            resnet_in_channels = (
-                prev_output_channel if i == 0 else out_channels
-            )
+            resnet_in_channels = prev_output_channel if i == 0 else out_channels
 
             resnets.append(
                 ResnetBlock(
@@ -2067,8 +2062,7 @@ class Generator(torch.nn.Module):
 
         # All number of channels should be multiple of num_groups
         if any(
-            (out_channel % norm_num_groups) != 0
-            for out_channel in num_channels
+            (out_channel % norm_num_groups) != 0 for out_channel in num_channels
         ):
             raise ValueError(
                 "DiffusionModelUNet expects all num_channels being multiple of norm_num_groups"
@@ -2091,9 +2085,7 @@ class Generator(torch.nn.Module):
             )
 
         if isinstance(num_res_blocks, int):
-            num_res_blocks = ensure_tuple_rep(
-                num_res_blocks, len(num_channels)
-            )
+            num_res_blocks = ensure_tuple_rep(num_res_blocks, len(num_channels))
 
         if len(num_res_blocks) != len(num_channels):
             raise ValueError(
@@ -2353,9 +2345,7 @@ class Generator(torch.nn.Module):
 
         # 5. up
         for upsample_block in self.up_blocks:
-            res_samples = down_block_res_samples[
-                -len(upsample_block.resnets) :
-            ]
+            res_samples = down_block_res_samples[-len(upsample_block.resnets) :]
             down_block_res_samples = down_block_res_samples[
                 : -len(upsample_block.resnets)
             ]

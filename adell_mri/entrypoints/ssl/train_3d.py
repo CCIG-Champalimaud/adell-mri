@@ -1,24 +1,25 @@
 import random
-import numpy as np
-import torch
-import monai
 from copy import deepcopy
 
+import monai
+import numpy as np
+import torch
 from lightning.pytorch import Trainer
 from lightning.pytorch.callbacks import RichProgressBar
 
+from adell_mri.utils.torch_utils import get_generator_and_rng
+
 from ...entrypoints.assemble_args import Parser
-from ...utils import safe_collate
-from ...utils.pl_utils import get_ckpt_callback, get_logger, get_devices
-from ...utils.dataset import Dataset
-from ...utils.network_factories import get_ssl_network
-from ...utils import ExponentialMovingAverage
 from ...modules.config_parsing import parse_config_ssl, parse_config_unet
 from ...monai_transforms import (
-    get_pre_transforms_ssl,
-    get_post_transforms_ssl,
     get_augmentations_ssl,
+    get_post_transforms_ssl,
+    get_pre_transforms_ssl,
 )
+from ...utils import ExponentialMovingAverage, safe_collate
+from ...utils.dataset import Dataset
+from ...utils.network_factories import get_ssl_network
+from ...utils.pl_utils import get_ckpt_callback, get_devices, get_logger
 
 torch.backends.cudnn.benchmark = True
 
@@ -92,12 +93,7 @@ def main(arguments):
 
     args = parser.parse_args(arguments)
 
-    torch.manual_seed(args.seed)
-    random.seed(args.seed)
-    np.random.seed(args.seed)
-    g = torch.Generator()
-    g.manual_seed(args.seed)
-    rng = np.random.default_rng(seed=args.seed)
+    g, rng = get_generator_and_rng(args.seed)
 
     output_file = open(args.metric_path, "w")
 

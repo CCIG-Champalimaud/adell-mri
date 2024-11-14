@@ -1,16 +1,16 @@
 from .barlow_twins import BarlowTwinsLoss
-from .contrastive import KLDivergence, ContrastiveDistanceLoss
-from .functional import (
-    cos_sim,
-    cos_dist,
-    unravel_index,
-    standardize,
-    pearson_corr,
-    barlow_twins_loss,
-    simsiam_loss,
-    byol_loss,
-)
-from .ntxent import NTXentLoss
-from .vicreg import VICRegLoss, VICRegLocalLoss
+from .contrastive import ContrastiveDistanceLoss, KLDivergence
 from .dino import DinoLoss
+from .functional import (
+    barlow_twins_loss,
+    byol_loss,
+    cos_dist,
+    cos_sim,
+    pearson_corr,
+    simsiam_loss,
+    standardize,
+    unravel_index,
+)
 from .koleo import KoLeoLoss
+from .ntxent import NTXentLoss
+from .vicreg import VICRegLocalLoss, VICRegLoss

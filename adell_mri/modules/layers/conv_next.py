@@ -1,17 +1,17 @@
+from typing import List, Tuple, Union
+
 import torch
 
+from .batch_ensemble import BatchEnsembleWrapper
+from .regularization import LayerNorm
 from .res_blocks import (
     ConvNeXtBlock2d,
     ConvNeXtBlock3d,
     ConvNeXtBlockVTwo2d,
     ConvNeXtBlockVTwo3d,
 )
-from .batch_ensemble import BatchEnsembleWrapper
-from .regularization import LayerNorm
 from .res_net import ProjectionHead
 from .utils import SequentialWithArgs
-
-from typing import List, Tuple, Union
 
 
 class ConvNeXtV2Block(torch.nn.Module):

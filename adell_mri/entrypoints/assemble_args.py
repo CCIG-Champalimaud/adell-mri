@@ -1,6 +1,7 @@
 from argparse import ArgumentParser
-from typing import List
 from copy import deepcopy
+from typing import List
+
 from ..utils.optimizer_factory import OPTIMIZER_MATCH
 
 argument_factory = {

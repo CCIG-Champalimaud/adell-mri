@@ -1,6 +1,7 @@
 import argparse
-import os
 import json
+import os
+
 import SimpleITK as sitk
 from tqdm import tqdm
 

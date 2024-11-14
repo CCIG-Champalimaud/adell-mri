@@ -1,13 +1,13 @@
-import torch
 import numpy as np
+import torch
 
-from .utils import resnet_default, maxpool_default, pyramid_default, nms_nd
+from ...custom_types import List, Tuple
 from ..layers.adn_fn import ActDropNorm
-from ..layers.res_net import ResNetBackbone
 from ..layers.conv_next import ConvNeXtBackboneDetection
 from ..layers.multi_resolution import AtrousSpatialPyramidPooling3d
+from ..layers.res_net import ResNetBackbone
 from ..layers.self_attention import ConcurrentSqueezeAndExcite3d
-from ...custom_types import List, Tuple
+from .utils import maxpool_default, nms_nd, pyramid_default, resnet_default
 
 
 class YOLONet3d(torch.nn.Module):
@@ -167,8 +167,7 @@ class YOLONet3d(torch.nn.Module):
 
     def channels_to_anchors(self, prediction):
         prediction[:-1] = [
-            torch.stack(self.split(x, self.n_b, 1), -1)
-            for x in prediction[:-1]
+            torch.stack(self.split(x, self.n_b, 1), -1) for x in prediction[:-1]
         ]
         return prediction
 

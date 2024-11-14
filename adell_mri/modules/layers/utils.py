@@ -1,7 +1,8 @@
-import torch
-import numpy as np
-from typing import List
 from math import floor
+from typing import List
+
+import numpy as np
+import torch
 
 
 def split_int_into_n(i: int, n: int) -> List[int]:

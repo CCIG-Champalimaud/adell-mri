@@ -4,6 +4,7 @@ SimpleITK to do all the heavy lifting.
 """
 
 import argparse
+
 import SimpleITK as sitk
 
 desc = "Correct the bias field in MRI scans."

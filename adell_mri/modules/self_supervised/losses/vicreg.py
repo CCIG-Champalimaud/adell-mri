@@ -2,12 +2,13 @@
 Variance-Invariance-Covariance (VIC) regularisation loss implementation.
 """
 
+from math import sqrt
+from typing import Tuple
+
 import torch
 import torch.nn.functional as F
-from math import sqrt
-from .functional import unravel_index
 
-from typing import Tuple
+from .functional import unravel_index
 
 
 def off_diagonal(x: torch.Tensor) -> torch.Tensor:

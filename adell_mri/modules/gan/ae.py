@@ -1,4 +1,5 @@
 import torch
+
 from .generator import Generator
 
 

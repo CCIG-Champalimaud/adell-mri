@@ -1,7 +1,7 @@
+from typing import Tuple
+
 import torch
 import torch.nn.functional as F
-
-from typing import Tuple
 
 
 def cos_sim(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:

@@ -5,9 +5,10 @@ tried to keep these as close as possible to the algorithms presented in [1].
 [1] https://arxiv.org/abs/2207.09238
 """
 
-import torch
-import numpy as np
 from typing import List
+
+import numpy as np
+import torch
 
 from ...custom_types import Size2dOr3d
 
@@ -38,9 +39,7 @@ def get_relative_position_indices(window_size: Size2dOr3d) -> torch.Tensor:
     ).contiguous()  # Wh*Ww, Wh*Ww, n
     for i in range(n):
         # shift to start from 0
-        relative_coords[:, :, i] = (
-            relative_coords[:, :, i] + window_size[i] - 1
-        )
+        relative_coords[:, :, i] = relative_coords[:, :, i] + window_size[i] - 1
         window_sides = [2 * w - 1 for w in window_size[(i + 1) :]]
         if len(window_sides) > 0:
             relative_coords[:, :, i] = relative_coords[:, :, i] * float(

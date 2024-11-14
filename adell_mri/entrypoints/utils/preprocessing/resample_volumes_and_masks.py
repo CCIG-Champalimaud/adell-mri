@@ -1,13 +1,12 @@
-import os
 import argparse
+import os
 import re
-import SimpleITK as sitk
 from pathlib import Path
+
+import SimpleITK as sitk
 from tqdm import tqdm
-from ....utils.sitk_utils import (
-    resample_image,
-    resample_image_to_target,
-)
+
+from ....utils.sitk_utils import resample_image, resample_image_to_target
 
 desc = "Resamples an image to a target spacing."
 

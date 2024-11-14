@@ -38,9 +38,6 @@ requires-python = ">=3.11,<3.13"
 [project.scripts]
 adell = "adell_mri.__main__:main"
 
-[tool.pdm.scripts]
-adell = {call = "adell_mri.__main__:main"}
-
 [build-system]
 requires = ["pdm-pep517>=1.0.0"]
 build-backend = "pdm.pep517.api"

@@ -1,33 +1,33 @@
-import numpy as np
 import gc
+from abc import ABC
+from typing import Callable
+
+import lightning.pytorch as pl
+import numpy as np
 import torch
 import torch.nn.functional as F
 import torchmetrics
-import lightning.pytorch as pl
 import torchmetrics.classification as tmc
-
 from tqdm import tqdm
-from typing import Callable
-from abc import ABC
 
-from .classification import (
-    CatNet,
-    OrdNet,
-    ordinal_prediction_to_class,
-    SegCatNet,
-    UNetEncoder,
-    GenericEnsemble,
-    AveragingEnsemble,
-    ViTClassifier,
-    FactorizedViTClassifier,
-    TransformableTransformer,
-    MultipleInstanceClassifier,
-    HybridClassifier,
-    VGG,
-)
-from .classification.deconfounded_classification import DeconfoundedNetGeneric
 from ..conformal_prediction import AdaptivePredictionSets
 from ..learning_rate import CosineAnnealingWithWarmupLR
+from .classification import (
+    VGG,
+    AveragingEnsemble,
+    CatNet,
+    FactorizedViTClassifier,
+    GenericEnsemble,
+    HybridClassifier,
+    MultipleInstanceClassifier,
+    OrdNet,
+    SegCatNet,
+    TransformableTransformer,
+    UNetEncoder,
+    ViTClassifier,
+    ordinal_prediction_to_class,
+)
+from .classification.deconfounded_classification import DeconfoundedNetGeneric
 
 try:
     import monai
@@ -293,9 +293,7 @@ class ClassPLABC(pl.LightningModule, ABC):
             # decouples body and head weight decay
             wd_body, wd_head = self.weight_decay
             params_head = [
-                p
-                for (n, p) in self.named_parameters()
-                if "classification" in n
+                p for (n, p) in self.named_parameters() if "classification" in n
             ]
             params_body = [
                 p

@@ -2,8 +2,8 @@
 Some minor utilities for semi-supervied learning modules.
 """
 
-from typing import Dict, Any, List
 from itertools import product
+from typing import Any, Dict, List
 
 
 def convert_arguments_pre(

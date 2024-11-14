@@ -2,13 +2,15 @@
 Codebase for modifiable input module U-Net (MIMU-Net).
 """
 
-import torch
+from typing import Any, Callable, List
+
 import einops
 import numpy as np
-from .unet import crop_to_size
+import torch
+
 from ..layers.adn_fn import get_adn_fn
 from ..layers.res_blocks import ResidualBlock3d
-from typing import List, Callable, Any
+from .unet import crop_to_size
 
 
 def is_if_none(a: Any, b: Any) -> Any:
@@ -187,17 +189,13 @@ class MIMUNet(torch.nn.Module):
                 sliced_X = X[..., sr]
                 sliced_X = self.pre_module_op(sliced_X).unsqueeze(1)
                 sliced_X = self.module(sliced_X)
-                sliced_X = [
-                    S(x) for x, S in zip(sliced_X, self.post_module_op)
-                ]
+                sliced_X = [S(x) for x, S in zip(sliced_X, self.post_module_op)]
                 if output is None:
                     output = [
-                        zeros_like(sx, [-1, -1, -1, -1, n_X])
-                        for sx in sliced_X
+                        zeros_like(sx, [-1, -1, -1, -1, n_X]) for sx in sliced_X
                     ]
                     denominator = [
-                        zeros_like(sx, [-1, -1, -1, -1, n_X])
-                        for sx in sliced_X
+                        zeros_like(sx, [-1, -1, -1, -1, n_X]) for sx in sliced_X
                     ]
                 for i in range(len(output)):
                     output[i][..., sr] += sliced_X[i]
@@ -270,9 +268,7 @@ class MIMUNet(torch.nn.Module):
                         scale_factor=[s, s, 1], mode=self.interpolation
                     ),
                 )
-                for d1, d2, s in zip(
-                    depths_a, depths_b, self.strides[::-1][1:]
-                )
+                for d1, d2, s in zip(depths_a, depths_b, self.strides[::-1][1:])
             ]
         elif self.upscale_type == "transpose":
             upscale_ops = []

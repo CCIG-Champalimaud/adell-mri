@@ -1,8 +1,8 @@
+from typing import List
+
 import torch
 
 from ...layers.standard_blocks import VGGConvolution3d, VGGDeconvolution3d
-
-from typing import List
 
 
 class VGGAutoencoder(torch.nn.Module):

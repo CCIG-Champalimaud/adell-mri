@@ -1,22 +1,23 @@
+import json
+import sys
+
+import monai
+import torch
+import yaml
+
 from ...entrypoints.assemble_args import Parser
-from ...utils import load_anchors
-from ...monai_transforms import (
-    get_transforms_detection_pre,
-    get_transforms_detection_post,
-)
 from ...modules.object_detection import YOLONet3d
-from ...utils.pl_utils import get_devices
+from ...monai_transforms import (
+    get_transforms_detection_post,
+    get_transforms_detection_pre,
+)
+from ...utils import load_anchors
 from ...utils.dataset_filters import (
     filter_dictionary_with_filters,
     filter_dictionary_with_presence,
 )
 from ...utils.network_factories import get_detection_network
-import yaml
-import torch
-import monai
-import json
-
-import sys
+from ...utils.pl_utils import get_devices
 
 sys.path.append(r"..")
 
@@ -67,9 +68,7 @@ def main(arguments):
             raise ValueError(
                 "sequence_paths and image_keys must have the same length"
             )
-        data_dict = {
-            k: v for k, v in zip(args.image_keys, args.sequence_paths)
-        }
+        data_dict = {k: v for k, v in zip(args.image_keys, args.sequence_paths)}
     else:
         raise TypeError("one of [dataset_json,sequence_paths] must be defined")
     if len(args.filter_on_keys) > 0:

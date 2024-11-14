@@ -1,7 +1,7 @@
+from typing import Callable
+
 import torch
 import torch.nn.functional as F
-
-from typing import Callable
 
 
 def cat_if_none(tensors: list[torch.Tensor | None], *args, **kwargs):

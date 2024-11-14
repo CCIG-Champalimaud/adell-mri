@@ -1,74 +1,73 @@
+from typing import Any, Callable, Dict, List
+
 import numpy as np
 import torch
 import torch.nn.functional as F
-from ..modules.layers.adn_fn import get_adn_fn
 
-# classification
-from ..utils.batch_preprocessing import BatchPreprocessing
+from generative.networks.schedulers import DDPMScheduler
+
 from ..modules.classification.classification import TabularClassifier
-from ..modules.classification.pl import (
-    UNetEncoderPL,
-    ClassNetPL,
-    ViTClassifierPL,
-    FactorizedViTClassifierPL,
-    HybridClassifierPL,
-)
-
-# confounder-free classification
-from ..modules.classification.pl import DeconfoundedNetPL
 from ..modules.classification.classification.deconfounded_classification import (
     CategoricalConversion,
 )
 
-# detection
-from ..modules.object_detection.losses import complete_iou_loss
-from ..modules.object_detection.pl import YOLONet3dPL
-from ..utils import get_loss_param_dict, loss_factory
-
-# segmentation
-from ..modules.segmentation.pl import (
-    UNetPL,
-    UNetPlusPlusPL,
-    BrUNetPL,
-    UNETRPL,
-    MonaiUNETRPL,
-    SWINUNetPL,
-    MonaiSWINUNetPL,
+# confounder-free classification
+from ..modules.classification.pl import (
+    ClassNetPL,
+    DeconfoundedNetPL,
+    FactorizedViTClassifierPL,
+    HybridClassifierPL,
+    UNetEncoderPL,
+    ViTClassifierPL,
 )
-
-# semi-supervised segmentation
-from ..modules.semi_supervised_segmentation.pl import UNetContrastiveSemiSL
-from ..modules.semi_supervised_segmentation.losses import (
-    LocalContrastiveLoss,
-)
-from ..utils import ExponentialMovingAverage
-
-# self-supervised learning
-from ..modules.self_supervised.pl import (
-    SelfSLResNetPL,
-    SelfSLUNetPL,
-    SelfSLConvNeXtPL,
-    IJEPAPL,
-    ConvNeXt,
-    ResNet,
-    UNet,
-    IJEPA,
-    DINOPL,
-    iBOTPL,
-)
+from ..modules.diffusion.embedder import Embedder
+from ..modules.diffusion.inferer import DiffusionInfererSkipSteps
 
 # diffusion
 from ..modules.diffusion.pl import DiffusionUNetPL
-from ..modules.diffusion.embedder import Embedder
-from ..modules.diffusion.inferer import DiffusionInfererSkipSteps
-from generative.networks.schedulers import DDPMScheduler
-
-# gan
-from ..modules.gan.pl import GANPL
 from ..modules.gan.discriminator import Discriminator
 from ..modules.gan.generator import Generator
 
-from typing import Dict, Any, List, Callable
+# gan
+from ..modules.gan.pl import GANPL
+from ..modules.layers.adn_fn import get_adn_fn
+
+# detection
+from ..modules.object_detection.losses import complete_iou_loss
+from ..modules.object_detection.pl import YOLONet3dPL
+
+# segmentation
+from ..modules.segmentation.pl import (
+    UNETRPL,
+    BrUNetPL,
+    MonaiSWINUNetPL,
+    MonaiUNETRPL,
+    SWINUNetPL,
+    UNetPL,
+    UNetPlusPlusPL,
+)
+
+# self-supervised learning
+from ..modules.self_supervised.pl import (
+    DINOPL,
+    IJEPA,
+    IJEPAPL,
+    ConvNeXt,
+    ResNet,
+    SelfSLConvNeXtPL,
+    SelfSLResNetPL,
+    SelfSLUNetPL,
+    UNet,
+    iBOTPL,
+)
+from ..modules.semi_supervised_segmentation.losses import LocalContrastiveLoss
+
+# semi-supervised segmentation
+from ..modules.semi_supervised_segmentation.pl import UNetContrastiveSemiSL
+from ..utils import ExponentialMovingAverage, get_loss_param_dict, loss_factory
+
+# classification
+from ..utils.batch_preprocessing import BatchPreprocessing
 
 
 def get_classification_network(

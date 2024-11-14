@@ -1,15 +1,18 @@
-import torch
-from .res_blocks import ResidualBlock2d
-from .res_blocks import ResidualBlock3d
-from .res_blocks import ResNeXtBlock2d
-from .res_blocks import ResNeXtBlock3d
-from .res_blocks import ConvNeXtBlock2d
-from .res_blocks import ConvNeXtBlock3d
-from .standard_blocks import ConvolutionalBlock2d
-from .standard_blocks import ConvolutionalBlock3d
 from typing import OrderedDict
-from .batch_ensemble import BatchEnsembleWrapper
+
+import torch
+
 from ...custom_types import List, ModuleList, Tuple, Union
+from .batch_ensemble import BatchEnsembleWrapper
+from .res_blocks import (
+    ConvNeXtBlock2d,
+    ConvNeXtBlock3d,
+    ResidualBlock2d,
+    ResidualBlock3d,
+    ResNeXtBlock2d,
+    ResNeXtBlock3d,
+)
+from .standard_blocks import ConvolutionalBlock2d, ConvolutionalBlock3d
 
 
 def resnet_to_encoding_ops(res_net: List[torch.nn.Module]) -> ModuleList:

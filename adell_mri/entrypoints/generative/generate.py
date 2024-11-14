@@ -1,26 +1,28 @@
 import os
 import random
-import numpy as np
-import torch
-import monai
-import SimpleITK as sitk
+import sys
 from pathlib import Path
+from typing import Any
+
+import monai
+import numpy as np
+import SimpleITK as sitk
+import torch
 from tqdm import tqdm
 
-import sys
-from ..assemble_args import Parser
-from ...utils.pl_utils import get_devices
-from ...utils.torch_utils import load_checkpoint_to_model
-from ...utils.dataset import Dataset
 from ...monai_transforms import (
-    get_pre_transforms_generation as get_pre_transforms,
     get_post_transforms_generation as get_post_transforms,
 )
+from ...monai_transforms import (
+    get_pre_transforms_generation as get_pre_transforms,
+)
+from ...utils.dataset import Dataset
 from ...utils.network_factories import get_generative_network
-from ...utils.parser import get_params, merge_args, parse_ids, compose
+from ...utils.parser import compose, get_params, merge_args, parse_ids
+from ...utils.pl_utils import get_devices
+from ...utils.torch_utils import get_generator_and_rng, load_checkpoint_to_model
+from ..assemble_args import Parser
 from .train import return_first_not_none
-
-from typing import Any
 
 
 def fetch_specifications(state_dict: dict[str, Any]):
@@ -88,12 +90,7 @@ def main(arguments):
         param_dict = get_params(args.params_from)
         args = merge_args(args, param_dict, sys.argv[1:])
 
-    torch.manual_seed(args.seed)
-    random.seed(args.seed)
-    np.random.seed(args.seed)
-    g = torch.Generator()
-    g.manual_seed(args.seed)
-    rng = np.random.default_rng(args.seed)
+    g, rng = get_generator_and_rng(args.seed)
 
     ckpt = torch.load(args.checkpoint[0])
 

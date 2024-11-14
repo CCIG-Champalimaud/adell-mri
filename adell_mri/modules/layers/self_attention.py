@@ -1,6 +1,7 @@
+import einops
 import numpy as np
 import torch
-import einops
+
 from .linear_blocks import MultiHeadSelfAttention
 
 

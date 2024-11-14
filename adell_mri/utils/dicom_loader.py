@@ -1,9 +1,9 @@
+from collections import abc
+from typing import Callable, Dict, Sequence, Tuple, Union
+
+import monai
 import numpy as np
 import torch
-import monai
-from collections import abc
-
-from typing import Sequence, Callable, Union, Tuple, Dict
 
 DICOMDatasetType = Sequence[Dict[str, Sequence[Dict[str, str]]]]
 
@@ -32,9 +32,7 @@ def filter_orientations(
                 if ".dcm" in dcm_dict["image"]:
                     if dcm_dict["orientation"] is not None:
                         is_bad = np.all(
-                            np.isclose(
-                                dcm_dict["orientation"][-3:], [0, 0, -1]
-                            )
+                            np.isclose(dcm_dict["orientation"][-3:], [0, 0, -1])
                         )
                         if is_bad is True and keep_bad is False:
                             pass
@@ -107,9 +105,7 @@ class DICOMDataset(torch.utils.data.Dataset):
             real_index = self.correspondence[index]
         else:
             real_index = index
-        data_i = self.dicom_dataset[real_index[0]][real_index[1]][
-            real_index[2]
-        ]
+        data_i = self.dicom_dataset[real_index[0]][real_index[1]][real_index[2]]
         if isinstance(data_i, str):
             print(real_index, data_i)
         if self.transform is not None:

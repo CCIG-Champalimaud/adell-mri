@@ -1,9 +1,9 @@
 import numpy as np
 import torch
-from .utils import crop_to_size
-from .utils import split_int_into_n
-from .regularization import GRN
+
 from ...custom_types import ModuleList
+from .regularization import GRN
+from .utils import crop_to_size, split_int_into_n
 
 
 class ResidualBlock2d(torch.nn.Module):

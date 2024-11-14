@@ -1,8 +1,9 @@
-import numpy as np
-import monai
-
-from ..custom_types import List, Tuple, Dict, Union
 from typing import Sequence
+
+import monai
+import numpy as np
+
+from ..custom_types import Dict, List, Tuple, Union
 
 n_dim = 3
 

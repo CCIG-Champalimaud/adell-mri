@@ -4,17 +4,17 @@ essence, these functions replace arguments in a given argparse.Namespace using
 a given YAML configuration file.
 """
 
+import argparse
+import importlib
+import json
 import os
 import sys
-import argparse
+from typing import Any, Dict, List
+
 import yaml
-import json
-import importlib
 from hydra import compose as hydra_compose
 from hydra import initialize_config_dir
 from omegaconf import OmegaConf
-
-from typing import Dict, Any, List
 
 
 def get_dvc_params(path: str = None) -> Dict[str, any]:

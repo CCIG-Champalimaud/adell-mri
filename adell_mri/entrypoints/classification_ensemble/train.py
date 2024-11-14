@@ -1,39 +1,39 @@
 import random
+import sys
+from copy import deepcopy
+
+import monai
 import numpy as np
 import torch
-import monai
-from copy import deepcopy
-from sklearn.model_selection import train_test_split, StratifiedKFold
-
 from lightning.pytorch import Trainer
 from lightning.pytorch.callbacks import EarlyStopping, RichProgressBar
+from sklearn.model_selection import StratifiedKFold, train_test_split
 
-import sys
 from ...entrypoints.assemble_args import Parser
-from ...utils import (
-    safe_collate,
-    set_classification_layer_bias,
-    conditional_parameter_freezing,
-)
-from ...utils.pl_utils import (
-    get_ckpt_callback,
-    get_logger,
-    get_devices,
-    delete_checkpoints,
-)
-from ...utils.torch_utils import load_checkpoint_to_model, get_class_weights
-from ...utils.dataset import Dataset
-from ...monai_transforms import get_transforms_classification as get_transforms
-from ...monai_transforms import get_augmentations_class as get_augmentations
-from ...modules.losses import OrdinalSigmoidalLoss
+from ...modules.classification.pl import GenericEnsemblePL
 from ...modules.config_parsing import (
-    parse_config_unet,
     parse_config_cat,
     parse_config_ensemble,
+    parse_config_unet,
 )
-from ...modules.classification.pl import GenericEnsemblePL
+from ...modules.losses import OrdinalSigmoidalLoss
+from ...monai_transforms import get_augmentations_class as get_augmentations
+from ...monai_transforms import get_transforms_classification as get_transforms
+from ...utils import (
+    conditional_parameter_freezing,
+    safe_collate,
+    set_classification_layer_bias,
+)
+from ...utils.dataset import Dataset
 from ...utils.network_factories import get_classification_network
 from ...utils.parser import get_params, merge_args, parse_ids
+from ...utils.pl_utils import (
+    delete_checkpoints,
+    get_ckpt_callback,
+    get_devices,
+    get_logger,
+)
+from ...utils.torch_utils import get_class_weights, load_checkpoint_to_model
 
 
 def main(arguments):
@@ -118,12 +118,7 @@ def main(arguments):
         param_dict = get_params(args.params_from)
         args = merge_args(args, param_dict, sys.argv[1:])
 
-    torch.manual_seed(args.seed)
-    random.seed(args.seed)
-    np.random.seed(args.seed)
-    g = torch.Generator()
-    g.manual_seed(args.seed)
-    rng = np.random.default_rng(args.seed)
+    g, rng = get_generator_and_rng(args.seed)
 
     accelerator, devices, strategy = get_devices(args.dev)
     n_devices = len(devices) if isinstance(devices, list) else devices
@@ -276,9 +271,7 @@ def main(arguments):
         args.folds = parse_ids(args.folds)
         folds = []
         for fold_idx, val_ids in enumerate(args.folds):
-            train_idxs = [
-                i for i, x in enumerate(all_pids) if x not in val_ids
-            ]
+            train_idxs = [i for i, x in enumerate(all_pids) if x not in val_ids]
             val_idxs = [i for i, x in enumerate(all_pids) if x in val_ids]
             if len(train_idxs) == 0:
                 print("No train samples in fold {}".format(fold_idx))
@@ -398,8 +391,7 @@ def main(arguments):
                     weights[c] += 1
             weight_sum = np.sum([weights[c] for c in args.possible_labels])
             weights = {
-                k: weight_sum / (1 + weights[k] * len(weights))
-                for k in weights
+                k: weight_sum / (1 + weights[k] * len(weights)) for k in weights
             }
             weight_vector = np.array([weights[k] for k in classes])
             weight_vector = np.where(weight_vector < 0.25, 0.25, weight_vector)
@@ -540,9 +532,7 @@ def main(arguments):
                     network, args.freeze_regex, args.not_freeze_regex
                 )
                 if args.correct_classification_bias is True and n_classes == 2:
-                    pos = len(
-                        [x for x in classes if x in args.positive_labels]
-                    )
+                    pos = len([x for x in classes if x in args.positive_labels])
                     neg = len(classes) - pos
                     set_classification_layer_bias(pos, neg, network)
 

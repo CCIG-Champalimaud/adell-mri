@@ -1,6 +1,6 @@
-import torch
+from typing import Any, Union
 
-from typing import Union, Any
+import torch
 
 eps = 1e-6
 FOCAL_DEFAULT = {"alpha": None, "gamma": 1}

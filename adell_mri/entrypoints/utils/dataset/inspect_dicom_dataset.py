@@ -1,5 +1,6 @@
 import argparse
 import json
+
 import numpy as np
 from pydicom import dcmread
 from tqdm import tqdm

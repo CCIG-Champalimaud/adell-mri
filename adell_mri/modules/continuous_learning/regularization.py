@@ -1,7 +1,7 @@
-import torch
 from copy import deepcopy
-
 from typing import List
+
+import torch
 
 
 class ElasticWeightConsolidation(torch.nn.Module):

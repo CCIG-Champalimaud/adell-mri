@@ -2,12 +2,14 @@
 Lightning modules for autoencoder training.
 """
 
+from typing import Any
+
+import lightning.pytorch as pl
 import torch
 import torch.nn.functional as F
-import lightning.pytorch as pl
-from typing import Any
-from ..losses import GaussianKLLoss
+
 from ..ae import AutoEncoder
+from ..losses import GaussianKLLoss
 from ..vae import VariationalAutoEncoder
 
 
