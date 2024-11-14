@@ -1,4 +1,3 @@
-import random
 import sys
 from copy import deepcopy
 
@@ -271,7 +270,9 @@ def main(arguments):
         args.folds = parse_ids(args.folds)
         folds = []
         for fold_idx, val_ids in enumerate(args.folds):
-            train_idxs = [i for i, x in enumerate(all_pids) if x not in val_ids]
+            train_idxs = [
+                i for i, x in enumerate(all_pids) if x not in val_ids
+            ]
             val_idxs = [i for i, x in enumerate(all_pids) if x in val_ids]
             if len(train_idxs) == 0:
                 print("No train samples in fold {}".format(fold_idx))
@@ -391,7 +392,8 @@ def main(arguments):
                     weights[c] += 1
             weight_sum = np.sum([weights[c] for c in args.possible_labels])
             weights = {
-                k: weight_sum / (1 + weights[k] * len(weights)) for k in weights
+                k: weight_sum / (1 + weights[k] * len(weights))
+                for k in weights
             }
             weight_vector = np.array([weights[k] for k in classes])
             weight_vector = np.where(weight_vector < 0.25, 0.25, weight_vector)
@@ -532,7 +534,9 @@ def main(arguments):
                     network, args.freeze_regex, args.not_freeze_regex
                 )
                 if args.correct_classification_bias is True and n_classes == 2:
-                    pos = len([x for x in classes if x in args.positive_labels])
+                    pos = len(
+                        [x for x in classes if x in args.positive_labels]
+                    )
                     neg = len(classes) - pos
                     set_classification_layer_bias(pos, neg, network)
 
