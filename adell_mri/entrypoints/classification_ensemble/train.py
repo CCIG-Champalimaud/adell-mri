@@ -32,7 +32,11 @@ from ...utils.pl_utils import (
     get_devices,
     get_logger,
 )
-from ...utils.torch_utils import get_class_weights, load_checkpoint_to_model
+from ...utils.torch_utils import (
+    get_class_weights,
+    load_checkpoint_to_model,
+    get_generator_and_rng,
+)
 
 
 def main(arguments):

@@ -1,5 +1,4 @@
 import json
-import random
 import sys
 
 import monai
@@ -23,7 +22,10 @@ from ...utils.network_factories import get_gan_network
 from ...utils.parser import get_params, merge_args
 from ...utils.pl_callbacks import LogImageFromGAN
 from ...utils.pl_utils import get_ckpt_callback, get_devices, get_logger
-from ...utils.torch_utils import get_generator_and_rng, load_checkpoint_to_model
+from ...utils.torch_utils import (
+    get_generator_and_rng,
+    load_checkpoint_to_model,
+)
 from ..assemble_args import Parser
 
 

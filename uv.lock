@@ -45,7 +45,7 @@ requires-dist = [
     { name = "hydra-core", specifier = "==1.3.2" },
     { name = "itk", specifier = "==5.3.0" },
     { name = "kiwisolver", specifier = ">=1.4.7" },
-    { name = "lightning", specifier = ">=2.3.3" },
+    { name = "lightning", specifier = "==2.1" },
     { name = "monai", specifier = ">=1.3.0" },
     { name = "multiprocess", specifier = "==0.70.13" },
     { name = "nibabel", specifier = "==5.1.0" },
@@ -376,6 +376,9 @@ name = "configobj"
 version = "5.0.9"
 source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/f5/c4/c7f9e41bc2e5f8eeae4a08a01c91b2aea3dfab40a3e14b25e87e7db8d501/configobj-5.0.9.tar.gz", hash = "sha256:03c881bbf23aa07bccf1b837005975993c4ab4427ba57f959afdd9d1a2386848", size = 101518 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a6/c4/0679472c60052c27efa612b4cd3ddd2a23e885dcdc73461781d2c802d39e/configobj-5.0.9-py2.py3-none-any.whl", hash = "sha256:1ba10c5b6ee16229c79a05047aeda2b55eb4e80d7c7d8ecf17ec1ca600c79882", size = 35615 },
+]
 
 [[package]]
 name = "cryptography"
@@ -1055,11 +1058,12 @@ wheels = [
 
 [[package]]
 name = "lightning"
-version = "2.4.0"
+version = "2.1.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "fsspec", extra = ["http"] },
     { name = "lightning-utilities" },
+    { name = "numpy" },
     { name = "packaging" },
     { name = "pytorch-lightning" },
     { name = "pyyaml" },
@@ -1068,9 +1072,9 @@ dependencies = [
     { name = "tqdm" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/56/d0/78ea244ac044cd4df15aa8294a50ff3561fb177e7e5ba788aaa542046cae/lightning-2.4.0.tar.gz", hash = "sha256:9156604cc56e4b2b603f34fa7f0fe5107375c8e6d85e74544b319a15faa9ed0e", size = 620632 }
+sdist = { url = "https://files.pythonhosted.org/packages/5d/c0/a0d015d166f7124c6d6774cbd19b6dd02783fc25547533c9b9ba767de25b/lightning-2.1.0.tar.gz", hash = "sha256:1f78f5995ae7dcffa1edf34320db136902b73a0d1b304404c48ec8be165b3a93", size = 1663405 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/a3/2c/85eaf42c983b0cd81bcda5876da2c8e2a9fd347908666ea9855724369171/lightning-2.4.0-py3-none-any.whl", hash = "sha256:560163af9711cf59055c448232c473150a299089efce0d2be3cc3288082d8768", size = 810971 },
+    { url = "https://files.pythonhosted.org/packages/08/c7/8c33e2660161a99923fa9b46c72c31884efd482b89f7ead970cee5c0072a/lightning-2.1.0-py3-none-any.whl", hash = "sha256:c12bd10bd28b9e29a8e877be039350a585f248c10b76360faa2aa2497f980de6", size = 1988617 },
 ]
 
 [[package]]
