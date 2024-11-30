@@ -195,13 +195,8 @@ class Embedder(torch.nn.Module):
         self.final_embedding = torch.nn.Linear(
             self.final_n_features, self.embedding_size
         )
-        self.unconditioned_embeddings = torch.nn.Parameter(
-            torch.as_tensor(
-                self.rng.normal(size=[1, self.embedding_size]).astype(
-                    np.float32
-                )
-            ),
-            requires_grad=False,
+        self.unconditioned_embeddings = torch.nn.Embedding(
+            1, self.embedding_size, max_norm=self.max_norm
         )
 
     def update_queues(
@@ -298,11 +293,9 @@ class Embedder(torch.nn.Module):
         Returns:
             torch.Tensor: the repeated unconditioned embedding.
         """
-        print(
-            self.unconditioned_embeddings.shape,
-            self.unconditioned_embeddings.dtype,
+        return self.unconditioned_embeddings(
+            torch.zeros(X.shape[0], device=X.device, dtype=torch.int32)
         )
-        return self.unconditioned_embeddings.repeat([X.shape[0], 1, 1])
 
     def forward(
         self,
