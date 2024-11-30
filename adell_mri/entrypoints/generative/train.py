@@ -53,6 +53,7 @@ def main(arguments):
             "image_keys",
             "cat_condition_keys",
             "num_condition_keys",
+            "uncondition_proba",
             "filter_on_keys",
             "excluded_ids",
             "augment",
@@ -281,6 +282,7 @@ def main(arguments):
         warmup_steps=args.warmup_steps,
         start_decay=args.start_decay,
         diffusion_steps=args.diffusion_steps,
+        uncondition_proba=args.uncondition_proba,
     )
 
     if args.checkpoint is not None:

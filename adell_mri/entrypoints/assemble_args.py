@@ -52,6 +52,11 @@ argument_factory = {
         help="Label keys in the dataset JSON for numerical variables \
             (applied with classifier-free guidance).",
     ),
+    "uncondition_proba": dict(
+        default=0.15,
+        type=float,
+        help="Unconditional generation probability for classifier free-guidance",
+    ),
     "filter_on_keys": dict(
         default=[],
         nargs="+",

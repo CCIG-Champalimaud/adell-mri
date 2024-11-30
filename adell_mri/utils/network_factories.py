@@ -610,6 +610,7 @@ def get_generative_network(
     scheduler_config: Dict[str, Any],
     categorical_specification: List[List[str] | int],
     numerical_specification: int,
+    uncondition_proba: float,
     train_loader_call: Callable,
     max_epochs: int,
     warmup_steps: int,
@@ -640,6 +641,7 @@ def get_generative_network(
         "n_epochs": max_epochs,
         "warmup_steps": warmup_steps,
         "start_decay": start_decay,
+        "uncondition_proba": uncondition_proba,
     }
 
     if categorical_specification is not None:

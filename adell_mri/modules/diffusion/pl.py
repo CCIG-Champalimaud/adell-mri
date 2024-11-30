@@ -1,3 +1,4 @@
+import numpy as np
 import torch
 import lightning.pytorch as pl
 from typing import Callable, List
@@ -5,6 +6,7 @@ from typing import Callable, List
 from generative.inferers import DiffusionInferer
 from generative.networks.nets import DiffusionModelUNet
 from generative.networks.schedulers import DDPMScheduler
+from .embedder import Embedder
 from ..learning_rate import CosineAnnealingWithWarmupLR
 from ..classification.pl import meta_tensors_to_tensors
 
@@ -14,10 +16,11 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
         self,
         inferer: Callable = DiffusionInferer,
         scheduler: Callable = DDPMScheduler,
-        embedder: torch.nn.Module = None,
+        embedder: Embedder = None,
         image_key: str = "image",
         cat_condition_key: str = "cat_condition",
         num_condition_key: str = "num_condition",
+        uncondition_proba: float = 0.15,
         n_epochs: int = 100,
         warmup_steps: int = 0,
         start_decay: int = 0,
@@ -37,6 +40,7 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
         self.image_key = image_key
         self.cat_condition_key = cat_condition_key
         self.num_condition_key = num_condition_key
+        self.uncondition_proba = uncondition_proba
         self.n_epochs = n_epochs
         self.warmup_steps = warmup_steps
         self.start_decay = start_decay
@@ -48,6 +52,7 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
 
         self.g = torch.Generator()
         self.g.manual_seed(self.seed)
+        self.rng = np.random.default_rng(self.seed)
         self.noise_steps = self.scheduler.num_train_timesteps
         self.loss_fn = torch.nn.MSELoss()
 
@@ -92,23 +97,27 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
         loss = self.calculate_loss(epsilon_pred, epsilon)
         return loss
 
-    def unpack_batch(self, batch):
+    def unpack_batch(self, batch) -> tuple[torch.Tensor, torch.Tensor]:
         x = batch[self.image_key]
         if self.with_conditioning is True:
-            if self.cat_condition_key is not None:
-                cat_condition = batch[self.cat_condition_key]
+            if self.rng.random() < self.uncondition_proba:
+                condition = self.embedder.unconditional_like(x)
             else:
-                cat_condition = None
-            if self.num_condition_key is not None:
-                num_condition = batch[self.num_condition_key]
-            else:
-                num_condition = None
-            # expects three dimensions (batch, seq, embedding size)
-            condition = self.embedder(cat_condition, num_condition)
+                if self.cat_condition_key is not None:
+                    cat_condition = batch[self.cat_condition_key]
+                else:
+                    cat_condition = None
+                if self.num_condition_key is not None:
+                    num_condition = batch[self.num_condition_key]
+                else:
+                    num_condition = None
+                # expects three dimensions (batch, seq, embedding size)
+                condition = self.embedder(cat_condition, num_condition)
             if len(condition.shape) < 3:
                 condition = condition.unsqueeze(1)
         else:
             condition = None
+        print(x.shape, condition.shape)
         return x, condition
 
     def on_before_batch_transfer(self, batch, dataloader_idx):

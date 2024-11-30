@@ -195,6 +195,10 @@ class Embedder(torch.nn.Module):
         self.final_embedding = torch.nn.Linear(
             self.final_n_features, self.embedding_size
         )
+        self.unconditioned_embeddings = torch.nn.Parameter(
+            torch.as_tensor(self.rng.normal([1, self.embedding_size])),
+            requires_grad=False,
+        )
 
     def update_queues(
         self, X_cat: List[torch.LongTensor] = None, X_num: torch.Tensor = None
@@ -278,6 +282,19 @@ class Embedder(torch.nn.Module):
             return X
         else:
             return (X - self.means[None, :]) / self.stds[None, :]
+
+    def unconditional_like(self, X: torch.Tensor) -> torch.Tensor:
+        """
+        Returns the unconditioned representation (the same for all) with the
+        same batch size as X.
+
+        Args:
+            X (torch.Tensor): a batched tensor.
+
+        Returns:
+            torch.Tensor: the repeated unconditioned embedding.
+        """
+        return self.unconditioned_embeddings.repeat(X.shape[0])
 
     def forward(
         self,
