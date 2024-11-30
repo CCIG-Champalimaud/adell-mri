@@ -196,7 +196,11 @@ class Embedder(torch.nn.Module):
             self.final_n_features, self.embedding_size
         )
         self.unconditioned_embeddings = torch.nn.Parameter(
-            torch.as_tensor(self.rng.normal([1, self.embedding_size])),
+            torch.as_tensor(
+                self.rng.normal(size=[1, self.embedding_size]).astype(
+                    np.float32
+                )
+            ),
             requires_grad=False,
         )
 
@@ -294,7 +298,11 @@ class Embedder(torch.nn.Module):
         Returns:
             torch.Tensor: the repeated unconditioned embedding.
         """
-        return self.unconditioned_embeddings.repeat(X.shape[0])
+        print(
+            self.unconditioned_embeddings.shape,
+            self.unconditioned_embeddings.dtype,
+        )
+        return self.unconditioned_embeddings.repeat([X.shape[0], 1, 1])
 
     def forward(
         self,

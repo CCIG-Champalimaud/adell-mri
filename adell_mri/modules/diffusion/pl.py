@@ -117,7 +117,6 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
                 condition = condition.unsqueeze(1)
         else:
             condition = None
-        print(x.shape, condition.shape)
         return x, condition
 
     def on_before_batch_transfer(self, batch, dataloader_idx):
