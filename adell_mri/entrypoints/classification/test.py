@@ -1,24 +1,23 @@
-import random
-import numpy as np
-import torch
-import monai
+import sys
 from copy import deepcopy
 
+import monai
+import numpy as np
+import torch
 from lightning.pytorch import Trainer
 
-import sys
-from ..assemble_args import Parser
-from ...monai_transforms import get_transforms_classification as get_transforms
 from ...modules.classification.losses import OrdinalSigmoidalLoss
-from ...modules.config_parsing import parse_config_unet, parse_config_cat
 from ...modules.classification.pl import AveragingEnsemblePL
-from ...utils.torch_utils import load_checkpoint_to_model
+from ...modules.config_parsing import parse_config_cat, parse_config_unet
+from ...monai_transforms import get_transforms_classification as get_transforms
 from ...utils import safe_collate
+from ...utils.bootstrap_metrics import bootstrap_metric
 from ...utils.dataset import Dataset
-from ...utils.pl_utils import get_devices
 from ...utils.network_factories import get_classification_network
 from ...utils.parser import get_params, merge_args, parse_ids
-from ...utils.bootstrap_metrics import bootstrap_metric
+from ...utils.pl_utils import get_devices
+from ...utils.torch_utils import get_generator_and_rng, load_checkpoint_to_model
+from ..assemble_args import Parser
 
 
 def main(arguments):
@@ -67,12 +66,7 @@ def main(arguments):
         param_dict = get_params(args.params_from)
         args = merge_args(args, param_dict, sys.argv[1:])
 
-    torch.manual_seed(args.seed)
-    random.seed(args.seed)
-    np.random.seed(args.seed)
-    g = torch.Generator()
-    g.manual_seed(args.seed)
-    rng = np.random.default_rng(args.seed)
+    g, rng = get_generator_and_rng(args.seed)
 
     accelerator, devices, strategy = get_devices(args.dev)
 
@@ -298,7 +292,7 @@ def main(arguments):
                 mean, (upper, lower) = bootstrap_metric(
                     network.test_metrics["T_AUC"], 100, 0.5
                 )
-                for idx, (m, u, l) in enumerate(
+                for idx, (m, u, low) in enumerate(
                     zip(mean, upper, lower)
                 ):  # noqa
                     x = "{},{},{},{},{}".format(
@@ -312,7 +306,7 @@ def main(arguments):
                     output_file.write(x + "\n")
                     print(x)
                     x = "{},{},{},{},{}".format(
-                        "T_AUC_upper", checkpoint, iteration, idx, l
+                        "T_AUC_upper", checkpoint, iteration, idx, low
                     )
                     output_file.write(x + "\n")
                     print(x)

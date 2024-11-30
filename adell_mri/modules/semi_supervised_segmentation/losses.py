@@ -2,13 +2,13 @@
 Semi-supervised learning loss modules.
 """
 
+from math import prod
+from queue import Queue
+from typing import Sequence
+
 import numpy as np
 import torch
 import torch.nn.functional as F
-from queue import Queue
-from math import prod
-
-from typing import Sequence
 
 
 def swap(xs: Sequence, a: int, b: int) -> None:

@@ -1,24 +1,22 @@
 import gc
+from abc import ABC
+from typing import Callable, Dict, List, Tuple
+
+import lightning.pytorch as pl
 import numpy as np
 import torch
 import torch.nn.functional as F
 import torchmetrics
-import lightning.pytorch as pl
 import torchmetrics.classification as tmc
-from typing import Callable, Dict, List, Tuple
-from abc import ABC
 
-from .picai_eval import evaluate
-from .unet import UNet, BrUNet
-from .unetpp import UNetPlusPlus
-from .unetr import UNETR
-from .unetr import MonaiUNETR
-from .unetr import SWINUNet
-from .unetr import MonaiSWINUNet
-from .mimunet import MIMUNet
+from ...utils.optimizer_factory import get_optimizer
 from ..extract_lesion_candidates import extract_lesion_candidates
 from ..learning_rate import CosineAnnealingWithWarmupLR
-from ...utils.optimizer_factory import get_optimizer
+from .mimunet import MIMUNet
+from .picai_eval import evaluate
+from .unet import BrUNet, UNet
+from .unetpp import UNetPlusPlus
+from .unetr import UNETR, MonaiSWINUNet, MonaiUNETR, SWINUNet
 
 
 def binary_iou_manual(

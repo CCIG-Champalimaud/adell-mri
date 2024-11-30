@@ -1,14 +1,13 @@
+from typing import Callable, Dict, List, Union
+
 import numpy as np
 import torch
 import torch.nn.functional as F
 
-from .unet import UNet
-from ..layers.adn_fn import get_adn_fn
-from ..layers.vit import ViT, LinearEmbedding
-from ..layers.vit import SWINTransformerBlockStack
 from ...custom_types import Size2dOr3d
-
-from typing import List, Callable, Dict, Union
+from ..layers.adn_fn import get_adn_fn
+from ..layers.vit import LinearEmbedding, SWINTransformerBlockStack, ViT
+from .unet import UNet
 
 
 class UNETR(UNet, torch.nn.Module):
@@ -266,9 +265,7 @@ class UNETR(UNet, torch.nn.Module):
         """
         self.first_encoder = torch.nn.Sequential(
             self.adn_fn(self.n_channels),
-            self.conv_op_enc(
-                self.n_channels, self.depth[0], 3, padding="same"
-            ),
+            self.conv_op_enc(self.n_channels, self.depth[0], 3, padding="same"),
             self.adn_fn(self.depth[0]),
         )
 
@@ -836,9 +833,7 @@ class SWINUNet(UNet):
         """
         self.first_encoder = torch.nn.Sequential(
             self.adn_fn(self.n_channels),
-            self.conv_op_enc(
-                self.n_channels, self.depth[0], 3, padding="same"
-            ),
+            self.conv_op_enc(self.n_channels, self.depth[0], 3, padding="same"),
             self.adn_fn(self.depth[0]),
         )
 
@@ -907,9 +902,7 @@ class SWINUNet(UNet):
         layer_norm = get_adn_fn(self.spatial_dimensions, "layer", None, 0.0)
         self.first_rec_op = torch.nn.Sequential(
             layer_norm(self.n_channels),
-            self.conv_op_enc(
-                self.n_channels, self.depth[0], 3, padding="same"
-            ),
+            self.conv_op_enc(self.n_channels, self.depth[0], 3, padding="same"),
             self.adn_fn(self.depth[0]),
         )
         self.reconstruction_ops = torch.nn.ModuleList([])

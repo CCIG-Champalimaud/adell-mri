@@ -1,28 +1,28 @@
-import numpy as np
-import torch
-import torchmetrics
-import lightning.pytorch as pl
 import warnings
 from abc import ABC
 
-from ...custom_types import Callable
+import lightning.pytorch as pl
+import numpy as np
+import torch
+import torchmetrics
 
-from ..layers.res_net import ResNet
+from ...custom_types import Callable
 from ..layers.conv_next import ConvNeXt
+from ..layers.res_net import ResNet
+from ..learning_rate import CosineAnnealingWithWarmupLR
+from ..segmentation.unet import UNet
+from .dino import DINO
+from .ibot import iBOT
+from .jepa import IJEPA
 from .losses import (
     BarlowTwinsLoss,
+    DinoLoss,
+    NTXentLoss,
     VICRegLocalLoss,
+    VICRegLoss,
     byol_loss,
     simsiam_loss,
-    VICRegLoss,
-    NTXentLoss,
-    DinoLoss,
 )
-from .dino import DINO
-from .jepa import IJEPA
-from .ibot import iBOT
-from ..segmentation.unet import UNet
-from ..learning_rate import CosineAnnealingWithWarmupLR
 
 
 class BarlowTwinsPL(ResNet, pl.LightningModule):

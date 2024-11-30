@@ -1,5 +1,6 @@
 import argparse
 import json
+
 import numpy as np
 from sklearn.cluster import KMeans
 from tqdm import tqdm

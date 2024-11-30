@@ -1,11 +1,12 @@
+from typing import Callable, List
+
+import einops
 import torch
 import torch.nn.functional as F
-import einops
 
 from ...layers.adn_fn import get_adn_fn
-from typing import Callable, List
-from ...layers.vit import TransformerBlockStack
 from ...layers.linear_blocks import MLP
+from ...layers.vit import TransformerBlockStack
 
 
 class MILAttention(torch.nn.Module):

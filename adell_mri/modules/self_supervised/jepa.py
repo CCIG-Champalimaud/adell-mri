@@ -1,11 +1,11 @@
-import torch
-from ..layers.res_net import ResNet
-from ..layers.conv_next import ConvNeXt
-from ..layers.vit import ViT
-from ..layers.vit import TransformerBlockStack
-from ...utils.masking import get_masker
+from typing import Any, Dict, List, Tuple
 
-from typing import List, Dict, Any, Tuple
+import torch
+
+from ...utils.masking import get_masker
+from ..layers.conv_next import ConvNeXt
+from ..layers.res_net import ResNet
+from ..layers.vit import TransformerBlockStack, ViT
 
 TensorList = List[torch.Tensor]
 IJEPAOut = Tuple[torch.Tensor, TensorList]

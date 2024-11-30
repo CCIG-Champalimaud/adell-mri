@@ -1,8 +1,8 @@
+from itertools import product
+from typing import List, Tuple, Union
+
 import numpy as np
 import torch
-from itertools import product
-
-from typing import List, Tuple, Union
 
 Coords = Union[Tuple[int, int, int, int], Tuple[int, int, int, int, int, int]]
 
@@ -71,9 +71,7 @@ class TransformerMasker(torch.nn.Module):
         if self.n_features is not None:
             self.positional_embedding = torch.nn.Parameter(
                 torch.as_tensor(
-                    np.zeros(
-                        [np.prod(self.image_dimensions), self.n_features]
-                    ),
+                    np.zeros([np.prod(self.image_dimensions), self.n_features]),
                     dtype=torch.float32,
                 )
             )

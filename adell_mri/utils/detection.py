@@ -1,8 +1,10 @@
+from typing import Dict, List
+
 import numpy as np
-from tqdm import tqdm
 from sklearn.cluster import KMeans
+from tqdm import tqdm
+
 from ..custom_types import TensorOrNDarray
-from typing import List, Dict
 
 
 def anchors_from_nested_list(

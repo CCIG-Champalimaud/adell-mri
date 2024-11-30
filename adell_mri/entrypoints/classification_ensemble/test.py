@@ -1,30 +1,30 @@
 import json
+import sys
+
+import monai
 import numpy as np
 import torch
-import monai
-
 from lightning.pytorch import Trainer
 
-import sys
 from ...entrypoints.assemble_args import Parser
+from ...modules.classification.pl import GenericEnsemblePL
+from ...modules.config_parsing import (
+    parse_config_cat,
+    parse_config_ensemble,
+    parse_config_unet,
+)
+from ...modules.losses import OrdinalSigmoidalLoss
+from ...monai_transforms import get_transforms_classification as get_transforms
 from ...utils import safe_collate
-from ...utils.pl_utils import get_devices
-from ...utils.torch_utils import load_checkpoint_to_model
 from ...utils.dataset_filters import (
     filter_dictionary_with_filters,
     filter_dictionary_with_possible_labels,
     filter_dictionary_with_presence,
 )
-from ...monai_transforms import get_transforms_classification as get_transforms
-from ...modules.losses import OrdinalSigmoidalLoss
-from ...modules.config_parsing import (
-    parse_config_unet,
-    parse_config_cat,
-    parse_config_ensemble,
-)
-from ...modules.classification.pl import GenericEnsemblePL
 from ...utils.network_factories import get_classification_network
 from ...utils.parser import get_params, merge_args, parse_ids
+from ...utils.pl_utils import get_devices
+from ...utils.torch_utils import load_checkpoint_to_model
 
 
 def main(arguments):

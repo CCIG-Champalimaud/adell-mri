@@ -1,7 +1,7 @@
+from typing import Tuple
+
 import torch
 import torch.nn.functional as F
-
-from typing import Tuple
 
 
 class UOut(torch.nn.Module):
@@ -61,9 +61,7 @@ class LayerNorm(torch.nn.Module):
     width).
     """
 
-    def __init__(
-        self, normalized_shape, eps=1e-6, data_format="channels_last"
-    ):
+    def __init__(self, normalized_shape, eps=1e-6, data_format="channels_last"):
         super().__init__()
         self.weight = torch.nn.Parameter(torch.ones([1, normalized_shape]))
         self.bias = torch.nn.Parameter(torch.zeros([1, normalized_shape]))

@@ -39,6 +39,4 @@ class OrdinalSigmoidalLoss(torch.nn.Module):
         self.weight = torch.as_tensor(weight)
 
     def __call__(self, pred, target):
-        return ordinal_sigmoidal_loss(
-            pred, target, self.n_classes, self.weight
-        )
+        return ordinal_sigmoidal_loss(pred, target, self.n_classes, self.weight)

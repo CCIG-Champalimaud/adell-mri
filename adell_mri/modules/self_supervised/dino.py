@@ -1,8 +1,9 @@
+from typing import Any, Dict, List, Tuple
+
 import torch
+
 from ..layers.linear_blocks import MLP
 from ..layers.vit import ViT
-
-from typing import List, Dict, Any, Tuple
 
 TensorList = List[torch.Tensor]
 DINOOut = Tuple[torch.Tensor, TensorList]
@@ -70,9 +71,7 @@ class DINO(torch.nn.Module):
             torch.nn.Linear(self.mlp_out_dim, self.out_dim, bias=False)
         )
         self.last_layer_.parametrizations.weight.original0.data.fill_(1)
-        self.last_layer_.parametrizations.weight.original0.requires_grad = (
-            False
-        )
+        self.last_layer_.parametrizations.weight.original0.requires_grad = False
 
     def forward(self, X: torch.Tensor) -> DINOOut:
         # encode full image and return

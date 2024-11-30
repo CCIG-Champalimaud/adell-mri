@@ -149,9 +149,7 @@ class Metrics:
         return self.lesion_TPR[self.lesion_FPR <= FPR][-1]
 
     # lesion-level results
-    def get_lesion_results_flat(
-        self, subject_list: Optional[List[str]] = None
-    ):
+    def get_lesion_results_flat(self, subject_list: Optional[List[str]] = None):
         """Flatten the per-case lesion evaluation results into a single list"""
         if subject_list is None:
             subject_list = self.subject_list

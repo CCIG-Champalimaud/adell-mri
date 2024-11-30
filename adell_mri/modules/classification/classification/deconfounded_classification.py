@@ -1,10 +1,11 @@
+from typing import List, Tuple
+
 import torch
-from .classification import VGG, CatNet
+
+from ...layers.adn_fn import get_adn_fn
 from ...layers.linear_blocks import MLP
 from ...layers.standard_blocks import GlobalPooling
-from ...layers.adn_fn import get_adn_fn
-
-from typing import List, Tuple
+from .classification import VGG, CatNet
 
 
 class DeconfoundedNet(VGG):
@@ -120,9 +121,7 @@ class DeconfoundedNet(VGG):
         confounder_regression = None
         if self.confound_classifiers is not None:
             confounder_classification = [
-                confound_classifier(
-                    features[:, : self.n_features_deconfounder]
-                )
+                confound_classifier(features[:, : self.n_features_deconfounder])
                 for confound_classifier in self.confound_classifiers
             ]
         if self.confound_regressions is not None:
@@ -324,9 +323,7 @@ class DeconfoundedNetGeneric(torch.nn.Module):
         confounder_regression = None
         if self.confound_classifiers is not None:
             confounder_classification = [
-                confound_classifier(
-                    features[:, : self.n_features_deconfounder]
-                )
+                confound_classifier(features[:, : self.n_features_deconfounder])
                 for confound_classifier in self.confound_classifiers
             ]
         if self.confound_regressions is not None:

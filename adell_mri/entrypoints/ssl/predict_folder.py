@@ -1,10 +1,12 @@
 import json
+from pathlib import Path
+
 import numpy as np
 import torch
 import torch.nn.functional as F
-from pathlib import Path
-from tqdm import tqdm
 from pydicom import dcmread
+from tqdm import tqdm
+
 from ...entrypoints.assemble_args import Parser
 
 torch.set_num_threads(8)

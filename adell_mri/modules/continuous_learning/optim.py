@@ -1,7 +1,7 @@
-import torch
-import numpy as np
+from typing import Dict, List, Union
 
-from typing import List, Dict, Union
+import numpy as np
+import torch
 
 ParamGroupDict = Dict[
     str, Union[List[torch.nn.Parameter], float, int, bool, str, bool]

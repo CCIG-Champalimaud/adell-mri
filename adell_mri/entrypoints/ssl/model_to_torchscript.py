@@ -1,9 +1,11 @@
-from ...modules.config_parsing import parse_config_ssl, parse_config_unet
-from ...utils.network_factories import get_ssl_network_no_pl
-from copy import deepcopy
 import argparse
+from copy import deepcopy
+
 import numpy as np
 import torch
+
+from ...modules.config_parsing import parse_config_ssl, parse_config_unet
+from ...utils.network_factories import get_ssl_network_no_pl
 
 torch.backends.cudnn.benchmark = True
 

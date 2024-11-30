@@ -3,16 +3,17 @@ Functions that return correctly configured callbacks and objects for PyTorch
 Lightning. 
 """
 
-import os
 import atexit
+import os
+from typing import Any, Dict, List, Tuple, Union
+
 import numpy as np
 import torch
 from lightning.pytorch import Trainer
-from lightning.pytorch.loggers import Logger
-from .pl_callbacks import ModelCheckpointWithMetadata
 from lightning.pytorch.callbacks.model_checkpoint import ModelCheckpoint
+from lightning.pytorch.loggers import Logger
 
-from typing import List, Union, Tuple, Any, Dict
+from .pl_callbacks import ModelCheckpointWithMetadata
 
 
 class GPULock:
@@ -370,8 +371,9 @@ def get_logger(
     if (summary_name is not None) and (project_name is not None):
         run_name = summary_name.replace(":", "_")
         if logger_type == "wandb":
-            import wandb
             from lightning.pytorch.loggers import WandbLogger
+
+            import wandb
 
             if fold is not None:
                 run_name = run_name + f"_fold{fold}"

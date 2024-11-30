@@ -1,46 +1,43 @@
-import random
-import numpy as np
-import torch
-import monai
 import gc
 import warnings
+
+import monai
+import numpy as np
+import torch
+from lightning.pytorch import Trainer
+from lightning.pytorch.callbacks import EarlyStopping, RichProgressBar
+from lightning.pytorch.utilities.combined_loader import CombinedLoader
 from sklearn.model_selection import KFold, train_test_split
 
-from lightning.pytorch import Trainer
-from lightning.pytorch.callbacks import EarlyStopping
-from lightning.pytorch.callbacks import RichProgressBar
-from lightning.pytorch.utilities.combined_loader import CombinedLoader
-
 from ...entrypoints.assemble_args import Parser
+from ...modules.config_parsing import parse_config_ssl, parse_config_unet
+from ...modules.layers import ResNet
+from ...monai_transforms import get_augmentations_unet as get_augmentations
+from ...monai_transforms import get_semi_sl_transforms
+from ...monai_transforms import get_transforms_unet as get_transforms
 from ...utils import (
     GetAllCropsd,
     PartiallyRandomSampler,
-    get_loss_param_dict,
-    collate_last_slice,
     RandomSlices,
     SlicesToFirst,
+    collate_last_slice,
+    get_loss_param_dict,
     safe_collate,
     safe_collate_crops,
 )
-from ...utils.pl_utils import (
-    get_ckpt_callback,
-    get_logger,
-    get_devices,
-)
-from ...utils.logging import CSVLogger
-from ...monai_transforms import get_transforms_unet as get_transforms
-from ...monai_transforms import get_augmentations_unet as get_augmentations
-from ...monai_transforms import get_semi_sl_transforms
 from ...utils.dataset import Dataset
-from ...modules.layers import ResNet
+from ...utils.logging import CSVLogger
 from ...utils.network_factories import get_segmentation_network
-from ...modules.config_parsing import parse_config_unet, parse_config_ssl
 from ...utils.parser import parse_ids
+from ...utils.pl_utils import get_ckpt_callback, get_devices, get_logger
 from ...utils.sitk_utils import (
-    spacing_values_from_dataset_json,
     get_spacing_quantile,
+    spacing_values_from_dataset_json,
 )
-from ...utils.torch_utils import get_segmentation_sample_weights
+from ...utils.torch_utils import (
+    get_generator_and_rng,
+    get_segmentation_sample_weights,
+)
 
 torch.backends.cudnn.benchmark = True
 
@@ -139,11 +136,7 @@ def main(arguments):
 
     args = parser.parse_args(arguments)
 
-    torch.manual_seed(args.seed)
-    random.seed(args.seed)
-    np.random.seed(args.seed)
-    g = torch.Generator()
-    g.manual_seed(args.seed)
+    g, rng = get_generator_and_rng(args.seed)
 
     accelerator, devices, strategy = get_devices(args.dev)
     dev = args.dev.split(":")[0]
@@ -270,9 +263,7 @@ def main(arguments):
         args.folds = parse_ids(args.folds)
         folds = []
         for fold_idx, val_ids in enumerate(args.folds):
-            train_idxs = [
-                i for i, x in enumerate(all_pids) if x not in val_ids
-            ]
+            train_idxs = [i for i, x in enumerate(all_pids) if x not in val_ids]
             val_idxs = [i for i, x in enumerate(all_pids) if x in val_ids]
             if len(train_idxs) == 0:
                 print("No train samples in fold {}".format(fold_idx))
@@ -556,9 +547,7 @@ def main(arguments):
                         int(val_sampler.n * args.dataset_iterations_per_epoch)
                     )
                 if args.validation_samples_per_epoch is not None:
-                    val_sampler.set_n_samples(
-                        args.validation_samples_per_epoch
-                    )
+                    val_sampler.set_n_samples(args.validation_samples_per_epoch)
                 if args.class_weights[0] == "adaptive":
                     adaptive_weights = 1 + args.constant_ratio
         # weights to tensor

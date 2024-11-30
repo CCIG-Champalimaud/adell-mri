@@ -1,5 +1,7 @@
-import torch
 from typing import OrderedDict
+
+import torch
+
 from ..activations import activation_factory
 from ..layers.regularization import LayerNormChannelsFirst
 
@@ -27,9 +29,7 @@ norm_fn_dict = {
 }
 
 
-def get_adn_fn(
-    spatial_dim, norm_fn="batch", act_fn="swish", dropout_param=0.1
-):
+def get_adn_fn(spatial_dim, norm_fn="batch", act_fn="swish", dropout_param=0.1):
     if norm_fn not in norm_fn_dict:
         raise "norm_fn must be one of {}".format(norm_fn_dict)
     norm_fn = norm_fn_dict[norm_fn][spatial_dim]

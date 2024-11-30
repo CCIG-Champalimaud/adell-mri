@@ -2,19 +2,20 @@
 Lightning modules for generative adversarial network training.
 """
 
-import numpy as np
-import torch
-import torch.nn.functional as F
-import lightning.pytorch as pl
 from copy import deepcopy
 from itertools import chain
 from typing import Any, Callable
 
+import lightning.pytorch as pl
+import numpy as np
+import torch
+import torch.nn.functional as F
 import torch.optim
-from ..losses import SemiSLAdversarialLoss, SemiSLWGANGPLoss
+
+from ...diffusion.embedder import Embedder
 from ..discriminator import Discriminator
 from ..generator import Generator
-from ...diffusion.embedder import Embedder
+from ..losses import SemiSLAdversarialLoss, SemiSLWGANGPLoss
 
 
 def cat_not_none(

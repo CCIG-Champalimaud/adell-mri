@@ -1,11 +1,12 @@
 import torch
 import torch.nn.functional as F
+
+from ..classification import VGGBackbone
+from ..layers.adn_fn import get_adn_fn
 from ..layers.conv_next import ConvNeXtBackbone
+from ..layers.linear_blocks import MLP
 from ..layers.res_net import ResNetBackbone
 from ..layers.vit import ViT
-from ..classification import VGGBackbone
-from ..layers.linear_blocks import MLP
-from ..layers.adn_fn import get_adn_fn
 
 
 class Discriminator(torch.nn.Module):

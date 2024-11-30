@@ -1,6 +1,7 @@
+from math import ceil
+
 import torch
 import torch.nn.functional as F
-from math import ceil
 
 
 class AdaptivePredictionSets(torch.nn.Module):

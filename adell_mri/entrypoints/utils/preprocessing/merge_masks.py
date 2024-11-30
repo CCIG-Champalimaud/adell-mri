@@ -1,14 +1,15 @@
 import argparse
 import os
-import SimpleITK as sitk
 import re
-import numpy as np
 from glob import glob
-from tqdm import tqdm
 from pathlib import Path
-from ....utils.sitk_utils import resample_image_to_target
-
 from typing import List
+
+import numpy as np
+import SimpleITK as sitk
+from tqdm import tqdm
+
+from ....utils.sitk_utils import resample_image_to_target
 
 desc = "Merges two masks keeping pixels which are non-zero in either mask (like\
     an OR operator)."

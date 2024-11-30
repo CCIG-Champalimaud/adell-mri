@@ -1,21 +1,23 @@
+from copy import deepcopy
+from itertools import product
+from typing import Any, Dict, Generator, Iterable, List, Optional, Tuple, Union
+
+import einops
+import monai
 import numpy as np
 import SimpleITK as sitk
 import torch
 import torch.functional as F
-import einops
-import monai
-from copy import deepcopy
-from itertools import product
-from skimage.morphology import convex_hull_image
-from skimage import measure
-from sklearn.cluster import DBSCAN
 from pydicom import dcmread
-from typing import List, Iterable, Tuple, Dict, Union, Any, Optional, Generator
+from skimage import measure
+from skimage.morphology import convex_hull_image
+from sklearn.cluster import DBSCAN
+
 from ..custom_types import (
-    TensorDict,
-    TensorOrNDarray,
     NDArrayOrTensorDict,
     Size2dOr3d,
+    TensorDict,
+    TensorOrNDarray,
 )
 
 
@@ -517,12 +519,8 @@ class BBToAdjustedAnchors(monai.transforms.Transform):
                 rel_bb_size_adj = np.log(rel_bb_size / anchor_size)
                 anchor_dim = long_anchor[0, :, 1] - long_anchor[0, :, 0]
                 intersects = np.logical_and(
-                    np.all(
-                        long_anchor[:, :, 1] > rel_bb_vert[i, :, 0], axis=1
-                    ),
-                    np.all(
-                        long_anchor[:, :, 0] < rel_bb_vert[i, :, 1], axis=1
-                    ),
+                    np.all(long_anchor[:, :, 1] > rel_bb_vert[i, :, 0], axis=1),
+                    np.all(long_anchor[:, :, 0] < rel_bb_vert[i, :, 1], axis=1),
                 )
                 inter_dim = np.minimum(rel_bb_size, anchor_dim)
                 inter_vol = np.prod(inter_dim + 1 / rel_sh, axis=-1)
@@ -551,9 +549,7 @@ class BBToAdjustedAnchors(monai.transforms.Transform):
                         ]
                     )
                     idx_cl = tuple([0, *box_coords[j]])
-                    v = np.array(
-                        [iou, *center_adjustment[j], *rel_bb_size_adj]
-                    )
+                    v = np.array([iou, *center_adjustment[j], *rel_bb_size_adj])
                     if iou > output[idx][0]:
                         output[idx] = v
                         output[idx_cl] = cl
@@ -589,9 +585,7 @@ class BBToAdjustedAnchors(monai.transforms.Transform):
                 adj_anchors_long[:, 1:4] + 0.5, np.stack(coords, axis=1)
             )
             correct_centers = correct_centers * self.rel_sh
-            correct_dims = np.multiply(
-                adj_anchors_long[:, 4:], rel_anchor_size
-            )
+            correct_dims = np.multiply(adj_anchors_long[:, 4:], rel_anchor_size)
             top_left = correct_centers - correct_dims / 2
             bottom_right = correct_centers + correct_dims / 2
             top_left_output.append(top_left)

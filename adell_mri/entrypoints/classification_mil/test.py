@@ -1,28 +1,23 @@
-import random
 import json
-import numpy as np
-import torch
-import monai
+import sys
 from pathlib import Path
 
-import sys
+import monai
+import torch
 from lightning.pytorch import Trainer
+
 from ...entrypoints.assemble_args import Parser
-from ...utils import (
-    safe_collate,
-    ScaleIntensityAlongDimd,
-    EinopsRearranged,
-)
-from ...utils.pl_utils import get_devices
-from ...utils.dataset import Dataset
-from ...monai_transforms import get_transforms_classification as get_transforms
 from ...modules.classification.pl import (
-    TransformableTransformerPL,
     MultipleInstanceClassifierPL,
+    TransformableTransformerPL,
 )
 from ...modules.config_parsing import parse_config_2d_classifier_3d
-from ...utils.parser import parse_ids
-from ...utils.parser import get_params, merge_args
+from ...monai_transforms import get_transforms_classification as get_transforms
+from ...utils import EinopsRearranged, ScaleIntensityAlongDimd, safe_collate
+from ...utils.dataset import Dataset
+from ...utils.parser import get_params, merge_args, parse_ids
+from ...utils.pl_utils import get_devices
+from ...utils.torch_utils import get_generator_and_rng
 
 
 def main(arguments):
@@ -71,12 +66,7 @@ def main(arguments):
         param_dict = get_params(args.params_from)
         args = merge_args(args, param_dict, sys.argv[1:])
 
-    torch.manual_seed(args.seed)
-    random.seed(args.seed)
-    np.random.seed(args.seed)
-    g = torch.Generator()
-    g.manual_seed(args.seed)
-    rng = np.random.default_rng(args.seed)
+    g, rng = get_generator_and_rng(args.seed)
 
     accelerator, devices, strategy = get_devices(args.dev)
 
@@ -116,9 +106,8 @@ def main(arguments):
 
     if len(data_dict) == 0:
         raise Exception(
-            "No data available for training \
-                (dataset={}; keys={}; labels={})".format(
-                args.dataset_json, args.image_keys, args.label_keys()
+            "No data available for training (dataset={}; keys={}; labels={})".format(
+                args.dataset_json, args.image_keys, args.label_keys
             )
         )
 

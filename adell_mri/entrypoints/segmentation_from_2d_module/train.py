@@ -1,38 +1,38 @@
-import random
-import numpy as np
-import torch
-import monai
 import gc
 from copy import deepcopy
+
+import monai
+import numpy as np
+import torch
+from lightning.pytorch import Trainer
+from lightning.pytorch.callbacks import EarlyStopping, RichProgressBar
 from sklearn.model_selection import KFold, train_test_split
 from tqdm import tqdm
 
-from lightning.pytorch import Trainer
-from lightning.pytorch.callbacks import EarlyStopping
-from lightning.pytorch.callbacks import RichProgressBar
+from adell_mri.utils.torch_utils import get_generator_and_rng
 
 from ...entrypoints.assemble_args import Parser
+from ...modules.config_parsing import parse_config_unet
+from ...modules.layers.adn_fn import get_adn_fn
+from ...modules.segmentation.pl import MIMUNetPL
+from ...monai_transforms import get_augmentations_unet as get_augmentations
+from ...monai_transforms import get_transforms_unet as get_transforms
 from ...utils import (
     GetAllCropsd,
     PartiallyRandomSampler,
-    get_loss_param_dict,
-    collate_last_slice,
     RandomSlices,
     SlicesToFirst,
+    collate_last_slice,
+    get_loss_param_dict,
     safe_collate,
     safe_collate_crops,
 )
 from ...utils.dataset import Dataset
-from ...utils.pl_utils import get_ckpt_callback, get_logger, get_devices
-from ...monai_transforms import get_transforms_unet as get_transforms
-from ...monai_transforms import get_augmentations_unet as get_augmentations
-from ...modules.layers.adn_fn import get_adn_fn
-from ...modules.segmentation.pl import MIMUNetPL
-from ...modules.config_parsing import parse_config_unet
 from ...utils.parser import parse_ids
+from ...utils.pl_utils import get_ckpt_callback, get_devices, get_logger
 from ...utils.sitk_utils import (
-    spacing_values_from_dataset_json,
     get_spacing_quantile,
+    spacing_values_from_dataset_json,
 )
 
 torch.backends.cudnn.benchmark = True
@@ -128,12 +128,7 @@ def main(arguments):
 
     args = parser.parse_args(arguments)
 
-    torch.manual_seed(args.seed)
-    random.seed(args.seed)
-    np.random.seed(args.seed)
-    g = torch.Generator()
-    g.manual_seed(args.seed)
-    rng = np.random.default_rng(seed=args.seed)
+    g, rng = get_generator_and_rng(args.seed)
 
     accelerator, devices, strategy = get_devices(args.dev)
     dev = args.dev.split(":")[0]
@@ -221,9 +216,7 @@ def main(arguments):
         args.folds = parse_ids(args.folds)
         folds = []
         for fold_idx, val_ids in enumerate(args.folds):
-            train_idxs = [
-                i for i, x in enumerate(all_pids) if x not in val_ids
-            ]
+            train_idxs = [i for i, x in enumerate(all_pids) if x not in val_ids]
             val_idxs = [i for i, x in enumerate(all_pids) if x in val_ids]
             if len(train_idxs) == 0:
                 print("No train samples in fold {}".format(fold_idx))
@@ -602,16 +595,12 @@ def main(arguments):
                         value = float(out.detach().numpy())
                     except Exception:
                         value = float(out)
-                    x = "{},{},{},{},{}".format(
-                        k, ckpt_key, val_fold, 0, value
-                    )
+                    x = "{},{},{},{},{}".format(k, ckpt_key, val_fold, 0, value)
                     output_file.write(x + "\n")
                     print(x)
                 else:
                     for i, v in enumerate(out):
-                        x = "{},{},{},{},{}".format(
-                            k, ckpt_key, val_fold, i, v
-                        )
+                        x = "{},{},{},{},{}".format(k, ckpt_key, val_fold, i, v)
                         output_file.write(x + "\n")
                         print(x)
 

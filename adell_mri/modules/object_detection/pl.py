@@ -1,14 +1,15 @@
+from typing import Callable, Tuple, Union
+
+import lightning.pytorch as pl
 import numpy as np
 import torch
 import torch.nn.functional as F
 import torchmetrics
-import lightning.pytorch as pl
-from typing import Callable, Tuple, Union
 
-from .nets import YOLONet3d, CoarseDetector3d
-from .map import mAP
 from ..classification.pl import meta_tensors_to_tensors
 from ..learning_rate import CosineAnnealingWithWarmupLR
+from .map import mAP
+from .nets import CoarseDetector3d, YOLONet3d
 
 
 def real_boxes_from_centres_sizes(
@@ -249,8 +250,7 @@ class YOLONet3dPL(YOLONet3d, pl.LightningModule):
         y = torch.stack(self.split(y, self.n_b, 1), -1)
         b, h, w, d, a = torch.where(y[:, 0, :, :, :, :] > self.iou_threshold)
         prediction[:-1] = [
-            torch.stack(self.split(x, self.n_b, 1), -1)
-            for x in prediction[:-1]
+            torch.stack(self.split(x, self.n_b, 1), -1) for x in prediction[:-1]
         ]
 
         loss = self.calculate_loss(
@@ -490,9 +490,7 @@ class CoarseDetector3dPL(CoarseDetector3d, pl.LightningModule):
         self.loss_accumulator_d = 0.0
 
     def calculate_loss(self, prediction, y, weights=None):
-        obj_loss = self.object_loss_fn(
-            prediction, y, **self.object_loss_params
-        )
+        obj_loss = self.object_loss_fn(prediction, y, **self.object_loss_params)
 
         return obj_loss.mean()
 

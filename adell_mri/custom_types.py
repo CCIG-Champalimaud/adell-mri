@@ -2,10 +2,10 @@
 Contains a set of useful custom types for development.
 """
 
+from typing import Callable, Dict, Iterable, List, Tuple, Union
+
 import numpy as np
 import torch
-
-from typing import Dict, Union, List, Tuple, Iterable, Callable
 
 DatasetDict = Dict[str, Dict[str, str]]
 TensorList = List[torch.Tensor]

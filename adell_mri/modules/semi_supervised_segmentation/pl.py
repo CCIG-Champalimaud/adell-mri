@@ -2,13 +2,14 @@
 Lightning modules of semi-supervised learning methods.
 """
 
+from typing import Callable
+
 import numpy as np
 import torch
+
+from ...custom_types import TensorDict, TensorList
 from ..segmentation.pl import UNetBasePL, update_metrics
 from .unet import UNetSemiSL
-
-from typing import Callable
-from ...custom_types import TensorDict, TensorList
 
 
 class UNetContrastiveSemiSL(UNetSemiSL, UNetBasePL):
@@ -215,9 +216,7 @@ class UNetContrastiveSemiSL(UNetSemiSL, UNetBasePL):
         Returns:
             TensorList: list of tensors with at most min(batch_size) elements.
         """
-        batch_sizes = [
-            x.shape[0] if x is not None else np.inf for x in tensors
-        ]
+        batch_sizes = [x.shape[0] if x is not None else np.inf for x in tensors]
         min_batch_size = min(batch_sizes)
         tensors = [
             x[:min_batch_size] if x is not None else None
@@ -261,9 +260,7 @@ class UNetContrastiveSemiSL(UNetSemiSL, UNetBasePL):
         )
 
         return (
-            self.loss_fn_semi_sl(
-                features_1, features_2, *args, **kwargs
-            ).mean()
+            self.loss_fn_semi_sl(features_1, features_2, *args, **kwargs).mean()
             * self.ssl_weight
         )
 

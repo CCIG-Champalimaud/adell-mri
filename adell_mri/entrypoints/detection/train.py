@@ -1,29 +1,31 @@
+import json
 import random
-import yaml
+
+import monai
 import numpy as np
 import torch
-import monai
-import json
-from sklearn.model_selection import KFold, train_test_split
-
+import yaml
 from lightning.pytorch import Trainer
 from lightning.pytorch.callbacks import RichProgressBar
+from sklearn.model_selection import KFold, train_test_split
+
+from adell_mri.utils.torch_utils import get_generator_and_rng
 
 from ...entrypoints.assemble_args import Parser
-from ...utils import safe_collate, load_anchors
-from ...monai_transforms import (
-    get_transforms_detection_pre,
-    get_transforms_detection_post,
-)
 from ...modules.object_detection import YOLONet3d
-from ...utils.pl_utils import get_ckpt_callback, get_devices, get_logger
+from ...monai_transforms import (
+    get_transforms_detection_post,
+    get_transforms_detection_pre,
+)
+from ...utils import load_anchors, safe_collate
 from ...utils.dataset_filters import (
     filter_dictionary_with_filters,
     filter_dictionary_with_presence,
 )
-from ...utils.sitk_utils import spacing_from_dataset_json
 from ...utils.detection import anchors_from_nested_list
 from ...utils.network_factories import get_detection_network
+from ...utils.pl_utils import get_ckpt_callback, get_devices, get_logger
+from ...utils.sitk_utils import spacing_from_dataset_json
 
 torch.backends.cudnn.benchmark = True
 
@@ -88,11 +90,7 @@ def main(arguments):
 
     args = parser.parse_args(arguments)
 
-    torch.manual_seed(args.seed)
-    random.seed(args.seed)
-    np.random.seed(args.seed)
-    g = torch.Generator()
-    g.manual_seed(args.seed)
+    g, rng = get_generator_and_rng(args.seed)
 
     if args.mask_key is not None:
         mode = "mask"
@@ -115,10 +113,7 @@ def main(arguments):
         data_dict = filter_dictionary_with_filters(
             data_dict, args.filter_on_keys
         )
-    if (
-        args.subsample_size is not None
-        and len(data_dict) > args.subsample_size
-    ):
+    if args.subsample_size is not None and len(data_dict) > args.subsample_size:
         data_dict = {
             k: data_dict[k]
             for k in np.random.choice(
@@ -153,9 +148,7 @@ def main(arguments):
 
     for val_fold in range(args.n_folds):
         train_idxs, val_idxs = next(fold_generator)
-        train_idxs, train_val_idxs = train_test_split(
-            train_idxs, test_size=0.2
-        )
+        train_idxs, train_val_idxs = train_test_split(train_idxs, test_size=0.2)
         train_pids = [all_pids[i] for i in train_idxs]
         train_val_pids = [all_pids[i] for i in train_val_idxs]
         val_pids = [all_pids[i] for i in val_idxs]

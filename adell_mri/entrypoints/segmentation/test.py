@@ -1,22 +1,22 @@
+import gc
 import json
+from copy import deepcopy
+
+import monai
 import numpy as np
 import torch
-import monai
-import gc
-from copy import deepcopy
 from tqdm import trange
 
 from ...entrypoints.assemble_args import Parser
-from ...utils import collate_last_slice, SlicesToFirst, safe_collate
-from ...monai_transforms import get_transforms_unet as get_transforms
+from ...modules.config_parsing import parse_config_ssl, parse_config_unet
 from ...modules.layers import ResNet
+from ...modules.segmentation.pl import evaluate, get_lesions, get_metric_dict
+from ...monai_transforms import get_transforms_unet as get_transforms
+from ...utils import SlicesToFirst, collate_last_slice, safe_collate
 from ...utils.dataset import Dataset
-from ...utils.network_factories import get_segmentation_network
-from ...modules.config_parsing import parse_config_unet, parse_config_ssl
-from ...modules.segmentation.pl import get_metric_dict
 from ...utils.inference import SegmentationInference, TensorListReduction
+from ...utils.network_factories import get_segmentation_network
 from ...utils.parser import parse_ids
-from ...modules.segmentation.pl import evaluate, get_lesions
 
 torch.backends.cudnn.benchmark = True
 
@@ -413,9 +413,7 @@ def main(arguments):
                         y_det_postprocess_func=None,
                         num_parallel_calls=8,
                     )
-                    metrics_dict["global_metrics"][
-                        "AP"
-                    ] = picai_eval_metrics.AP
+                    metrics_dict["global_metrics"]["AP"] = picai_eval_metrics.AP
                     metrics_dict["global_metrics"][
                         "R"
                     ] = picai_eval_metrics.score
@@ -487,9 +485,7 @@ def main(arguments):
                 )
                 metrics_dict["global_metrics"]["AP"] = picai_eval_metrics.AP
                 metrics_dict["global_metrics"]["R"] = picai_eval_metrics.score
-                metrics_dict["global_metrics"][
-                    "AUC"
-                ] = picai_eval_metrics.auroc
+                metrics_dict["global_metrics"]["AUC"] = picai_eval_metrics.auroc
 
             all_metrics.append(metrics_dict)
 

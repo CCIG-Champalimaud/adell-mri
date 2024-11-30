@@ -1,4 +1,5 @@
 import argparse
+
 import torch
 
 desc = "Tests a jit-traced model with an input of a given shape"

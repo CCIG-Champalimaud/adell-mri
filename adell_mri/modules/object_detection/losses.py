@@ -1,7 +1,7 @@
-import torch
-
-from typing import Tuple
 from itertools import combinations
+from typing import Tuple
+
+import torch
 
 
 def complete_iou_loss(

@@ -1,6 +1,7 @@
 import os
-from typing import List
 from copy import deepcopy
+from typing import List
+
 from ..custom_types import DatasetDict
 
 
@@ -113,9 +114,7 @@ def filter_dictionary_with_existence(
     Returns:
         DatasetDict: filtered dataset dictionary.
     """
-    print_verbose(
-        "Filtering on: {} existence".format(filters), verbose=verbose
-    )
+    print_verbose("Filtering on: {} existence".format(filters), verbose=verbose)
     print_verbose("\tInput size: {}".format(len(D)), verbose=verbose)
     out_dict = {}
     for pid in D:

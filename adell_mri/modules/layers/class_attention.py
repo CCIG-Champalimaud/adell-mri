@@ -1,8 +1,8 @@
+import math
+from typing import Union
+
 import torch
 import torch.nn.functional as F
-import math
-
-from typing import Union
 
 
 class EfficientConditioningAttentionBlock(torch.nn.Module):

@@ -1,10 +1,10 @@
 """Contains methods that are to be applied to whole batches.
 """
 
-import torch
-import numpy as np
-
 from typing import Tuple
+
+import numpy as np
+import torch
 
 
 def label_smoothing(y: torch.Tensor, smooth_factor: float) -> torch.Tensor:

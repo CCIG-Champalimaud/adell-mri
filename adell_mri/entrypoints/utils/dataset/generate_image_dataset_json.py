@@ -1,8 +1,9 @@
-import os
-import json
 import argparse
+import json
+import os
 from multiprocessing import Pool
 from pathlib import Path
+
 from tqdm import tqdm
 
 ImageInformation = tuple[str, str, str]

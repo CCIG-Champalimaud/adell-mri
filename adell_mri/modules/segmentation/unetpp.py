@@ -1,13 +1,13 @@
+from typing import Dict, List
+
 import numpy as np
 import torch
 import torch.nn.functional as F
 
+from ...custom_types import ModuleList
 from ..layers.standard_blocks import DenseBlock
 from ..layers.utils import crop_to_size
-from ...custom_types import ModuleList
-
 from .unet import UNet
-from typing import List, Dict
 
 
 class UNetPlusPlus(UNet):

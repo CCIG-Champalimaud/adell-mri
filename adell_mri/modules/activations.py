@@ -1,7 +1,7 @@
+from typing import Callable
+
 import numpy as np
 import torch
-
-from typing import Callable
 
 activation_factory = {
     "identity": torch.nn.Identity,
@@ -196,9 +196,7 @@ def celu_gradient(act_fn: torch.nn.CELU, x: torch.Tensor) -> torch.Tensor:
     return torch.where(x > 0, torch.ones_like(x), np.exp(x / act_fn.alpha))
 
 
-def sigmoid_gradient(
-    act_fn: torch.nn.Sigmoid, x: torch.Tensor
-) -> torch.Tensor:
+def sigmoid_gradient(act_fn: torch.nn.Sigmoid, x: torch.Tensor) -> torch.Tensor:
     """
     Implementation of the gradient of the sigmoid activation function.
 

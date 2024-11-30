@@ -1,28 +1,30 @@
-import os
-import random
 import json
+import os
+from copy import deepcopy
+
+import monai
 import numpy as np
 import torch
-import monai
-from copy import deepcopy
 from lightning.pytorch import Trainer
 from lightning.pytorch.callbacks import RichProgressBar
 
+from adell_mri.utils.torch_utils import get_generator_and_rng
+
 from ...entrypoints.assemble_args import Parser
 from ...modules.config_parsing import parse_config_ssl, parse_config_unet
-from ...utils import safe_collate, ExponentialMovingAverage
-from ...utils.pl_utils import get_devices, get_ckpt_callback, get_logger
+from ...monai_transforms import (
+    get_augmentations_ssl,
+    get_post_transforms_ssl,
+    get_pre_transforms_ssl,
+)
+from ...utils import ExponentialMovingAverage, safe_collate
 from ...utils.dicom_dataset import (
-    filter_dicom_dict_on_presence,
     filter_dicom_dict_by_size,
+    filter_dicom_dict_on_presence,
 )
 from ...utils.dicom_loader import DICOMDataset, SliceSampler
 from ...utils.network_factories import get_ssl_network
-from ...monai_transforms import (
-    get_pre_transforms_ssl,
-    get_post_transforms_ssl,
-    get_augmentations_ssl,
-)
+from ...utils.pl_utils import get_ckpt_callback, get_devices, get_logger
 
 torch.backends.cudnn.benchmark = True
 
@@ -101,11 +103,7 @@ def main(arguments):
 
     args = parser.parse_args(arguments)
 
-    torch.manual_seed(args.seed)
-    random.seed(args.seed)
-    np.random.seed(args.seed)
-    g = torch.Generator()
-    g.manual_seed(args.seed)
+    g, rgn = get_generator_and_rng(args.seed)
 
     n_iterations = args.n_series_iterations
     accelerator, devices, strategy = get_devices(args.dev)

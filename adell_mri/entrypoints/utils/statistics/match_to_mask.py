@@ -1,10 +1,11 @@
 import argparse
 import os
-import nibabel as nib
-import SimpleITK as sitk
 import re
-import numpy as np
 from glob import glob
+
+import nibabel as nib
+import numpy as np
+import SimpleITK as sitk
 from tqdm import tqdm
 
 desc = "Script with very specific utility - given a set of MRI sequences and a \

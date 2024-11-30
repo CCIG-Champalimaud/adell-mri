@@ -1,14 +1,10 @@
+import monai
 import numpy as np
 import torch
-import monai
-from sklearn.cluster import DBSCAN
 from skimage.morphology import convex_hull_image
+from sklearn.cluster import DBSCAN
 
-from ...custom_types import (
-    TensorDict,
-    TensorOrNDarray,
-    NDArrayOrTensorDict,
-)
+from ...custom_types import NDArrayOrTensorDict, TensorDict, TensorOrNDarray
 
 
 def convex_hull_iter(x: np.ndarray):

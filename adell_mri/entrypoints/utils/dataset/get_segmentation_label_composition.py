@@ -1,8 +1,9 @@
 import argparse
 import os
-import SimpleITK as sitk
-import numpy as np
 from glob import glob
+
+import numpy as np
+import SimpleITK as sitk
 from tqdm import tqdm
 
 desc = "Counts which classes are present in a folder containing segmentation\

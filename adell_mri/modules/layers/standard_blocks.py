@@ -1,6 +1,8 @@
+from typing import List
+
 import torch
 import torch.nn.functional as F
-from typing import List
+
 from ...custom_types import TensorList
 from .batch_ensemble import BatchEnsembleWrapper
 
@@ -327,9 +329,7 @@ class DenseBlock(torch.nn.Module):
             )
         )
         for i in range(1, len(self.structure) - 1):
-            prev_d = (
-                sum(self.structure[: (i + 1)]) + self.structure_skip[i - 1]
-            )
+            prev_d = sum(self.structure[: (i + 1)]) + self.structure_skip[i - 1]
             d = self.structure[i + 1]
             self.ops.append(
                 torch.nn.Sequential(

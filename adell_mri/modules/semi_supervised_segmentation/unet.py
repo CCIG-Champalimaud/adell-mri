@@ -3,9 +3,9 @@ UNet implementation with some minor modifications to support semi-supervised
 learning (i.e. return features).
 """
 
+import numpy as np
 import torch
 import torch.nn.functional as F
-import numpy as np
 
 from ..segmentation.unet import UNet, crop_to_size
 

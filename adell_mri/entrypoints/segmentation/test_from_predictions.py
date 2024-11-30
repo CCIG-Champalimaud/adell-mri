@@ -1,21 +1,22 @@
+import json
+import os
 import pprint
 import re
-import json
+from dataclasses import dataclass
+from multiprocessing import Pool, Process, Queue
+from pathlib import Path
+from typing import Any, Callable
+
 import numpy as np
 import SimpleITK as sitk
-import os
-from PIL import Image, ImageDraw, ImageFont
 from matplotlib import colormaps
-from pathlib import Path
-from tqdm import tqdm
-from dataclasses import dataclass
+from PIL import Image, ImageDraw, ImageFont
 from scipy import ndimage
-from multiprocessing import Pool, Queue, Process
-from ...entrypoints.assemble_args import Parser
-from ...utils.parser import parse_ids
-from ...modules.segmentation.picai_eval.eval import evaluate_case, Metrics
+from tqdm import tqdm
 
-from typing import Callable, Any
+from ...entrypoints.assemble_args import Parser
+from ...modules.segmentation.picai_eval.eval import Metrics, evaluate_case
+from ...utils.parser import parse_ids
 
 
 def get_lesion_candidates(
@@ -710,9 +711,7 @@ def main(arguments):
             all_image_paths.extend(
                 [str(x) for x in Path(args.image_path).glob(pattern)]
             )
-        image_dict = file_list_to_dict(
-            all_image_paths, args.identifier_pattern
-        )
+        image_dict = file_list_to_dict(all_image_paths, args.identifier_pattern)
         print(f"Found example images: {len(image_dict)}")
     else:
         image_dict = {}

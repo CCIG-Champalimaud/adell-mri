@@ -1,10 +1,12 @@
 import argparse
 import os
-import SimpleITK as sitk
 import re
-import numpy as np
 from glob import glob
+
+import numpy as np
+import SimpleITK as sitk
 from tqdm import tqdm
+
 from ....utils.sitk_utils import resample_image_to_target
 
 desc = "Calculates IoU of masks in two separate folders corresponding to the \

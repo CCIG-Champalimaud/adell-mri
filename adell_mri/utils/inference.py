@@ -1,8 +1,9 @@
+from copy import deepcopy
+from typing import Callable, Dict, List, Sequence, Tuple, Union
+
 import numpy as np
 import torch
 from monai.data.meta_tensor import MetaTensor
-from copy import deepcopy
-from typing import List, Callable, Union, Dict, Sequence, Tuple
 
 TensorOrArray = Union[np.ndarray, torch.Tensor]
 MultiFormatInput = Union[

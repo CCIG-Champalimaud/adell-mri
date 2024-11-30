@@ -1,11 +1,12 @@
 import argparse
+from pathlib import Path
+
 import numpy as np
 import torch
 from pydicom import dcmread
-from pathlib import Path
-from tqdm import tqdm
-from skimage.transform import resize
 from skimage.io import imsave
+from skimage.transform import resize
+from tqdm import tqdm
 
 desc = "Generates a panel of random DICOM images in a folder"
 

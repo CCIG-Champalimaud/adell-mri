@@ -1,7 +1,7 @@
+from typing import Iterable, List
+
 import numpy as np
 import torch
-
-from typing import List, Iterable
 
 
 class PartiallyRandomSampler(torch.utils.data.Sampler):

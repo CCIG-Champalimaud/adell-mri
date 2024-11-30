@@ -1,7 +1,15 @@
+from typing import Dict, List
+
 import numpy as np
 import torch
 import torch.nn.functional as F
 
+from ...custom_types import ModuleList
+from ..layers.adn_fn import ActDropNorm, get_adn_fn, norm_fn_dict
+from ..layers.multi_resolution import (
+    AtrousSpatialPyramidPooling2d,
+    AtrousSpatialPyramidPooling3d,
+)
 from ..layers.regularization import UOut
 from ..layers.res_blocks import ResidualBlock2d, ResidualBlock3d
 from ..layers.self_attention import (
@@ -9,15 +17,7 @@ from ..layers.self_attention import (
     ConcurrentSqueezeAndExcite3d,
     SelfAttentionBlock,
 )
-from ..layers.multi_resolution import (
-    AtrousSpatialPyramidPooling2d,
-    AtrousSpatialPyramidPooling3d,
-)
-from ..layers.adn_fn import get_adn_fn, ActDropNorm, norm_fn_dict
 from ..layers.utils import crop_to_size
-from ...custom_types import ModuleList
-
-from typing import List, Dict
 
 
 class UNet(torch.nn.Module):
@@ -442,15 +442,11 @@ class UNet(torch.nn.Module):
                 p = [np.maximum(i - 2, 0) for i in s]
                 if self.spatial_dimensions == 2:
                     upscale_ops.append(
-                        torch.nn.ConvTranspose2d(
-                            d1, d2, s, stride=s, padding=p
-                        )
+                        torch.nn.ConvTranspose2d(d1, d2, s, stride=s, padding=p)
                     )
                 if self.spatial_dimensions == 3:
                     upscale_ops.append(
-                        torch.nn.ConvTranspose3d(
-                            d1, d2, s, stride=s, padding=p
-                        )
+                        torch.nn.ConvTranspose3d(d1, d2, s, stride=s, padding=p)
                     )
         self.upscale_ops = torch.nn.ModuleList(upscale_ops)
 
@@ -480,9 +476,7 @@ class UNet(torch.nn.Module):
                 self.link_ops = torch.nn.ModuleList(
                     [
                         torch.nn.Sequential(
-                            torch.nn.Conv2d(
-                                d + ex, d, 3, padding=self.padding
-                            ),
+                            torch.nn.Conv2d(d + ex, d, 3, padding=self.padding),
                             self.adn_fn(d),
                         )
                         for d in rev_depth
@@ -492,9 +486,7 @@ class UNet(torch.nn.Module):
                 self.link_ops = torch.nn.ModuleList(
                     [
                         torch.nn.Sequential(
-                            torch.nn.Conv3d(
-                                d + ex, d, 3, padding=self.padding
-                            ),
+                            torch.nn.Conv3d(d + ex, d, 3, padding=self.padding),
                             self.adn_fn(d),
                         )
                         for d in rev_depth
@@ -1037,9 +1029,7 @@ class BrUNet(UNet, torch.nn.Module):
                 self.adn_fn(self.depth[-1]),
             )
             op_downsample = torch.nn.Identity()
-            encoding_operations.append(
-                torch.nn.ModuleList([op, op_downsample])
-            )
+            encoding_operations.append(torch.nn.ModuleList([op, op_downsample]))
             self.encoders.append(encoding_operations)
 
     def init_backbone_encoders(self):

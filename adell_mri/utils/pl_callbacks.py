@@ -1,13 +1,15 @@
+from copy import deepcopy
+from typing import Any, Sequence
+
+import lightning.pytorch as pl
 import numpy as np
 import torch
 import torch.nn.functional as F
-import lightning.pytorch as pl
-from typing import Sequence, Any
-from copy import deepcopy
-from PIL import Image
 from lightning.pytorch import LightningModule, Trainer
 from lightning.pytorch.callbacks import Callback
 from lightning.pytorch.callbacks.model_checkpoint import ModelCheckpoint
+from PIL import Image
+
 from .utils import ExponentialMovingAverage
 
 

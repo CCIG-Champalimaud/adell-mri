@@ -1,5 +1,6 @@
 import argparse
 import json
+
 import numpy as np
 import SimpleITK as sitk
 from tqdm import tqdm

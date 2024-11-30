@@ -1,20 +1,21 @@
-import random
 import json
-import numpy as np
-import torch
-import monai
+import sys
 from copy import deepcopy
 from pathlib import Path
+
+import monai
+import numpy as np
+import torch
 from tqdm import tqdm
 
-import sys
 from adell_mri.entrypoints.assemble_args import Parser
+from adell_mri.utils.torch_utils import get_generator_and_rng
+
+from ...modules.config_parsing import parse_config_cat, parse_config_unet
 from ...monai_transforms import get_transforms_classification as get_transforms
-from ...modules.config_parsing import parse_config_unet, parse_config_cat
 from ...utils.dataset import Dataset
 from ...utils.network_factories import get_deconfounded_classification_network
-from ...utils.parser import parse_ids
-from ...utils.parser import get_params, merge_args
+from ...utils.parser import get_params, merge_args, parse_ids
 
 
 def main(arguments):
@@ -61,12 +62,7 @@ def main(arguments):
         param_dict = get_params(args.params_from)
         args = merge_args(args, param_dict, sys.argv[1:])
 
-    torch.manual_seed(args.seed)
-    random.seed(args.seed)
-    np.random.seed(args.seed)
-    g = torch.Generator()
-    g.manual_seed(args.seed)
-    rng = np.random.default_rng(args.seed)
+    g, rng = get_generator_and_rng(args.seed)
 
     data_dict = Dataset(args.dataset_json, rng=rng, verbose=True)
     presence_keys = args.image_keys

@@ -1,6 +1,5 @@
 import torch
 
-
 OPTIMIZER_MATCH = {
     "adam": torch.optim.Adam,
     "adamw": torch.optim.AdamW,
@@ -13,9 +12,7 @@ OPTIMIZER_MATCH = {
 }
 
 
-def get_optimizer(
-    optimizer_str: str, *args, **kwargs
-) -> torch.optim.Optimizer:
+def get_optimizer(optimizer_str: str, *args, **kwargs) -> torch.optim.Optimizer:
     """
     Instantiates torch optimizers based on a string.
 

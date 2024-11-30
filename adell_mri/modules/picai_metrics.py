@@ -1,30 +1,30 @@
-import itertools
-import os
-import json
-import numpy as np
-import SimpleITK as sitk
 import concurrent.futures
-from scipy import ndimage
-from scipy.optimize import linear_sum_assignment
-from sklearn.metrics import precision_recall_curve, roc_curve, auc
+import itertools
+import json
+import os
 from concurrent.futures import ThreadPoolExecutor
-from tqdm import tqdm
-
-import numpy.typing as npt
 from typing import (
-    Iterable,
-    Path,
-    PathLike,
-    Union,
-    Optional,
-    Hashable,
+    Any,
     Callable,
     Dict,
+    Hashable,
+    Iterable,
     List,
-    Tuple,
-    Any,
+    Optional,
+    Path,
+    PathLike,
     Sized,
+    Tuple,
+    Union,
 )
+
+import numpy as np
+import numpy.typing as npt
+import SimpleITK as sitk
+from scipy import ndimage
+from scipy.optimize import linear_sum_assignment
+from sklearn.metrics import auc, precision_recall_curve, roc_curve
+from tqdm import tqdm
 
 label_structure = np.ones((3, 3, 3))
 
@@ -140,9 +140,7 @@ class Metrics:
         return (self.auroc + self.AP) / 2
 
     # lesion-level results
-    def get_lesion_results_flat(
-        self, subject_list: Optional[List[str]] = None
-    ):
+    def get_lesion_results_flat(self, subject_list: Optional[List[str]] = None):
         """Flatten the per-case lesion evaluation results into a single list"""
         if subject_list is None:
             subject_list = self.subject_list

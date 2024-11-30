@@ -1,11 +1,9 @@
-import SimpleITK as sitk
-import monai
-import torch
 import einops
+import monai
+import SimpleITK as sitk
+import torch
 
-from ...custom_types import (
-    TensorDict,
-)
+from ...custom_types import TensorDict
 
 
 def normalize_along_slice(

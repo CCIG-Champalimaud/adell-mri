@@ -1,14 +1,14 @@
-import json
-import re
 import argparse
-import numpy as np
+import json
 import os
-from monai.transforms import Compose, LoadImaged, Orientationd
+import re
 from pathlib import Path
+from typing import List
+
+import numpy as np
+from monai.transforms import Compose, LoadImaged, Orientationd
 from skimage import measure
 from tqdm import tqdm
-
-from typing import List
 
 desc = "Creates JSON file with paths and bounding boxes."
 

@@ -1,12 +1,14 @@
-import SimpleITK as sitk
+from copy import deepcopy
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Dict, List, Tuple
+
 import numpy as np
+import SimpleITK as sitk
 import torch
 from multiprocess import Pool, Process, Queue
-from pathlib import Path
 from tqdm import tqdm
-from typing import List, Dict, Tuple
-from dataclasses import dataclass
-from copy import deepcopy
+
 from ..custom_types import DatasetDict
 
 
@@ -33,9 +35,7 @@ class ReadSpacing:
                 and spacing for the corresponding image.
 
         """
-        sp = sitk.ReadImage(
-            self.dataset_dict[key][self.image_key]
-        ).GetSpacing()
+        sp = sitk.ReadImage(self.dataset_dict[key][self.image_key]).GetSpacing()
         return key, sp
 
 

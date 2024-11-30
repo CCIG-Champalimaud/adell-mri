@@ -1,7 +1,7 @@
+from typing import Any, List
+
 import numpy as np
 import torch
-
-from typing import List, Any
 
 
 def mode(X: np.ndarray):

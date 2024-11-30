@@ -1,8 +1,9 @@
+from copy import deepcopy
+
 import torch
 import torch.nn.functional as F
-from .functional import cos_dist
 
-from copy import deepcopy
+from .functional import cos_dist
 
 
 class KLDivergence(torch.nn.Module):
