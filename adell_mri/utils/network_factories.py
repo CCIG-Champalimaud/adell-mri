@@ -616,7 +616,9 @@ def get_generative_network(
     start_decay: int,
     diffusion_steps: int,
 ) -> torch.nn.Module:
-    scheduler = DDPMScheduler(diffusion_steps, **scheduler_config)
+    scheduler = DDPMScheduler(
+        num_train_timesteps=diffusion_steps, **scheduler_config
+    )
     inferer = DiffusionInfererSkipSteps(scheduler)
     if any(
         [

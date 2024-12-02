@@ -73,11 +73,13 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
         )
 
     def timesteps_like(self, x: torch.Tensor):
-        return (
-            torch.randint(0, self.noise_steps, (x.shape[0],), generator=self.g)
-            .to(x.device)
-            .long()
-        )
+        return torch.randint(
+            0,
+            self.noise_steps,
+            (x.shape[0],),
+            generator=self.g,
+            device=x.device,
+        ).long()
 
     def step(
         self,
