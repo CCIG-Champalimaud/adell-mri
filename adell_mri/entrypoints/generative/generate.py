@@ -53,7 +53,6 @@ def main(arguments):
     parser.add_argument_by_key(
         [
             ("dataset_json", "dataset_json", {"required": False}),
-            "uncondition_proba",
             "prediction_ids",
             "keep_original",
             "params_from",
@@ -142,7 +141,7 @@ def main(arguments):
             "beta_start": 0.0005,
             "beta_end": 0.0195,
         },
-        uncondition_proba=args.uncondition_proba,
+        uncondition_proba=0.0,
     )
 
     load_checkpoint_to_model(network, ckpt, [])
