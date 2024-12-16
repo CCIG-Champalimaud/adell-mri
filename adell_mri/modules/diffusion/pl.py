@@ -1,3 +1,9 @@
+"""
+Lightning module for the diffusion model. Uses the MONAI ``generative`` package
+to do all of the heavy lifting and combines it with flexible condition embedding
+capabilities.
+"""
+
 import numpy as np
 import torch
 import lightning.pytorch as pl
