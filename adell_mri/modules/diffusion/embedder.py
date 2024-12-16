@@ -182,7 +182,9 @@ class Embedder(torch.nn.Module):
             self.final_n_features += self.cat_embedder.output_length
         if self.n_num_feat is not None:
             nnf = self.n_num_feat
-            self.num_embedder = torch.nn.Linear(nnf, self.embedding_size)
+            self.num_embedder = torch.nn.ModuleList(
+                [torch.nn.Linear(1, self.embedding_size) for _ in range(nnf)]
+            )
             self.final_n_features += self.embedding_size
             if self.numerical_moments is not None:
                 means, stds = self.numerical_moments
@@ -361,6 +363,57 @@ class Embedder(torch.nn.Module):
             torch.zeros(X.shape[0], device=X.device, dtype=torch.int32)
         )
 
+    def embed_categorical(
+        self,
+        X: List[torch.LongTensor],
+        uncondition_idx: list[int] | None = None,
+    ) -> torch.Tensor:
+        """
+        Embeds the categorical features of a tensor X.
+
+        Args:
+            X (List[torch.LongTensor], optional): categorical features.
+            uncondition_idx (list[int] | None, optional): indices of the
+                categorical features to be unconditioned. Defaults to None.
+
+        Returns:
+            torch.Tensor: the embedded categorical features.
+        """
+        categorical_embeddings, converted_class_X = self.cat_embedder(
+            X, return_X=True
+        )
+        print(categorical_embeddings)
+        if uncondition_idx is not None:
+            for idx in uncondition_idx:
+                categorical_embeddings[idx] = self.unconditional_like(X)
+
+        return categorical_embeddings, converted_class_X
+
+    def embed_numerical(
+        self, X: torch.Tensor, uncondition_idx: list[int] | None = None
+    ) -> torch.Tensor:
+        """
+        Embeds the numerical features of a tensor X.
+
+        Args:
+            X (torch.Tensor): numerical features.
+            uncondition_idx (list[int] | None, optional): indices of the
+                numerical features to be unconditioned. Defaults to None.
+
+        Returns:
+            torch.Tensor: the embedded numerical features.
+        """
+        X_norm = self.normalize_numeric_features(X)
+        numerical_embeddings = [
+            self.num_embedder[i](X_norm[:, i]) for i in range(self.n_num_feat)
+        ]
+        if uncondition_idx is not None:
+            for idx in uncondition_idx:
+                numerical_embeddings[idx] = self.unconditional_like(X)
+
+        numerical_embeddings = torch.stack(numerical_embeddings, dim=0).sum(0)
+        return numerical_embeddings, X_norm
+
     def forward(
         self,
         X_cat: List[torch.LongTensor] | None = None,
@@ -368,6 +421,8 @@ class Embedder(torch.nn.Module):
         batch_size: int = 1,
         update_queues: bool = True,
         return_X: bool = False,
+        uncondition_cat_idx: list[int] | None = None,
+        uncondition_num_idx: list[int] | None = None,
     ) -> torch.Tensor:
         """
         Forward method for embeddings. If X_cat is None, the expected value
@@ -385,6 +440,10 @@ class Embedder(torch.nn.Module):
                 Defaults to True.
             return_X (bool, optional): whether the converted categorical input
                 should be returned.
+            uncondition_cat_idx (list[int] | bool, optional): unconditions the
+                categorical features at the specified indicies. Defaults to None.
+            uncondition_num_idx (list[int] | bool, optional): unconditions the
+                numerical features at the specified indicies. Defaults to None.
 
         Returns:
             torch.Tensor: final embedding.
@@ -397,11 +456,9 @@ class Embedder(torch.nn.Module):
         if self.cat_feat is not None:
             if X_cat is None:
                 X_cat = self.get_random_cat(batch_size)
-            if return_X:
-                embedded_X = self.cat_embedder(X_cat, return_X=True)
-                embedded_X, converted_class_X = embedded_X
-            else:
-                embedded_X = self.cat_embedder(X_cat)
+            embedded_X, converted_class_X = self.embed_categorical(
+                X_cat, uncondition_idx=uncondition_cat_idx
+            )
             embeddings.append(embedded_X)
             if self.device is None:
                 self.device = embeddings[-1].device
@@ -409,8 +466,10 @@ class Embedder(torch.nn.Module):
         if self.n_num_feat is not None:
             if X_num is None:
                 X_num = self.get_random_num(batch_size)
-            X_num = self.normalize_numeric_features(X_num)
-            embeddings.append(self.num_embedder(X_num)[:, None, :])
+            X_num, converted_reg_X = self.embed_numerical(
+                X_num, uncondition_idx=uncondition_num_idx
+            )
+            embeddings.append(X_num[:, None, :])
             converted_reg_X = X_num
             if self.device is None:
                 self.device = embeddings[-1].device
