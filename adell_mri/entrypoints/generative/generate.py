@@ -59,6 +59,8 @@ def main(arguments):
             "image_keys",
             "cat_condition_keys",
             "num_condition_keys",
+            "uncondition_cat_idx",
+            "uncondition_num_idx",
             "cat_condition",
             "num_condition",
             "filter_on_keys",
@@ -256,6 +258,8 @@ def main(arguments):
                 skip_steps=args.skip_steps,
                 cat_condition=curr_cat,
                 num_condition=curr_num,
+                uncondition_cat_idx=args.uncondition_cat_idx,
+                uncondition_num_idx=args.uncondition_num_idx,
             )
             output = (
                 output.detach().float().cpu()[0].permute(3, 1, 2, 0).numpy()

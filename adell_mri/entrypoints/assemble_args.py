@@ -53,6 +53,22 @@ argument_factory = {
         help="Label keys in the dataset JSON for numerical variables \
             (applied with classifier-free guidance).",
     ),
+    "uncondition_cat_idx": dict(
+        default=None,
+        nargs="+",
+        type=int,
+        help="Indicies corresponding to categorical condition keys which should \
+            have no conditioning applied to them (uses non-conditional \
+            representation)",
+    ),
+    "uncondition_num_idx": dict(
+        default=None,
+        nargs="+",
+        type=int,
+        help="Indicies corresponding to numerical condition keys which should \
+            have no conditioning applied to them (uses non-conditional \
+            representation)",
+    ),
     "uncondition_proba": dict(
         default=0.15,
         type=float,

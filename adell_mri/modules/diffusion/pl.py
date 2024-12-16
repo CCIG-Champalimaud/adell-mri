@@ -162,6 +162,8 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
         skip_steps: int = 0,
         cat_condition: torch.Tensor = None,
         num_condition: torch.Tensor = None,
+        uncondition_cat_idx: int | list[int] | None = None,
+        uncondition_num_idx: int | list[int] | None = None,
     ):
         noise = torch.randn([n, self.in_channels, *size], device=self.device)
         if input_image is None:
@@ -180,6 +182,8 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
                 X_num=num_condition,
                 batch_size=n,
                 update_queues=False,
+                uncondition_cat_idx=uncondition_cat_idx,
+                uncondition_num_idx=uncondition_num_idx,
             )
             if len(condition.shape) < 3:
                 condition = condition.unsqueeze(1)
