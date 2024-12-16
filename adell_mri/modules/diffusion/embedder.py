@@ -221,6 +221,16 @@ class Embedder(torch.nn.Module):
                 self.num_distributions[i].extend(X_num[:, i])
 
     def get_expected_cat(self, n: int = 1) -> list[np.ndarray] | None:
+        """
+        Get expected value (mode) for all categorical features.
+
+        Args:
+            n (int, optional): number of samples. Defaults to 1.
+
+        Returns:
+            list[np.ndarray] | None: expected value for all categorical
+                features.
+        """
         # returns mode for all categorical features
         if self.cat_feat is None:
             return
@@ -237,6 +247,15 @@ class Embedder(torch.nn.Module):
         return output
 
     def get_random_cat(self, n: int = 1) -> list[np.ndarray] | None:
+        """
+        Returns random categorical features.
+
+        Args:
+            n (int, optional): sample size. Defaults to 1.
+
+        Returns:
+            list[np.ndarray] | None: random categorical features.
+        """
         # returns random categorical features
         if self.cat_feat is None:
             return
@@ -250,6 +269,15 @@ class Embedder(torch.nn.Module):
         return output
 
     def get_expected_num(self, n: int = 1) -> torch.Tensor | None:
+        """
+        Returns expected numerical features (average).
+
+        Args:
+            n (int, optional): number of samples. Defaults to 1.
+
+        Returns:
+            torch.Tensor | None: expected numerical features.
+        """
         # returns mean for all numerical features
         if self.n_num_feat is None:
             return
@@ -264,6 +292,15 @@ class Embedder(torch.nn.Module):
         return output
 
     def get_random_num(self, n: int = 1) -> torch.Tensor | None:
+        """
+        Returns random numerical features.
+
+        Args:
+            n (int, optional): number of samples. Defaults to 1.
+
+        Returns:
+            torch.Tensor | None: random numerical features.
+        """
         # returns mean for all numerical features
         if self.n_num_feat is None:
             return
@@ -276,7 +313,17 @@ class Embedder(torch.nn.Module):
         ).T
         return output
 
-    def normalize_numeric_features(self, X: torch.Tensor):
+    def normalize_numeric_features(self, X: torch.Tensor) -> torch.Tensor:
+        """
+        Normalizes the numerical features of a tensor X with the provided
+        numerical moments (``numerical_moments``).
+
+        Args:
+            X (torch.Tensor): a batched tensor.
+
+        Returns:
+            torch.Tensor: the normalized tensor.
+        """
         if self.numerical_moments is None:
             return X
         else:
