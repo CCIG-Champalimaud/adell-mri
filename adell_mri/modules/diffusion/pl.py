@@ -23,7 +23,7 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
         image_key: str = "image",
         cat_condition_key: str = "cat_condition",
         num_condition_key: str = "num_condition",
-        uncondition_proba: float = 0.15,
+        uncondition_proba: float = 0.0,
         n_epochs: int = 100,
         warmup_steps: int = 0,
         start_decay: int = 0,
@@ -151,7 +151,19 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
         loss = self.calculate_loss(epsilon_pred, epsilon)
         return loss
 
-    def unpack_batch(self, batch) -> tuple[torch.Tensor, torch.Tensor]:
+    def unpack_batch(
+        self, batch: dict[str, torch.Tensor]
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """
+        Convenience function to unpack a batch for model training.
+
+        Args:
+            batch (dict[str, torch.Tensor]): dictionary containing the correct
+                entries for each batch.
+
+        Returns:
+            tuple[torch.Tensor, torch.Tensor]:
+        """
         x = batch[self.image_key]
         if self.with_conditioning is True:
             uncondition = (
