@@ -153,16 +153,20 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
 
     def unpack_batch(
         self, batch: dict[str, torch.Tensor]
-    ) -> tuple[torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor | None]:
         """
         Convenience function to unpack a batch for model training.
 
         Args:
             batch (dict[str, torch.Tensor]): dictionary containing the correct
-                entries for each batch.
+                entries for each batch. Should have inputs corresponding to
+                ``self.image_key`` and to conditioning keys (i.e.
+                ``self.cat_condition_key`` and ``self.num_condition_key``) if
+                conditioning is required.
 
         Returns:
-            tuple[torch.Tensor, torch.Tensor]:
+            tuple[torch.Tensor, torch.Tensor]: tensor with input image and
+                embedded condition (if provided).
         """
         x = batch[self.image_key]
         if self.with_conditioning is True:
@@ -191,22 +195,64 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
             condition = None
         return x, condition
 
-    def on_before_batch_transfer(self, batch, dataloader_idx):
+    def on_before_batch_transfer(
+        self, batch: dict, dataloader_idx: int
+    ) -> dict:
+        """
+        Lightning hook to convert MONAI metatensors to tensors.
+
+        Args:
+            batch (dict): batch for lightning step.
+            dataloader_idx (int): index for the dataloader (not used).
+
+        Returns:
+            dict: batch with metatensors converted to tensors.
+        """
         return meta_tensors_to_tensors(batch)
 
-    def training_step(self, batch: dict, batch_idx: int):
+    def training_step(self, batch: dict, batch_idx: int) -> torch.Tensor:
+        """
+        Training step hook for lightning.
+
+        Args:
+            batch (dict): batch.
+            batch_idx (int): batch index.
+
+        Returns:
+            torch.Tensor: loss value.
+        """
         x, condition = self.unpack_batch(batch)
         loss = self.step(x, context=condition)
         self.log("loss", loss, on_step=True, prog_bar=True)
         return loss
 
     def validation_step(self, batch: dict, batch_idx: int):
+        """
+        Validation step hook for lightning.
+
+        Args:
+            batch (dict): batch.
+            batch_idx (int): batch index.
+
+        Returns:
+            torch.Tensor: loss value.
+        """
         x, condition = self.unpack_batch(batch)
         loss = self.step(x, context=condition)
         self.log("val_loss", loss, on_epoch=True, prog_bar=True)
         return loss
 
     def test_step(self, batch: dict, batch_idx: int):
+        """
+        Test step hook for lightning.
+
+        Args:
+            batch (dict): batch.
+            batch_idx (int): batch index.
+
+        Returns:
+            torch.Tensor: loss value.
+        """
         x, condition = self.unpack_batch(batch)
         loss = self.step(x, context=condition)
         self.log("test_loss", loss)
