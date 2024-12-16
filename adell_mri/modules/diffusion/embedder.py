@@ -382,10 +382,13 @@ class Embedder(torch.nn.Module):
         categorical_embeddings, converted_class_X = self.cat_embedder(
             X, return_X=True
         )
-        print(categorical_embeddings)
         if uncondition_idx is not None:
             for idx in uncondition_idx:
-                categorical_embeddings[idx] = self.unconditional_like(X)
+                ncf = self.cat_embedder.embedding_size
+                start_idx, stop_idx = ncf * idx, ncf * (idx + 1)
+                categorical_embeddings[:, :, start_idx:stop_idx] = (
+                    self.unconditional_like(X)
+                )
 
         return categorical_embeddings, converted_class_X
 
@@ -405,13 +408,15 @@ class Embedder(torch.nn.Module):
         """
         X_norm = self.normalize_numeric_features(X)
         numerical_embeddings = [
-            self.num_embedder[i](X_norm[:, i]) for i in range(self.n_num_feat)
+            self.num_embedder[i](X_norm[:, i].unsqueeze(1))
+            for i in range(self.n_num_feat)
         ]
         if uncondition_idx is not None:
             for idx in uncondition_idx:
                 numerical_embeddings[idx] = self.unconditional_like(X)
 
-        numerical_embeddings = torch.stack(numerical_embeddings, dim=0).sum(0)
+        numerical_embeddings = torch.stack(numerical_embeddings, dim=0)
+        numerical_embeddings = numerical_embeddings.sum(0)
         return numerical_embeddings, X_norm
 
     def forward(
