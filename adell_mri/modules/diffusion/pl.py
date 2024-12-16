@@ -59,11 +59,35 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
         self.noise_steps = self.scheduler.num_train_timesteps
         self.loss_fn = torch.nn.MSELoss()
 
-    def calculate_loss(self, prediction, epsilon):
+    def calculate_loss(
+        self, prediction: torch.Tensor, epsilon: torch.Tensor
+    ) -> torch.Tensor:
+        """
+        Calculates the loss between the predicted noise and the true noise.
+
+        Args:
+            prediction (torch.Tensor): The predicted noise.
+            epsilon (torch.Tensor): The true noise.
+
+        Returns:
+            torch.Tensor: The mean loss.
+        """
         loss = self.loss_fn(prediction, epsilon)
         return loss.mean()
 
-    def randn_like(self, x: torch.Tensor):
+    def randn_like(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Generates a tensor of random normal values with the same shape as the
+        input tensor `x`.
+
+        Args:
+            x (torch.Tensor): The input tensor whose shape will be used to
+                generate the random tensor.
+
+        Returns:
+            torch.Tensor: A tensor of random normal values with the same shape
+                as `x`.
+        """
         return (
             torch.randn(
                 size=x.shape, generator=self.g, dtype=x.dtype, layout=x.layout
@@ -72,7 +96,19 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
             .to(x.device)
         )
 
-    def timesteps_like(self, x: torch.Tensor):
+    def timesteps_like(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Generates a tensor of random integer values between 0 and
+        `self.noise_steps` with the same batch size as the input tensor `x`.
+
+        Args:
+            x (torch.Tensor): The input tensor whose batch size will be used to
+                generate the random tensor.
+
+        Returns:
+            torch.Tensor: A tensor of random integer values between 0 and
+                `self.noise_steps` with the same batch size as `x`.
+        """
         return (
             torch.randint(0, self.noise_steps, (x.shape[0],), generator=self.g)
             .to(x.device)
@@ -84,7 +120,22 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
         x: torch.Tensor,
         timesteps: torch.Tensor = None,
         context: torch.Tensor = None,
-    ):
+    ) -> torch.Tensor:
+        """
+        Computes the loss for a single step of the diffusion model.
+
+        Args:
+            x (torch.Tensor): The input tensor to the diffusion model.
+            timesteps (torch.Tensor, optional): The timesteps for the
+                diffusion. If not provided (None), they will be generated
+                randomly. Defaults to None.
+            context (torch.Tensor, optional): The conditioning context for the
+                diffusion model. Defaults to None.
+
+        Returns:
+            torch.Tensor: The mean loss for the current step.
+
+        """
         epsilon = self.randn_like(x)
         if timesteps is None:
             timesteps = self.timesteps_like(x)
@@ -164,7 +215,46 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
         num_condition: torch.Tensor = None,
         uncondition_cat_idx: int | list[int] | None = None,
         uncondition_num_idx: int | list[int] | None = None,
-    ):
+    ) -> torch.Tensor:
+        """
+        Generates an image using the learned diffusion model. Can be used for:
+            - pure generation (if no input image is provided)
+            - for vector-conditional generation (if categorical or numerical
+            conditions are provided)
+            - for image-conditioned re-generation (i.e. the image goes through
+            part of the diffusion process in a way that only partially destroys
+            the content and the rest of the process is recapitulated with
+            standard DDPM)
+
+        Part of this support also involves using non-conditioned inputs through
+        ``uncondition_cat_idx`` and ``uncondition_num_idx``. In theory, this
+        should generate images which are not conditioned on anything in
+        particular.
+
+        Args:
+            size (List[int]): size (shape) of the output image.
+            n (int): number of generated images.
+            input_image (torch.Tensor, optional): input image for conditional
+                generation or for generating images using classifier guidance or
+                similar approaches. Defaults to None.
+            skip_steps (int, optional): number of steps that should be skipped
+                from the backwards diffusion process. Defaults to 0.
+            cat_condition (torch.Tensor, optional): categorical condition.
+                Defaults to None.
+            num_condition (torch.Tensor, optional): numerical condition.
+                Defaults to None.
+            uncondition_cat_idx (int | list[int] | None, optional): indices
+                corresponding to the non-conditioned categorical conditions (
+                uses the learned representation for non-conditional generation).
+                Defaults to None.
+            uncondition_num_idx (int | list[int] | None, optional): indices
+                corresponding to the non-conditioned numerical conditions (uses
+                the learned representation for non-conditional generation).
+                Defaults to None.
+
+        Returns:
+            torch.Tensor: generated (or re-generated) sample.
+        """
         noise = torch.randn([n, self.in_channels, *size], device=self.device)
         if input_image is None:
             input_image = noise
