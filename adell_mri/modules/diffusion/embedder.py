@@ -166,6 +166,14 @@ class Embedder(torch.nn.Module):
             self.num_distributions = []
 
     def init_embeddings(self):
+        """
+        Initialises all embeddings.
+
+        Raises:
+            ValueError: if the number of means and standard deviations in
+                ``numerical_moments`` is different from the number of numerical
+                features.
+        """
         self.final_n_features = 0
         if self.cat_feat is not None:
             self.cat_embedder = CategoricalEmbedder(
@@ -202,6 +210,15 @@ class Embedder(torch.nn.Module):
     def update_queues(
         self, X_cat: List[torch.LongTensor] = None, X_num: torch.Tensor = None
     ):
+        """
+        Updates numerical and categorical distribution queues.
+
+        Args:
+            X_cat (List[torch.LongTensor], optional): categorical features.
+                Defaults to None.
+            X_num (torch.Tensor, optional): numerical features. Defaults to
+                None.
+        """
         if len(self.cat_distributions) > 0:
             if len(self.cat_distributions[0]) > self.max_queue_size:
                 self.cat_distributions = [
