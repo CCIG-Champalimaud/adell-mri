@@ -366,15 +366,16 @@ class Embedder(torch.nn.Module):
     def embed_categorical(
         self,
         X: List[torch.LongTensor],
-        uncondition_idx: list[int] | str | None = None,
+        uncondition_idx: int | list[int] | str | None = None,
     ) -> torch.Tensor:
         """
         Embeds the categorical features of a tensor X.
 
         Args:
             X (List[torch.LongTensor], optional): categorical features.
-            uncondition_idx (list[int] | str | None, optional): indices of the
-                categorical features to be unconditioned. Defaults to None.
+            uncondition_idx (int | list[int] | str | None, optional): indices of
+                the categorical features to be unconditioned (replaced by the
+                unconditioned representation). Defaults to None.
 
         Returns:
             torch.Tensor: the embedded categorical features.
@@ -387,6 +388,8 @@ class Embedder(torch.nn.Module):
                 uncondition_idx = range(
                     categorical_embeddings.shape[-1] // self.embedding_size
                 )
+            elif isinstance(uncondition_idx, int):
+                uncondition_idx = [uncondition_idx]
             for idx in uncondition_idx:
                 ncf = self.cat_embedder.embedding_size
                 start_idx, stop_idx = ncf * idx, ncf * (idx + 1)
@@ -397,15 +400,16 @@ class Embedder(torch.nn.Module):
         return categorical_embeddings, converted_class_X
 
     def embed_numerical(
-        self, X: torch.Tensor, uncondition_idx: list[int] | None = None
+        self, X: torch.Tensor, uncondition_idx: int | list[int] | None = None
     ) -> torch.Tensor:
         """
         Embeds the numerical features of a tensor X.
 
         Args:
             X (torch.Tensor): numerical features.
-            uncondition_idx (list[int] | None, optional): indices of the
-                numerical features to be unconditioned. Defaults to None.
+            uncondition_idx (int | list[int] | None, optional): indices of the
+                numerical features to be unconditioned (replaced by the
+                unconditioned representation). Defaults to None.
 
         Returns:
             torch.Tensor: the embedded numerical features.
@@ -418,6 +422,8 @@ class Embedder(torch.nn.Module):
         if uncondition_idx is not None:
             if uncondition_idx == "all":
                 uncondition_idx = range(len(numerical_embeddings))
+            elif isinstance(uncondition_idx, int):
+                uncondition_idx = [uncondition_idx]
             for idx in uncondition_idx:
                 numerical_embeddings[idx] = self.unconditional_like(X)
 
@@ -432,8 +438,8 @@ class Embedder(torch.nn.Module):
         batch_size: int = 1,
         update_queues: bool = True,
         return_X: bool = False,
-        uncondition_cat_idx: list[int] | str | None = None,
-        uncondition_num_idx: list[int] | str | None = None,
+        uncondition_cat_idx: int | list[int] | str | None = None,
+        uncondition_num_idx: int | list[int] | str | None = None,
     ) -> torch.Tensor:
         """
         Forward method for embeddings. If X_cat is None, the expected value
@@ -451,12 +457,12 @@ class Embedder(torch.nn.Module):
                 Defaults to True.
             return_X (bool, optional): whether the converted categorical input
                 should be returned.
-            uncondition_cat_idx (list[int] | str | bool, optional): unconditions the
-                categorical features at the specified indicies. If "all" then
-                conditions on all features. Defaults to None.
-            uncondition_num_idx (list[int] | str  | bool, optional): unconditions the
-                numerical features at the specified indicies. If "all" then
-                conditions on all features.  Defaults to None.
+            uncondition_cat_idx (int | list[int] | str | bool, optional):
+                unconditions the categorical features at the specified indicies.
+                If "all" then conditions on all features. Defaults to None.
+            uncondition_num_idx (int | list[int] | str  | bool, optional):
+                unconditions the numerical features at the specified indicies.
+                If "all" then conditions on all features.  Defaults to None.
 
         Returns:
             torch.Tensor: final embedding.
