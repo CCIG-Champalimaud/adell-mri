@@ -55,7 +55,13 @@ def test_cat_num_embedding():
     ]
 
 
-def test_cat_num_embedding():
+@pytest.mark.parametrize(
+    "uncondition_cat_idx,uncondition_num_idx",
+    [["all", [1]], [[1], "all"], ["all", "all"]],
+)
+def test_cat_num_embedding_with_unconditioning(
+    uncondition_cat_idx, uncondition_num_idx
+):
     embedder = Embedder(
         cat_feat=cat_feature_specification,
         n_num_feat=4,
@@ -64,7 +70,10 @@ def test_cat_num_embedding():
     )
     assert list(
         embedder.forward(
-            X_cat=[["1", "B"], ["2", "A"]], X_num=torch.rand(2, 4)
+            X_cat=[["1", "B"], ["2", "A"]],
+            X_num=torch.rand(2, 4),
+            uncondition_cat_idx=uncondition_cat_idx,
+            uncondition_num_idx=uncondition_num_idx,
         ).shape
     ) == [
         2,
