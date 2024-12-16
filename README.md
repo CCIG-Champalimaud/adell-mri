@@ -14,21 +14,22 @@ Then, using some minor JSON manipulation and [`MONAI`](https://monai.io/) we are
 
 ## Installation
 
-First, `torch` should be installed. Then, installing `adell-mri` as a package can be done easily through `pdm` in a `conda` environment. This requires `scikit-build` and can be done through the following commands:
+Installing `adell-mri` as a package can be done easily through `uv`. This can be performed inside of a `conda` (or `micromamba`) environment, but that is not necessary:
 
 ```
-# creates and activates environment
-conda create -n adell_env python=3.11
-conda activate adell_env
+# creates and activates environment; these are optional! uv install a virtual env
+micromamba create -n adell_env python=3.11
+micromamba activate adell_env
 
-# installs pdm, scikit-build and torch
-pip install pdm scikit-build torch
-
-# installs adell_mri
-pdm install
+# installs everything you need (apart from uv, which you should have installed by now)!
+uv sync
 ```
 
-Using these you can run `adell` from your command line as an [entrypoint](#entrypoints).
+Using these you can run `adell` from your command line as an [entrypoint](#entrypoints). Alternatively, you can still use `uv` to install everything you need to run `adell` from the command line using `uv pip install -e .` on the root folder.
+
+### Short note on using `uv sync`
+
+The main change you will notice if you do everything through `uv sync` is that you need to prepend any command with `uv run` as this will tell `uv` to run the command in the environment it is managing. Apart from that you are good to go!
 
 ## Implemented methods 
 
