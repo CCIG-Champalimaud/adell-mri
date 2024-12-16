@@ -259,7 +259,14 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
         return loss
 
     @property
-    def device(self):
+    def device(self) -> torch.device:
+        """
+        Convenience function that returns the device where the model parameters
+        are hosted.
+
+        Returns:
+            torch.device: the torch device.
+        """
         return next(self.parameters()).device
 
     @torch.inference_mode()
@@ -348,9 +355,26 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
         return sample
 
     def train_dataloader(self) -> torch.utils.data.DataLoader:
+        """
+        Lightning hook which returns the training data loader for the model.
+
+        Returns:
+            torch.utils.data.DataLoader: The training data loader.
+        """
         return self.training_dataloader_call(self.batch_size)
 
-    def configure_optimizers(self):
+    def configure_optimizers(
+        self,
+    ) -> dict[
+        str, torch.optim.Optimizer | torch.optim.lr_scheduler._LRScheduler | str
+    ]:
+        """
+        Lightning hook for optimizer configuration.
+
+        Returns:
+            a dictionary containing the optimizer, the learning rate scheduler
+                and the metric which is monitored during training.
+        """
         optimizer = torch.optim.AdamW(
             self.parameters(),
             lr=self.learning_rate,
