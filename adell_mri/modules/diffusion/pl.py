@@ -103,19 +103,25 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
     def unpack_batch(self, batch) -> tuple[torch.Tensor, torch.Tensor]:
         x = batch[self.image_key]
         if self.with_conditioning is True:
-            if self.rng.random() < self.uncondition_proba:
-                condition = self.embedder.unconditional_like(x)
+            uncondition = (
+                "all" if self.rng.random() < self.uncondition_proba else None
+            )
+            if self.cat_condition_key is not None:
+                cat_condition = batch[self.cat_condition_key]
             else:
-                if self.cat_condition_key is not None:
-                    cat_condition = batch[self.cat_condition_key]
-                else:
-                    cat_condition = None
-                if self.num_condition_key is not None:
-                    num_condition = batch[self.num_condition_key]
-                else:
-                    num_condition = None
-                # expects three dimensions (batch, seq, embedding size)
-                condition = self.embedder(cat_condition, num_condition)
+                cat_condition = None
+            if self.num_condition_key is not None:
+                num_condition = batch[self.num_condition_key]
+            else:
+                num_condition = None
+            # expects three dimensions (batch, seq, embedding size)
+            condition = self.embedder(
+                cat_condition,
+                num_condition,
+                uncondition_cat_idx=uncondition,
+                uncondition_num_idx=uncondition,
+            )
+
             if len(condition.shape) < 3:
                 condition = condition.unsqueeze(1)
         else:
