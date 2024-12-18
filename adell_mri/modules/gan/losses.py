@@ -105,6 +105,47 @@ def compute_gradient_penalty(
     return gradient_penalty
 
 
+def compute_gradient_penalty_r3gan(
+    samples: torch.Tensor,
+    preds: torch.Tensor | None = None,
+    discriminator: torch.nn.Module | None = None,
+) -> torch.Tensor:
+    """
+    Calculates the gradient penalty loss for the R3GAN:
+
+    $$
+        \frac{\gamma}{2} \times E[|| \nabla_x D(x) ||^2]
+    $$
+
+    Source: https://openreview.net/pdf?id=VpIH3Wn9eK
+
+    Args:
+        samples (torch.Tensor): samples (real or fake).
+        preds (torch.Tensor): predictions for discriminator.
+        discriminator (torch.nn.Module): discriminator module.
+
+    Returns:
+        torch.Tensor: the value for the gradient penalty.
+    """
+    if discriminator.training is False:
+        return 0.0
+
+    if preds is None and discriminator is not None:
+        preds = apply_discriminator(samples, discriminator)[0]
+    elif preds is None and discriminator is None:
+        raise ValueError("Either preds or discriminator must be provided.")
+    gradients = torch.autograd.grad(
+        outputs=preds,
+        inputs=samples,
+        create_graph=True,
+        retain_graph=True,
+        only_inputs=True,
+    )[0]
+    gradients = gradients.view(gradients.size(0), -1).to(samples.device)
+    gradient_penalty = (gradients.square()).mean()
+    return gradient_penalty
+
+
 class AdversarialLoss(torch.nn.Module):
     """
     Standard adversarial loss.
@@ -232,6 +273,54 @@ class WGANGPLoss(torch.nn.Module):
                 discriminator=discriminator,
             ).add(self.generator_loss(pred=gen_pred))
             / 2
+        )
+
+
+class RelativisticGANLoss(torch.nn.Module):
+    """
+    Relativistic GAN loss from [1].
+
+    [1] https://arxiv.org/pdf/1807.00734
+    """
+
+    def __init__(self, lambda_gp: float = 1.0):
+        super().__init__()
+        self.lambda_gp = lambda_gp
+
+    def generator_loss(
+        self, gen_pred: torch.Tensor, real_pred: torch.Tensor
+    ) -> torch.Tensor:
+        return {"adversarial": torch.mean(-(gen_pred - real_pred))}
+
+    def discriminator_loss(
+        self,
+        gen_pred: torch.Tensor,
+        real_pred: torch.Tensor,
+        gen_samples: torch.Tensor | None = None,
+        real_samples: torch.Tensor | None = None,
+        # this is kept for compatibility
+        discriminator: torch.nn.Module | None = None,
+    ) -> torch.Tensor:
+        r1_gp = compute_gradient_penalty_r3gan(real_samples, real_pred)
+        r2_gp = compute_gradient_penalty_r3gan(gen_samples, gen_pred)
+        return {
+            "adversarial": torch.add(
+                torch.mean(-(real_pred - gen_pred)),
+                self.lambda_gp / 2 * torch.add(r1_gp, r2_gp),
+            )
+        }
+
+    def forward(
+        self,
+        gen_samples: torch.Tensor,
+        real_samples: torch.Tensor,
+        discriminator: torch.nn.Module,
+    ) -> torch.Tensor:
+        real_pred = apply_discriminator(real_samples, discriminator)
+        gen_pred = apply_discriminator(gen_samples, discriminator)
+        return torch.add(
+            self.generator_loss(gen_pred=gen_pred, real_pred=real_pred),
+            self.discriminator_loss(gen_pred=gen_pred, real_pred=real_pred),
         )
 
 
