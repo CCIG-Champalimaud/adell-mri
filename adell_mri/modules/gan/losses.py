@@ -340,6 +340,8 @@ class SemiSLAdversarialLoss(torch.nn.Module):
         super().__init__()
         self.smoothing = smoothing
 
+        self.adv_loss = AdversarialLoss(self.smoothing)
+
     def ones_like_smooth(self, x: torch.Tensor) -> torch.Tensor:
         return torch.ones_like(x) * (1 - self.smoothing)
 
@@ -376,9 +378,7 @@ class SemiSLAdversarialLoss(torch.nn.Module):
         gen_samples: torch.Tensor | None = None,
     ) -> torch.Tensor:
         losses = {}
-        losses["adversarial"] = F.binary_cross_entropy_with_logits(
-            gen_pred, torch.ones_like(gen_pred)
-        )
+        losses["adversarial"] = self.adv_loss.generator_loss(gen_pred)
         if (class_pred is not None) and (class_target is not None):
             losses["class"] = apply_loss(
                 class_pred, class_target, F.cross_entropy
@@ -409,14 +409,8 @@ class SemiSLAdversarialLoss(torch.nn.Module):
         reg_target = cat_if_none([class_target, class_target])
 
         losses = {}
-        losses["adversarial"] = F.binary_cross_entropy_with_logits(
-            torch.cat([real_pred, gen_pred]),
-            torch.cat(
-                [
-                    self.ones_like_smooth(real_pred),
-                    torch.zeros_like(gen_pred),
-                ]
-            ),
+        losses["adversarial"] = self.adv_loss.discriminator_loss(
+            gen_pred=gen_pred, real_pred=real_pred
         )
         if (class_pred is not None) and (class_target is not None):
             losses["class"] = apply_loss(
