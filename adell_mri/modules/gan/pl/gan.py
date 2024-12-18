@@ -15,7 +15,11 @@ import torch.optim
 from ...diffusion.embedder import Embedder
 from ..discriminator import Discriminator
 from ..generator import Generator
-from ..losses import SemiSLAdversarialLoss, SemiSLWGANGPLoss
+from ..losses import (
+    SemiSLAdversarialLoss,
+    SemiSLWGANGPLoss,
+    SemiSLRelativisticGANLoss,
+)
 
 
 def cat_not_none(
@@ -878,8 +882,6 @@ class GANPL(pl.LightningModule):
         symmetric: bool = False,
     ) -> torch.Tensor | tuple[torch.Tensor, list[list[int]]]:
         """
-
-
         Symmetric mode assumes that targets can be symmetrised at the instance
         level. In other words, they have to have an even number of entries.
         Here, what is meant by "symmetric" is somewhat misleading - for a given
@@ -1302,3 +1304,96 @@ class GANPL(pl.LightningModule):
             return_converted_x=return_converted_x,
             symmetric=symmetric,
         )
+
+
+class RelativisticGANPL(GANPL):
+    """
+    Relativistic GAN PL module.
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.adversarial_loss = SemiSLRelativisticGANLoss(self.lambda_gp)
+        self.init_routine()
+
+        self.automatic_optimization = False
+
+    def step_generator(
+        self,
+        real_samples: torch.Tensor,
+        input_tensor: torch.Tensor,
+        gen_samples: torch.Tensor | None = None,
+        generator: torch.nn.Module | None = None,
+        discriminator: torch.nn.Module | None = None,
+        class_target: torch.Tensor | None = None,
+        reg_target: torch.Tensor | None = None,
+    ) -> tuple[dict[str, torch.Tensor], torch.Tensor]:
+        """
+        Generic generator optimization step.
+
+        Args:
+            real_samples (torch.Tensor): real samples.
+            input_tensor (torch.Tensor): input tensor (the generator will be
+                applied to this if ``gen_samples`` is None).
+            gen_samples (torch.Tensor | None, optional): generated samples.
+                Defaults to None.
+            generator (torch.nn.Module | None, optional): generator to generate
+                samples using ``input_tensor`` if ``gen_samples`` is not
+                specified. Defaults to None (uses ``self.generator``).
+            discriminator (torch.nn.Module | None, optional): discriminator.
+                Defaults to None (uses ``self.discriminator``).
+            class_target (torch.Tensor | None, optional): classification target.
+                Defaults to None.
+            reg_target (torch.Tensor | None, optional): regression target.
+                Defaults to None.
+
+        Returns:
+            dict[str, torch.Tensor]: dictionary with loss functions.
+            torch.Tensor: generated samples (``gen_samples`` if specified).
+        """
+        real_feat = None
+        if generator is None:
+            generator = self.generator
+        if discriminator is None:
+            discriminator = self.discriminator
+
+        if gen_samples is None:
+            gen_samples = self.apply_generator(
+                input_tensor, generator, class_target, reg_target
+            )
+        if self.embed:
+            gen_samples, class_target, reg_target = gen_samples
+        if self.input_image_key:
+            x_condition = input_tensor
+        else:
+            x_condition = None
+        gen_samples = cat_not_none([gen_samples, x_condition], 1)
+        real_samples = cat_not_none([real_samples, x_condition], 1)
+
+        gen_pred, (class_target, reg_target) = self.apply_discriminator(
+            gen_samples, discriminator, [class_target, reg_target]
+        )
+        real_pred, _, _, real_feat = self.apply_discriminator(
+            real_samples, discriminator
+        )
+        gen_pred, class_pred, reg_pred, gen_feat = gen_pred
+
+        losses = self.adversarial_loss.generator_loss(
+            gen_pred=gen_pred,
+            real_pred=real_pred,
+            class_pred=class_pred,
+            reg_pred=reg_pred,
+            class_target=class_target,
+            reg_target=reg_target,
+        )
+        if self.lambda_feature_matching > 0.0:
+            losses["feature_matching"] = self.feature_matching_loss(
+                gen_feat, real_feat
+            )
+        if self.lambda_feature_map_matching > 0.0:
+            losses["feature_map_matching"] = self.feature_map_matching_loss(
+                gen_feat, real_feat
+            )
+        if self.lambda_identity > 0.0:
+            losses["identity"] = self.identity_loss(gen_samples, real_samples)
+        return losses, gen_samples
