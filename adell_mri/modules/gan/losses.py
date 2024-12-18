@@ -596,6 +596,145 @@ class SemiSLWGANGPLoss(torch.nn.Module):
         )
 
 
+class SemiSLRelativisticGANLoss(torch.nn.Module):
+    """
+    Extends the relativistic GAN loss to support classification and regression
+    targets in a semi-supervised fashion.
+    """
+
+    def __init__(
+        self,
+        lambda_gp: float = 1.0,
+    ):
+        """
+        Args:
+            lambda_gp (float, optional): constant used to multiply the
+                gradient penalty term. Defaults to 10.0.
+        """
+
+        super().__init__()
+        self.lambda_gp = lambda_gp
+
+        self.rgl = RelativisticGANLoss(self.lambda_gp)
+
+    def apply_loss(
+        self,
+        pred: torch.Tensor | list[torch.Tensor],
+        target: torch.Tensor | list[torch.Tensor],
+        loss_fn: Callable,
+    ) -> torch.Tensor:
+        if isinstance(pred, (tuple, list)):
+            return sum([loss_fn(p, t) for p, t in zip(pred, target)])
+        else:
+            return loss_fn(pred, target)
+
+    def cat_if_none(self, tensors: list[torch.Tensor | None], *args, **kwargs):
+        if all([t is not None for t in tensors]):
+            tensors = [
+                torch.stack(t, axis=-1) if isinstance(t, list) else t
+                for t in tensors
+            ]
+            return torch.cat(tensors, *args, **kwargs)
+        return None
+
+    def pred(
+        self, x: torch.Tensor, discriminator: torch.nn.Module, *args, **kwargs
+    ) -> torch.Tensor:
+        pred = discriminator(x, *args, **kwargs)
+        pred, class_pred, reg_pred = (
+            pred[0],
+            pred[1] if pred[1] is not None else None,
+            pred[2] if pred[1] is not None else None,
+        )
+        return pred, class_pred, reg_pred
+
+    def generator_loss(
+        self,
+        gen_pred: torch.Tensor,
+        real_pred: torch.Tensor,
+        class_pred: torch.Tensor | None = None,
+        class_target: torch.Tensor | None = None,
+        reg_pred: torch.Tensor | None = None,
+        reg_target: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        losses = {}
+        losses["adversarial"] = self.rgl.generator_loss(gen_pred, real_pred)
+        if (class_pred is not None) and (class_target is not None):
+            losses["class"] = apply_loss(
+                class_pred, class_target, F.cross_entropy
+            )
+
+        if (reg_pred is not None) and (reg_target is not None):
+            losses["reg"] = apply_loss(reg_pred, reg_target, F.mse_loss)
+        return losses
+
+    def discriminator_loss(
+        self,
+        gen_samples: torch.Tensor,
+        real_samples: torch.Tensor,
+        discriminator: torch.nn.Module,
+        gen_pred: torch.Tensor | None = None,
+        real_pred: torch.Tensor | None = None,
+        gen_class_pred: torch.Tensor | list[torch.Tensor] | None = None,
+        real_class_pred: torch.Tensor | list[torch.Tensor] | None = None,
+        class_target: torch.Tensor | list[torch.Tensor] | None = None,
+        gen_reg_pred: torch.Tensor | list[torch.Tensor] | None = None,
+        real_reg_pred: torch.Tensor | list[torch.Tensor] | None = None,
+        reg_target: torch.Tensor | list[torch.Tensor] | None = None,
+    ) -> torch.Tensor:
+        class_pred = cat_if_none([gen_class_pred, real_class_pred])
+        class_target = cat_if_none([class_target, class_target])
+        reg_pred = cat_if_none([gen_reg_pred, real_reg_pred])
+        reg_target = cat_if_none([reg_target, reg_target])
+
+        losses = {}
+        losses["adversarial"] = self.rgl.discriminator_loss(
+            gen_pred=gen_pred,
+            real_pred=real_pred,
+            gen_samples=gen_samples,
+            real_samples=real_samples,
+            discriminator=discriminator,
+        )
+        if (class_pred is not None) and (class_target is not None):
+            losses["class"] = apply_loss(
+                class_pred, class_target, F.cross_entropy
+            )
+        if (reg_pred is not None) and (reg_target is not None):
+            losses["reg"] = apply_loss(reg_pred, reg_target, F.mse_loss)
+        return losses
+
+    def forward(
+        self,
+        gen_samples: torch.Tensor,
+        real_samples: torch.Tensor,
+        discriminator: torch.nn.Module,
+        class_pred: torch.Tensor | list[torch.Tensor] | None = None,
+        class_target: torch.Tensor | list[torch.Tensor] | None = None,
+        reg_pred: torch.Tensor | list[torch.Tensor] | None = None,
+        reg_target: torch.Tensor | list[torch.Tensor] | None = None,
+    ) -> torch.Tensor:
+        return torch.add(
+            self.discriminator_loss(
+                gen_samples=gen_samples,
+                real_samples=real_samples,
+                discriminator=discriminator,
+                class_pred=class_pred,
+                class_target=class_target,
+                reg_pred=reg_pred,
+                reg_target=reg_target,
+            ),
+            self.generator_loss(
+                gen_pred=apply_discriminator(
+                    gen_samples, discriminator=discriminator
+                ),
+                class_pred=class_pred,
+                class_target=class_target,
+                reg_pred=reg_pred,
+                reg_target=reg_target,
+            ),
+        )
+
+
 class GaussianKLLoss(torch.nn.Module):
     def __init__(self, eps: float = 1e-8):
         super().__init__()
