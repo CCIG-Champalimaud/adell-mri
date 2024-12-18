@@ -297,7 +297,7 @@ class RelativisticGANLoss(torch.nn.Module):
 
     def op(self, a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
         return torch.nn.functional.softplus(
-            -a.sub(self.average_if_necesssary(b))
+            -(a - self.average_if_necesssary(b))
         )
 
     def generator_loss(
