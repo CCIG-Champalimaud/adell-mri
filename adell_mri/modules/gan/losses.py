@@ -278,19 +278,32 @@ class WGANGPLoss(torch.nn.Module):
 
 class RelativisticGANLoss(torch.nn.Module):
     """
-    Relativistic GAN loss from [1].
+    Relativistic GAN loss from [1] and adapted to match the one described in
+    [2]. Supports the relativistic average GAN loss as well.
 
     [1] https://arxiv.org/pdf/1807.00734
+    [2] https://openreview.net/pdf?id=VpIH3Wn9eK
     """
 
-    def __init__(self, lambda_gp: float = 1.0):
+    def __init__(self, lambda_gp: float = 1.0, average: bool = False):
         super().__init__()
         self.lambda_gp = lambda_gp
+        self.average = average
+
+    def average_if_necesssary(self, x: torch.Tensor) -> torch.Tensor:
+        if self.average:
+            return x.mean(0, keepdim=True)
+        return x
+
+    def op(self, a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
+        return torch.nn.functional.softplus(
+            -a.sub(self.average_if_necesssary(b))
+        )
 
     def generator_loss(
         self, gen_pred: torch.Tensor, real_pred: torch.Tensor
     ) -> torch.Tensor:
-        return {"adversarial": torch.mean(-(gen_pred - real_pred))}
+        return {"adversarial": torch.mean(self.op(gen_pred, real_pred))}
 
     def discriminator_loss(
         self,
@@ -305,7 +318,7 @@ class RelativisticGANLoss(torch.nn.Module):
         r2_gp = compute_gradient_penalty_r3gan(gen_samples, gen_pred)
         return {
             "adversarial": torch.add(
-                torch.mean(-(real_pred - gen_pred)),
+                torch.mean(self.op(real_pred, gen_pred)),
                 self.lambda_gp / 2 * torch.add(r1_gp, r2_gp),
             )
         }
