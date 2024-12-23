@@ -870,6 +870,10 @@ class GANPL(pl.LightningModule):
             *args,
             **kwargs,
         )
+        if "class_target" not in kwargs:
+            kwargs["class_target"] = None
+        if "reg_target" not in kwargs:
+            kwargs["reg_target"] = None
         return image, kwargs["class_target"], kwargs["reg_target"]
 
     def apply_generator(
@@ -973,10 +977,10 @@ class GANPL(pl.LightningModule):
                 x, y = patchify(
                     x, patch_size=self.patch_size, stride=self.patch_size, y=y
                 )
-        x = discriminator(x)
+        out = discriminator(x)
         if y is None:
-            return x
-        return x, y
+            return out
+        return out, y
 
     def prepare_image_data(
         self, batch: dict[str, Any]
