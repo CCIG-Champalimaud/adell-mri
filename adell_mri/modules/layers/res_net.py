@@ -221,14 +221,14 @@ class ResNetBackbone(torch.nn.Module):
         X = self.first_pooling(X)
         if after_pool is True:
             output_list.append(X)
-        for op, be_op, pool_op in zip(
+        for op, be_op, pooling_op in zip(
             self.operations, self.be_operations, self.pooling_operations
         ):
             if self.batch_ensemble > 0:
                 X = be_op(X, batch_idx, mod=op)
             else:
                 X = op(X)
-            pooled_X = pool_op(X)
+            pooled_X = pooling_op(X)
             if after_pool is True:
                 output_list.append(pooled_X)
             else:
