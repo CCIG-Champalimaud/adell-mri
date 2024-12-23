@@ -22,6 +22,21 @@ from ..losses import (
 )
 
 
+def mean(x: list[torch.Tensor]) -> torch.Tensor:
+    """
+    Convenience function to calculate mean of tensor list.
+
+    Args:
+        x (list[torch.Tensors]): list of tensors.
+
+    Returns:
+        torch.Tensor: average of x.
+    """
+    if len(x) == 0:
+        return 0.0
+    return sum(x) / len(x)
+
+
 def cat_not_none(
     tensors: list[torch.Tensor | None], *args, **kwargs
 ) -> torch.Tensor | None:
@@ -375,7 +390,7 @@ class GANPL(pl.LightningModule):
                 arguments for ``step_fn``)
         """
         self.toggle_optimizers(optimizers)
-        all_losses = {}
+        all_losses: dict[str, torch.Tensor] = {}
         for step_key in step_fns:
             step_fn = step_fns[step_key]["step_fn"]
             step_fn_args = step_fns[step_key].get("args", [])
@@ -390,14 +405,20 @@ class GANPL(pl.LightningModule):
             for k in all_losses:
                 self.log(
                     k,
-                    all_losses[k],
+                    all_losses[k].detach().mean(),
                     on_epoch=True,
                     prog_bar=True,
                     on_step=False,
                     sync_dist=True,
                     batch_size=self.batch_size,
                 )
-        loss_sum = sum([all_losses[k] for k in all_losses]) / len(all_losses)
+        reduced_losses = mean(
+            [all_losses[k] for k in all_losses if len(all_losses[k].shape) == 0]
+        )
+        unreduced_losses = mean(
+            [all_losses[k] for k in all_losses if len(all_losses[k].shape) > 0]
+        )
+        loss_sum = reduced_losses + unreduced_losses.mean()
         self.manual_backward(loss_sum)
         self.step_zero_grad_optimizers(optimizers)
         self.untoggle_optimizers(optimizers)
