@@ -98,7 +98,6 @@ def compute_gradient_penalty(
         grad_outputs=fake,
         create_graph=True,
         retain_graph=True,
-        only_inputs=True,
     )[0]
     gradients = gradients.view(gradients.size(0), -1).to(real_samples.device)
     gradient_penalty = ((gradients.norm(2, dim=1) - 1).square()).mean()
@@ -130,16 +129,18 @@ def compute_gradient_penalty_r3gan(
     if discriminator.training is False:
         return 0.0
 
+    samples = samples.requires_grad_(True)
     if preds is None and discriminator is not None:
         preds = apply_discriminator(samples, discriminator)[0]
     elif preds is None and discriminator is None:
         raise ValueError("Either preds or discriminator must be provided.")
+    fake = torch.ones_like(preds)
     gradients = torch.autograd.grad(
         outputs=preds,
         inputs=samples,
+        grad_outputs=fake,
         create_graph=True,
         retain_graph=True,
-        only_inputs=True,
     )[0]
     gradients = gradients.view(gradients.size(0), -1).to(samples.device)
     gradient_penalty = (gradients.square()).mean()
@@ -311,11 +312,14 @@ class RelativisticGANLoss(torch.nn.Module):
         real_pred: torch.Tensor,
         gen_samples: torch.Tensor | None = None,
         real_samples: torch.Tensor | None = None,
-        # this is kept for compatibility
         discriminator: torch.nn.Module | None = None,
     ) -> torch.Tensor:
-        r1_gp = compute_gradient_penalty_r3gan(real_samples, real_pred)
-        r2_gp = compute_gradient_penalty_r3gan(gen_samples, gen_pred)
+        r1_gp = compute_gradient_penalty_r3gan(
+            samples=real_samples, preds=None, discriminator=discriminator
+        )
+        r2_gp = compute_gradient_penalty_r3gan(
+            samples=gen_samples, preds=None, discriminator=discriminator
+        )
         return {
             "adversarial": torch.add(
                 torch.mean(self.op(real_pred, gen_pred)),
@@ -391,7 +395,7 @@ class SemiSLAdversarialLoss(torch.nn.Module):
         gen_samples: torch.Tensor | None = None,
     ) -> torch.Tensor:
         losses = {}
-        losses["adversarial"] = self.adv_loss.generator_loss(gen_pred)
+        losses = self.adv_loss.generator_loss(gen_pred)
         if (class_pred is not None) and (class_target is not None):
             losses["class"] = apply_loss(
                 class_pred, class_target, F.cross_entropy
@@ -422,7 +426,7 @@ class SemiSLAdversarialLoss(torch.nn.Module):
         reg_target = cat_if_none([class_target, class_target])
 
         losses = {}
-        losses["adversarial"] = self.adv_loss.discriminator_loss(
+        losses = self.adv_loss.discriminator_loss(
             gen_pred=gen_pred, real_pred=real_pred
         )
         if (class_pred is not None) and (class_target is not None):
@@ -484,6 +488,8 @@ class SemiSLWGANGPLoss(torch.nn.Module):
         super().__init__()
         self.lambda_gp = lambda_gp
 
+        self.adv_loss = WGANGPLoss()
+
     def apply_loss(
         self,
         pred: torch.Tensor | list[torch.Tensor],
@@ -524,7 +530,7 @@ class SemiSLWGANGPLoss(torch.nn.Module):
         reg_target: torch.Tensor | None = None,
     ) -> torch.Tensor:
         losses = {}
-        losses["adversarial"] = -F.sigmoid(gen_pred).mean()
+        losses = self.adv_loss.generator_loss(gen_pred=gen_pred)
         if (class_pred is not None) and (class_target is not None):
             losses["class"] = apply_loss(
                 class_pred, class_target, F.cross_entropy
@@ -554,14 +560,12 @@ class SemiSLWGANGPLoss(torch.nn.Module):
         reg_target = cat_if_none([reg_target, reg_target])
 
         losses = {}
-        losses["adversarial"] = torch.add(
-            F.sigmoid(gen_pred).mean() - F.sigmoid(real_pred).mean(),
-            self.lambda_gp
-            * compute_gradient_penalty(
-                gen_samples=gen_samples,
-                real_samples=real_samples,
-                discriminator=discriminator,
-            ),
+        losses = self.adv_loss.discriminator_loss(
+            gen_samples=gen_samples,
+            real_samples=real_samples,
+            discriminator=discriminator,
+            gen_pred=gen_pred,
+            real_pred=real_pred,
         )
         if (class_pred is not None) and (class_target is not None):
             losses["class"] = apply_loss(
@@ -622,7 +626,7 @@ class SemiSLRelativisticGANLoss(torch.nn.Module):
         super().__init__()
         self.lambda_gp = lambda_gp
 
-        self.rgl = RelativisticGANLoss(self.lambda_gp)
+        self.adv_loss = RelativisticGANLoss(self.lambda_gp)
 
     def apply_loss(
         self,
@@ -665,7 +669,7 @@ class SemiSLRelativisticGANLoss(torch.nn.Module):
         reg_target: torch.Tensor | None = None,
     ) -> torch.Tensor:
         losses = {}
-        losses["adversarial"] = self.rgl.generator_loss(gen_pred, real_pred)
+        losses = self.adv_loss.generator_loss(gen_pred, real_pred)
         if (class_pred is not None) and (class_target is not None):
             losses["class"] = apply_loss(
                 class_pred, class_target, F.cross_entropy
@@ -695,7 +699,7 @@ class SemiSLRelativisticGANLoss(torch.nn.Module):
         reg_target = cat_if_none([reg_target, reg_target])
 
         losses = {}
-        losses["adversarial"] = self.rgl.discriminator_loss(
+        losses = self.adv_loss.discriminator_loss(
             gen_pred=gen_pred,
             real_pred=real_pred,
             gen_samples=gen_samples,
