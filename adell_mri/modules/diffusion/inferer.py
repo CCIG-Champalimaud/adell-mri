@@ -7,7 +7,7 @@ from adell_mri.modules.gan.losses import cat_if_none
 
 
 class DiffusionInfererSkipSteps(DiffusionInferer):
-    @torch.no_grad()
+    @torch.inference_mode()
     def sample(
         self,
         input_noise: torch.Tensor,
@@ -63,53 +63,53 @@ class DiffusionInfererSkipSteps(DiffusionInferer):
         else:
             progress_bar = iter(scheduler.timesteps[skip_steps:])
         intermediates = []
-        for t in progress_bar:
-            # 1. predict noise model_output
-            if mode == "concat":
+        if mode == "concat":
+            for t in progress_bar:
+                # 1. predict noise model_output
                 model_input = torch.cat([image, conditioning], dim=1)
                 model_output = diffusion_model(
                     model_input,
-                    timesteps=torch.Tensor((t,)).to(input_noise.device),
+                    timesteps=torch.tensor((t,), device=input_noise.device),
                     context=None,
                 )
-            else:
+        else:
+            if unconditioning is not None:
+                conditioning = torch.cat([conditioning, unconditioning], dim=0)
+            for t in progress_bar:
                 if guidance_strength is None:
                     model_output = diffusion_model(
                         image,
-                        timesteps=torch.Tensor((t,)).to(input_noise.device),
+                        timesteps=torch.tensor((t,), device=input_noise.device),
                         context=conditioning,
                     )
                 elif unconditioning is not None:
+                    b = image.shape[0]
+                    model_input = torch.cat([image, image], dim=0)
                     model_output = diffusion_model(
-                        image,
-                        timesteps=torch.Tensor((t,)).to(input_noise.device),
+                        model_input,
+                        timesteps=torch.tensor((t,), device=input_noise.device),
                         context=conditioning,
                     )
-                    model_output_uncond = diffusion_model(
-                        image,
-                        timesteps=torch.Tensor((t,)).to(input_noise.device),
-                        context=unconditioning,
-                    )
                     model_output = torch.subtract(
-                        (1 + guidance_strength) * model_output,
-                        guidance_strength * model_output_uncond,
+                        (1.0 + guidance_strength) * model_output[:b],
+                        guidance_strength * model_output[b:],
                     )
                 else:
                     model_output = diffusion_model(
                         image,
-                        timesteps=torch.Tensor((t,)).to(input_noise.device),
+                        timesteps=torch.tensor((t,), device=input_noise.device),
                         context=conditioning,
                     )
-            # 2. compute previous image: x_t -> x_t-1
-            image, _ = scheduler.step(model_output, t, image)
-            if save_intermediates and t % intermediate_steps == 0:
-                intermediates.append(image)
+                # 2. compute previous image: x_t -> x_t-1
+                image, _ = scheduler.step(model_output, t, image)
+                if save_intermediates and t % intermediate_steps == 0:
+                    intermediates.append(image)
         if save_intermediates:
             return image, intermediates
         else:
             return image
 
-    @torch.no_grad()
+    @torch.inference_mode()
     def sample_iter(
         self,
         input_noise: torch.Tensor,
@@ -170,17 +170,17 @@ class DiffusionInfererSkipSteps(DiffusionInferer):
                 model_input = torch.cat([image, conditioning], dim=1)
                 model_output = diffusion_model(
                     model_input,
-                    timesteps=torch.Tensor((t,), device=input_noise.device),
+                    timesteps=torch.tensor((t,), device=input_noise.device),
                     context=None,
                 )
         else:
             if unconditioning is not None:
-                conditioning = cat_if_none(conditioning, unconditioning, dim=0)
+                conditioning = torch.cat([conditioning, unconditioning], dim=0)
             for t in progress_bar:
                 if guidance_strength is None:
                     model_output = diffusion_model(
                         image,
-                        timesteps=torch.Tensor((t,), device=input_noise.device),
+                        timesteps=torch.tensor((t,), device=input_noise.device),
                         context=conditioning,
                     )
                 elif unconditioning is not None:
@@ -188,7 +188,7 @@ class DiffusionInfererSkipSteps(DiffusionInferer):
                     image = torch.cat([image, image], dim=0)
                     model_output = diffusion_model(
                         image,
-                        timesteps=torch.Tensor((t,), device=input_noise.device),
+                        timesteps=torch.tensor((t,), device=input_noise.device),
                         context=conditioning,
                     )
                     model_output = torch.subtract(
@@ -198,10 +198,10 @@ class DiffusionInfererSkipSteps(DiffusionInferer):
                 else:
                     model_output = diffusion_model(
                         image,
-                        timesteps=torch.Tensor((t,)).to(input_noise.device),
+                        timesteps=torch.tensor((t,), device=input_noise.device),
                         context=conditioning,
                     )
 
-            # 2. compute previous image: x_t -> x_t-1
-            image, _ = scheduler.step(model_output, t, image)
-            yield image
+                # 2. compute previous image: x_t -> x_t-1
+                image, _ = scheduler.step(model_output, t, image)
+                yield image
