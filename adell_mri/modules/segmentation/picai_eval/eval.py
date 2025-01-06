@@ -21,17 +21,7 @@ import json
 import os
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import (
-    Callable,
-    Dict,
-    Hashable,
-    Iterable,
-    List,
-    Optional,
-    Sized,
-    Tuple,
-    Union,
-)
+from typing import Callable, Hashable, Iterable, Optional, Sized
 
 import numpy as np
 from scipy import ndimage
@@ -56,54 +46,69 @@ from .image_utils import (
 )
 from .metrics import Metrics
 
-PathLike = Union[str, Path]
+PathLike = str | Path
 
 
 # Compute base prediction metrics TP/FP/FN with associated model confidences
 def evaluate_case(
-    y_det: "Union[npt.NDArray[np.float32], str, Path]",
-    y_true: "Union[npt.NDArray[np.int32], str, Path]",
+    y_det: npt.NDArray[np.float32] | str | Path,
+    y_true: npt.NDArray[np.int32] | str | Path,
     min_overlap: float = 0.10,
-    overlap_func: "Union[str, Callable[[npt.NDArray[np.float32], npt.NDArray[np.int32]], float]]" = "IoU",
-    case_confidence_func: "Union[str, Callable[[npt.NDArray[np.float32]], float]]" = "max",
+    overlap_func: (
+        str | Callable[[npt.NDArray[np.float32], npt.NDArray[np.int32]], float]
+    ) = "IoU",
+    case_confidence_func: (
+        str | Callable[[npt.NDArray[np.float32]], float]
+    ) = "max",
     allow_unmatched_candidates_with_minimal_overlap: bool = True,
-    y_det_postprocess_func: "Optional[Callable[[npt.NDArray[np.float32]], npt.NDArray[np.float32]]]" = None,
-    y_true_postprocess_func: "Optional[Callable[[npt.NDArray[np.int32]], npt.NDArray[np.int32]]]" = None,
+    y_det_postprocess_func: Optional[
+        Callable[[npt.NDArray[np.float32]], npt.NDArray[np.float32]]
+    ] = None,
+    y_true_postprocess_func: Optional[
+        Callable[[npt.NDArray[np.int32]], npt.NDArray[np.int32]]
+    ] = None,
     weight: Optional[float] = None,
     idx: Optional[str] = None,
-) -> Tuple[List[Tuple[int, float, float]], float]:
+) -> tuple[list[tuple[int, float, float]], float]:
     """
     Gather the list of lesion candidates, and classify in TP/FP/FN.
-    Lesion candidates are matched to ground truth lesions, by maximizing the number of candidates
-    with sufficient overlap (i.e., matches), and secondly by maximizing the total overlap of all candidates.
+    Lesion candidates are matched to ground truth lesions, by maximizing the
+    number of candidates with sufficient overlap (i.e., matches), and secondly
+    by maximizing the total overlap of all candidates.
     Parameters:
-    - y_det: Detection map, which should be a 3D volume containing connected components (in 3D) of the
-        same confidence. Each detection map may contain an arbitrary number of connected components,
-        with different or equal confidences. Alternatively, y_det may be a filename ending in
+    - y_det: Detection map, which should be a 3D volume containing connected
+        components (in 3D) of the same confidence. Each detection map may
+        contain an arbitrary number of connected components, with different or
+        equal confidences. Alternatively, y_det may be a filename ending in
         .nii.gz/.mha/.mhd/.npy/.npz, which will be loaded on-the-fly.
-    - y_true: Ground truth label, which should be a 3D volume of the same shape as the detection map.
-        Alternatively, `y_true` may be the filename ending in .nii.gz/.mha/.mhd/.npy/.npz, which should
-        contain binary labels and will be loaded on-the-fly. Use `1` to encode ground truth lesion, and
+    - y_true: Ground truth label, which should be a 3D volume of the same shape
+        as the detection map. Alternatively, `y_true` may be the filename ending
+        in .nii.gz/.mha/.mhd/.npy/.npz, which should contain binary labels and
+        will be loaded on-the-fly. Use `1` to encode ground truth lesion, and
         `0` to encode background.
-    - min_overlap: defines the minimal required overlap (e.g., Intersection over Union or Dice similarity
-        coefficient) between a lesion candidate and ground truth lesion, to be counted as a true positive
-        detection.
-    - overlap_func: function to calculate overlap between a lesion candidate and ground truth mask.
-        May be 'IoU' for Intersection over Union, or 'DSC' for Dice similarity coefficient. Alternatively,
-        provide a function with signature `func(detection_map, annotation) -> overlap [0, 1]`.
-    - allow_unmatched_candidates_with_minimal_overlap: when multiple lesion candidates have sufficient
-        overlap with the ground truth lesion mask, this determines whether the lesion that is not selected
-        counts as a false positive.
-    - y_det_postprocess_func: function to apply to detection map. Can for example be used to extract
-        lesion candidates from a softmax prediction volume.
-    - y_true_postprocess_func: function to apply to annotation. Can for example be used to select the lesion
-        masks from annotations that also contain other structures (such as organ segmentations).
+    - min_overlap: defines the minimal required overlap (e.g., Intersection over
+        Union or Dice similarity coefficient) between a lesion candidate and
+        ground truth lesion, to be counted as a true positive detection.
+    - overlap_func: function to calculate overlap between a lesion candidate and
+        ground truth mask. May be 'IoU' for Intersection over Union, or 'DSC'
+        for Dice similarity coefficient. Alternatively, provide a function with
+        signature `func(detection_map, annotation) -> overlap [0, 1]`.
+    - allow_unmatched_candidates_with_minimal_overlap: when multiple lesion
+        candidates have sufficient overlap with the ground truth lesion mask,
+        this determines whether the lesion that is not selected counts as a
+        false positive.
+    - y_det_postprocess_func: function to apply to detection map. Can for
+        example be used to extract lesion candidates from a softmax prediction
+        volume.
+    - y_true_postprocess_func: function to apply to annotation. Can for example
+        be used to select the lesion masks from annotations that also contain
+        other structures (such as organ segmentations).
     Returns:
     - a list of tuples with:
         (is_lesion, prediction confidence, overlap)
     - case level confidence score derived from the detection map
     """
-    y_list: List[Tuple[int, float, float]] = []
+    y_list: list[tuple[int, float, float]] = []
     if isinstance(y_true, (str, Path)):
         y_true = read_label(y_true)
     if isinstance(y_det, (str, Path)):
@@ -114,7 +119,8 @@ def evaluate_case(
         overlap_func = calculate_dsc
     elif isinstance(overlap_func, str):
         raise ValueError(
-            f"Overlap function with name {overlap_func} not recognized. Supported are 'IoU' and 'DSC'"
+            f"Overlap function with name {overlap_func} not recognized. "
+            "Supported are 'IoU' and 'DSC'"
         )
 
     # convert dtype to float32
@@ -154,7 +160,8 @@ def evaluate_case(
             # for each lesion in ground-truth (GT) label
             gt_lesion_mask = labeled_gt == (1 + lesion_id)
 
-            # calculate overlap between each lesion candidate and the current GT lesion
+            # calculate overlap between each lesion candidate and the current GT
+            # lesion
             for lesion_candidate_id in lesion_candidate_ids:
                 # calculate overlap between lesion candidate and GT mask
                 lesion_pred_mask = indexed_pred == (1 + lesion_candidate_id)
@@ -163,7 +170,8 @@ def evaluate_case(
                 # store overlap
                 overlap_matrix[lesion_id, lesion_candidate_id] = overlap_score
 
-        # match lesion candidates to ground truth lesion (for documentation on how this works, please see
+        # match lesion candidates to ground truth lesion (for documentation on
+        # how this works, please see
         # https://docs.scipy.org/doc/scipy-0.18.1/reference/generated/scipy.optimize.linear_sum_assignment.html)
         overlap_matrix[overlap_matrix < min_overlap] = (
             0  # don't match lesions with insufficient overlap
@@ -206,7 +214,8 @@ def evaluate_case(
         unmatched_gt_lesions = set(gt_lesion_ids) - set(matched_lesion_indices)
         y_list += [(1, 0.0, 0.0) for _ in unmatched_gt_lesions]
 
-        # all lesion candidates with insufficient overlap/not matched to a gt lesion are FPs
+        # all lesion candidates with insufficient overlap/not matched to a gt
+        # lesion are FPs
         if allow_unmatched_candidates_with_minimal_overlap:
             candidates_sufficient_overlap = lesion_candidate_ids[
                 (overlap_matrix > 0).any(axis=0)
@@ -228,8 +237,9 @@ def evaluate_case(
         # take highest lesion confidence as case-level confidence
         case_confidence = np.max(y_det)
     elif case_confidence_func == "bayesian":
-        # if c_i is the probability the i-th lesion is csPCa, then the case-level
-        # probability to have one or multiple csPCa lesion is 1 - Π_i{ 1 - c_i}
+        # if c_i is the probability the i-th lesion is csPCa, then the
+        # case-level probability to have one or multiple csPCa lesion is
+        # 1 - \prod_i{ 1 - c_i}
         case_confidence = 1 - np.prod([(1 - c) for c in confidences.values()])
     else:
         # apply user-defines case-level confidence score function
@@ -239,9 +249,9 @@ def evaluate_case(
 
 
 def make_evaluation_iterator(
-    y_det: "Iterable[Union[npt.NDArray[np.float64], str, Path]]",
-    y_true: "Iterable[Union[npt.NDArray[np.float64], str, Path]]",
-    sample_weight: "Optional[Iterable[float]]" = None,
+    y_det: Iterable[npt.NDArray[np.float64] | str | Path],
+    y_true: Iterable[npt.NDArray[np.float64] | str | Path],
+    sample_weight: Optional[Iterable[float]] = None,
     subject_list: Optional[Iterable[Hashable]] = None,
     num_threads: int = 3,
     **kwargs,
@@ -282,37 +292,50 @@ def make_evaluation_iterator(
 
 # Evaluate all cases
 def evaluate(
-    y_det: "Iterable[Union[npt.NDArray[np.float64], str, Path]]",
-    y_true: "Iterable[Union[npt.NDArray[np.float64], str, Path]]",
-    sample_weight: "Optional[Iterable[float]]" = None,
+    y_det: Iterable[npt.NDArray[np.float64] | str | Path],
+    y_true: Iterable[npt.NDArray[np.float64] | str | Path],
+    sample_weight: Optional[Iterable[float]] = None,
     subject_list: Optional[Iterable[Hashable]] = None,
     min_overlap: float = 0.10,
-    overlap_func: "Union[str, Callable[[npt.NDArray[np.float32], npt.NDArray[np.int32]], float]]" = "IoU",
-    case_confidence_func: "Union[str, Callable[[npt.NDArray[np.float32]], float]]" = "max",
+    overlap_func: (
+        str | Callable[[npt.NDArray[np.float32], npt.NDArray[np.int32]], float]
+    ) = "IoU",
+    case_confidence_func: (
+        str | Callable[[npt.NDArray[np.float32]], float]
+    ) = "max",
     allow_unmatched_candidates_with_minimal_overlap: bool = True,
-    y_det_postprocess_func: "Optional[Callable[[npt.NDArray[np.float32]], npt.NDArray[np.float32]]]" = None,
-    y_true_postprocess_func: "Optional[Callable[[npt.NDArray[np.int32]], npt.NDArray[np.int32]]]" = None,
+    y_det_postprocess_func: Optional[
+        Callable[[npt.NDArray[np.float32]], npt.NDArray[np.float32]]
+    ] = None,
+    y_true_postprocess_func: Optional[
+        Callable[[npt.NDArray[np.int32]], npt.NDArray[np.int32]]
+    ] = None,
     num_parallel_calls: int = 3,
     verbose: int = 0,
 ) -> Metrics:
     """
     Evaluate 3D detection performance.
     Parameters:
-    - y_det: iterable of all detection_map volumes to evaluate. Each detection map should a 3D volume
-        containing connected components (in 3D) of the same confidence. Each detection map may contain
-        an arbitrary number of connected components, with different or equal confidences.
-        Alternatively, y_det may contain filenames ending in .nii.gz/.mha/.mhd/.npy/.npz, which will
-        be loaded on-the-fly.
-    - y_true: iterable of all ground truth labels. Each label should be a 3D volume of the same shape
-        as the corresponding detection map. Alternatively, `y_true` may contain filenames ending in
-        .nii.gz/.mha/.mhd/.npy/.npz, which should contain binary labels and will be loaded on-the-fly.
-        Use `1` to encode ground truth lesion, and `0` to encode background.
-    - sample_weight: case-level sample weight. These weights will also be applied to the lesion-level
-        evaluation, with same weight for all lesion candidates of the same case.
-    - subject_list: list of sample identifiers, to give recognizable names to the evaluation results.
-    - min_overlap: defines the minimal required Intersection over Union (IoU) or Dice similarity
-        coefficient (DSC) between a lesion candidate and ground truth lesion, to be counted as a true
-        positive detection.
+    - y_det: iterable of all detection_map volumes to evaluate. Each detection
+        map should a 3D volume containing connected components (in 3D) of the
+        same confidence. Each detection map may contain an arbitrary number of
+        connected components, with different or equal confidences.
+        Alternatively, y_det may contain filenames ending in
+        .nii.gz/.mha/.mhd/.npy/.npz, which will be loaded on-the-fly.
+    - y_true: iterable of all ground truth labels. Each label should be a 3D
+        volume of the same shape as the corresponding detection map.
+        Alternatively, `y_true` may contain filenames ending in
+        .nii.gz/.mha/.mhd/.npy/.npz, which should contain binary labels and will
+        be loaded on-the-fly. Use `1` to encode ground truth lesion, and `0` to
+        encode background.
+    - sample_weight: case-level sample weight. These weights will also be
+        applied to the lesion-level evaluation, with same weight for all lesion
+        candidates of the same case.
+    - subject_list: list of sample identifiers, to give recognizable names to
+        the evaluation results.
+    - min_overlap: defines the minimal required Intersection over Union (IoU) or
+        Dice similarity coefficient (DSC) between a lesion candidate and ground
+        truth lesion, to be counted as a true positive detection.
     - overlap_func: function to calculate overlap between a lesion candidate and ground truth mask.
         May be 'IoU' for Intersection over Union, or 'DSC' for Dice similarity coefficient. Alternatively,
         provide a function with signature `func(detection_map, annotation) -> overlap [0, 1]`.
@@ -336,11 +359,11 @@ def evaluate(
         subject_list = itertools.count()
 
     # initialize placeholders
-    case_target: Dict[Hashable, int] = {}
-    case_weight: Dict[Hashable, float] = {}
-    case_pred: Dict[Hashable, float] = {}
-    lesion_results: Dict[Hashable, List[Tuple[int, float, float]]] = {}
-    lesion_weight: Dict[Hashable, List[float]] = {}
+    case_target: dict[Hashable, int] = {}
+    case_weight: dict[Hashable, float] = {}
+    case_pred: dict[Hashable, float] = {}
+    lesion_results: dict[Hashable, list[tuple[int, float, float]]] = {}
+    lesion_weight: dict[Hashable, list[float]] = {}
 
     iterator = make_evaluation_iterator(
         y_det=y_det,
@@ -397,13 +420,13 @@ def evaluate(
 
 
 def evaluate_folder(
-    y_det_dir: Union[Path, str],
-    y_true_dir: Optional[Union[Path, str]] = None,
-    subject_list: Optional[Union[List[str], PathLike]] = None,
-    pred_extensions: Optional[List[str]] = None,
-    label_extensions: Optional[List[str]] = None,
-    detection_map_postfixes: Optional[List[str]] = None,
-    label_postfixes: Optional[List[str]] = None,
+    y_det_dir: PathLike,
+    y_true_dir: Optional[PathLike] = None,
+    subject_list: Optional[list[str] | PathLike] = None,
+    pred_extensions: Optional[list[str]] = None,
+    label_extensions: Optional[list[str]] = None,
+    detection_map_postfixes: Optional[list[str]] = None,
+    label_postfixes: Optional[list[str]] = None,
     verbose: int = 1,
     **kwargs,
 ) -> Metrics:
