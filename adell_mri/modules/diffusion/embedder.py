@@ -1,7 +1,7 @@
-from typing import Any, List
-
 import numpy as np
 import torch
+from copy import deepcopy
+from typing import Any, List
 
 
 def mode(X: np.ndarray):
@@ -72,7 +72,7 @@ class CategoricalEmbedder(torch.nn.Module):
         return next(self.embedders[-1].parameters()).device
 
     def forward(self, X: List[torch.Tensor], return_X: bool = False):
-        X_conv = X.copy()
+        X_conv = deepcopy(X)
         if isinstance(X_conv, torch.Tensor):
             ndim = len(X_conv.shape)
             if ndim == 1:
