@@ -10,6 +10,7 @@ import SimpleITK as sitk
 import torch
 from tqdm import tqdm
 
+from ...utils import safe_collate
 from ...monai_transforms import (
     get_post_transforms_generation as get_post_transforms,
 )
@@ -75,7 +76,6 @@ def main(arguments):
             "dev",
             "n_workers",
             "seed",
-            "precision",
             "checkpoint",
             "batch_size",
             "learning_rate",
@@ -221,46 +221,53 @@ def main(arguments):
             cache_rate=args.cache_rate,
             num_workers=args.n_workers,
         )
+        dataloader = torch.utils.data.DataLoader(
+            dataset,
+            batch_size=args.batch_size,
+            shuffle=False,
+            num_workers=args.n_workers,
+            pin_memory=True,
+            collate_fn=safe_collate,
+        )
 
         Path(args.output_path).mkdir(exist_ok=True, parents=True)
-        for data in tqdm(dataset):
-            output_path = os.path.join(
-                args.output_path, f"{data['key']}_gen.mha"
-            )
-            if os.path.exists(output_path) and args.overwrite is False:
+        for data in tqdm(dataloader, desc="Generating images"):
+            output_paths = [
+                os.path.join(args.output_path, f"{k}_gen.mha")
+                for k in data["key"]
+            ]
+            if (
+                all(map(os.path.exists, output_paths))
+                and args.overwrite is False
+            ):
                 continue
-            image = data["image"].to(args.dev).float().unsqueeze(0)
+            images = data["image"].to(args.dev).float()
             curr_cat, curr_num = None, None
             if args.cat_condition_keys is not None:
-                curr_cat = [
-                    [
-                        (
-                            cat_condition.get(k, data.get(k, None)[0])
-                            if cat_condition is not None
-                            else data.get(k, None)
-                        )
-                        for k in args.cat_condition_keys
-                    ]
-                ]
-                if any([x is None for x in curr_cat]):
-                    continue
+                curr_cat = [[] for _ in range(len(data["key"]))]
+                for k in args.cat_condition_keys:
+                    for i in range(len(curr_cat)):
+                        if cat_condition is not None:
+                            C = cat_condition.get(k, data.get(k, None)[0])
+
+                        else:
+                            C = data.get(k, None)[0]
+                        curr_cat[i].append(C)
             if args.num_condition_keys is not None:
-                curr_num = [
-                    (
-                        num_condition.get(k, data.get(k, None))
-                        if num_condition is not None
-                        else data.get(k, None)
-                    )
-                    for k in args.num_condition_keys
-                ]
-                if any([x is None for x in curr_num]):
-                    continue
+                curr_num = [[] for _ in range(len(data["key"]))]
+                for k in args.num_condition_keys:
+                    for i in range(len(curr_num)):
+                        if num_condition is not None:
+                            N = num_condition.get(k, data.get(k, None)[0])
+                        else:
+                            N = data.get(k, None)[0]
+                        curr_num[i].append(N)
                 curr_num = torch.as_tensor(
-                    [curr_num], device=args.dev, dtype=inference_dtype
+                    curr_num, device=args.dev, dtype=inference_dtype
                 )
-            output = network.generate_image(
-                input_image=image.to(inference_dtype),
-                size=image.shape[2:],
+            outputs = network.generate_image(
+                input_image=images.to(inference_dtype),
+                size=images.shape[2:],
                 n=1,
                 skip_steps=args.skip_steps,
                 cat_condition=curr_cat,
@@ -269,21 +276,22 @@ def main(arguments):
                 uncondition_num_idx=args.uncondition_num_idx,
                 guidance_strength=args.guidance_strength,
             )
-            output = (
-                output.detach().float().cpu()[0].permute(3, 1, 2, 0).numpy()
-            )
-            output = sitk.GetImageFromArray(output)
-            output.SetSpacing(spacing)
-            output.SetMetaData("checkpoint", args.checkpoint[0])
-            sitk.WriteImage(output, output_path, useCompression=True)
-            if args.keep_original:
-                image = data["image"].detach().cpu().permute(3, 1, 2, 0).numpy()
-                image = sitk.GetImageFromArray(image)
-                image.SetSpacing(spacing)
-                image_path = os.path.join(
-                    args.output_path, f"{data['key']}_orig.mha"
+            outputs = outputs.detach().float().cpu()
+            for image, output_path, output in zip(
+                images, output_paths, outputs
+            ):
+                output = sitk.GetImageFromArray(
+                    output.permute(3, 1, 2, 0).numpy()
                 )
-                sitk.WriteImage(image, image_path, useCompression=True)
+                output.SetSpacing(spacing)
+                output.SetMetaData("checkpoint", args.checkpoint[0])
+                sitk.WriteImage(output, output_path, useCompression=True)
+                if args.keep_original:
+                    image = image.detach().cpu().permute(3, 1, 2, 0).numpy()
+                    image = sitk.GetImageFromArray(image)
+                    image.SetSpacing(spacing)
+                    image_path = output_path.replace("_gen.mha", "_orig.mha")
+                    sitk.WriteImage(image, image_path, useCompression=True)
 
     elif args.n_samples_gen is not None:
         size = return_first_not_none(args.crop_size, args.pad_size)
