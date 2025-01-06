@@ -82,7 +82,8 @@ class SitkWriter:
                 # checks for differences in size
                 if isinstance(image, str):
                     print(
-                        f"error for image {path} and source_image {source_image_original}",
+                        f"error for image {path} and source_image"
+                        "{source_image_original}",
                         image,
                     )
                     return
