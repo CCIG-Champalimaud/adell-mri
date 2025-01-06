@@ -1,8 +1,6 @@
-from typing import Callable
-
 import torch
 from tqdm import tqdm
-
+from typing import Callable, Iterator
 from generative.inferers import DiffusionInferer
 
 
@@ -117,21 +115,42 @@ class DiffusionInfererSkipSteps(DiffusionInferer):
         scheduler: Callable[..., torch.Tensor] | None = None,
         skip_steps: int = 0,
         conditioning: torch.Tensor | None = None,
+        unconditioning: torch.Tensor | None = None,
+        guidance_strength: float | None = None,
         mode: str = "crossattn",
         verbose: bool = True,
         tqdm_fn: Callable = tqdm,
-    ) -> torch.Tensor | tuple[torch.Tensor, list[torch.Tensor]]:
+    ) -> Iterator[torch.Tensor]:
         """
-        Args:
-            input_noise: random noise, of the same shape as the desired sample.
-            diffusion_model: model to sample from.
-            scheduler: diffusion scheduler. If none provided will use the class attribute scheduler
-            skip_steps: skips the first skip_steps steps
-            save_intermediates: whether to return intermediates along the sampling change
-            intermediate_steps: if save_intermediates is True, saves every n steps
-            conditioning: Conditioning for network input.
-            mode: Conditioning mode for the network.
-            verbose: if true, prints the progression bar of the sampling process.
+                Args:
+            input_noise (torch.Tensor, optional): random noise, of the same
+                shape as the desired sample.
+            diffusion_model (Callable): model to sample from.
+            scheduler (Callable | None, optional): diffusion scheduler. If none
+                provided will use the class attribute scheduler. Defaults to
+                None.
+            skip_steps (int, optional): skips the first skip_steps steps.
+                Defaults to 0.
+            save_intermediates (bool | None, optional): whether to return
+                intermediates along the sampling change. Defaults to False.
+            intermediate_steps (int | None, optional): if save_intermediates is
+                True, saves every n steps. Defaults to 100.
+            conditioning (torch.Tensor | None, optional): conditioning for
+                network input. Defaults to None.
+            unconditioning (torch.Tensor | None, optional): unconditioning
+                context for network input (used only in classifier-free
+                guidance). Defaults to None.
+            guidance_strength (float | None, optional): strength of
+                classifier-free guidance. Defaults to None.
+            mode (str, optional): conditioning mode for the network. Defaults to
+                "crossattn".
+            verbose (bool, optional): if true, prints the progression bar of the
+                sampling process.
+            tqdm_fn (Callable, optional): function to use for the progress bar.
+                Defaults to tqdm.
+
+        Yields:
+            torch.Tensor: sampled image at all steps.
         """
         if mode not in ["crossattn", "concat"]:
             raise NotImplementedError(f"{mode} condition is not supported")
@@ -153,11 +172,33 @@ class DiffusionInfererSkipSteps(DiffusionInferer):
                     context=None,
                 )
             else:
-                model_output = diffusion_model(
-                    image,
-                    timesteps=torch.Tensor((t,)).to(input_noise.device),
-                    context=conditioning,
-                )
+                if guidance_strength is None:
+                    model_output = diffusion_model(
+                        image,
+                        timesteps=torch.Tensor((t,)).to(input_noise.device),
+                        context=conditioning,
+                    )
+                elif unconditioning is not None:
+                    model_output = diffusion_model(
+                        image,
+                        timesteps=torch.Tensor((t,)).to(input_noise.device),
+                        context=conditioning,
+                    )
+                    model_output_uncond = diffusion_model(
+                        image,
+                        timesteps=torch.Tensor((t,)).to(input_noise.device),
+                        context=unconditioning,
+                    )
+                    model_output = torch.subtract(
+                        (1 + guidance_strength) * model_output,
+                        guidance_strength * model_output_uncond,
+                    )
+                else:
+                    model_output = diffusion_model(
+                        image,
+                        timesteps=torch.Tensor((t,)).to(input_noise.device),
+                        context=conditioning,
+                    )
 
             # 2. compute previous image: x_t -> x_t-1
             image, _ = scheduler.step(model_output, t, image)
