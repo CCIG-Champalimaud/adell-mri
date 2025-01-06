@@ -84,6 +84,7 @@ def main(arguments):
             "n_samples_gen",
             "guidance_strength",
             "output_path",
+            "overwrite",
         ]
     )
 
@@ -223,6 +224,11 @@ def main(arguments):
 
         Path(args.output_path).mkdir(exist_ok=True, parents=True)
         for data in tqdm(dataset):
+            output_path = os.path.join(
+                args.output_path, f"{data['key']}_gen.mha"
+            )
+            if os.path.exists(output_path) and args.overwrite is False:
+                continue
             image = data["image"].to(args.dev).float().unsqueeze(0)
             curr_cat, curr_num = None, None
             if args.cat_condition_keys is not None:
@@ -269,9 +275,6 @@ def main(arguments):
             output = sitk.GetImageFromArray(output)
             output.SetSpacing(spacing)
             output.SetMetaData("checkpoint", args.checkpoint[0])
-            output_path = os.path.join(
-                args.output_path, f"{data['key']}_gen.mha"
-            )
             sitk.WriteImage(output, output_path, useCompression=True)
             if args.keep_original:
                 image = data["image"].detach().cpu().permute(3, 1, 2, 0).numpy()
