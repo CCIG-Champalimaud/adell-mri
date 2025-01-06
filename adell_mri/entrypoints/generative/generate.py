@@ -1,22 +1,20 @@
 import os
-import random
 import sys
 from pathlib import Path
 from typing import Any
 
 import monai
-import numpy as np
 import SimpleITK as sitk
 import torch
 from tqdm import tqdm
 
-from ...utils import safe_collate
 from ...monai_transforms import (
     get_post_transforms_generation as get_post_transforms,
 )
 from ...monai_transforms import (
     get_pre_transforms_generation as get_pre_transforms,
 )
+from ...utils import safe_collate
 from ...utils.dataset import Dataset
 from ...utils.network_factories import get_generative_network
 from ...utils.parser import compose, get_params, merge_args, parse_ids
