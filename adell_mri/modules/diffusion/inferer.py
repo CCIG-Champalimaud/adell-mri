@@ -3,7 +3,6 @@ from typing import Callable, Iterator
 import torch
 from tqdm import tqdm
 
-from adell_mri.modules.gan.losses import cat_if_none
 from generative.inferers import DiffusionInferer
 
 
