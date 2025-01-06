@@ -327,7 +327,8 @@ def get_ckpt_callback(
                 status = "finished"
             else:
                 print(
-                    f"Resuming training from checkpoint in {ckpt_path} ({key}={ckpt_value})"
+                    f"Resuming training from checkpoint in {ckpt_path}"
+                    "({key}={ckpt_value})"
                 )
     return ckpt_callback, ckpt_path, status
 
