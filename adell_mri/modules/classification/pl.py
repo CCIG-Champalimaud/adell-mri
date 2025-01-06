@@ -12,21 +12,12 @@ from tqdm import tqdm
 
 from ..conformal_prediction import AdaptivePredictionSets
 from ..learning_rate import CosineAnnealingWithWarmupLR
-from .classification import (
-    VGG,
-    AveragingEnsemble,
-    CatNet,
-    FactorizedViTClassifier,
-    GenericEnsemble,
-    HybridClassifier,
-    MultipleInstanceClassifier,
-    OrdNet,
-    SegCatNet,
-    TransformableTransformer,
-    UNetEncoder,
-    ViTClassifier,
-    ordinal_prediction_to_class,
-)
+from .classification import (VGG, AveragingEnsemble, CatNet,
+                             FactorizedViTClassifier, GenericEnsemble,
+                             HybridClassifier, MultipleInstanceClassifier,
+                             OrdNet, SegCatNet, TransformableTransformer,
+                             UNetEncoder, ViTClassifier,
+                             ordinal_prediction_to_class)
 from .classification.deconfounded_classification import DeconfoundedNetGeneric
 
 try:

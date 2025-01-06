@@ -4,35 +4,17 @@ import monai
 import numpy as np
 import torch
 
-from .modules.augmentations import (
-    AugmentationWorkhorsed,
-    generic_augments,
-    mri_specific_augments,
-    spatial_augments,
-)
+from .modules.augmentations import (AugmentationWorkhorsed, generic_augments,
+                                    mri_specific_augments, spatial_augments)
 from .modules.semi_supervised_segmentation.utils import (
-    convert_arguments_augment_all,
-    convert_arguments_augment_individual,
-    convert_arguments_post,
-    convert_arguments_pre,
-)
-from .utils import (
-    AdjustSizesd,
-    BBToAdjustedAnchorsd,
-    CombineBinaryLabelsd,
-    ConditionalRescalingd,
-    ConvexHulld,
-    CopyEntryd,
-    CreateImageAndWeightsd,
-    CropFromMaskd,
-    ExposeTransformKeyMetad,
-    LabelOperatord,
-    LabelOperatorSegmentationd,
-    MasksToBBd,
-    Offsetd,
-    RandRotateWithBoxesd,
-    SampleChannelDimd,
-)
+    convert_arguments_augment_all, convert_arguments_augment_individual,
+    convert_arguments_post, convert_arguments_pre)
+from .utils import (AdjustSizesd, BBToAdjustedAnchorsd, CombineBinaryLabelsd,
+                    ConditionalRescalingd, ConvexHulld, CopyEntryd,
+                    CreateImageAndWeightsd, CropFromMaskd,
+                    ExposeTransformKeyMetad, LabelOperatord,
+                    LabelOperatorSegmentationd, MasksToBBd, Offsetd,
+                    RandRotateWithBoxesd, SampleChannelDimd)
 
 ADC_FACTOR = -2 / 3
 

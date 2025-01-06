@@ -10,11 +10,9 @@ from adell_mri.utils.torch_utils import get_generator_and_rng
 
 from ...entrypoints.assemble_args import Parser
 from ...modules.config_parsing import parse_config_ssl, parse_config_unet
-from ...monai_transforms import (
-    get_augmentations_ssl,
-    get_post_transforms_ssl,
-    get_pre_transforms_ssl,
-)
+from ...monai_transforms import (get_augmentations_ssl,
+                                 get_post_transforms_ssl,
+                                 get_pre_transforms_ssl)
 from ...utils import ExponentialMovingAverage, safe_collate
 from ...utils.dataset import Dataset
 from ...utils.network_factories import get_ssl_network

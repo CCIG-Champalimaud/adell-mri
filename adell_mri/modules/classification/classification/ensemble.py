@@ -5,10 +5,8 @@ import torch
 
 from ...layers.gaussian_process import GaussianProcessLayer
 from ...layers.linear_blocks import MLP
-from ...layers.self_attention import (
-    ConcurrentSqueezeAndExcite2d,
-    ConcurrentSqueezeAndExcite3d,
-)
+from ...layers.self_attention import (ConcurrentSqueezeAndExcite2d,
+                                      ConcurrentSqueezeAndExcite3d)
 from .classification import CatNet
 
 

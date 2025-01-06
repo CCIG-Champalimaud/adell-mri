@@ -4,36 +4,23 @@ import monai
 import numpy as np
 import torch
 from lightning.pytorch import Trainer
-from lightning.pytorch.callbacks import (
-    EarlyStopping,
-    RichProgressBar,
-    StochasticWeightAveraging,
-)
+from lightning.pytorch.callbacks import (EarlyStopping, RichProgressBar,
+                                         StochasticWeightAveraging)
 from sklearn.model_selection import StratifiedKFold, train_test_split
 
 from ...entrypoints.assemble_args import Parser
-from ...modules.classification.pl import (
-    MultipleInstanceClassifierPL,
-    TransformableTransformerPL,
-)
+from ...modules.classification.pl import (MultipleInstanceClassifierPL,
+                                          TransformableTransformerPL)
 from ...modules.config_parsing import parse_config_2d_classifier_3d
 from ...monai_transforms import get_augmentations_class as get_augmentations
 from ...monai_transforms import get_transforms_classification as get_transforms
-from ...utils import (
-    EinopsRearranged,
-    ScaleIntensityAlongDimd,
-    safe_collate,
-    set_classification_layer_bias,
-)
+from ...utils import (EinopsRearranged, ScaleIntensityAlongDimd, safe_collate,
+                      set_classification_layer_bias)
 from ...utils.batch_preprocessing import BatchPreprocessing
 from ...utils.dataset import Dataset
 from ...utils.parser import get_params, merge_args, parse_ids
-from ...utils.pl_utils import (
-    GPULock,
-    get_ckpt_callback,
-    get_devices,
-    get_logger,
-)
+from ...utils.pl_utils import (GPULock, get_ckpt_callback, get_devices,
+                               get_logger)
 from ...utils.torch_utils import get_generator_and_rng
 
 

@@ -7,15 +7,11 @@ import yaml
 
 from ...entrypoints.assemble_args import Parser
 from ...modules.object_detection import YOLONet3d
-from ...monai_transforms import (
-    get_transforms_detection_post,
-    get_transforms_detection_pre,
-)
+from ...monai_transforms import (get_transforms_detection_post,
+                                 get_transforms_detection_pre)
 from ...utils import load_anchors
-from ...utils.dataset_filters import (
-    filter_dictionary_with_filters,
-    filter_dictionary_with_presence,
-)
+from ...utils.dataset_filters import (filter_dictionary_with_filters,
+                                      filter_dictionary_with_presence)
 from ...utils.network_factories import get_detection_network
 from ...utils.pl_utils import get_devices
 

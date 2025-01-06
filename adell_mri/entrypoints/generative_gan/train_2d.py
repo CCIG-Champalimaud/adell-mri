@@ -9,12 +9,10 @@ from lightning.pytorch.callbacks import RichProgressBar
 
 from ...modules.config_parsing import parse_config_gan
 from ...monai_transforms import get_augmentations_class as get_augmentations
-from ...monai_transforms import (
-    get_post_transforms_generation as get_post_transforms,
-)
-from ...monai_transforms import (
-    get_pre_transforms_generation as get_pre_transforms,
-)
+from ...monai_transforms import \
+    get_post_transforms_generation as get_post_transforms
+from ...monai_transforms import \
+    get_pre_transforms_generation as get_pre_transforms
 from ...utils import safe_collate
 from ...utils.dicom_dataset import filter_dicom_dict_on_presence
 from ...utils.dicom_loader import DICOMDataset, SliceSampler
@@ -22,10 +20,8 @@ from ...utils.network_factories import get_gan_network
 from ...utils.parser import get_params, merge_args
 from ...utils.pl_callbacks import LogImageFromGAN
 from ...utils.pl_utils import get_ckpt_callback, get_devices, get_logger
-from ...utils.torch_utils import (
-    get_generator_and_rng,
-    load_checkpoint_to_model,
-)
+from ...utils.torch_utils import (get_generator_and_rng,
+                                  load_checkpoint_to_model)
 from ..assemble_args import Parser
 
 

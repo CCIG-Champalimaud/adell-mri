@@ -4,7 +4,8 @@ import sys
 import numpy as np
 import torch
 
-from adell_mri.modules.config_parsing import parse_config_cat, parse_config_unet
+from adell_mri.modules.config_parsing import (parse_config_cat,
+                                              parse_config_unet)
 from adell_mri.utils.network_factories import get_classification_network
 
 sys.path.append(r"..")

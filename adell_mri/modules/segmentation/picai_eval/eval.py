@@ -33,17 +33,10 @@ try:
 except ImportError:  # pragma: no cover
     pass
 
-from .analysis_utils import (
-    calculate_dsc,
-    calculate_iou,
-    label_structure,
-    parse_detection_map,
-)
-from .image_utils import (
-    read_label,
-    read_prediction,
-    resize_image_with_crop_or_pad,
-)
+from .analysis_utils import (calculate_dsc, calculate_iou, label_structure,
+                             parse_detection_map)
+from .image_utils import (read_label, read_prediction,
+                          resize_image_with_crop_or_pad)
 from .metrics import Metrics
 
 PathLike = str | Path

@@ -15,29 +15,18 @@ from ...modules.layers import ResNet
 from ...monai_transforms import get_augmentations_unet as get_augmentations
 from ...monai_transforms import get_semi_sl_transforms
 from ...monai_transforms import get_transforms_unet as get_transforms
-from ...utils import (
-    GetAllCropsd,
-    PartiallyRandomSampler,
-    RandomSlices,
-    SlicesToFirst,
-    collate_last_slice,
-    get_loss_param_dict,
-    safe_collate,
-    safe_collate_crops,
-)
+from ...utils import (GetAllCropsd, PartiallyRandomSampler, RandomSlices,
+                      SlicesToFirst, collate_last_slice, get_loss_param_dict,
+                      safe_collate, safe_collate_crops)
 from ...utils.dataset import Dataset
 from ...utils.logging import CSVLogger
 from ...utils.network_factories import get_segmentation_network
 from ...utils.parser import parse_ids
 from ...utils.pl_utils import get_ckpt_callback, get_devices, get_logger
-from ...utils.sitk_utils import (
-    get_spacing_quantile,
-    spacing_values_from_dataset_json,
-)
-from ...utils.torch_utils import (
-    get_generator_and_rng,
-    get_segmentation_sample_weights,
-)
+from ...utils.sitk_utils import (get_spacing_quantile,
+                                 spacing_values_from_dataset_json)
+from ...utils.torch_utils import (get_generator_and_rng,
+                                  get_segmentation_sample_weights)
 
 torch.backends.cudnn.benchmark = True
 

@@ -4,17 +4,19 @@ to do all of the heavy lifting and combines it with flexible condition embedding
 capabilities.
 """
 
+from typing import Callable, List
+
+import lightning.pytorch as pl
 import numpy as np
 import torch
-import lightning.pytorch as pl
-from typing import Callable, List
 
 from generative.inferers import DiffusionInferer
 from generative.networks.nets import DiffusionModelUNet
 from generative.networks.schedulers import DDPMScheduler
+
 from ..classification.pl import meta_tensors_to_tensors
-from .embedder import Embedder
 from ..learning_rate import CosineAnnealingWithWarmupLR
+from .embedder import Embedder
 
 
 class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):

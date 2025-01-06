@@ -16,7 +16,8 @@ from ...utils.dataset import Dataset
 from ...utils.network_factories import get_classification_network
 from ...utils.parser import get_params, merge_args, parse_ids
 from ...utils.pl_utils import get_devices
-from ...utils.torch_utils import get_generator_and_rng, load_checkpoint_to_model
+from ...utils.torch_utils import (get_generator_and_rng,
+                                  load_checkpoint_to_model)
 from ..assemble_args import Parser
 
 

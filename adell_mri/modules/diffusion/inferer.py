@@ -1,9 +1,10 @@
+from typing import Callable, Iterator
+
 import torch
 from tqdm import tqdm
-from typing import Callable, Iterator
-from generative.inferers import DiffusionInferer
 
 from adell_mri.modules.gan.losses import cat_if_none
+from generative.inferers import DiffusionInferer
 
 
 class DiffusionInfererSkipSteps(DiffusionInferer):

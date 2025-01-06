@@ -4,14 +4,8 @@ import torch
 
 from ...custom_types import List, ModuleList, Tuple, Union
 from .batch_ensemble import BatchEnsembleWrapper
-from .res_blocks import (
-    ConvNeXtBlock2d,
-    ConvNeXtBlock3d,
-    ResidualBlock2d,
-    ResidualBlock3d,
-    ResNeXtBlock2d,
-    ResNeXtBlock3d,
-)
+from .res_blocks import (ConvNeXtBlock2d, ConvNeXtBlock3d, ResidualBlock2d,
+                         ResidualBlock3d, ResNeXtBlock2d, ResNeXtBlock3d)
 from .standard_blocks import ConvolutionalBlock2d, ConvolutionalBlock3d
 
 

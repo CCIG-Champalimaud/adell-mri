@@ -5,37 +5,24 @@ import monai
 import numpy as np
 import torch
 from lightning.pytorch import Trainer
-from lightning.pytorch.callbacks import (
-    EarlyStopping,
-    RichProgressBar,
-    StochasticWeightAveraging,
-)
+from lightning.pytorch.callbacks import (EarlyStopping, RichProgressBar,
+                                         StochasticWeightAveraging)
 from sklearn.model_selection import StratifiedKFold, train_test_split
 
 from ...modules.classification.losses import OrdinalSigmoidalLoss
 from ...modules.config_parsing import parse_config_cat, parse_config_unet
 from ...monai_transforms import get_augmentations_class as get_augmentations
 from ...monai_transforms import get_transforms_classification as get_transforms
-from ...utils import (
-    conditional_parameter_freezing,
-    safe_collate,
-    set_classification_layer_bias,
-)
+from ...utils import (conditional_parameter_freezing, safe_collate,
+                      set_classification_layer_bias)
 from ...utils.dataset import Dataset
 from ...utils.logging import CSVLogger
 from ...utils.network_factories import get_deconfounded_classification_network
 from ...utils.parser import get_params, merge_args, parse_ids
-from ...utils.pl_utils import (
-    delete_checkpoints,
-    get_ckpt_callback,
-    get_devices,
-    get_logger,
-)
-from ...utils.torch_utils import (
-    get_class_weights,
-    get_generator_and_rng,
-    load_checkpoint_to_model,
-)
+from ...utils.pl_utils import (delete_checkpoints, get_ckpt_callback,
+                               get_devices, get_logger)
+from ...utils.torch_utils import (get_class_weights, get_generator_and_rng,
+                                  load_checkpoint_to_model)
 from ..assemble_args import Parser
 
 

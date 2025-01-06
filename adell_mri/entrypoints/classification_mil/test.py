@@ -7,10 +7,8 @@ import torch
 from lightning.pytorch import Trainer
 
 from ...entrypoints.assemble_args import Parser
-from ...modules.classification.pl import (
-    MultipleInstanceClassifierPL,
-    TransformableTransformerPL,
-)
+from ...modules.classification.pl import (MultipleInstanceClassifierPL,
+                                          TransformableTransformerPL)
 from ...modules.config_parsing import parse_config_2d_classifier_3d
 from ...monai_transforms import get_transforms_classification as get_transforms
 from ...utils import EinopsRearranged, ScaleIntensityAlongDimd, safe_collate

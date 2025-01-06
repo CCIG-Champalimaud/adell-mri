@@ -17,23 +17,14 @@ from ...modules.layers.adn_fn import get_adn_fn
 from ...modules.segmentation.pl import MIMUNetPL
 from ...monai_transforms import get_augmentations_unet as get_augmentations
 from ...monai_transforms import get_transforms_unet as get_transforms
-from ...utils import (
-    GetAllCropsd,
-    PartiallyRandomSampler,
-    RandomSlices,
-    SlicesToFirst,
-    collate_last_slice,
-    get_loss_param_dict,
-    safe_collate,
-    safe_collate_crops,
-)
+from ...utils import (GetAllCropsd, PartiallyRandomSampler, RandomSlices,
+                      SlicesToFirst, collate_last_slice, get_loss_param_dict,
+                      safe_collate, safe_collate_crops)
 from ...utils.dataset import Dataset
 from ...utils.parser import parse_ids
 from ...utils.pl_utils import get_ckpt_callback, get_devices, get_logger
-from ...utils.sitk_utils import (
-    get_spacing_quantile,
-    spacing_values_from_dataset_json,
-)
+from ...utils.sitk_utils import (get_spacing_quantile,
+                                 spacing_values_from_dataset_json)
 
 torch.backends.cudnn.benchmark = True
 
