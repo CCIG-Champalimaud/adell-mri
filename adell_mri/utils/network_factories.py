@@ -615,7 +615,7 @@ def get_generative_network(
     warmup_steps: int,
     start_decay: int,
     diffusion_steps: int,
-) -> torch.nn.Module:
+) -> DiffusionUNetPL:
     scheduler = DDPMScheduler(
         num_train_timesteps=diffusion_steps, **scheduler_config
     )
