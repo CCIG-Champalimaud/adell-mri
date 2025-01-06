@@ -72,33 +72,36 @@ class CategoricalEmbedder(torch.nn.Module):
         return next(self.embedders[-1].parameters()).device
 
     def forward(self, X: List[torch.Tensor], return_X: bool = False):
-        if isinstance(X, torch.Tensor):
-            ndim = len(X.shape)
+        X_conv = X.copy()
+        if isinstance(X_conv, torch.Tensor):
+            ndim = len(X_conv.shape)
             if ndim == 1:
-                X = X[:, None]
+                X_conv = X_conv[:, None]
             elif ndim != 2:
                 raise ValueError(
                     f"If X is a tensor it should have 1 or 2 dimensions but X has {ndim} ({X.shape})"
                 )
         elif self.convert is True:
-            for i in range(len(X)):
-                X[i] = [
+            for i in range(len(X_conv)):
+                X_conv[i] = [
                     (
                         conversion[str(x[0])]
                         if isinstance(x, np.ndarray)
                         else conversion[str(x)]
                     )
-                    for x, conversion in zip(X[i], self.conversions)
+                    for x, conversion in zip(X_conv[i], self.conversions)
                 ]
-            X = torch.as_tensor(X, device=self.device)
+            X_conv = torch.as_tensor(X_conv, device=self.device)
         out = []
-        for x, embedder in zip(X.permute(1, 0).contiguous(), self.embedders):
+        for x, embedder in zip(
+            X_conv.permute(1, 0).contiguous(), self.embedders
+        ):
             out.append(embedder(x))
         out = torch.cat(out, axis=1)
         if len(out.shape) == 2:
             out = out[:, None, :]
         if return_X is True:
-            return out, X
+            return out, X_conv
         return out
 
 

@@ -82,6 +82,7 @@ def main(arguments):
             "diffusion_steps",
             "skip_steps",
             "n_samples_gen",
+            "guidance_strength",
             "output_path",
         ]
     )
@@ -260,6 +261,7 @@ def main(arguments):
                 num_condition=curr_num,
                 uncondition_cat_idx=args.uncondition_cat_idx,
                 uncondition_num_idx=args.uncondition_num_idx,
+                guidance_strength=args.guidance_strength,
             )
             output = (
                 output.detach().float().cpu()[0].permute(3, 1, 2, 0).numpy()

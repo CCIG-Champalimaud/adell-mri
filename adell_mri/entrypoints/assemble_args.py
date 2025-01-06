@@ -716,6 +716,11 @@ argument_factory = {
     "n_samples_gen": dict(
         type=int, default=1000, help="Number of samples to generate."
     ),
+    "guidance_strength": dict(
+        type=float,
+        default=1.0,
+        help="Guidance strength for classifier-free guidance",
+    ),
     "fill_missing_with_placeholder": dict(
         type=str,
         default=None,

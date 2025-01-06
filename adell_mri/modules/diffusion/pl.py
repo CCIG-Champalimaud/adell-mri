@@ -286,6 +286,7 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
         num_condition: torch.Tensor = None,
         uncondition_cat_idx: int | list[int] | None = None,
         uncondition_num_idx: int | list[int] | None = None,
+        guidance_strength: float = 1.0,
     ) -> torch.Tensor:
         """
         Generates an image using the learned diffusion model. Can be used for:
@@ -315,13 +316,15 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
             num_condition (torch.Tensor, optional): numerical condition.
                 Defaults to None.
             uncondition_cat_idx (int | list[int] | None, optional): indices
-                corresponding to the non-conditioned categorical conditions (
-                uses the learned representation for non-conditional generation).
-                Defaults to None.
+                corresponding to the non-conditioned categorical conditions
+                (uses the learned representation for non-conditional
+                generation). Defaults to None.
             uncondition_num_idx (int | list[int] | None, optional): indices
                 corresponding to the non-conditioned numerical conditions (uses
                 the learned representation for non-conditional generation).
                 Defaults to None.
+            guidance_strength (float, optional): strength of the classifier
+                guidance. Defaults to 1.0.
 
         Returns:
             torch.Tensor: generated (or re-generated) sample.
@@ -343,19 +346,29 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
                 X_num=num_condition,
                 batch_size=n,
                 update_queues=False,
-                uncondition_cat_idx=uncondition_cat_idx,
-                uncondition_num_idx=uncondition_num_idx,
+            )
+            uncondition = self.embedder(
+                X_cat=cat_condition,
+                X_num=num_condition,
+                batch_size=n,
+                update_queues=False,
+                uncondition_cat_idx="all",
+                uncondition_num_idx="all",
             )
             if len(condition.shape) < 3:
                 condition = condition.unsqueeze(1)
+            if len(uncondition.shape) < 3:
+                uncondition = uncondition.unsqueeze(1)
         else:
-            condition = None
+            condition, uncondition = None, None
         sample = self.inferer.sample(
             input_noise=input_image,
             diffusion_model=self,
             scheduler=self.scheduler,
             conditioning=condition,
+            unconditioning=uncondition,
             skip_steps=skip_steps,
+            guidance_strength=guidance_strength,
         )
 
         return sample
