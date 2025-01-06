@@ -721,6 +721,11 @@ argument_factory = {
         default=1.0,
         help="Guidance strength for classifier-free guidance",
     ),
+    "overwrite": dict(
+        action="store_true",
+        default=False,
+        help="Overwrites existing files",
+    ),
     "fill_missing_with_placeholder": dict(
         type=str,
         default=None,
