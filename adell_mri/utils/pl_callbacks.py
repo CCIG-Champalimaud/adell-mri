@@ -536,10 +536,13 @@ class ModelCheckpointWithMetadata(ModelCheckpoint):
 
 class EMACallback(Callback):
     """
-    Model Exponential Moving Average. Empirically it has been found that using the moving average
-    of the trained parameters of a deep network is better than using its trained parameters directly.
+    Model Exponential Moving Average. Empirically it has been found that using
+    the moving average
+    of the trained parameters of a deep network is better than using its trained
+    parameters directly.
 
-    If `use_ema_weights`, then the ema parameters of the network is set after training end.
+    If `use_ema_weights`, then the ema parameters of the network is set after
+    training end.
     """
 
     def __init__(
