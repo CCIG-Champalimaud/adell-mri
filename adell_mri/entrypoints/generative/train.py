@@ -1,5 +1,4 @@
 import sys
-
 import monai
 import torch
 from lightning.pytorch import Trainer
