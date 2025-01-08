@@ -274,7 +274,7 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
         """
         return next(self.parameters()).device
 
-    @torch.inference_mode()
+    @torch.inference_mode
     def generate_image(
         self,
         size: List[int],
