@@ -73,6 +73,7 @@ def main(arguments):
             "overrides",
             "dev",
             "n_workers",
+            "precision",
             "seed",
             "checkpoint",
             "batch_size",
@@ -163,7 +164,13 @@ def main(arguments):
         num_condition = [c.split("=") for c in args.num_condition]
         num_condition = {k: float(v) for k, v in num_condition}
 
-    inference_dtype = torch.float16
+    if args.precision == "32":
+        inference_dtype = torch.float32
+    elif args.precision == "16":
+        inference_dtype = torch.float16
+    else:
+        print("Invalid precision. Using 32-bit precision.")
+        inference_dtype = torch.float32
     network = network.eval()
     network = torch.compile(network)
     network = network.to(dtype=inference_dtype)
@@ -239,7 +246,7 @@ def main(arguments):
                 and args.overwrite is False
             ):
                 continue
-            images = data["image"].to(args.dev).float()
+            images = data["image"].to(args.dev)
             curr_cat, curr_num = None, None
             if args.cat_condition_keys is not None:
                 curr_cat = [[] for _ in range(len(data["key"]))]
