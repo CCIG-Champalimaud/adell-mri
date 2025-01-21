@@ -12,7 +12,8 @@ from ...modules.config_parsing import parse_config_ssl, parse_config_unet
 from ...modules.layers import ResNet
 from ...modules.segmentation.pl import evaluate, get_lesions, get_metric_dict
 from ...monai_transforms import get_transforms_unet as get_transforms
-from ...utils import SlicesToFirst, collate_last_slice, safe_collate
+from ...utils.monai_transforms import SlicesToFirst
+from ...utils.utils import collate_last_slice, safe_collate
 from ...utils.dataset import Dataset
 from ...utils.inference import SegmentationInference, TensorListReduction
 from ...utils.network_factories import get_segmentation_network

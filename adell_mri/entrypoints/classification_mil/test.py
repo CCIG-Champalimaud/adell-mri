@@ -13,7 +13,8 @@ from ...modules.classification.pl import (
 )
 from ...modules.config_parsing import parse_config_2d_classifier_3d
 from ...monai_transforms import get_transforms_classification as get_transforms
-from ...utils import EinopsRearranged, ScaleIntensityAlongDimd, safe_collate
+from ...utils.utils import safe_collate
+from ...utils.monai_transforms import EinopsRearranged, ScaleIntensityAlongDimd
 from ...utils.dataset import Dataset
 from ...utils.parser import get_params, merge_args, parse_ids
 from ...utils.pl_utils import get_devices

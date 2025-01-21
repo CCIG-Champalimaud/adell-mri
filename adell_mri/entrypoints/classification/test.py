@@ -10,7 +10,7 @@ from ...modules.classification.losses import OrdinalSigmoidalLoss
 from ...modules.classification.pl import AveragingEnsemblePL
 from ...modules.config_parsing import parse_config_cat, parse_config_unet
 from ...monai_transforms import get_transforms_classification as get_transforms
-from ...utils import safe_collate
+from ...utils.utils import safe_collate
 from ...utils.bootstrap_metrics import bootstrap_metric
 from ...utils.dataset import Dataset
 from ...utils.network_factories import get_classification_network

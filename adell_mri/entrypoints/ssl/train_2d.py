@@ -17,7 +17,7 @@ from ...monai_transforms import (
     get_post_transforms_ssl,
     get_pre_transforms_ssl,
 )
-from ...utils import ExponentialMovingAverage, safe_collate
+from ...utils.utils import ExponentialMovingAverage, safe_collate
 from ...utils.dicom_dataset import (
     filter_dicom_dict_by_size,
     filter_dicom_dict_on_presence,

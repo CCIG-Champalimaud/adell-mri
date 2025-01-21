@@ -16,9 +16,9 @@ from ...modules.classification.losses import OrdinalSigmoidalLoss
 from ...modules.config_parsing import parse_config_cat, parse_config_unet
 from ...monai_transforms import get_augmentations_class as get_augmentations
 from ...monai_transforms import get_transforms_classification as get_transforms
-from ...utils import (
+from ...utils.utils import safe_collate
+from ...utils.torch_utils import (
     conditional_parameter_freezing,
-    safe_collate,
     set_classification_layer_bias,
 )
 from ...utils.dataset import Dataset

@@ -15,16 +15,14 @@ from ...modules.layers import ResNet
 from ...monai_transforms import get_augmentations_unet as get_augmentations
 from ...monai_transforms import get_semi_sl_transforms
 from ...monai_transforms import get_transforms_unet as get_transforms
-from ...utils import (
-    GetAllCropsd,
-    PartiallyRandomSampler,
-    RandomSlices,
-    SlicesToFirst,
+from ...utils.monai_transforms import GetAllCropsd, SlicesToFirst, RandomSlices
+from ...utils.utils import (
     collate_last_slice,
     get_loss_param_dict,
     safe_collate,
     safe_collate_crops,
 )
+from ...utils.samplers import PartiallyRandomSampler
 from ...utils.dataset import Dataset
 from ...utils.logging import CSVLogger
 from ...utils.network_factories import get_segmentation_network

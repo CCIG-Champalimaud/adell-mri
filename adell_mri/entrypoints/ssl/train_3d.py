@@ -15,7 +15,7 @@ from ...monai_transforms import (
     get_post_transforms_ssl,
     get_pre_transforms_ssl,
 )
-from ...utils import ExponentialMovingAverage, safe_collate
+from ...utils.utils import ExponentialMovingAverage, safe_collate
 from ...utils.dataset import Dataset
 from ...utils.network_factories import get_ssl_network
 from ...utils.pl_utils import get_ckpt_callback, get_devices, get_logger

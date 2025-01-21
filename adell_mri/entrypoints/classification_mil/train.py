@@ -19,12 +19,9 @@ from ...modules.classification.pl import (
 from ...modules.config_parsing import parse_config_2d_classifier_3d
 from ...monai_transforms import get_augmentations_class as get_augmentations
 from ...monai_transforms import get_transforms_classification as get_transforms
-from ...utils import (
-    EinopsRearranged,
-    ScaleIntensityAlongDimd,
-    safe_collate,
-    set_classification_layer_bias,
-)
+from ...utils.monai_transforms import EinopsRearranged, ScaleIntensityAlongDimd
+from ...utils.utils import safe_collate
+from ...utils.torch_utils import set_classification_layer_bias
 from ...utils.batch_preprocessing import BatchPreprocessing
 from ...utils.dataset import Dataset
 from ...utils.parser import get_params, merge_args, parse_ids

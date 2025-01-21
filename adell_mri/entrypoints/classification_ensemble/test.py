@@ -15,7 +15,7 @@ from ...modules.config_parsing import (
 )
 from ...modules.losses import OrdinalSigmoidalLoss
 from ...monai_transforms import get_transforms_classification as get_transforms
-from ...utils import safe_collate
+from ...utils.utils import safe_collate
 from ...utils.dataset_filters import (
     filter_dictionary_with_filters,
     filter_dictionary_with_possible_labels,

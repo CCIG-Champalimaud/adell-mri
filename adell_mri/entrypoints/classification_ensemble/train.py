@@ -18,11 +18,12 @@ from ...modules.config_parsing import (
 from ...modules.losses import OrdinalSigmoidalLoss
 from ...monai_transforms import get_augmentations_class as get_augmentations
 from ...monai_transforms import get_transforms_classification as get_transforms
-from ...utils import (
+from ...utils.utils import safe_collate
+from ...utils.torch_utils import (
     conditional_parameter_freezing,
-    safe_collate,
     set_classification_layer_bias,
 )
+
 from ...utils.dataset import Dataset
 from ...utils.network_factories import get_classification_network
 from ...utils.parser import get_params, merge_args, parse_ids

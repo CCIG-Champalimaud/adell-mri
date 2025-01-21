@@ -12,12 +12,9 @@ from ...monai_transforms import (
 from ...monai_transforms import (
     get_pre_transforms_generation as get_pre_transforms,
 )
-from ...utils import (
-    RandomSlices,
-    collate_last_slice,
-    conditional_parameter_freezing,
-    safe_collate,
-)
+from ...utils.torch_utils import conditional_parameter_freezing
+from ...utils.monai_transforms import RandomSlices
+from ...utils.utils import collate_last_slice, safe_collate
 from ...utils.dataset import Dataset
 from ...utils.network_factories import get_generative_network
 from ...utils.parser import compose, get_params, merge_args

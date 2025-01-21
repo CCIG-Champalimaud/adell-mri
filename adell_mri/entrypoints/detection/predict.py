@@ -11,7 +11,7 @@ from ...monai_transforms import (
     get_transforms_detection_post,
     get_transforms_detection_pre,
 )
-from ...utils import load_anchors
+from ...utils.utils import load_anchors
 from ...utils.dataset_filters import (
     filter_dictionary_with_filters,
     filter_dictionary_with_presence,

@@ -15,7 +15,7 @@ from ...monai_transforms import (
 from ...monai_transforms import (
     get_pre_transforms_generation as get_pre_transforms,
 )
-from ...utils import safe_collate
+from ...utils.utils import safe_collate
 from ...utils.dicom_dataset import filter_dicom_dict_on_presence
 from ...utils.dicom_loader import DICOMDataset, SliceSampler
 from ...utils.network_factories import get_gan_network

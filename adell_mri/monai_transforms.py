@@ -16,7 +16,7 @@ from .modules.semi_supervised_segmentation.utils import (
     convert_arguments_post,
     convert_arguments_pre,
 )
-from .utils import (
+from .utils.monai_transforms import (
     AdjustSizesd,
     BBToAdjustedAnchorsd,
     CombineBinaryLabelsd,
