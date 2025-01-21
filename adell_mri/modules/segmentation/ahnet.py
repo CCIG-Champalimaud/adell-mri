@@ -1,8 +1,12 @@
 import torch
 
 from ..layers.adn_fn import ActDropNorm
-from ..layers.ah_blocks import (AHNetDecoder3d, AnysotropicHybridInput,
-                                AnysotropicHybridResidual, Refine2d)
+from ..layers.ah_blocks import (
+    AHNetDecoder3d,
+    AnysotropicHybridInput,
+    AnysotropicHybridResidual,
+    Refine2d,
+)
 from ..layers.multi_resolution import GCN2d, PyramidSpatialPooling3d
 
 
@@ -159,8 +163,7 @@ class AHNet(torch.nn.Module):
         )
 
         self.decoder_ops_3d = [
-            AHNetDecoder3d(n_out, self.adn_fn, adn_args)
-            for _ in range(self.n_layers)
+            AHNetDecoder3d(n_out, self.adn_fn, adn_args) for _ in range(self.n_layers)
         ]
 
         # this could perhaps be changed to an atrous operation

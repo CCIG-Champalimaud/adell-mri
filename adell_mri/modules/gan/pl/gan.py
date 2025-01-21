@@ -15,8 +15,7 @@ import torch.optim
 from ...diffusion.embedder import Embedder
 from ..discriminator import Discriminator
 from ..generator import Generator
-from ..losses import (SemiSLAdversarialLoss, SemiSLRelativisticGANLoss,
-                      SemiSLWGANGPLoss)
+from ..losses import SemiSLAdversarialLoss, SemiSLRelativisticGANLoss, SemiSLWGANGPLoss
 
 
 def mean(x: list[torch.Tensor]) -> torch.Tensor:
@@ -89,11 +88,7 @@ def patchify(
     if y is not None:
         if isinstance(y, list):
             y = [
-                (
-                    torch.repeat_interleave(y_, n_patches, 0)
-                    if y_ is not None
-                    else None
-                )
+                (torch.repeat_interleave(y_, n_patches, 0) if y_ is not None else None)
                 for y_ in y
             ]
         else:
@@ -486,12 +481,8 @@ class GANPL(pl.LightningModule):
             reg_target=reg_target,
         )
         if self.lambda_feature_matching > 0.0:
-            _, _, _, real_feat = self.apply_discriminator(
-                real_samples, discriminator
-            )
-            losses["feature_matching"] = self.feature_matching_loss(
-                gen_feat, real_feat
-            )
+            _, _, _, real_feat = self.apply_discriminator(real_samples, discriminator)
+            losses["feature_matching"] = self.feature_matching_loss(gen_feat, real_feat)
         if self.lambda_feature_map_matching > 0.0:
             if real_feat is None:
                 _, _, _, real_feat = self.apply_discriminator(
@@ -659,18 +650,14 @@ class GANPL(pl.LightningModule):
         # optimize discriminator
         self.optimization_step_and_logging(
             optimizers=opt_d,
-            step_fns={
-                "d": {"step_fn": self.step_discriminator, "kwargs": kwargs}
-            },
+            step_fns={"d": {"step_fn": self.step_discriminator, "kwargs": kwargs}},
         )
 
         # optimize generator
         if batch_idx % self.n_critic == 0:
             self.optimization_step_and_logging(
                 optimizers=opt_g,
-                step_fns={
-                    "g": {"step_fn": self.step_generator, "kwargs": kwargs}
-                },
+                step_fns={"g": {"step_fn": self.step_generator, "kwargs": kwargs}},
             )
 
     def cycle_consistency_optimization(
@@ -795,9 +782,7 @@ class GANPL(pl.LightningModule):
             return x
 
         return torch.multiply(
-            F.mse_loss(
-                pool_if_necessary(x_1).mean(0), pool_if_necessary(x_2).mean(0)
-            ),
+            F.mse_loss(pool_if_necessary(x_1).mean(0), pool_if_necessary(x_2).mean(0)),
             self.lambda_feature_matching,
         )
 
@@ -823,9 +808,7 @@ class GANPL(pl.LightningModule):
             self.lambda_feature_map_matching,
         )
 
-    def identity_loss(
-        self, x_1: torch.Tensor, x_2: torch.Tensor
-    ) -> torch.Tensor:
+    def identity_loss(self, x_1: torch.Tensor, x_2: torch.Tensor) -> torch.Tensor:
         """
         MSE between ``x_1`` and ``x_2``.
 
@@ -1054,9 +1037,7 @@ class GANPL(pl.LightningModule):
     def train_dataloader(self) -> torch.utils.data.DataLoader:
         return self.training_dataloader_call(self.batch_size)
 
-    def set_require_grad(
-        self, optimizer: torch.optim.Optimizer, requires_grad: bool
-    ):
+    def set_require_grad(self, optimizer: torch.optim.Optimizer, requires_grad: bool):
         """
         Sets ``parameter.require_grad`` to ``requires_grad`` in an optimizer for
         all groups.
@@ -1247,12 +1228,7 @@ class GANPL(pl.LightningModule):
             optimizers.extend([opt_gen_cycle, opt_disc_cycle])
 
         schedulers = []
-        if all(
-            [
-                hasattr(self, k)
-                for k in ["epochs", "steps_per_epoch", "pct_start"]
-            ]
-        ):
+        if all([hasattr(self, k) for k in ["epochs", "steps_per_epoch", "pct_start"]]):
             if self.epochs is not None and self.steps_per_epoch is not None:
                 for opt in optimizers:
                     sch = torch.optim.lr_scheduler.OneCycleLR(
@@ -1409,9 +1385,7 @@ class RelativisticGANPL(GANPL):
             reg_target=reg_target,
         )
         if self.lambda_feature_matching > 0.0:
-            losses["feature_matching"] = self.feature_matching_loss(
-                gen_feat, real_feat
-            )
+            losses["feature_matching"] = self.feature_matching_loss(gen_feat, real_feat)
         if self.lambda_feature_map_matching > 0.0:
             losses["feature_map_matching"] = self.feature_map_matching_loss(
                 gen_feat, real_feat

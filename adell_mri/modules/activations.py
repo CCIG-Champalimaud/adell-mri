@@ -45,9 +45,7 @@ def elu_gradient(act_fn: torch.nn.ELU, x: torch.Tensor) -> torch.Tensor:
     return torch.where(x > 0, torch.ones_like(x), act_fn.alpha * np.exp(x))
 
 
-def hard_shrink_gradient(
-    act_fn: torch.nn.Hardshrink, x: torch.Tensor
-) -> torch.Tensor:
+def hard_shrink_gradient(act_fn: torch.nn.Hardshrink, x: torch.Tensor) -> torch.Tensor:
     """
     Implementation of the gradient of the hard shrink activation function.
 
@@ -65,9 +63,7 @@ def hard_shrink_gradient(
     )
 
 
-def hard_tanh_gradient(
-    act_fn: torch.nn.Hardtanh, x: torch.Tensor
-) -> torch.Tensor:
+def hard_tanh_gradient(act_fn: torch.nn.Hardtanh, x: torch.Tensor) -> torch.Tensor:
     """
     Implementation of the gradient of the hard tanh activation function.
 
@@ -86,9 +82,7 @@ def hard_tanh_gradient(
     )
 
 
-def leaky_relu_gradient(
-    act_fn: torch.nn.LeakyReLU, x: torch.Tensor
-) -> torch.Tensor:
+def leaky_relu_gradient(act_fn: torch.nn.LeakyReLU, x: torch.Tensor) -> torch.Tensor:
     """
     Implementation of the gradient of the leaky relu activation function.
 
@@ -103,9 +97,7 @@ def leaky_relu_gradient(
     return torch.where(x > 0, o, o * act_fn.negative_slope)
 
 
-def logsigmoid_gradient(
-    act_fn: torch.nn.LogSigmoid, x: torch.Tensor
-) -> torch.Tensor:
+def logsigmoid_gradient(act_fn: torch.nn.LogSigmoid, x: torch.Tensor) -> torch.Tensor:
     """
     Implementation of the gradient of the log sigmoid activation function.
 
@@ -211,9 +203,7 @@ def sigmoid_gradient(act_fn: torch.nn.Sigmoid, x: torch.Tensor) -> torch.Tensor:
     return sx * (1 - sx)
 
 
-def softplus_gradient(
-    act_fn: torch.nn.Softplus, x: torch.Tensor
-) -> torch.Tensor:
+def softplus_gradient(act_fn: torch.nn.Softplus, x: torch.Tensor) -> torch.Tensor:
     """
     Implementation of the gradient of the softplus activation function.
 
@@ -227,9 +217,7 @@ def softplus_gradient(
     return torch.exp(x) / (1 + torch.exp(x))
 
 
-def soft_shrink_gradient(
-    act_fn: torch.nn.Softshrink, x: torch.Tensor
-) -> torch.Tensor:
+def soft_shrink_gradient(act_fn: torch.nn.Softshrink, x: torch.Tensor) -> torch.Tensor:
     """
     Implementation of the gradient of the soft shrink activation function.
 
@@ -243,9 +231,7 @@ def soft_shrink_gradient(
     return hard_shrink_gradient(act_fn, x)
 
 
-def softsign_gradient(
-    act_fn: torch.nn.Softsign, x: torch.Tensor
-) -> torch.Tensor:
+def softsign_gradient(act_fn: torch.nn.Softsign, x: torch.Tensor) -> torch.Tensor:
     """
     Implementation of the gradient of the softsign activation function.0
 
@@ -273,9 +259,7 @@ def tanh_gradient(act_fn: torch.nn.Tanh, x: torch.Tensor) -> torch.Tensor:
     return 1 - torch.square(act_fn(x))
 
 
-def tanh_shrink_gradient(
-    act_fn: torch.nn.Tanhshrink, x: torch.Tensor
-) -> torch.Tensor:
+def tanh_shrink_gradient(act_fn: torch.nn.Tanhshrink, x: torch.Tensor) -> torch.Tensor:
     """
     Implementation of the gradient of the tanh shrink activation function.
 
@@ -391,9 +375,7 @@ class NormalizedActivation(torch.nn.Module):
 
         if self.act_str not in activation_gradient_factory:
             raise NotImplementedError(
-                "gradient for activation {} not implemented".format(
-                    self.act_str
-                )
+                "gradient for activation {} not implemented".format(self.act_str)
             )
 
         self.act = activation_factory[self.act_str]()

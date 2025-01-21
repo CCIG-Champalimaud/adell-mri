@@ -50,9 +50,7 @@ class Discriminator(torch.nn.Module):
         self.net_type = backbone
         self.n_channels = n_channels
         self.additional_features = additional_features
-        self.additional_classification_targets = (
-            additional_classification_targets
-        )
+        self.additional_classification_targets = additional_classification_targets
         self.additional_regression_targets = additional_regression_targets
         self.noise_std = noise_std
         self.network_args = args
@@ -122,8 +120,7 @@ class Discriminator(torch.nn.Module):
             self.additional_classifiers = torch.nn.ModuleList(
                 [
                     MLP(
-                        self.backbone.output_features
-                        + self.additional_features,
+                        self.backbone.output_features + self.additional_features,
                         n_classes,
                         structure=[
                             self.backbone.output_features,
@@ -180,19 +177,13 @@ class Discriminator(torch.nn.Module):
             X = X.flatten(start_dim=2).max(-1).values
         if self.additional_features > 0:
             if X_features is None:
-                raise ValueError(
-                    "additional_features > 0 but X_features is None"
-                )
+                raise ValueError("additional_features > 0 but X_features is None")
             X = torch.cat([X, X_features], dim=1)
         classification = self.classifier(
-            X
-            if self.noise_std == 0
-            else X + torch.randn_like(X) * self.noise_std
+            X if self.noise_std == 0 else X + torch.randn_like(X) * self.noise_std
         )
         if self.additional_classification_targets:
-            additional_classifications = [
-                cl(X) for cl in self.additional_classifiers
-            ]
+            additional_classifications = [cl(X) for cl in self.additional_classifiers]
         if self.additional_regression_targets:
             additional_regressions = self.additional_regressors(X)
 

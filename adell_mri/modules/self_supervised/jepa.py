@@ -114,9 +114,7 @@ class IJEPA(torch.nn.Module):
             self.predictor_ = arch(**self.projection_head_args)
 
     def initialize_mask_token(self):
-        self.mask_token_ = torch.nn.Parameter(
-            torch.rand(self.n_encoder_features)
-        )
+        self.mask_token_ = torch.nn.Parameter(torch.rand(self.n_encoder_features))
 
     def reduce(self, X: torch.Tensor) -> torch.Tensor:
         if self.model_type_ == "transformer":

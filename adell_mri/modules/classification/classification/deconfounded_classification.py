@@ -87,10 +87,7 @@ class DeconfoundedNet(VGG):
 
     def forward(
         self, X: torch.Tensor, return_features: bool = False
-    ) -> (
-        Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]
-        | torch.Tensor
-    ):
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor] | torch.Tensor:
         """Forward method.
 
         Args:
@@ -223,9 +220,9 @@ class DeconfoundedNetGeneric(torch.nn.Module):
             example = torch.rand(1, self.n_channels, 64, 64)
         elif self.n_dim == 3:
             example = torch.rand(1, self.n_channels, 64, 64, 16)
-        self.n_output_features = (
-            self.feature_extraction_module.forward_features(example).shape[1]
-        )
+        self.n_output_features = self.feature_extraction_module.forward_features(
+            example
+        ).shape[1]
 
     def init_feature_extractor_if_necessary(self):
         if isinstance(self.feature_extraction_module, str):
@@ -289,10 +286,7 @@ class DeconfoundedNetGeneric(torch.nn.Module):
 
     def forward(
         self, X: torch.Tensor, return_features: bool = False
-    ) -> (
-        Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]
-        | torch.Tensor
-    ):
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor] | torch.Tensor:
         """Forward method.
 
         Args:
@@ -357,16 +351,12 @@ class CategoricalConversion(torch.nn.Module):
     def init_conversion(self):
         self.conversions = []
         for key_list in self.key_lists:
-            self.conversions.append(
-                {str(key): i for i, key in enumerate(key_list)}
-            )
+            self.conversions.append({str(key): i for i, key in enumerate(key_list)})
 
     def forward(self, X: List[str]) -> List[torch.Tensor]:
         assert len(X[0]) == len(self.key_lists)
         for i in range(len(X)):
-            X[i] = [
-                conversion[x] for x, conversion in zip(X[i], self.conversions)
-            ]
+            X[i] = [conversion[x] for x, conversion in zip(X[i], self.conversions)]
         output = [
             torch.as_tensor([X[j][i] for j in range(len(X))]).long()
             for i in range(len(X[0]))

@@ -134,9 +134,7 @@ class MultipleInstanceClassifier(torch.nn.Module):
         self.attention = attention
         self.reduce_fn = reduce_fn
 
-        self.vol_to_2d = einops.layers.torch.Rearrange(
-            "b c h w s -> (b s) c h w"
-        )
+        self.vol_to_2d = einops.layers.torch.Rearrange("b c h w s -> (b s) c h w")
         self.rep_to_emb = einops.layers.torch.Rearrange(
             "(b s) v -> b s v", s=self.n_slices
         )
@@ -236,9 +234,7 @@ class MultipleInstanceClassifier(torch.nn.Module):
             out = out.sum(-2)
             return self.final_prediction(out), A
 
-    def forward(
-        self, X: torch.Tensor, return_attention: bool = False
-    ) -> torch.Tensor:
+    def forward(self, X: torch.Tensor, return_attention: bool = False) -> torch.Tensor:
         """Forward pass.
 
         Args:
@@ -334,9 +330,7 @@ class TransformableTransformer(torch.nn.Module):
         self.use_class_token = use_class_token
         self.reduce_fn = reduce_fn
 
-        self.vol_to_2d = einops.layers.torch.Rearrange(
-            "b c h w s -> (b s) c h w"
-        )
+        self.vol_to_2d = einops.layers.torch.Rearrange("b c h w s -> (b s) c h w")
         self.rep_to_emb = einops.layers.torch.Rearrange(
             "(b s) v -> b s v", s=self.n_slices
         )
@@ -402,9 +396,7 @@ class TransformableTransformer(torch.nn.Module):
         """
         dim = 2 + self.dim
         for i in range(X.shape[dim]):
-            curr_idx = [
-                i if j == dim else slice(0, None) for j in range(len(X.shape))
-            ]
+            curr_idx = [i if j == dim else slice(0, None) for j in range(len(X.shape))]
             yield X[tuple(curr_idx)]
 
     def extract_features(self, X: torch.Tensor) -> torch.Tensor:
@@ -434,9 +426,7 @@ class TransformableTransformer(torch.nn.Module):
         X = self.rep_to_emb(X)
         return X
 
-    def forward(
-        self, X: torch.Tensor, return_attention: bool = False
-    ) -> torch.Tensor:
+    def forward(self, X: torch.Tensor, return_attention: bool = False) -> torch.Tensor:
         """Forward pass.
 
         Args:
@@ -459,9 +449,7 @@ class TransformableTransformer(torch.nn.Module):
                 class_token = einops.repeat(
                     self.class_token, "() n e -> b n e", b=batch_size
                 )
-                ssl_representation = torch.concat(
-                    [class_token, ssl_representation], 1
-                )
+                ssl_representation = torch.concat([class_token, ssl_representation], 1)
         transformer_output = self.tbs(
             ssl_representation, return_attention=return_attention
         )

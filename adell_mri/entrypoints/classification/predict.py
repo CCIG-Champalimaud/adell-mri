@@ -162,9 +162,7 @@ def main(arguments):
         if args.n_classes == 2:
             network_config["loss_fn"] = torch.nn.BCEWithLogitsLoss()
         elif args.net_type == "ord":
-            network_config["loss_fn"] = OrdinalSigmoidalLoss(
-                n_classes=args.n_classes
-            )
+            network_config["loss_fn"] = OrdinalSigmoidalLoss(n_classes=args.n_classes)
         else:
             network_config["loss_fn"] = torch.nn.CrossEntropy()
 
@@ -202,9 +200,7 @@ def main(arguments):
 
             state_dict = torch.load(checkpoint)["state_dict"]
             state_dict = {
-                k: state_dict[k]
-                for k in state_dict
-                if "loss_fn.weight" not in k
+                k: state_dict[k] for k in state_dict if "loss_fn.weight" not in k
             }
             network.load_state_dict(state_dict)
             network = network.eval().to(args.dev)
@@ -216,9 +212,7 @@ def main(arguments):
                 "predictions": {},
             }
             with tqdm(total=len(curr_prediction_ids)) as pbar:
-                for identifier, element in zip(
-                    curr_prediction_ids, prediction_dataset
-                ):
+                for identifier, element in zip(curr_prediction_ids, prediction_dataset):
                     pbar.set_description("Predicting {}".format(identifier))
                     if "tabular" in element:
                         output = network.forward(

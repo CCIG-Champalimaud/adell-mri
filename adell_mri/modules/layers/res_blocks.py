@@ -84,9 +84,7 @@ class ResidualBlock2d(torch.nn.Module):
         # convolve residual connection to match possible difference in
         # output channels
         if self.in_channels != self.out_channels:
-            self.final_op = torch.nn.Conv2d(
-                self.in_channels, self.out_channels, 1
-            )
+            self.final_op = torch.nn.Conv2d(self.in_channels, self.out_channels, 1)
         else:
             self.final_op = torch.nn.Identity()
 
@@ -95,9 +93,7 @@ class ResidualBlock2d(torch.nn.Module):
     def forward(self, X: torch.Tensor, skip_activation: bool = None):
         out = self.final_op(self.op(X) + X)
         skip_activation = (
-            skip_activation
-            if skip_activation is not None
-            else self.skip_activation
+            skip_activation if skip_activation is not None else self.skip_activation
         )
         if skip_activation is not True:
             out = self.adn_op(out)
@@ -182,9 +178,7 @@ class ResidualBlock3d(torch.nn.Module):
         # convolve residual connection to match possible difference in
         # output channels
         if self.in_channels != self.out_channels:
-            self.final_op = torch.nn.Conv3d(
-                self.in_channels, self.out_channels, 1
-            )
+            self.final_op = torch.nn.Conv3d(self.in_channels, self.out_channels, 1)
         else:
             self.final_op = torch.nn.Identity()
 
@@ -193,9 +187,7 @@ class ResidualBlock3d(torch.nn.Module):
     def forward(self, X: torch.Tensor, skip_activation: bool = None):
         out = self.final_op(self.op(X) + X)
         skip_activation = (
-            skip_activation
-            if skip_activation is not None
-            else self.skip_activation
+            skip_activation if skip_activation is not None else self.skip_activation
         )
         if skip_activation is not True:
             out = self.adn_op(out)
@@ -298,9 +290,7 @@ class ResNeXtBlock2d(torch.nn.Module):
     def init_layers(self):
         if self.inter_channels is None:
             self.inter_channels = self.output_channels
-        self.n_channels_splits = split_int_into_n(
-            self.inter_channels, n=self.n_splits
-        )
+        self.n_channels_splits = split_int_into_n(self.inter_channels, n=self.n_splits)
         self.ops = torch.nn.ModuleList([])
         for n_channels in self.n_channels_splits:
             op = torch.nn.Sequential(
@@ -319,9 +309,7 @@ class ResNeXtBlock2d(torch.nn.Module):
         # convolve residual connection to match possible difference in
         # output channels
         if self.in_channels != self.out_channels:
-            self.skip_op = torch.nn.Conv3d(
-                self.in_channels, self.out_channels, 1
-            )
+            self.skip_op = torch.nn.Conv3d(self.in_channels, self.out_channels, 1)
         else:
             self.skip_op = torch.nn.Identity()
 
@@ -329,9 +317,7 @@ class ResNeXtBlock2d(torch.nn.Module):
 
     def forward(self, X: torch.Tensor, skip_activation: bool = None):
         skip_activation = (
-            skip_activation
-            if skip_activation is not None
-            else self.skip_activation
+            skip_activation if skip_activation is not None else self.skip_activation
         )
         out = self.op(X) + self.skip_op(X)
         if skip_activation is not True:
@@ -390,9 +376,7 @@ class ResNeXtBlock3d(torch.nn.Module):
     def init_layers(self):
         if self.inter_channels is None:
             self.inter_channels = self.output_channels
-        self.n_channels_splits = split_int_into_n(
-            self.inter_channels, n=self.n_splits
-        )
+        self.n_channels_splits = split_int_into_n(self.inter_channels, n=self.n_splits)
         self.ops = torch.nn.ModuleList([])
         for n_channels in self.n_channels_splits:
             op = torch.nn.Sequential(
@@ -411,9 +395,7 @@ class ResNeXtBlock3d(torch.nn.Module):
         # convolve residual connection to match possible difference in
         # output channels
         if self.in_channels != self.out_channels:
-            self.skip_op = torch.nn.Conv3d(
-                self.in_channels, self.out_channels, 1
-            )
+            self.skip_op = torch.nn.Conv3d(self.in_channels, self.out_channels, 1)
         else:
             self.skip_op = torch.nn.Identity()
 
@@ -421,9 +403,7 @@ class ResNeXtBlock3d(torch.nn.Module):
 
     def forward(self, X: torch.Tensor, skip_activation: bool = None):
         skip_activation = (
-            skip_activation
-            if skip_activation is not None
-            else self.skip_activation
+            skip_activation if skip_activation is not None else self.skip_activation
         )
         out = self.op(X) + self.skip_op(X)
         if skip_activation is not True:

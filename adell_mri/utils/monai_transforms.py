@@ -13,8 +13,7 @@ from skimage import measure
 from skimage.morphology import convex_hull_image
 from sklearn.cluster import DBSCAN
 
-from ..custom_types import (NDArrayOrTensorDict, Size2dOr3d, TensorDict,
-                            TensorOrNDarray)
+from ..custom_types import NDArrayOrTensorDict, Size2dOr3d, TensorDict, TensorOrNDarray
 
 
 def normalize_along_slice(
@@ -42,16 +41,12 @@ def normalize_along_slice(
     assert dim < len(sh)
     assert (
         max_value > min_value
-    ), "max_value {} must be larger than min_value {}".format(
-        max_value, min_value
-    )
+    ), "max_value {} must be larger than min_value {}".format(max_value, min_value)
     if dim < 0:
         dim = len(sh) + dim
     dims = ["c", "h", "w", "d"]
     lhs = " ".join(dims)
-    rhs = "{} ({})".format(
-        dims[dim], " ".join([d for d in dims if d != dims[dim]])
-    )
+    rhs = "{} ({})".format(dims[dim], " ".join([d for d in dims if d != dims[dim]]))
     average_shape = [1 if i != dim else sh[dim] for i in range(len(sh))]
     flat_X = einops.rearrange(X, "{} -> {}".format(lhs, rhs))
     dim_max = flat_X.max(-1).values.reshape(average_shape)
@@ -134,9 +129,7 @@ class ConvertToOneHot(monai.transforms.Transform):
     several binary class problems into a single multi-class problem.
     """
 
-    def __init__(
-        self, keys: str, out_key: str, priority_key: str, bg: bool = True
-    ):
+    def __init__(self, keys: str, out_key: str, priority_key: str, bg: bool = True):
         """
         Args:
             keys (str): keys that willbe used to construct the one-hot
@@ -486,9 +479,7 @@ class BBToAdjustedAnchors(monai.transforms.Transform):
         bb_vertices = np.array(bb_vertices)
         if len(bb_vertices.shape) < 2:
             bb_vertices = bb_vertices[np.newaxis, :]
-        bb_vertices = np.stack(
-            [bb_vertices[:, :3], bb_vertices[:, 3:]], axis=-1
-        )
+        bb_vertices = np.stack([bb_vertices[:, :3], bb_vertices[:, 3:]], axis=-1)
         # bb_vertices[:,:,1]-bb_vertices[:,:,0]
         output = np.zeros([1 + 7 * len(self.long_anchors), *self.output_sh])
         # no vertices present
@@ -504,9 +495,7 @@ class BBToAdjustedAnchors(monai.transforms.Transform):
         for i in range(rel_bb_vert.shape[0]):
             hits = 0
             all_iou = []
-            rel_bb_size = np.subtract(
-                rel_bb_vert[i, :, 1], rel_bb_vert[i, :, 0]
-            )
+            rel_bb_size = np.subtract(rel_bb_vert[i, :, 1], rel_bb_vert[i, :, 0])
             center = np.mean(rel_bb_vert[i, :, :], axis=-1)
             bb_vol = np.prod(rel_bb_size + 1 / rel_sh)
             cl = classes[i]
@@ -524,9 +513,7 @@ class BBToAdjustedAnchors(monai.transforms.Transform):
                 union_vol = anchor_vol + bb_vol - inter_vol
 
                 iou = inter_vol / union_vol
-                intersection_idx = np.logical_and(
-                    iou > self.iou_thresh, intersects
-                )
+                intersection_idx = np.logical_and(iou > self.iou_thresh, intersects)
                 box_coords = self.long_coords[intersection_idx]
 
                 all_iou.append(iou)
@@ -887,9 +874,7 @@ class RandomAffined(monai.transforms.RandomizableTransform):
         """
 
         self.keys = keys
-        self.spatial_sizes = [
-            np.array(s, dtype=np.int32) for s in spatial_sizes
-        ]
+        self.spatial_sizes = [np.array(s, dtype=np.int32) for s in spatial_sizes]
         self.mode = mode
         self.prob = prob
         self.rotate_range = np.array(rotate_range)
@@ -900,9 +885,7 @@ class RandomAffined(monai.transforms.RandomizableTransform):
         self.copy = copy
 
         self.affine_trans = {
-            k: monai.transforms.Affine(
-                spatial_size=s, mode=m, device=self.device
-            )
+            k: monai.transforms.Affine(spatial_size=s, mode=m, device=self.device)
             for k, s, m in zip(self.keys, self.spatial_sizes, self.mode)
         }
 
@@ -998,8 +981,7 @@ class LabelOperatord(monai.transforms.Transform):
     def get_label_correspondence(self):
         if self.label_groups is not None:
             self.label_groups = [
-                [str(x) for x in label_group]
-                for label_group in self.label_groups
+                [str(x) for x in label_group] for label_group in self.label_groups
             ]
             self.possible_labels_match = {}
             for i, label_group in enumerate(self.label_groups):
@@ -1099,9 +1081,7 @@ class CombineBinaryLabelsd(monai.transforms.Transform):
     Combines binary label maps.
     """
 
-    def __init__(
-        self, keys: List[str], mode: str = "any", output_key: str = None
-    ):
+    def __init__(self, keys: List[str], mode: str = "any", output_key: str = None):
         """
         Args:
             keys (List[str]): list of keys.
@@ -1167,8 +1147,7 @@ class ConditionalRescalingd(monai.transforms.Transform):
         self.scale = scale
 
         self.transforms = {
-            k: ConditionalRescaling(self.max_value, self.scale)
-            for k in self.keys
+            k: ConditionalRescaling(self.max_value, self.scale) for k in self.keys
         }
 
     def __call__(self, data):
@@ -1276,9 +1255,7 @@ class FastResample(monai.transforms.Transform):
             spacing = np.array(spacing, np.float64)
             spacing_ratio = spacing / self.target
             output_shape = np.round(
-                np.multiply(
-                    spacing_ratio, np.array(X[k].shape[1:], dtype=np.float64)
-                )
+                np.multiply(spacing_ratio, np.array(X[k].shape[1:], dtype=np.float64))
             ).astype(np.int64)
             intp = self.interpolation_modes[k]
             X[k] = F.interpolate(
@@ -1530,11 +1507,7 @@ class CreateImageAndWeightsd(monai.transforms.Transform):
 
     def __call__(self, X):
         for k in self.keys:
-            shape = (
-                self.shape
-                if isinstance(self.shape, str)
-                else X[self.shape].shape
-            )
+            shape = self.shape if isinstance(self.shape, str) else X[self.shape].shape
             weight_key = f"{k}_weight"
             if k not in X:
                 X[k] = np.zeros(shape, dtype=np.uint8)
@@ -1553,9 +1526,7 @@ class BiasFieldCorrection(monai.transforms.Transform):
     SITK.
     """
 
-    def __init__(
-        self, n_fitting_levels: int, n_iter: int, shrink_factor: float
-    ):
+    def __init__(self, n_fitting_levels: int, n_iter: int, shrink_factor: float):
         """
         Args:
             n_fitting_levels (int): number of fitting levels.
@@ -1570,23 +1541,17 @@ class BiasFieldCorrection(monai.transforms.Transform):
         image_ = image
         mask_image = sitk.OtsuThreshold(image_)
         if self.shrink_factor > 1:
-            image_ = sitk.Shrink(
-                image_, [self.shrink_factor] * image_.GetDimension()
-            )
+            image_ = sitk.Shrink(image_, [self.shrink_factor] * image_.GetDimension())
             mask_image = sitk.Shrink(
                 mask_image, [self.shrink_factor] * mask_image.GetDimension()
             )
         corrector = sitk.N4BiasFieldCorrectionImageFilter()
-        corrector.SetMaximumNumberOfIterations(
-            self.n_fitting_levels * [self.n_iter]
-        )
+        corrector.SetMaximumNumberOfIterations(self.n_fitting_levels * [self.n_iter])
         corrector.SetConvergenceThreshold(0.001)
         corrector.Execute(image_, mask_image)
         log_bf = corrector.GetLogBiasFieldAsImage(image)
         corrected_input_image = image / sitk.Exp(log_bf)
-        corrected_input_image = sitk.Cast(
-            corrected_input_image, sitk.sitkFloat32
-        )
+        corrected_input_image = sitk.Cast(corrected_input_image, sitk.sitkFloat32)
         corrected_input_image.CopyInformation(image)
         for k in image.GetMetaDataKeys():
             v = image.GetMetaData(k)
@@ -1685,9 +1650,7 @@ class ScaleIntensityAlongDim(monai.transforms.Transform):
     normalizes individual slices along a given dimension dim.
     """
 
-    def __init__(
-        self, min_value: float = 0.0, max_value: float = 1.0, dim: int = -1
-    ):
+    def __init__(self, min_value: float = 0.0, max_value: float = 1.0, dim: int = -1):
         """
         Args:
             min_value (float, optional): min value for output tensor. Defaults
@@ -1799,9 +1762,7 @@ class RandAffineWithBoxesd(monai.transforms.RandomizableTransform):
     the same affine transform to a bounding box with format xy(z)xy(z).
     """
 
-    def __init__(
-        self, image_keys: List[str], box_keys: List[str], *args, **kwargs
-    ):
+    def __init__(self, image_keys: List[str], box_keys: List[str], *args, **kwargs):
         """
         Args:
             image_keys (List[str]): list of image keys.
@@ -1811,9 +1772,7 @@ class RandAffineWithBoxesd(monai.transforms.RandomizableTransform):
         self.image_keys = image_keys
         self.box_keys = box_keys
 
-        self.rand_affine_d = monai.transforms.RandAffined(
-            image_keys, *args, **kwargs
-        )
+        self.rand_affine_d = monai.transforms.RandAffined(image_keys, *args, **kwargs)
 
     def get_all_corners(self, tl, br, n_dim):
         # (b, number_of_corners, number_of_dimensions)
@@ -2004,12 +1963,8 @@ class GetAllCrops(monai.transforms.Transform):
         self.ndim = len(size)
 
     def get_pad_size(self, sh):
-        remainder = [
-            (y - (x % y)) if x > y else 0 for x, y in zip(sh, self.size)
-        ]
-        remainder = [
-            x if x < (y // 2) else 0 for x, y in zip(remainder, self.size)
-        ]
+        remainder = [(y - (x % y)) if x > y else 0 for x, y in zip(sh, self.size)]
+        remainder = [x if x < (y // 2) else 0 for x, y in zip(remainder, self.size)]
         remainder = [(x // 2, x - x // 2) for x in remainder]
         pad_size = [(0, 0), *remainder]
         return pad_size
@@ -2020,9 +1975,7 @@ class GetAllCrops(monai.transforms.Transform):
         X = np.pad(X, pad_size, "constant", constant_values=0)
         return X
 
-    def get_all_crops_2d(
-        self, X: torch.Tensor
-    ) -> Generator[torch.Tensor, None, None]:
+    def get_all_crops_2d(self, X: torch.Tensor) -> Generator[torch.Tensor, None, None]:
         sh = X.shape[1:]
         X = self.pad(X)
         for i_1 in range(0, sh[0], self.size[0]):
@@ -2032,9 +1985,7 @@ class GetAllCrops(monai.transforms.Transform):
                 if all([i_2 < (sh[0] + 1), j_2 < (sh[1] + 1)]):
                     yield X[:, i_1:i_2, j_1:j_2]
 
-    def get_all_crops_3d(
-        self, X: torch.Tensor
-    ) -> Generator[torch.Tensor, None, None]:
+    def get_all_crops_3d(self, X: torch.Tensor) -> Generator[torch.Tensor, None, None]:
         sh = [x for x in X.shape[1:]]
         X = self.pad(X)
         for i_1 in range(0, sh[0], self.size[0]):
@@ -2052,9 +2003,7 @@ class GetAllCrops(monai.transforms.Transform):
                     ):
                         yield X[:, i_1:i_2, j_1:j_2, k_1:k_2]
 
-    def get_all_crops(
-        self, X: torch.Tensor
-    ) -> Generator[torch.Tensor, None, None]:
+    def get_all_crops(self, X: torch.Tensor) -> Generator[torch.Tensor, None, None]:
         if self.ndim == 2:
             yield from self.get_all_crops_2d(X)
         if self.ndim == 3:
@@ -2086,9 +2035,7 @@ class GetAllCropsd(monai.transforms.MapTransform):
 
         self.tr = GetAllCrops(self.size)
 
-    def __call__(
-        self, X: Dict[str, torch.Tensor]
-    ) -> List[Dict[str, torch.Tensor]]:
+    def __call__(self, X: Dict[str, torch.Tensor]) -> List[Dict[str, torch.Tensor]]:
         output_crops = {k: X[k] for k in X}
         outputs = []
         for k in self.keys:
@@ -2234,9 +2181,7 @@ class DbscanAssistedSegmentSelection(monai.transforms.MapTransform):
             sizes = {}
             for label in unique_labels:
                 idxs = labels == label
-                dist_to_centre[label] = np.square(
-                    np.mean(coords[idxs]) - image_centre
-                )
+                dist_to_centre[label] = np.square(np.mean(coords[idxs]) - image_centre)
                 sizes[label] = np.sum(idxs)
 
             labels_to_keep = []
@@ -2247,9 +2192,7 @@ class DbscanAssistedSegmentSelection(monai.transforms.MapTransform):
                 labels_to_keep.extend(sorted_labels)
 
             if self.filter_by_dist_to_centre is True:
-                sorted_labels = sorted(
-                    dist_to_centre.keys(), key=lambda k: sizes[k]
-                )
+                sorted_labels = sorted(dist_to_centre.keys(), key=lambda k: sizes[k])
                 label_to_keep = None
                 idx = 0
                 while label_to_keep is None:

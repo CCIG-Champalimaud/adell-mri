@@ -94,9 +94,7 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
                 as `x`.
         """
         return (
-            torch.randn(
-                size=x.shape, generator=self.g, dtype=x.dtype, layout=x.layout
-            )
+            torch.randn(size=x.shape, generator=self.g, dtype=x.dtype, layout=x.layout)
             .contiguous()
             .to(x.device)
         )
@@ -175,9 +173,7 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
         """
         x = batch[self.image_key]
         if self.with_conditioning is True:
-            uncondition = (
-                "all" if self.rng.random() < self.uncondition_proba else None
-            )
+            uncondition = "all" if self.rng.random() < self.uncondition_proba else None
             if self.cat_condition_key is not None:
                 cat_condition = batch[self.cat_condition_key]
             else:
@@ -200,9 +196,7 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
             condition = None
         return x, condition
 
-    def on_before_batch_transfer(
-        self, batch: dict, dataloader_idx: int
-    ) -> dict:
+    def on_before_batch_transfer(self, batch: dict, dataloader_idx: int) -> dict:
         """
         Lightning hook to convert MONAI metatensors to tensors.
 
@@ -383,9 +377,7 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
 
     def configure_optimizers(
         self,
-    ) -> dict[
-        str, torch.optim.Optimizer | torch.optim.lr_scheduler._LRScheduler | str
-    ]:
+    ) -> dict[str, torch.optim.Optimizer | torch.optim.lr_scheduler._LRScheduler | str]:
         """
         Lightning hook for optimizer configuration.
 

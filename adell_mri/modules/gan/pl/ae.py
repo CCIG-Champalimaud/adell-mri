@@ -68,9 +68,7 @@ class AutoEncoderPL(AutoEncoder, pl.LightningModule):
         loss = self.loss_fn(output, x)
         return {"loss": loss}
 
-    def training_step(
-        self, batch: dict[str, Any], batch_idx: int
-    ) -> torch.Tensor:
+    def training_step(self, batch: dict[str, Any], batch_idx: int) -> torch.Tensor:
         """
         Lightning training step.
 
@@ -83,14 +81,10 @@ class AutoEncoderPL(AutoEncoder, pl.LightningModule):
         """
         loss_dict = self.step(batch)
         for k in loss_dict:
-            self.log(
-                k, loss_dict[k], on_epoch=True, prog_bar=True, on_step=False
-            )
+            self.log(k, loss_dict[k], on_epoch=True, prog_bar=True, on_step=False)
         return sum([loss_dict[k] for k in loss_dict])
 
-    def validation_step(
-        self, batch: dict[str, Any], batch_idx: int
-    ) -> torch.Tensor:
+    def validation_step(self, batch: dict[str, Any], batch_idx: int) -> torch.Tensor:
         """
         Lightning validation step.
 
@@ -210,9 +204,7 @@ class VariationalAutoEncoderPL(VariationalAutoEncoder, pl.LightningModule):
         loss = self.loss_fn(output, x)
         return {"rec_loss": loss, "var_loss": self.var_loss_mult * var_loss}
 
-    def training_step(
-        self, batch: dict[str, Any], batch_idx: int
-    ) -> torch.Tensor:
+    def training_step(self, batch: dict[str, Any], batch_idx: int) -> torch.Tensor:
         """
         Lightning training step.
 
@@ -225,14 +217,10 @@ class VariationalAutoEncoderPL(VariationalAutoEncoder, pl.LightningModule):
         """
         loss_dict = self.step(batch)
         for k in loss_dict:
-            self.log(
-                k, loss_dict[k], on_epoch=True, prog_bar=True, on_step=False
-            )
+            self.log(k, loss_dict[k], on_epoch=True, prog_bar=True, on_step=False)
         return sum([loss_dict[k] for k in loss_dict])
 
-    def validation_step(
-        self, batch: dict[str, Any], batch_idx: int
-    ) -> torch.Tensor:
+    def validation_step(self, batch: dict[str, Any], batch_idx: int) -> torch.Tensor:
         """
         Lightning validation step.
 

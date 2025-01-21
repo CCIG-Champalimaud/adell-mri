@@ -30,16 +30,12 @@ def random_masking(
     )  # noise in [0, 1]
 
     # sort noise for each sample
-    ids_shuffle = torch.argsort(
-        noise, dim=1
-    )  # ascend: small is keep, large is remove
+    ids_shuffle = torch.argsort(noise, dim=1)  # ascend: small is keep, large is remove
     ids_restore = torch.argsort(ids_shuffle, dim=1)
 
     # keep the first subset
     ids_keep = ids_shuffle[:, :len_keep]
-    x_masked = torch.gather(
-        x, dim=1, index=ids_keep.unsqueeze(-1).repeat(1, 1, D)
-    )
+    x_masked = torch.gather(x, dim=1, index=ids_keep.unsqueeze(-1).repeat(1, 1, D))
 
     # generate the binary mask: 0 is keep, 1 is remove
     mask = torch.ones([N, L], device=x.device)
@@ -222,9 +218,7 @@ class ViTMaskedAutoEncoder(ViTAutoEncoder):
 
     def init_mask_token(self):
         self.mask_token = torch.nn.Parameter(torch.rand(1, 1, self.n_features))
-        torch.nn.init.trunc_normal_(
-            self.mask_token, mean=0.0, std=0.02, a=-2.0, b=2.0
-        )
+        torch.nn.init.trunc_normal_(self.mask_token, mean=0.0, std=0.02, a=-2.0, b=2.0)
 
     def forward(self, X: torch.Tensor) -> torch.Tensor:
         # based on https://github.com/facebookresearch/mae/blob/main/models_mae.py

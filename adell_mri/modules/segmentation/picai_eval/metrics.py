@@ -31,9 +31,7 @@ from .data_utils import PathLike, load_metrics, save_metrics
 
 @dataclass
 class Metrics:
-    lesion_results: Union[
-        Dict[Hashable, List[Tuple[int, float, float]]], PathLike
-    ]
+    lesion_results: Union[Dict[Hashable, List[Tuple[int, float, float]]], PathLike]
     case_target: Optional[Dict[Hashable, int]] = None
     case_pred: Optional[Dict[Hashable, float]] = None
     case_weight: Optional[Union[Dict[Hashable, float], List[float]]] = None
@@ -78,8 +76,7 @@ class Metrics:
                 self.case_weight = {idx: 1 for idx in subject_list}
             else:
                 self.case_weight = {
-                    idx: weight
-                    for idx, weight in zip(subject_list, self.case_weight)
+                    idx: weight for idx, weight in zip(subject_list, self.case_weight)
                 }
 
         if self.lesion_weight is None:
@@ -95,16 +92,10 @@ class Metrics:
             self.lesion_results = {
                 idx: self.lesion_results[idx] for idx in subject_list
             }
-            self.lesion_weight = {
-                idx: self.lesion_weight[idx] for idx in subject_list
-            }
-            self.case_target = {
-                idx: self.case_target[idx] for idx in subject_list
-            }
+            self.lesion_weight = {idx: self.lesion_weight[idx] for idx in subject_list}
+            self.case_target = {idx: self.case_target[idx] for idx in subject_list}
             self.case_pred = {idx: self.case_pred[idx] for idx in subject_list}
-            self.case_weight = {
-                idx: self.case_weight[idx] for idx in subject_list
-            }
+            self.case_weight = {idx: self.case_weight[idx] for idx in subject_list}
 
     # aggregates
     def calc_auroc(self, subject_list: Optional[List[str]] = None) -> float:
@@ -157,9 +148,7 @@ class Metrics:
         return [
             (is_lesion, confidence, overlap)
             for subject_id in subject_list
-            for is_lesion, confidence, overlap in self.lesion_results[
-                subject_id
-            ]
+            for is_lesion, confidence, overlap in self.lesion_results[subject_id]
         ]
 
     @property
@@ -287,12 +276,8 @@ class Metrics:
                 )
 
         # define placeholders
-        FP: "npt.NDArray[np.float32]" = np.zeros_like(
-            self.thresholds, dtype=np.float32
-        )
-        TP: "npt.NDArray[np.float32]" = np.zeros_like(
-            self.thresholds, dtype=np.float32
-        )
+        FP: "npt.NDArray[np.float32]" = np.zeros_like(self.thresholds, dtype=np.float32)
+        TP: "npt.NDArray[np.float32]" = np.zeros_like(self.thresholds, dtype=np.float32)
 
         # for each threshold: count FPs and TPs
         for i, th in enumerate(self.thresholds):
@@ -334,9 +319,7 @@ class Metrics:
         precision, recall, thresholds = precision_recall_curve(
             y_true=y_true,
             probas_pred=y_pred,
-            sample_weight=self.get_lesion_weight_flat(
-                subject_list=subject_list
-            ),
+            sample_weight=self.get_lesion_weight_flat(subject_list=subject_list),
         )
 
         # set precision to zero at a threshold of "zero", as those lesion
@@ -357,9 +340,7 @@ class Metrics:
             "recall": recall,
         }
 
-    def calculate_ROC(
-        self, subject_list: Optional[List[str]] = None
-    ) -> Dict[str, Any]:
+    def calculate_ROC(self, subject_list: Optional[List[str]] = None) -> Dict[str, Any]:
         """
         Generate Receiver Operating Characteristic curve for case-level risk stratification.
         """
@@ -454,9 +435,7 @@ class Metrics:
         self.case_target = {
             idx: int(float(val)) for idx, val in metrics["case_target"].items()
         }
-        self.case_pred = {
-            idx: float(val) for idx, val in metrics["case_pred"].items()
-        }
+        self.case_pred = {idx: float(val) for idx, val in metrics["case_pred"].items()}
         self.case_weight = {
             idx: float(val) for idx, val in metrics["case_weight"].items()
         }

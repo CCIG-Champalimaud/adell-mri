@@ -69,9 +69,7 @@ class YOLONet3d(torch.nn.Module):
             for anchor_size in self.anchor_sizes
         ]
         self.anchor_tensor = torch.cat(self.anchor_tensor, dim=0).to(self.dev)
-        self.anchor_tensor = torch.nn.Parameter(
-            self.anchor_tensor, requires_grad=False
-        )
+        self.anchor_tensor = torch.nn.Parameter(self.anchor_tensor, requires_grad=False)
 
     def init_layers(self):
         if self.backbone_str == "resnet":
@@ -376,9 +374,7 @@ class CoarseDetector3d(torch.nn.Module):
                 adn_fn=lambda s: torch.nn.Identity(),
             ),
             self.adn_fn(last_size * (len(self.pyramid_layers))),
-            ConcurrentSqueezeAndExcite3d(
-                last_size * (len(self.pyramid_layers))
-            ),
+            ConcurrentSqueezeAndExcite3d(last_size * (len(self.pyramid_layers))),
             self.adn_fn(last_size * (len(self.pyramid_layers))),
         )
         last_size = last_size * (len(self.pyramid_layers))

@@ -9,10 +9,8 @@ from lightning.pytorch.callbacks import RichProgressBar
 
 from ...modules.config_parsing import parse_config_gan
 from ...monai_transforms import get_augmentations_class as get_augmentations
-from ...monai_transforms import \
-    get_post_transforms_generation as get_post_transforms
-from ...monai_transforms import \
-    get_pre_transforms_generation as get_pre_transforms
+from ...monai_transforms import get_post_transforms_generation as get_post_transforms
+from ...monai_transforms import get_pre_transforms_generation as get_pre_transforms
 from ...utils import safe_collate
 from ...utils.dicom_dataset import filter_dicom_dict_on_presence
 from ...utils.dicom_loader import DICOMDataset, SliceSampler
@@ -20,8 +18,7 @@ from ...utils.network_factories import get_gan_network
 from ...utils.parser import get_params, merge_args
 from ...utils.pl_callbacks import LogImageFromGAN
 from ...utils.pl_utils import get_ckpt_callback, get_devices, get_logger
-from ...utils.torch_utils import (get_generator_and_rng,
-                                  load_checkpoint_to_model)
+from ...utils.torch_utils import get_generator_and_rng, load_checkpoint_to_model
 from ..assemble_args import Parser
 
 
@@ -130,8 +127,7 @@ def main(arguments):
     numerical_specification = None
     if args.cat_condition_keys is not None:
         categorical_specification = [
-            get_conditional_specification(data_dict, k)
-            for k in args.cat_condition_keys
+            get_conditional_specification(data_dict, k) for k in args.cat_condition_keys
         ]
         all_keys.extend(args.cat_condition_keys)
     if args.num_condition_keys is not None:
@@ -191,9 +187,7 @@ def main(arguments):
         # checking intersections is much much faster in dicts
         train_pids = {pid: "" for pid in data_dict}
 
-    train_list = [
-        value for pid, value in data_dict.items() if pid in train_pids
-    ]
+    train_list = [value for pid, value in data_dict.items() if pid in train_pids]
     train_pids = list(train_pids.keys())
 
     print(f"Training set size: {len(train_list)}")
@@ -255,9 +249,7 @@ def main(arguments):
         pct_start=args.warmup_steps,
     )
 
-    load_checkpoint_to_model(
-        model, args.checkpoint, args.exclude_from_state_dict
-    )
+    load_checkpoint_to_model(model, args.checkpoint, args.exclude_from_state_dict)
 
     callbacks = [RichProgressBar()]
 

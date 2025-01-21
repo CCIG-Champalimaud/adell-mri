@@ -7,8 +7,10 @@ import torch
 from tqdm import tqdm
 
 from ...entrypoints.assemble_args import Parser
-from ...modules.classification.pl import (MultipleInstanceClassifierPL,
-                                          TransformableTransformerPL)
+from ...modules.classification.pl import (
+    MultipleInstanceClassifierPL,
+    TransformableTransformerPL,
+)
 from ...modules.config_parsing import parse_config_2d_classifier_3d
 from ...monai_transforms import get_transforms_classification as get_transforms
 from ...utils import EinopsRearranged, ScaleIntensityAlongDimd, safe_collate
@@ -68,12 +70,8 @@ def main(arguments):
     if args.excluded_ids is not None:
         excluded_ids = parse_ids(args.excluded_ids, output_format="list")
         a = len(data_dict)
-        data_dict = {
-            k: data_dict[k] for k in data_dict if k not in excluded_ids
-        }
-        print(
-            "Excluded {} cases with --excluded_ids".format(a - len(data_dict))
-        )
+        data_dict = {k: data_dict[k] for k in data_dict if k not in excluded_ids}
+        print("Excluded {} cases with --excluded_ids".format(a - len(data_dict)))
 
     data_dict.filter_dictionary(
         filters_presence=args.image_keys,
@@ -97,9 +95,7 @@ def main(arguments):
     if args.n_classes == 2:
         network_config["loss_fn"] = torch.nn.BCEWithLogitsLoss(torch.ones([]))
     else:
-        network_config["loss_fn"] = torch.nn.CrossEntropy(
-            torch.ones([args.n_classes])
-        )
+        network_config["loss_fn"] = torch.nn.CrossEntropy(torch.ones([args.n_classes]))
 
     if args.batch_size is not None:
         network_config["batch_size"] = args.batch_size
@@ -174,14 +170,10 @@ def main(arguments):
                 "n_slices": n_slices,
             }
 
-            network_config["module"] = torch.jit.load(args.module_path).to(
-                args.dev
-            )
+            network_config["module"] = torch.jit.load(args.module_path).to(args.dev)
             network_config["module"].requires_grad = False
             network_config["module"] = network_config["module"].eval()
-            network_config["module"] = torch.jit.freeze(
-                network_config["module"]
-            )
+            network_config["module"] = torch.jit.freeze(network_config["module"])
             if "module_out_dim" not in network_config:
                 print("2D module output size not specified, inferring...")
                 input_example = torch.rand(
@@ -190,9 +182,7 @@ def main(arguments):
                 output = network_config["module"](input_example)
                 network_config["module_out_dim"] = int(output.shape[1])
                 print(
-                    "2D module output size={}".format(
-                        network_config["module_out_dim"]
-                    )
+                    "2D module output size={}".format(network_config["module_out_dim"])
                 )
             if args.mil_method == "transformer":
                 network = TransformableTransformerPL(

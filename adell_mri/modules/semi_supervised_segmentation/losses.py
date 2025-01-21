@@ -23,9 +23,7 @@ def swap(xs: Sequence, a: int, b: int) -> None:
     xs[a], xs[b] = xs[b], xs[a]
 
 
-def derangement(
-    n: int, rng: np.random.Generator = None, seed: int = 42
-) -> list[int]:
+def derangement(n: int, rng: np.random.Generator = None, seed: int = 42) -> list[int]:
     """Generate a derangement of n elements.
 
     A derangement is a permutation of the elements 0..n-1 such that no element
@@ -110,9 +108,7 @@ class AnatomicalContrastiveLoss(torch.nn.Module):
         self.ema_theta = ema_theta
         self.tau = tau
 
-        self.average_representations = torch.zeros(
-            [1, self.n_classes, self.n_features]
-        )
+        self.average_representations = torch.zeros([1, self.n_classes, self.n_features])
 
         self.hard_examples = torch.zeros([batch_size, self.top_k, n_features])
         self.hard_example_class = torch.zeros([batch_size, self.top_k, 1])
@@ -138,8 +134,7 @@ class AnatomicalContrastiveLoss(torch.nn.Module):
             if prod(rep.shape) > 0:
                 rep = rep.permute(1, 0)
                 self.average_representations[:, i, :] = torch.add(
-                    self.average_representations[:, i, :]
-                    * (1 - self.ema_theta),
+                    self.average_representations[:, i, :] * (1 - self.ema_theta),
                     rep.mean(1) * self.ema_theta,
                 )
 
@@ -161,9 +156,7 @@ class AnatomicalContrastiveLoss(torch.nn.Module):
         weights = proba.prod(1)
         for i in range(self.batch_size):
             top_k = weights[i].topk(self.top_k)
-            self.hard_examples[i] = embeddings[i, :, top_k.indices].permute(
-                1, 0
-            )
+            self.hard_examples[i] = embeddings[i, :, top_k.indices].permute(1, 0)
             self.hard_example_class[i] = labels[i, top_k.indices].unsqueeze(-1)
 
     def delete(self, X: torch.Tensor, idx: int) -> torch.Tensor:
@@ -232,9 +225,7 @@ class AnatomicalContrastiveLoss(torch.nn.Module):
         self.update_average_class_representation(embeddings, b, c, v)
 
         # mine hard examples
-        self.update_hard_examples(
-            proba=proba, embeddings=embeddings, labels=labels
-        )
+        self.update_hard_examples(proba=proba, embeddings=embeddings, labels=labels)
 
         # calculate the anatomical contrastive loss
         return self.l_anco()
@@ -357,9 +348,7 @@ class NearestNeighbourLoss(torch.nn.Module):
         """
         return sum([q.qsize() for q in self.q])
 
-    def get_past_samples(
-        self, device="cuda"
-    ) -> tuple[torch.Tensor, torch.Tensor]:
+    def get_past_samples(self, device="cuda") -> tuple[torch.Tensor, torch.Tensor]:
         """
         Retrieves elements from queue (the same number of elements for each
         class) and their respective one hot labels.
@@ -382,9 +371,7 @@ class NearestNeighbourLoss(torch.nn.Module):
             np.concatenate(
                 [
                     np.repeat(cl, past_sample.shape[0])
-                    for cl, past_sample in zip(
-                        range(self.n_classes), past_samples
-                    )
+                    for cl, past_sample in zip(range(self.n_classes), past_samples)
                 ],
                 0,
             ),
@@ -412,15 +399,9 @@ class NearestNeighbourLoss(torch.nn.Module):
         distances = 1 - F.cosine_similarity(
             X[:, :, None], past_samples[None, None, :], -1
         )
-        is_same = torch.sum(
-            y[:, :, None] * past_sample_labels[None, None, :], -1
-        )
-        same_class_distances = torch.exp(
-            -distances * is_same / self.temperature
-        )
-        other_class_distances = torch.exp(
-            -distances * (1 - is_same) / self.temperature
-        )
+        is_same = torch.sum(y[:, :, None] * past_sample_labels[None, None, :], -1)
+        same_class_distances = torch.exp(-distances * is_same / self.temperature)
+        other_class_distances = torch.exp(-distances * (1 - is_same) / self.temperature)
         return torch.nanmean(
             same_class_distances.nansum(-1) / other_class_distances.nansum(-1)
         )
@@ -499,12 +480,8 @@ class LocalContrastiveLoss(torch.nn.Module):
         """
         X_1 = X_1.flatten(start_dim=2)[None, :, :, :]
         X_2 = X_2.flatten(start_dim=2)[:, None, :, :]
-        sim = F.softmax(
-            F.cosine_similarity(X_1, X_2, dim=2) / self.temperature, dim=1
-        )
-        loss = -torch.log(
-            torch.max(sim.diagonal().permute(1, 0), self.eps)
-        ).mean(-1)
+        sim = F.softmax(F.cosine_similarity(X_1, X_2, dim=2) / self.temperature, dim=1)
+        loss = -torch.log(torch.max(sim.diagonal().permute(1, 0), self.eps)).mean(-1)
         return loss
 
 
@@ -562,14 +539,10 @@ class LocalContrastiveLossWithAnchors(torch.nn.Module):
             torch.Tensor: loss value.
         """
         anchors_1 = (
-            anchors_from_derangement(X, self.rng)
-            if anchors_1 is None
-            else anchors_1
+            anchors_from_derangement(X, self.rng) if anchors_1 is None else anchors_1
         )
         anchors_2 = (
-            anchors_from_derangement(X, self.rng)
-            if anchors_2 is None
-            else anchors_2
+            anchors_from_derangement(X, self.rng) if anchors_2 is None else anchors_2
         )
         X = X.flatten(start_dim=2)
         anchors_1 = anchors_1.flatten(start_dim=2)

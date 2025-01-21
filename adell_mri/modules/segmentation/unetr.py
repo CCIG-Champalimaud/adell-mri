@@ -286,9 +286,7 @@ class UNETR(UNet, torch.nn.Module):
     def unetr_transp_block(
         self, in_d: int, out_d: int, n_ops: int, kernel_size: int = 3
     ) -> torch.nn.Module:
-        out = torch.nn.ModuleList(
-            [self.unetr_transp_op(in_d, out_d, kernel_size)]
-        )
+        out = torch.nn.ModuleList([self.unetr_transp_op(in_d, out_d, kernel_size)])
         for _ in range(n_ops):
             out.append(self.unetr_transp_op(out_d, out_d, 3))
         return torch.nn.Sequential(*out)
@@ -306,9 +304,7 @@ class UNETR(UNet, torch.nn.Module):
         for i, d in enumerate(self.depth[1:-1]):
             i = i + 1
             n_ops = self.n_skip_connections - i
-            rec_op_seq = self.unetr_transp_block(
-                self.n_channels_rec, d, n_ops - 1, 3
-            )
+            rec_op_seq = self.unetr_transp_block(self.n_channels_rec, d, n_ops - 1, 3)
             self.reconstruction_ops.append(rec_op_seq)
         self.bottleneck_reconstruction = self.conv_op_enc(
             self.n_channels_rec, self.depth[-1], 1, 1
@@ -355,10 +351,7 @@ class UNETR(UNet, torch.nn.Module):
         curr = self.bottleneck_reconstruction(curr)
         encoding_out = [
             X_encoded_first,
-            *[
-                rec_op(x)
-                for x, rec_op in zip(encoding_out, self.reconstruction_ops)
-            ],
+            *[rec_op(x) for x, rec_op in zip(encoding_out, self.reconstruction_ops)],
         ]
 
         encoding_out.append(curr)

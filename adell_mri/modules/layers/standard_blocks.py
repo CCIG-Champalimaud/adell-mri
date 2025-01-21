@@ -182,13 +182,9 @@ class ConvolutionalBlock2d(torch.nn.Module):
     def initialize_layers(self):
         """Initialize the layers for this Module."""
         self.mod_list = torch.nn.ModuleList()
-        for i, o, k in zip(
-            self.in_channels, self.out_channels, self.kernel_size
-        ):
+        for i, o, k in zip(self.in_channels, self.out_channels, self.kernel_size):
             op = torch.nn.Sequential(
-                torch.nn.Conv2d(
-                    i, o, k, stride=self.stride, padding=self.padding
-                ),
+                torch.nn.Conv2d(i, o, k, stride=self.stride, padding=self.padding),
                 self.adn_fn(o, **self.adn_args),
             )
             self.mod_list.append(op)
@@ -248,13 +244,9 @@ class ConvolutionalBlock3d(torch.nn.Module):
     def initialize_layers(self):
         """Initialize the layers for this Module."""
         self.mod_list = torch.nn.ModuleList()
-        for i, o, k in zip(
-            self.in_channels, self.out_channels, self.kernel_size
-        ):
+        for i, o, k in zip(self.in_channels, self.out_channels, self.kernel_size):
             op = torch.nn.Sequential(
-                torch.nn.Conv3d(
-                    i, o, k, stride=self.stride, padding=self.padding
-                ),
+                torch.nn.Conv3d(i, o, k, stride=self.stride, padding=self.padding),
                 self.adn_fn(o, **self.adn_args),
             )
             self.mod_list.append(op)
@@ -371,9 +363,7 @@ class VGGConvolution3d(torch.nn.Module):
     Implementation of simple vgg-style convolutional blocks.
     """
 
-    def __init__(
-        self, input_channels: int, first_depth: int, batch_ensemble: int = 0
-    ):
+    def __init__(self, input_channels: int, first_depth: int, batch_ensemble: int = 0):
         """
         Args:
             input_channels (List[int]): list of input channels for convolutions.

@@ -80,13 +80,11 @@ class iBOT(torch.nn.Module):
 
     def initialize_projection(self):
         if "structure" not in self.projection_head_args:
-            raise KeyError(
-                "`structure` must be specified in `projection_head_args`."
-            )
+            raise KeyError("`structure` must be specified in `projection_head_args`.")
         self.mlp_out_dim = self.projection_head_args["structure"][-1]
-        self.projection_head_args["structure"] = self.projection_head_args[
-            "structure"
-        ][:-1]
+        self.projection_head_args["structure"] = self.projection_head_args["structure"][
+            :-1
+        ]
         self.projection_ = MLP(
             input_dim=self.encoder_.attention_dim,
             output_dim=self.mlp_out_dim,
@@ -101,9 +99,7 @@ class iBOT(torch.nn.Module):
         self.last_layer_.parametrizations.weight.original0.requires_grad = False
 
     def initialize_mask_token(self):
-        self.mask_token_ = torch.nn.Parameter(
-            torch.rand(self.n_encoder_features)
-        )
+        self.mask_token_ = torch.nn.Parameter(torch.rand(self.n_encoder_features))
 
     def reduce(self, X: torch.Tensor) -> torch.Tensor:
         if self.encoder_.use_class_token is True:
@@ -119,9 +115,7 @@ class iBOT(torch.nn.Module):
     def extra_tokens(self):
         return (self.encoder_.n_registers + self.encoder_.use_class_token,)
 
-    def forward_training(
-        self, X: torch.Tensor, mask: bool = False
-    ) -> torch.Tensor:
+    def forward_training(self, X: torch.Tensor, mask: bool = False) -> torch.Tensor:
         # embed image
         X = self.encoder_.embedding(X)
         # mask image if necessary with mask_token

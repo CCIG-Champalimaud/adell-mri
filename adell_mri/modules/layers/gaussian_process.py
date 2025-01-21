@@ -107,9 +107,7 @@ class GaussianProcessLayer(torch.nn.Module):
             output = output.swapaxes(1, -1)
         return output
 
-    def get_parameters(
-        self, X: torch.Tensor
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    def get_parameters(self, X: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Returns the mean and covariance for a set of input samples.
 
@@ -124,9 +122,7 @@ class GaussianProcessLayer(torch.nn.Module):
                 process.
         """
         if hasattr(self, "cov") is False:
-            raise Exception(
-                "self.get_cov() must be called before getting parameters"
-            )
+            raise Exception("self.get_cov() must be called before getting parameters")
         phi = self.calculate_phi(X)
         mean = phi @ self.weights
         cov = phi @ self.cov

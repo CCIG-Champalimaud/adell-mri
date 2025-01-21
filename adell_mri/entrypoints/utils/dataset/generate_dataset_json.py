@@ -174,9 +174,7 @@ def main(arguments):
             for alt_path in paths:
                 if image_id in alt_path:
                     alt_file_paths.append(alt_path)
-        mask_path = [
-            p for p in mask_paths if image_id in p.replace(args.mask_path, "")
-        ]
+        mask_path = [p for p in mask_paths if image_id in p.replace(args.mask_path, "")]
         if len(mask_path) == 0 and args.strict is True:
             continue
 
@@ -213,9 +211,7 @@ def main(arguments):
             }
             if len(alt_file_paths) > 0:
                 for i, p in enumerate(alt_file_paths):
-                    bb_dict[image_id]["image_" + str(i + 1)] = os.path.abspath(
-                        p
-                    )
+                    bb_dict[image_id]["image_" + str(i + 1)] = os.path.abspath(p)
 
     pretty_dict = json.dumps(bb_dict, indent=2)
     with open(args.output_json, "w") as o:

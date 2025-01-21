@@ -55,9 +55,7 @@ class SitkWriter:
         Initialises the queues and processes.
         """
         self.queue = Queue()
-        self.workers = [
-            Process(target=self.worker) for _ in range(self.n_workers)
-        ]
+        self.workers = [Process(target=self.worker) for _ in range(self.n_workers)]
         for worker in self.workers:
             worker.start()
 
@@ -291,9 +289,7 @@ def crop_image(sitk_image: sitk.Image, output_size: list[int]) -> sitk.Image:
         total_padding = np.maximum((0, 0, 0), output_size - curr_size)
         lower = np.int16(total_padding // 2)
         upper = np.int16(total_padding - lower)
-        sitk_image = sitk.ConstantPad(
-            sitk_image, lower.tolist(), upper.tolist(), 0.0
-        )
+        sitk_image = sitk.ConstantPad(sitk_image, lower.tolist(), upper.tolist(), 0.0)
     curr_size = np.array(sitk_image.GetSize())
     total_crop = np.maximum((0, 0, 0), curr_size - output_size)
     lower = np.int16(total_crop // 2)

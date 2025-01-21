@@ -4,23 +4,31 @@ import monai
 import numpy as np
 import torch
 from lightning.pytorch import Trainer
-from lightning.pytorch.callbacks import (EarlyStopping, RichProgressBar,
-                                         StochasticWeightAveraging)
+from lightning.pytorch.callbacks import (
+    EarlyStopping,
+    RichProgressBar,
+    StochasticWeightAveraging,
+)
 from sklearn.model_selection import StratifiedKFold, train_test_split
 
 from ...entrypoints.assemble_args import Parser
-from ...modules.classification.pl import (MultipleInstanceClassifierPL,
-                                          TransformableTransformerPL)
+from ...modules.classification.pl import (
+    MultipleInstanceClassifierPL,
+    TransformableTransformerPL,
+)
 from ...modules.config_parsing import parse_config_2d_classifier_3d
 from ...monai_transforms import get_augmentations_class as get_augmentations
 from ...monai_transforms import get_transforms_classification as get_transforms
-from ...utils import (EinopsRearranged, ScaleIntensityAlongDimd, safe_collate,
-                      set_classification_layer_bias)
+from ...utils import (
+    EinopsRearranged,
+    ScaleIntensityAlongDimd,
+    safe_collate,
+    set_classification_layer_bias,
+)
 from ...utils.batch_preprocessing import BatchPreprocessing
 from ...utils.dataset import Dataset
 from ...utils.parser import get_params, merge_args, parse_ids
-from ...utils.pl_utils import (GPULock, get_ckpt_callback, get_devices,
-                               get_logger)
+from ...utils.pl_utils import GPULock, get_ckpt_callback, get_devices, get_logger
 from ...utils.torch_utils import get_generator_and_rng
 
 
@@ -131,9 +139,7 @@ def main(arguments):
     label_groups = None
     if args.label_groups is not None:
         n_classes = len(args.label_groups)
-        label_groups = [
-            label_group.split(",") for label_group in args.label_groups
-        ]
+        label_groups = [label_group.split(",") for label_group in args.label_groups]
     elif args.positive_labels is None:
         n_classes = len(args.possible_labels)
     else:
@@ -305,9 +311,7 @@ def main(arguments):
                 if c in weights:
                     weights[c] += 1
             weight_sum = np.sum([weights[c] for c in args.possible_labels])
-            weights = {
-                k: weight_sum / (1 + weights[k] * len(weights)) for k in weights
-            }
+            weights = {k: weight_sum / (1 + weights[k] * len(weights)) for k in weights}
             weight_vector = np.array([weights[k] for k in classes])
             weight_vector = np.where(weight_vector < 0.25, 0.25, weight_vector)
             weight_vector = np.where(weight_vector > 4, 4, weight_vector)
@@ -357,9 +361,7 @@ def main(arguments):
 
         print("Initializing loss with class_weights: {}".format(class_weights))
         if n_classes == 2:
-            network_config["loss_fn"] = torch.nn.BCEWithLogitsLoss(
-                class_weights
-            )
+            network_config["loss_fn"] = torch.nn.BCEWithLogitsLoss(class_weights)
         else:
             network_config["loss_fn"] = torch.nn.CrossEntropy(class_weights)
 
@@ -428,16 +430,12 @@ def main(arguments):
         network_config["module"] = torch.jit.freeze(network_config["module"])
         if "module_out_dim" not in network_config:
             print("2D module output size not specified, inferring...")
-            input_example = torch.rand(
-                1, 1, *[int(x) for x in args.crop_size][:2]
-            ).to(args.dev.split(":")[0])
+            input_example = torch.rand(1, 1, *[int(x) for x in args.crop_size][:2]).to(
+                args.dev.split(":")[0]
+            )
             output = network_config["module"](input_example)
             network_config["module_out_dim"] = int(output.shape[1])
-            print(
-                "2D module output size={}".format(
-                    network_config["module_out_dim"]
-                )
-            )
+            print("2D module output size={}".format(network_config["module_out_dim"]))
 
         # instantiate callbacks and loggers
         callbacks = [RichProgressBar()]
@@ -492,18 +490,12 @@ def main(arguments):
             )
             network_config["module"].requires_grad = False
             network_config["module"].eval()
-            network_config["module"] = torch.jit.freeze(
-                network_config["module"]
-            )
+            network_config["module"] = torch.jit.freeze(network_config["module"])
 
         if args.mil_method == "transformer":
-            network = TransformableTransformerPL(
-                **boilerplate_args, **network_config
-            )
+            network = TransformableTransformerPL(**boilerplate_args, **network_config)
         elif args.mil_method == "standard":
-            network = MultipleInstanceClassifierPL(
-                **boilerplate_args, **network_config
-            )
+            network = MultipleInstanceClassifierPL(**boilerplate_args, **network_config)
 
         if args.correct_classification_bias is True and n_classes == 2:
             pos = len([x for x in classes if x in args.positive_labels])
@@ -525,9 +517,7 @@ def main(arguments):
             check_val_every_n_epoch=1,
         )
 
-        trainer.fit(
-            network, train_loader, train_val_loader, ckpt_path=ckpt_path
-        )
+        trainer.fit(network, train_loader, train_val_loader, ckpt_path=ckpt_path)
 
         # assessing performance on validation set
         print("Validating...")
@@ -538,9 +528,9 @@ def main(arguments):
             ckpt_list = ["last"]
         for ckpt_key in ckpt_list:
             torch.cuda.empty_cache()
-            test_metrics = trainer.test(
-                network, validation_loader, ckpt_path=ckpt_key
-            )[0]
+            test_metrics = trainer.test(network, validation_loader, ckpt_path=ckpt_key)[
+                0
+            ]
             for k in test_metrics:
                 out = test_metrics[k]
                 if n_classes == 2:

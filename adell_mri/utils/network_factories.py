@@ -238,9 +238,7 @@ def get_deconfounded_classification_network(
         "training_batch_preproc": batch_preprocessing,
         "start_decay": start_decay,
     }
-    n_cat_deconfounder = (
-        [len(x) for x in cat_vars] if cat_vars is not None else None
-    )
+    n_cat_deconfounder = [len(x) for x in cat_vars] if cat_vars is not None else None
     network = DeconfoundedNetPL(
         adn_fn=adn_fn,
         embedder=cat_conv,
@@ -292,17 +290,14 @@ def get_detection_network(
 
     if "object_loss_fn" in network_config:
         object_loss_key = network_config["object_loss_fn"]
-        object_loss_fn = loss_factory["binary"][
-            network_config["object_loss_fn"]
-        ]
+        object_loss_fn = loss_factory["binary"][network_config["object_loss_fn"]]
     else:
         object_loss_fn = F.binary_cross_entropy
 
     net_cfg = {
         k: network_config[k]
         for k in network_config
-        if k
-        not in ["activation_fn", "classification_loss_fn", "object_loss_fn"]
+        if k not in ["activation_fn", "classification_loss_fn", "object_loss_fn"]
     }
 
     if "batch_size" not in net_cfg:
@@ -312,13 +307,11 @@ def get_detection_network(
     if (loss_gamma is None) or (loss_comb is None) or (class_weights is None):
         object_loss_params = {}
     else:
-        object_loss_params = get_loss_param_dict(
-            1.0, loss_gamma, loss_comb, 0.5
-        )[object_loss_key]
+        object_loss_params = get_loss_param_dict(1.0, loss_gamma, loss_comb, 0.5)[
+            object_loss_key
+        ]
 
-    adn_fn = get_adn_fn(
-        3, norm_fn="batch", act_fn=act_fn, dropout_param=dropout_param
-    )
+    adn_fn = get_adn_fn(3, norm_fn="batch", act_fn=act_fn, dropout_param=dropout_param)
     network = YOLONet3dPL(
         training_dataloader_call=train_loader_call,
         image_key="image",
@@ -616,9 +609,7 @@ def get_generative_network(
     start_decay: int,
     diffusion_steps: int,
 ) -> DiffusionUNetPL:
-    scheduler = DDPMScheduler(
-        num_train_timesteps=diffusion_steps, **scheduler_config
-    )
+    scheduler = DDPMScheduler(num_train_timesteps=diffusion_steps, **scheduler_config)
     inferer = DiffusionInfererSkipSteps(scheduler)
     if any(
         [
@@ -725,8 +716,7 @@ def get_gan_network(
     if categorical_specification is not None:
         boilerplate_args["classification_target_key"] = "cat"
         discriminator_config["additional_classification_targets"] = [
-            x if isinstance(x, int) else len(x)
-            for x in categorical_specification
+            x if isinstance(x, int) else len(x) for x in categorical_specification
         ]
     if numerical_specification is not None:
         num_spec = numerical_specification

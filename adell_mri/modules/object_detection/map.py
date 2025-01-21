@@ -6,9 +6,7 @@ from .utils import calculate_iou, check_overlap
 
 
 class mAP(torchmetrics.metric.Metric):
-    def __init__(
-        self, ndim=3, score_threshold=0.5, iou_threshold=0.5, n_classes=2
-    ):
+    def __init__(self, ndim=3, score_threshold=0.5, iou_threshold=0.5, n_classes=2):
         """Mean average precision implementation for any number of dimensions.
 
         Args:
@@ -52,9 +50,7 @@ class mAP(torchmetrics.metric.Metric):
                     y[k] = y[k].unsqueeze(0)
             if len(np.unique([y[k].shape[0] for k in K])) > 1:
                 raise ValueError(
-                    "Inputs in {} should have the same number of elements".format(
-                        what
-                    )
+                    "Inputs in {} should have the same number of elements".format(what)
                 )
 
     def update(self, pred, target):
@@ -108,9 +104,7 @@ class mAP(torchmetrics.metric.Metric):
             if len(target_classes.shape) < len(pred_classes_proba.shape):
                 target_classes = target_classes.unsqueeze(0)
             if hit.sum() > 0:
-                self.average_precision.update(
-                    pred_classes_proba, target_classes
-                )
+                self.average_precision.update(pred_classes_proba, target_classes)
                 self.hits += 1
 
     def compute(self):

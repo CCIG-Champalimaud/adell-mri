@@ -9,12 +9,8 @@ class VariationalAutoEncoder(Generator):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.bottleneck_dim = self.block_out_channels[-1]
-        self.predict_mu = torch.nn.Linear(
-            self.bottleneck_dim, self.bottleneck_dim
-        )
-        self.predict_logvar = torch.nn.Linear(
-            self.bottleneck_dim, self.bottleneck_dim
-        )
+        self.predict_mu = torch.nn.Linear(self.bottleneck_dim, self.bottleneck_dim)
+        self.predict_logvar = torch.nn.Linear(self.bottleneck_dim, self.bottleneck_dim)
 
     def sample(self, mu: torch.Tensor, logvar: torch.Tensor) -> torch.Tensor:
         """
@@ -26,9 +22,7 @@ class VariationalAutoEncoder(Generator):
         eps = torch.normal(0, 1, std.shape).to(std)
         return mu + eps * std
 
-    def apply_to_channels_as_last(
-        self, x: torch.Tensor, fn: Callable
-    ) -> torch.Tensor:
+    def apply_to_channels_as_last(self, x: torch.Tensor, fn: Callable) -> torch.Tensor:
         """
         Applies function to the permuted version of a tensor such that the 1st
         channel is placed at the last position, the function is applied and the

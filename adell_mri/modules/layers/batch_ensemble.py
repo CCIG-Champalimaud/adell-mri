@@ -93,17 +93,13 @@ class BatchEnsemble(torch.nn.Module):
             {
                 "pre": torch.nn.Parameter(
                     torch.as_tensor(
-                        np.random.normal(
-                            1, 0.1, size=[self.n, self.in_channels]
-                        ),
+                        np.random.normal(1, 0.1, size=[self.n, self.in_channels]),
                         dtype=torch.float32,
                     )
                 ),
                 "post": torch.nn.Parameter(
                     torch.as_tensor(
-                        np.random.normal(
-                            1, 0.1, size=[self.n, self.out_channels]
-                        ),
+                        np.random.normal(1, 0.1, size=[self.n, self.out_channels]),
                         dtype=torch.float32,
                     )
                 ),
@@ -178,17 +174,13 @@ class BatchEnsembleWrapper(torch.nn.Module):
             {
                 "pre": torch.nn.Parameter(
                     torch.as_tensor(
-                        np.random.normal(
-                            1, 0.1, size=[self.n, self.in_channels]
-                        ),
+                        np.random.normal(1, 0.1, size=[self.n, self.in_channels]),
                         dtype=torch.float32,
                     )
                 ),
                 "post": torch.nn.Parameter(
                     torch.as_tensor(
-                        np.random.normal(
-                            1, 0.1, size=[self.n, self.out_channels]
-                        ),
+                        np.random.normal(1, 0.1, size=[self.n, self.out_channels]),
                         dtype=torch.float32,
                     )
                 ),

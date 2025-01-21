@@ -104,9 +104,7 @@ class LayerNormChannelsFirst(torch.nn.Module):
         if x.ndim == 3:
             x = x.multiply(self.weight[:, None]).add(self.bias[:, None])
         if x.ndim == 4:
-            x = x.multiply(self.weight[:, None, None]).add(
-                self.bias[:, None, None]
-            )
+            x = x.multiply(self.weight[:, None, None]).add(self.bias[:, None, None])
         if x.ndim == 5:
             x = x.multiply(self.weight[:, None, None, None]).add(
                 self.bias[:, None, None, None]

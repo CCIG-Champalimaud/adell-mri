@@ -200,9 +200,7 @@ class SelfAttentionBlock(torch.nn.Module):
         sh = X.shape
         kwargs = self.get_kwargs_for_rearrange(sh)
         if self.ndim == 2:
-            return einops.rearrange(
-                X, "n c (h x) (w y) -> n (h w) (x y c)", **kwargs
-            )
+            return einops.rearrange(X, "n c (h x) (w y) -> n (h w) (x y c)", **kwargs)
         if self.ndim == 3:
             return einops.rearrange(
                 X, "n c (h x) (w y) (d z) -> n (h w d) (x y z c)", **kwargs
@@ -211,9 +209,7 @@ class SelfAttentionBlock(torch.nn.Module):
     def unembed(self, X: torch.Tensor, sh: list[int]) -> torch.Tensor:
         kwargs = self.get_kwargs_for_rearrange(sh)
         if self.ndim == 2:
-            return einops.rearrange(
-                X, "n (h w) (x y c) -> n c (h x) (w y)", **kwargs
-            )
+            return einops.rearrange(X, "n (h w) (x y c) -> n c (h x) (w y)", **kwargs)
         if self.ndim == 3:
             return einops.rearrange(
                 X, "n (h w d) (x y z c) -> n c (h x) (w y) (d z)", **kwargs

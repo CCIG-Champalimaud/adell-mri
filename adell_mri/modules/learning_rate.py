@@ -61,9 +61,7 @@ class PolynomialLRDecay(_LRScheduler):
     From: https://github.com/cmpark0126/pytorch-polynomial-lr-decay/blob/master/torch_poly_lr_decay/torch_poly_lr_decay.py
     """
 
-    def __init__(
-        self, optimizer, max_decay_steps, end_learning_rate=0.0001, power=1.0
-    ):
+    def __init__(self, optimizer, max_decay_steps, end_learning_rate=0.0001, power=1.0):
         if max_decay_steps <= 1.0:
             raise ValueError("max_decay_steps should be greater than 1.")
         self.max_decay_steps = max_decay_steps
@@ -159,8 +157,7 @@ class CosineAnnealingWithWarmupLR(_LRScheduler):
 
     def _get_exponential_growth(self, step, nws):
         lrs = [
-            (base_lr - self.initial_lr) * math.exp((step + 1) - nws)
-            + self.eta_min
+            (base_lr - self.initial_lr) * math.exp((step + 1) - nws) + self.eta_min
             for base_lr in self.base_lrs
         ]
         return lrs

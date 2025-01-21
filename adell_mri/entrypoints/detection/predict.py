@@ -7,11 +7,15 @@ import yaml
 
 from ...entrypoints.assemble_args import Parser
 from ...modules.object_detection import YOLONet3d
-from ...monai_transforms import (get_transforms_detection_post,
-                                 get_transforms_detection_pre)
+from ...monai_transforms import (
+    get_transforms_detection_post,
+    get_transforms_detection_pre,
+)
 from ...utils import load_anchors
-from ...utils.dataset_filters import (filter_dictionary_with_filters,
-                                      filter_dictionary_with_presence)
+from ...utils.dataset_filters import (
+    filter_dictionary_with_filters,
+    filter_dictionary_with_presence,
+)
 from ...utils.network_factories import get_detection_network
 from ...utils.pl_utils import get_devices
 
@@ -61,16 +65,12 @@ def main(arguments):
         data_dict = filter_dictionary_with_presence(data_dict, args.image_keys)
     elif args.sequence_paths is not None:
         if len(args.sequence_paths) != len(args.image_keys):
-            raise ValueError(
-                "sequence_paths and image_keys must have the same length"
-            )
+            raise ValueError("sequence_paths and image_keys must have the same length")
         data_dict = {k: v for k, v in zip(args.image_keys, args.sequence_paths)}
     else:
         raise TypeError("one of [dataset_json,sequence_paths] must be defined")
     if len(args.filter_on_keys) > 0:
-        data_dict = filter_dictionary_with_filters(
-            data_dict, args.filter_on_keys
-        )
+        data_dict = filter_dictionary_with_filters(data_dict, args.filter_on_keys)
 
     pad_size = [int(i) for i in args.pad_size]
     crop_size = [int(i) for i in args.crop_size]

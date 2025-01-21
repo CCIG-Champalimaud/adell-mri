@@ -67,18 +67,12 @@ def main(arguments):
                                 index = re.search(r"[0-9]+$", updated_kk)
                                 if index is not None:
                                     index = index.group()
-                                    kk_root = updated_kk.replace(
-                                        "_" + index, ""
-                                    )
-                                    updated_kk = "{}_{}".format(
-                                        kk_root, int(index) + 1
-                                    )
+                                    kk_root = updated_kk.replace("_" + index, "")
+                                    updated_kk = "{}_{}".format(kk_root, int(index) + 1)
                                 else:
                                     index = 0
                                     kk_root = updated_kk
-                                    updated_kk = "{}_{}".format(
-                                        kk_root, int(index) + 1
-                                    )
+                                    updated_kk = "{}_{}".format(kk_root, int(index) + 1)
                                 if updated_kk not in output[k]:
                                     new_kk = True
                         else:

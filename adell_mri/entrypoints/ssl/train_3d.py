@@ -10,9 +10,11 @@ from adell_mri.utils.torch_utils import get_generator_and_rng
 
 from ...entrypoints.assemble_args import Parser
 from ...modules.config_parsing import parse_config_ssl, parse_config_unet
-from ...monai_transforms import (get_augmentations_ssl,
-                                 get_post_transforms_ssl,
-                                 get_pre_transforms_ssl)
+from ...monai_transforms import (
+    get_augmentations_ssl,
+    get_post_transforms_ssl,
+    get_pre_transforms_ssl,
+)
 from ...utils import ExponentialMovingAverage, safe_collate
 from ...utils.dataset import Dataset
 from ...utils.network_factories import get_ssl_network
@@ -253,9 +255,7 @@ def main(arguments):
             drop_last=True,
         )
 
-    train_loader = train_loader_call(
-        network_config_correct["batch_size"], False
-    )
+    train_loader = train_loader_call(network_config_correct["batch_size"], False)
     val_loader = monai.data.ThreadDataLoader(
         train_dataset,
         batch_size=network_config_correct["batch_size"],
@@ -277,9 +277,7 @@ def main(arguments):
     )
 
     if args.checkpoint is not None:
-        state_dict = torch.load(args.checkpoint, map_location=args.dev)[
-            "state_dict"
-        ]
+        state_dict = torch.load(args.checkpoint, map_location=args.dev)["state_dict"]
         inc = ssl.load_state_dict(state_dict)
 
     callbacks = [RichProgressBar()]
@@ -288,9 +286,7 @@ def main(arguments):
         ssl = ssl.to("cuda")
 
     if args.checkpoint is not None:
-        state_dict = torch.load(args.checkpoint, map_location=args.dev)[
-            "state_dict"
-        ]
+        state_dict = torch.load(args.checkpoint, map_location=args.dev)["state_dict"]
         inc = ssl.load_state_dict(state_dict)
         print(inc)
 

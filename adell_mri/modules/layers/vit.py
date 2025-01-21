@@ -6,8 +6,7 @@ import einops
 import numpy as np
 import torch
 
-from ...custom_types import (Callable, Dict, List, Size2dOr3d, TensorList,
-                             Tuple, Union)
+from ...custom_types import Callable, Dict, List, Size2dOr3d, TensorList, Tuple, Union
 from .adn_fn import get_adn_fn
 from .linear_blocks import MLP, MultiHeadSelfAttention
 from .regularization import ChannelDropout
@@ -84,9 +83,7 @@ def downsample_ein_op_dict(
     return ein_op_dict
 
 
-def window_partition_custom(
-    x: torch.Tensor, window_size: Size2dOr3d
-) -> torch.Tensor:
+def window_partition_custom(x: torch.Tensor, window_size: Size2dOr3d) -> torch.Tensor:
     """
     Reshapes an image/volume batch tensor into smaller image/volumes of
     window_size. Generalizes the implementation in [1] to both images and
@@ -192,9 +189,9 @@ def generate_mask(
                 img_mask[:, x[0], x[1], x[2], :] = cnt
             cnt += 1
         attn_mask = image_mask_to_attention_mask(img_mask, window_size)
-        attn_mask = attn_mask.masked_fill(
-            attn_mask != 0, float(-100.0)
-        ).masked_fill(attn_mask == 0, float(0.0))
+        attn_mask = attn_mask.masked_fill(attn_mask != 0, float(-100.0)).masked_fill(
+            attn_mask == 0, float(0.0)
+        )
     return attn_mask
 
 
@@ -238,12 +235,7 @@ class SliceLinearEmbedding(torch.nn.Module):
         self.drop_op = torch.nn.Dropout(self.dropout_rate)
 
         self.n_patches = int(
-            np.prod(
-                [
-                    s // p
-                    for s, p in zip(self.image_size[:2], self.patch_size[:2])
-                ]
-            )
+            np.prod([s // p for s, p in zip(self.image_size[:2], self.patch_size[:2])])
         )
         self.embedding_size = int(np.prod([*patch_size[:2], n_channels]))
 
@@ -368,9 +360,7 @@ class SliceLinearEmbedding(torch.nn.Module):
             )
             X = torch.concat([class_token, X], 2)
         if self.n_registers > 0:
-            registers = einops.repeat(
-                self.registers, "() n e -> b s n e", b=b, s=s
-            )
+            registers = einops.repeat(self.registers, "() n e -> b s n e", b=b, s=s)
             X = torch.concat([registers, X], 2)
         return self.drop_op(X)
 
@@ -538,14 +528,10 @@ class LinearEmbedding(torch.nn.Module):
         else:
             # number of patches will be smaller but the number of features
             # remains the same
-            self.n_windows = [
-                x // y for x, y in zip(self.image_size, self.window_size)
-            ]
+            self.n_windows = [x // y for x, y in zip(self.image_size, self.window_size)]
             self.n_patches_split = [
                 x // z // y
-                for x, y, z in zip(
-                    self.image_size, self.patch_size, self.n_windows
-                )
+                for x, y, z in zip(self.image_size, self.patch_size, self.n_windows)
             ]
         if self.channel_to_token is True:
             extra_patches = self.n_channels
@@ -604,9 +590,7 @@ class LinearEmbedding(torch.nn.Module):
             rh = ["b", ["h", "w", "c"], ["x", "y"]]
         else:
             rh = ["b", ["h", "w"], ["x", "y", "c"]]
-        einop_dict = {
-            k: int(s) for s, k in zip(self.patch_size, ["x", "y", "z"])
-        }
+        einop_dict = {k: int(s) for s, k in zip(self.patch_size, ["x", "y", "z"])}
         einop_dict.update(
             {k: int(s) for s, k in zip(self.n_patches_split, ["h", "w", "d"])}
         )
@@ -811,16 +795,13 @@ class LinearEmbedding(torch.nn.Module):
             X = einops.rearrange(X, einop_str, **einop_dict)
         elif self.embed_method == "convolutional":
             image_size = [
-                self.image_size[i] // scale[i]
-                for i in range(len(self.image_size))
+                self.image_size[i] // scale[i] for i in range(len(self.image_size))
             ]
             n_channels = self.n_channels * np.prod(scale)
             X = X.reshape(-1, n_channels, *image_size)
         return X
 
-    def forward(
-        self, X: torch.Tensor, no_pos_embed: bool = False
-    ) -> torch.Tensor:
+    def forward(self, X: torch.Tensor, no_pos_embed: bool = False) -> torch.Tensor:
         """Forward pass.
 
         Args:
@@ -850,9 +831,7 @@ class LinearEmbedding(torch.nn.Module):
             )
             X = torch.concat([class_token, X], 1)
         if self.n_registers > 0:
-            registers = einops.repeat(
-                self.registers, "() n e -> b n e", b=X.shape[0]
-            )
+            registers = einops.repeat(self.registers, "() n e -> b n e", b=X.shape[0])
             X = torch.concat([registers, X], 1)
         return self.drop_op(X)
 
@@ -1068,12 +1047,8 @@ class SWINTransformerBlock(torch.nn.Module):
     def init_mask_if_necessary(self):
         # window_size here has to be given in *number of patches*
         self.attention_mask = generate_mask(
-            image_size=[
-                x // y for x, y in zip(self.image_size, self.patch_size)
-            ],
-            window_size=[
-                x // y for x, y in zip(self.window_size, self.patch_size)
-            ],
+            image_size=[x // y for x, y in zip(self.image_size, self.patch_size)],
+            window_size=[x // y for x, y in zip(self.window_size, self.patch_size)],
             shift_size=self.shift_size,
         )
 
@@ -1173,9 +1148,7 @@ class SWINTransformerBlock(torch.nn.Module):
         else:
             shifted_X = X
         embedded_X = self.embedding(shifted_X)
-        attention = self.mha(
-            self.norm_op_1(embedded_X), mask=self.attention_mask
-        )
+        attention = self.mha(self.norm_op_1(embedded_X), mask=self.attention_mask)
         if self.embedding.embed_method == "convolutional":
             shifted_X = self.embedding.rearrange_inverse(attention)
         else:
@@ -1290,9 +1263,7 @@ class TransformerBlockStack(torch.nn.Module):
         else:
             return x
 
-    def convert_to_list_if_necessary(
-        self, x: Union[List[int], int]
-    ) -> List[int]:
+    def convert_to_list_if_necessary(self, x: Union[List[int], int]) -> List[int]:
         """Checks and corrects inputs if necessary.
 
         Args:
@@ -1318,9 +1289,7 @@ class TransformerBlockStack(torch.nn.Module):
 
     def init_transformer_blocks(self):
         """Initialises the transformer blocks."""
-        input_dim_primary = self.convert_to_list_if_necessary(
-            self.input_dim_primary
-        )
+        input_dim_primary = self.convert_to_list_if_necessary(self.input_dim_primary)
         attention_dim = self.convert_to_list_if_necessary(self.attention_dim)
         hidden_dim = self.convert_to_list_if_necessary(self.hidden_dim)
         n_heads = self.convert_to_list_if_necessary(self.n_heads)
@@ -1489,9 +1458,7 @@ class SWINTransformerBlockStack(torch.nn.Module):
         else:
             return x
 
-    def convert_to_list_if_necessary(
-        self, x: Union[List[int], int]
-    ) -> List[int]:
+    def convert_to_list_if_necessary(self, x: Union[List[int], int]) -> List[int]:
         """Checks and corrects inputs if necessary.
 
         Args:
@@ -1690,9 +1657,7 @@ class ViT(torch.nn.Module):
             self.patch_erasing_op = ChannelDropout(self.patch_erasing)
 
         if isinstance(self.mlp_structure, float):
-            self.mlp_structure = [
-                int(self.input_dim_primary * self.mlp_structure)
-            ]
+            self.mlp_structure = [int(self.input_dim_primary * self.mlp_structure)]
 
         if embedding_size is not None:
             input_dim_primary = embedding_size

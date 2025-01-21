@@ -59,9 +59,7 @@ class BarlowTwinsLoss(torch.nn.Module):
             self.count += 2 * n
         return self.barlow_twins_loss(x, y)
 
-    def barlow_twins_loss(
-        self, x: torch.Tensor, y: torch.Tensor
-    ) -> torch.Tensor:
+    def barlow_twins_loss(self, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
         diag_idx = torch.arange(0, x.shape[0])
         n = x.shape[0]
         C = self.pearson_corr(x, y)

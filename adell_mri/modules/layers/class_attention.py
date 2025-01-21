@@ -64,8 +64,7 @@ class EfficientConditioningAttentionBlock(torch.nn.Module):
         if self.op_type == "conv":
             # calculate kernel size
             kernel_size = self.odd(
-                math.log2(self.input_channels) / self.gamma
-                + (self.b / self.gamma)
+                math.log2(self.input_channels) / self.gamma + (self.b / self.gamma)
             )
 
             self.op = torch.nn.Sequential(

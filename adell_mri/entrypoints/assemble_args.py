@@ -9,9 +9,7 @@ argument_factory = {
     "dataset_json": dict(
         type=str, help="JSON containing dataset information", required=True
     ),
-    "sequence_paths": dict(
-        type=str, nargs="+", help="Path to sequence", default=None
-    ),
+    "sequence_paths": dict(type=str, nargs="+", help="Path to sequence", default=None),
     "image_keys": dict(
         type=str,
         nargs="+",
@@ -103,9 +101,7 @@ argument_factory = {
         help="Label groups for classification.",
     ),
     # data sampling and splitting
-    "cache_rate": dict(
-        type=float, help="Rate of samples to be cached", default=1.0
-    ),
+    "cache_rate": dict(type=float, help="Rate of samples to be cached", default=1.0),
     "subsample_size": dict(
         type=int, help="Subsamples data to a given size", default=None
     ),
@@ -320,15 +316,9 @@ argument_factory = {
         type=str, default="output.csv", help="Path to output file/folder."
     ),
     # training
-    "max_epochs": dict(
-        default=100, type=int, help="Maximum number of training epochs"
-    ),
-    "augment": dict(
-        type=str, nargs="+", default=[], help="Use data augmentations"
-    ),
-    "label_smoothing": dict(
-        default=None, type=float, help="Label smoothing value"
-    ),
+    "max_epochs": dict(default=100, type=int, help="Maximum number of training epochs"),
+    "augment": dict(type=str, nargs="+", default=[], help="Use data augmentations"),
+    "label_smoothing": dict(default=None, type=float, help="Label smoothing value"),
     "mixup_alpha": dict(default=None, type=float, help="Alpha for mixup"),
     "partial_mixup": dict(
         default=None,
@@ -351,9 +341,7 @@ argument_factory = {
         help="Decreases the LR using cosine decay.",
     ),
     # training (network)
-    "dropout_param": dict(
-        type=float, default=0.1, help="Parameter for dropout."
-    ),
+    "dropout_param": dict(type=float, default=0.1, help="Parameter for dropout."),
     "batch_size": dict(type=int, default=None, help="Batch size"),
     "optimizer": dict(
         type=str,
@@ -466,9 +454,7 @@ argument_factory = {
     "box_class_key": dict(
         type=str, default="box_classes", help="Box class key in dataset JSON"
     ),
-    "shape_key": dict(
-        type=str, default="shape", help="Shape key in dataset JSON"
-    ),
+    "shape_key": dict(type=str, default="shape", help="Shape key in dataset JSON"),
     "mask_key": dict(type=str, default=None, help="Mask key in dataset JSON"),
     "mask_mode": dict(
         type=str,
@@ -485,9 +471,7 @@ argument_factory = {
     "min_anchor_area": dict(
         type=float, default=None, help="Minimum anchor area (filters anchors)"
     ),
-    "detection_net_type": dict(
-        default="cat", choices=["yolo"], help="Network type"
-    ),
+    "detection_net_type": dict(default="cat", choices=["yolo"], help="Network type"),
     "iou_threshold": dict(
         type=float, default=0.5, help="IoU threshold for pred-gt overlaps."
     ),
@@ -539,9 +523,7 @@ argument_factory = {
         help="Predicts the maximum class in the output using the bottleneck \
             features.",
     ),
-    "deep_supervision": dict(
-        action="store_true", help="Triggers deep supervision."
-    ),
+    "deep_supervision": dict(action="store_true", help="Triggers deep supervision."),
     "constant_ratio": dict(
         type=float,
         default=None,
@@ -695,9 +677,7 @@ argument_factory = {
         action="store_true",
         help="Includes exponential moving average teacher (like BYOL)",
     ),
-    "stop_gradient": dict(
-        action="store_true", help="Stops gradient for teacher"
-    ),
+    "stop_gradient": dict(action="store_true", help="Stops gradient for teacher"),
     "n_series_iterations": dict(
         default=2,
         type=int,
@@ -706,13 +686,9 @@ argument_factory = {
     "n_transforms": dict(
         default=3, type=int, help="Number of augmentations for each image"
     ),
-    "steps_per_epoch": dict(
-        default=None, type=int, help="Number of steps per epoch"
-    ),
+    "steps_per_epoch": dict(default=None, type=int, help="Number of steps per epoch"),
     # diffusion-specific
-    "diffusion_steps": dict(
-        type=int, default=1000, help="Number of diffusion steps"
-    ),
+    "diffusion_steps": dict(type=int, default=1000, help="Number of diffusion steps"),
     "n_samples_gen": dict(
         type=int, default=1000, help="Number of samples to generate."
     ),

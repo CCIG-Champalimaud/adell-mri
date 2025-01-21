@@ -200,10 +200,7 @@ def binary_focal_loss_(
         pred = torch.flatten(pred, start_dim=1)
 
     target = target.reshape(pred.shape)
-    loss = -(
-        target * torch.log(pred + eps)
-        + (1 - target) * torch.log(1 - pred + eps)
-    )
+    loss = -(target * torch.log(pred + eps) + (1 - target) * torch.log(1 - pred + eps))
     target_bin = (target > 0).float()
     alpha_factor = target_bin * alpha + (1 - target_bin) * (1 - alpha)
     modulating_factor = torch.pow(torch.abs(target - pred) + eps, gamma)
@@ -855,9 +852,7 @@ class CompoundLoss(torch.nn.Module):
         for i in range(len(self.loss_fns_and_kwargs)):
             self.loss_fns_and_kwargs[i][1] = fn(self.loss_fns_and_kwargs[i][1])
 
-    def forward(
-        self, pred: torch.Tensor, target: torch.Tensor
-    ) -> list[torch.Tensor]:
+    def forward(self, pred: torch.Tensor, target: torch.Tensor) -> list[torch.Tensor]:
         """
         Calculates loss function.
 
@@ -870,9 +865,7 @@ class CompoundLoss(torch.nn.Module):
                 loss functions in self.loss_fns_and_kwargs.
         """
         loss_values = []
-        for (loss_fn, kwargs), w in zip(
-            self.loss_fns_and_kwargs, self.loss_weights
-        ):
+        for (loss_fn, kwargs), w in zip(self.loss_fns_and_kwargs, self.loss_weights):
             if kwargs is None:
                 loss_value = loss_fn(pred, target)
             else:

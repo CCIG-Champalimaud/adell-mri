@@ -49,9 +49,7 @@ def mixup(
         dtype=x.dtype,
         device=x.device,
     )
-    mixup_factor_x = mixup_factor.reshape(
-        [-1] + [1 for _ in range(1, len(x.shape))]
-    )
+    mixup_factor_x = mixup_factor.reshape([-1] + [1 for _ in range(1, len(x.shape))])
     mixup_perm = g.permutation(batch_size)
     x = x * mixup_factor_x + x[mixup_perm] * (1.0 - mixup_factor_x)
     y = y * mixup_factor + y[mixup_perm] * (1.0 - mixup_factor)
@@ -92,9 +90,7 @@ def partial_mixup(
         dtype=x.dtype,
         device=x.device,
     )
-    mixup_factor_x = mixup_factor.reshape(
-        [-1] + [1 for _ in range(1, len(x.shape))]
-    )
+    mixup_factor_x = mixup_factor.reshape([-1] + [1 for _ in range(1, len(x.shape))])
     mixup_perm = g.permutation(batch_size)
     x[mxu_i] = torch.add(
         x[mxu_i] * mixup_factor_x, x[mixup_perm][mxu_i] * (1 - mixup_factor_x)
@@ -158,9 +154,7 @@ class BatchPreprocessing:
             initial_y_dtype = y.dtype
             y = y.float()
             if self.partial_mixup is not None:
-                X, y = partial_mixup(
-                    X, y, self.mixup_alpha, self.partial_mixup, self.g
-                )
+                X, y = partial_mixup(X, y, self.mixup_alpha, self.partial_mixup, self.g)
             else:
                 X, y = mixup(X, y, self.mixup_alpha, self.g)
             y = y.to(initial_y_dtype)

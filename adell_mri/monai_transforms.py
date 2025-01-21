@@ -4,17 +4,35 @@ import monai
 import numpy as np
 import torch
 
-from .modules.augmentations import (AugmentationWorkhorsed, generic_augments,
-                                    mri_specific_augments, spatial_augments)
+from .modules.augmentations import (
+    AugmentationWorkhorsed,
+    generic_augments,
+    mri_specific_augments,
+    spatial_augments,
+)
 from .modules.semi_supervised_segmentation.utils import (
-    convert_arguments_augment_all, convert_arguments_augment_individual,
-    convert_arguments_post, convert_arguments_pre)
-from .utils import (AdjustSizesd, BBToAdjustedAnchorsd, CombineBinaryLabelsd,
-                    ConditionalRescalingd, ConvexHulld, CopyEntryd,
-                    CreateImageAndWeightsd, CropFromMaskd,
-                    ExposeTransformKeyMetad, LabelOperatord,
-                    LabelOperatorSegmentationd, MasksToBBd, Offsetd,
-                    RandRotateWithBoxesd, SampleChannelDimd)
+    convert_arguments_augment_all,
+    convert_arguments_augment_individual,
+    convert_arguments_post,
+    convert_arguments_pre,
+)
+from .utils import (
+    AdjustSizesd,
+    BBToAdjustedAnchorsd,
+    CombineBinaryLabelsd,
+    ConditionalRescalingd,
+    ConvexHulld,
+    CopyEntryd,
+    CreateImageAndWeightsd,
+    CropFromMaskd,
+    ExposeTransformKeyMetad,
+    LabelOperatord,
+    LabelOperatorSegmentationd,
+    MasksToBBd,
+    Offsetd,
+    RandRotateWithBoxesd,
+    SampleChannelDimd,
+)
 
 ADC_FACTOR = -2 / 3
 
@@ -65,26 +83,20 @@ def get_transforms_unet_seg(
     transforms.append(monai.transforms.Orientationd(seg_keys, "RAS"))
     if target_spacing is not None:
         transforms.append(
-            monai.transforms.Spacingd(
-                keys=seg_keys, pixdim=target_spacing, mode=intp
-            )
+            monai.transforms.Spacingd(keys=seg_keys, pixdim=target_spacing, mode=intp)
         )
     # sets resize
     if resize_size is not None and len(resize_keys) > 0:
         intp_ = [k for k, kk in zip(intp, seg_keys) if kk in resize_keys]
         transforms.append(
-            monai.transforms.Resized(
-                resize_keys, tuple(resize_size), mode=intp_
-            )
+            monai.transforms.Resized(resize_keys, tuple(resize_size), mode=intp_)
         )
     # sets pad op
     if pad_size is not None:
         transforms.append(monai.transforms.SpatialPadd(seg_keys, pad_size))
     # sets crop op
     if crop_size is not None:
-        transforms.extend(
-            monai.transforms.CenterSpatialCropd(seg_keys, crop_size)
-        )
+        transforms.extend(monai.transforms.CenterSpatialCropd(seg_keys, crop_size))
     transforms.extend(
         [
             CombineBinaryLabelsd(seg_keys, "any", "mask"),
@@ -154,36 +166,26 @@ def get_transforms_unet(
         # sets intensity transforms for ADC and other sequence types
         if len(non_adc_keys) > 0:
             transforms.append(
-                monai.transforms.ScaleIntensityd(
-                    non_adc_keys, minv=0.0, maxv=1.0
-                )
+                monai.transforms.ScaleIntensityd(non_adc_keys, minv=0.0, maxv=1.0)
             )
         if len(adc_keys) > 0:
             transforms.append(ConditionalRescalingd(adc_keys, 500, 0.001))
             transforms.append(
-                monai.transforms.ScaleIntensityd(
-                    adc_keys, None, None, ADC_FACTOR
-                ),
+                monai.transforms.ScaleIntensityd(adc_keys, None, None, ADC_FACTOR),
             )
         # sets resize
         if resize_size is not None and len(resize_keys) > 0:
             intp_ = [k for k, kk in zip(intp, all_keys) if kk in resize_keys]
             transforms.append(
-                monai.transforms.Resized(
-                    resize_keys, tuple(resize_size), mode=intp_
-                )
+                monai.transforms.Resized(resize_keys, tuple(resize_size), mode=intp_)
             )
         # sets pad op
         if pad_size is not None:
             transforms.append(monai.transforms.SpatialPadd(all_keys, pad_size))
         # sets crop op
         if crop_size is not None:
-            transforms.append(
-                monai.transforms.CenterSpatialCropd(all_keys, crop_size)
-            )
-        transforms.append(
-            monai.transforms.EnsureTyped(all_keys, dtype=torch.float32)
-        )
+            transforms.append(monai.transforms.CenterSpatialCropd(all_keys, crop_size))
+        transforms.append(monai.transforms.EnsureTyped(all_keys, dtype=torch.float32))
         if label_keys is not None:
             transforms.extend(
                 [
@@ -199,9 +201,7 @@ def get_transforms_unet(
         # sets indices for random crop op
         if random_crop_size is not None:
             if label_keys is not None:
-                transforms.append(
-                    AdjustSizesd([*image_keys, "mask"], mode="crop")
-                )
+                transforms.append(AdjustSizesd([*image_keys, "mask"], mode="crop"))
                 transforms.append(monai.transforms.FgBgToIndicesd("mask"))
             else:
                 transforms.append(AdjustSizesd(image_keys, mode="crop"))
@@ -217,22 +217,16 @@ def get_transforms_unet(
 
         if len(all_aux_keys) > 0:
             keys.append(all_aux_keys)
-            transforms.append(
-                monai.transforms.ConcatItemsd(all_aux_keys, aux_key_net)
-            )
+            transforms.append(monai.transforms.ConcatItemsd(all_aux_keys, aux_key_net))
         if len(feature_keys) > 0:
             keys.append(feature_keys)
             transforms.extend(
                 [
-                    monai.transforms.EnsureTyped(
-                        feature_keys, dtype=np.float32
-                    ),
+                    monai.transforms.EnsureTyped(feature_keys, dtype=np.float32),
                     monai.transforms.Lambdad(
                         feature_keys, func=lambda x: np.reshape(x, [1])
                     ),
-                    monai.transforms.ConcatItemsd(
-                        feature_keys, feature_key_net
-                    ),
+                    monai.transforms.ConcatItemsd(feature_keys, feature_key_net),
                 ]
             )
         if label_keys is not None:
@@ -282,9 +276,7 @@ def get_transforms_detection_pre(
     non_adc_keys = [k for k in keys if k not in adc_keys]
     if mask_key is not None:
         image_keys = keys + [mask_key]
-        spacing_mode = [
-            "bilinear" if k != mask_key else "nearest" for k in image_keys
-        ]
+        spacing_mode = ["bilinear" if k != mask_key else "nearest" for k in image_keys]
     else:
         image_keys = keys
         spacing_mode = ["bilinear" for k in image_keys]
@@ -294,9 +286,7 @@ def get_transforms_detection_pre(
     ]
     if target_spacing is not None:
         transforms.append(
-            monai.transforms.Spacingd(
-                image_keys, target_spacing, mode=spacing_mode
-            )
+            monai.transforms.Spacingd(image_keys, target_spacing, mode=spacing_mode)
         )
     if len(non_adc_keys) > 0:
         transforms.append(
@@ -343,9 +333,7 @@ def get_transforms_detection_post(
     intp_resampling = ["area" for _ in keys]
     transforms = []
     transforms.append(
-        get_augmentations_detection(
-            augments, keys, [box_key], t2_keys, intp_resampling
-        )
+        get_augmentations_detection(augments, keys, [box_key], t2_keys, intp_resampling)
     )
     if predict is False:
         transforms.append(
@@ -391,9 +379,7 @@ def get_transforms_classification(
     if mask_key is not None:
         all_keys.append(mask_key)
     if x == "pre":
-        transforms = [
-            monai.transforms.LoadImaged(all_keys, ensure_channel_first=True)
-        ]
+        transforms = [monai.transforms.LoadImaged(all_keys, ensure_channel_first=True)]
         if mask_key is not None:
             transforms.append(
                 monai.transforms.ResampleToMatchd(
@@ -404,17 +390,13 @@ def get_transforms_classification(
 
         if len(non_adc_keys) > 0:
             transforms.append(
-                monai.transforms.ScaleIntensityd(
-                    non_adc_keys, minv=0.0, maxv=1.0
-                )
+                monai.transforms.ScaleIntensityd(non_adc_keys, minv=0.0, maxv=1.0)
             )
         if len(adc_keys) > 0:
             transforms.append(ConditionalRescalingd(adc_keys, 500, 0.001))
             transforms.append(Offsetd(adc_keys, None))
             transforms.append(
-                monai.transforms.ScaleIntensityd(
-                    adc_keys, None, None, ADC_FACTOR
-                )
+                monai.transforms.ScaleIntensityd(adc_keys, None, None, ADC_FACTOR)
             )
         if target_spacing is not None:
             transforms.extend(
@@ -424,8 +406,7 @@ def get_transforms_classification(
                         pixdim=target_spacing,
                         dtype=torch.float32,
                         mode=[
-                            "bilinear" if k != mask_key else "nearest"
-                            for k in all_keys
+                            "bilinear" if k != mask_key else "nearest" for k in all_keys
                         ],
                     ),
                 ]
@@ -435,17 +416,12 @@ def get_transforms_classification(
                 monai.transforms.Resized(
                     keys=all_keys,
                     spatial_size=target_size,
-                    mode=[
-                        "bilinear" if k != mask_key else "nearest"
-                        for k in all_keys
-                    ],
+                    mode=["bilinear" if k != mask_key else "nearest" for k in all_keys],
                 )
             )
         if pad_size is not None:
             transforms.append(
-                monai.transforms.SpatialPadd(
-                    all_keys, [int(j) + 16 for j in crop_size]
-                )
+                monai.transforms.SpatialPadd(all_keys, [int(j) + 16 for j in crop_size])
             )
         # initial crop with margin allows for rotation transforms to not create
         # black pixels around the image (these transforms do not need to applied
@@ -476,9 +452,7 @@ def get_transforms_classification(
                 )
             )
         if image_masking is True:
-            transforms.append(
-                monai.transforms.MaskIntensityd(keys, mask_key=mask_key)
-            )
+            transforms.append(monai.transforms.MaskIntensityd(keys, mask_key=mask_key))
         if branched is not True:
             transforms.append(monai.transforms.ConcatItemsd(all_keys, "image"))
         if len(clinical_feature_keys) > 0:
@@ -491,9 +465,7 @@ def get_transforms_classification(
                         clinical_feature_keys,
                         func=lambda x: np.reshape(x, [1]),
                     ),
-                    monai.transforms.ConcatItemsd(
-                        clinical_feature_keys, "tabular"
-                    ),
+                    monai.transforms.ConcatItemsd(clinical_feature_keys, "tabular"),
                 ]
             )
         if isinstance(positive_labels, int):
@@ -511,23 +483,15 @@ def get_transforms_classification(
             )
         if cat_confounder_keys is not None:
             transforms.append(
-                monai.transforms.Lambdad(
-                    cat_confounder_keys, box, track_meta=False
-                )
+                monai.transforms.Lambdad(cat_confounder_keys, box, track_meta=False)
             )
             transforms.append(
-                monai.transforms.ConcatItemsd(
-                    cat_confounder_keys, "cat_confounder"
-                )
+                monai.transforms.ConcatItemsd(cat_confounder_keys, "cat_confounder")
             )
         if cont_confounder_keys is not None:
+            transforms.append(monai.transforms.Lambdad(cont_confounder_keys, box))
             transforms.append(
-                monai.transforms.Lambdad(cont_confounder_keys, box)
-            )
-            transforms.append(
-                monai.transforms.ConcatItemsd(
-                    cont_confounder_keys, "cont_confounder"
-                )
+                monai.transforms.ConcatItemsd(cont_confounder_keys, "cont_confounder")
             )
     return transforms
 
@@ -540,9 +504,7 @@ def get_pre_transforms_generation(
     n_dim: int = 3,
 ):
     transforms = [
-        monai.transforms.LoadImaged(
-            keys, ensure_channel_first=True, image_only=True
-        )
+        monai.transforms.LoadImaged(keys, ensure_channel_first=True, image_only=True)
     ]
     if n_dim == 2:
         transforms.extend(
@@ -562,18 +524,14 @@ def get_pre_transforms_generation(
                 ),
             ]
         )
-    transforms.append(
-        monai.transforms.ScaleIntensityd(keys, minv=0.0, maxv=1.0)
-    )
+    transforms.append(monai.transforms.ScaleIntensityd(keys, minv=0.0, maxv=1.0))
     if pad_size is not None:
         transforms.append(
             monai.transforms.SpatialPadd(keys, [int(j) for j in pad_size])
         )
     if crop_size is not None:
         transforms.append(
-            monai.transforms.CenterSpatialCropd(
-                keys, [int(j) + 16 for j in crop_size]
-            )
+            monai.transforms.CenterSpatialCropd(keys, [int(j) + 16 for j in crop_size])
         )
     transforms.append(monai.transforms.EnsureTyped(keys))
     return transforms
@@ -589,14 +547,10 @@ def get_post_transforms_generation(
     transforms.append(monai.transforms.ConcatItemsd(image_keys, "image"))
     if crop_size is not None:
         transforms.append(
-            monai.transforms.CenterSpatialCropd(
-                "image", [int(j) for j in crop_size]
-            )
+            monai.transforms.CenterSpatialCropd("image", [int(j) for j in crop_size])
         )
     if cat_keys is not None:
-        transforms.append(
-            monai.transforms.Lambdad(cat_keys, box, track_meta=False)
-        )
+        transforms.append(monai.transforms.Lambdad(cat_keys, box, track_meta=False))
         transforms.append(monai.transforms.ConcatItemsd(cat_keys, "cat"))
     if num_keys is not None:
         transforms.append(monai.transforms.Lambdad(num_keys, box))
@@ -656,16 +610,12 @@ def get_pre_transforms_ssl(
         transforms.extend(
             [
                 ConditionalRescalingd(adc_keys, 500, 0.001),
-                monai.transforms.ScaleIntensityd(
-                    adc_keys, None, None, ADC_FACTOR
-                ),
+                monai.transforms.ScaleIntensityd(adc_keys, None, None, ADC_FACTOR),
             ]
         )
     if crop_size is not None:
         transforms.append(
-            monai.transforms.CenterSpatialCropd(
-                all_keys, [int(j) for j in crop_size]
-            )
+            monai.transforms.CenterSpatialCropd(all_keys, [int(j) for j in crop_size])
         )
     if pad_size is not None:
         transforms.append(
@@ -724,9 +674,7 @@ def get_augmentations_unet(
         "lowres",
         "trivial",
     ]
-    interpolation = [
-        "bilinear" if k in image_keys else "nearest" for k in all_keys
-    ]
+    interpolation = ["bilinear" if k in image_keys else "nearest" for k in all_keys]
     for a in augment:
         if a not in valid_arg_list:
             raise NotImplementedError(
@@ -767,9 +715,7 @@ def get_augmentations_unet(
     if "noise" in augment:
         augments.extend(
             [
-                monai.transforms.RandRicianNoised(
-                    image_keys, std=0.02, prob=prob
-                ),
+                monai.transforms.RandRicianNoised(image_keys, std=0.02, prob=prob),
                 monai.transforms.RandGibbsNoised(
                     image_keys, alpha=(0.3, 0.6), prob=prob
                 ),
@@ -777,9 +723,7 @@ def get_augmentations_unet(
         )
 
     if "rbf" in augment and len(t2_keys) > 0:
-        augments.append(
-            monai.transforms.RandBiasFieldd(t2_keys, degree=3, prob=prob)
-        )
+        augments.append(monai.transforms.RandBiasFieldd(t2_keys, degree=3, prob=prob))
 
     if "affine" in augment:
         augments.append(
@@ -926,9 +870,7 @@ def get_augmentations_class(
         augments.extend([monai.transforms.RandGaussianSmoothd(image_keys)])
 
     if "rbf" in augment and len(t2_keys) > 0:
-        augments.append(
-            monai.transforms.RandBiasFieldd(t2_keys, degree=3, prob=prob)
-        )
+        augments.append(monai.transforms.RandBiasFieldd(t2_keys, degree=3, prob=prob))
 
     if "affine" in augment:
         augments.append(
@@ -1004,9 +946,7 @@ def get_augmentations_detection(
         )
 
     if "rbf" in augment and len(t2_keys) > 0:
-        augments.append(
-            monai.transforms.RandBiasFieldd(t2_keys, degree=3, prob=prob)
-        )
+        augments.append(monai.transforms.RandBiasFieldd(t2_keys, degree=3, prob=prob))
 
     if "rotate" in augment:
         augments.append(
@@ -1053,9 +993,7 @@ def get_augmentations_ssl(
     if vicregl is True:
         transforms_to_remove.extend(spatial_augments)
     if n_dim == 2:
-        transforms_to_remove.extend(
-            ["rotate_z", "translate_z", "shear_z", "scale_z"]
-        )
+        transforms_to_remove.extend(["rotate_z", "translate_z", "shear_z", "scale_z"])
     else:
         # the sharpens are remarkably slow, not worth it imo
         transforms_to_remove.extend(
@@ -1071,17 +1009,13 @@ def get_augmentations_ssl(
         small_crop_size = [x // 2 for x in scaled_crop_size]
         cropping_strategy.extend(
             [
-                monai.transforms.SpatialPadd(
-                    all_keys + copied_keys, small_crop_size
-                ),
+                monai.transforms.SpatialPadd(all_keys + copied_keys, small_crop_size),
                 monai.transforms.RandSpatialCropd(
                     all_keys + copied_keys,
                     roi_size=small_crop_size,
                     random_size=True,
                 ),
-                monai.transforms.Resized(
-                    all_keys + copied_keys, scaled_crop_size
-                ),
+                monai.transforms.Resized(all_keys + copied_keys, scaled_crop_size),
             ]
         )
 
@@ -1163,9 +1097,7 @@ def get_semi_sl_transforms(
     augment_arguments: Dict[str, Any],
     keys: List[str],
 ):
-    transform_arguments_semi_sl_pre = convert_arguments_pre(
-        transform_arguments, keys
-    )
+    transform_arguments_semi_sl_pre = convert_arguments_pre(transform_arguments, keys)
     transform_arguments_semi_sl_post_1 = convert_arguments_post(
         transform_arguments, 1, keys
     )

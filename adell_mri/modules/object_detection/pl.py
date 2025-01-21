@@ -174,16 +174,12 @@ class YOLONet3dPL(YOLONet3d, pl.LightningModule):
         y_object = torch.zeros_like(bb_object, device=iou.device)
         y_object[b, :, h, w, d, a] = torch.unsqueeze(iou, 1)
 
-        obj_loss = self.object_loss_fn(
-            bb_object, y_object, **self.object_loss_params
-        )
+        obj_loss = self.object_loss_fn(bb_object, y_object, **self.object_loss_params)
 
         obj_weight = 1.0
         box_weight = 0.1
         output = obj_loss.mean() * obj_weight
-        output = (
-            output + ((1 - iou).mean() + cpd.mean() + ar.mean()) * box_weight
-        )
+        output = output + ((1 - iou).mean() + cpd.mean() + ar.mean()) * box_weight
         if self.n_classes > 2:
             b_c, h_c, w_c, d_c = torch.split(
                 torch.unique(torch.stack([b, h, w, d], 1), dim=0), 1, dim=1
@@ -314,9 +310,7 @@ class YOLONet3dPL(YOLONet3d, pl.LightningModule):
     def training_step(self, batch, batch_idx):
         batch_size = batch[self.image_key].shape[0]
         loss = self.step(batch, batch_idx, self.train_metrics)
-        self.log(
-            "loss", loss, prog_bar=True, on_step=True, batch_size=batch_size
-        )
+        self.log("loss", loss, prog_bar=True, on_step=True, batch_size=batch_size)
         return loss
 
     def validation_step(self, batch, batch_idx):
@@ -631,17 +625,11 @@ class CoarseDetector3dPL(CoarseDetector3d, pl.LightningModule):
                 "objF1_obj": torchmetrics.FBetaScore(
                     None, threshold=self.iou_threshold
                 ),
-                "objRec_obj": torchmetrics.Recall(
-                    None, threshold=self.iou_threshold
-                ),
+                "objRec_obj": torchmetrics.Recall(None, threshold=self.iou_threshold),
             }
         )
         self.val_metrics = torch.nn.ModuleDict(
-            {
-                "v:objF1_obj": torchmetrics.FBetaScore(
-                    None, threshold=self.iou_threshold
-                )
-            }
+            {"v:objF1_obj": torchmetrics.FBetaScore(None, threshold=self.iou_threshold)}
         )
         self.test_metrics = torch.nn.ModuleDict(
             {

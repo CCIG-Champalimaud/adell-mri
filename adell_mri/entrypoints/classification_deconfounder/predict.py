@@ -211,9 +211,7 @@ def main(arguments):
 
             state_dict = torch.load(checkpoint)["state_dict"]
             state_dict = {
-                k: state_dict[k]
-                for k in state_dict
-                if "loss_fn.weight" not in k
+                k: state_dict[k] for k in state_dict if "loss_fn.weight" not in k
             }
             network.load_state_dict(state_dict)
             network = network.eval().to(args.dev)
@@ -225,13 +223,9 @@ def main(arguments):
                 "predictions": {},
             }
             with tqdm(total=len(curr_prediction_ids)) as pbar:
-                for identifier, element in zip(
-                    curr_prediction_ids, prediction_dataset
-                ):
+                for identifier, element in zip(curr_prediction_ids, prediction_dataset):
                     pbar.set_description("Predicting {}".format(identifier))
-                    output = network.forward(
-                        element["image"].unsqueeze(0).to(args.dev)
-                    )
+                    output = network.forward(element["image"].unsqueeze(0).to(args.dev))
                     if args.type == "features":
                         output = output[-1].detach()
                         output = output.flatten(start_dim=2)

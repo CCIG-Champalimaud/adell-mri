@@ -193,9 +193,7 @@ def calculate_operating_points(y, x, op_match=None, verbose=1):
 
 
 # calculate statistics for multiple curves
-def calculate_statistics(
-    metrics, op_match=None, x_start=0.0, x_end=1.0, verbose=1
-):
+def calculate_statistics(metrics, op_match=None, x_start=0.0, x_end=1.0, verbose=1):
     """
     Calculate statistics, such as the area under the curve, for multiple (independent) curves.
     To calculate shared statistics, the curves must be translated to a shared x domain. To
@@ -233,9 +231,7 @@ def calculate_statistics(
     ), f"x_start must be smaller than x_end! Got x_start={x_start} and x_end={x_end}."
 
     # convert the per-model y (e.g., TPR) vs x (e.g., FPR) to a shared domain
-    y_shared_all = np.zeros(
-        shape=(len(metrics), len(x_shared)), dtype=np.float32
-    )
+    y_shared_all = np.zeros(shape=(len(metrics), len(x_shared)), dtype=np.float32)
     auroc_all = []
     individually_matched_operating_points = []
     for i, (y, x) in enumerate(metrics):
@@ -255,9 +251,7 @@ def calculate_statistics(
         auroc_all += [auc_score]
 
         # match operating point for each run individually
-        operating_points = calculate_operating_points(
-            y=y, x=x, op_match=op_match
-        )
+        operating_points = calculate_operating_points(y=y, x=x, op_match=op_match)
         individually_matched_operating_points += [operating_points]
 
     # calculate statistics in shared domain

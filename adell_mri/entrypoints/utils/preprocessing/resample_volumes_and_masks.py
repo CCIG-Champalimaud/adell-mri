@@ -77,9 +77,7 @@ def main(arguments):
     for pattern in args.image_patterns:
         compiled_pattern = re.compile(pattern)
         image_paths = Path(args.image_path).rglob("*")
-        image_paths = [
-            x for x in image_paths if compiled_pattern.search(x) is not None
-        ]
+        image_paths = [x for x in image_paths if compiled_pattern.search(x) is not None]
         for image_path in image_paths:
             identifier = id_pattern.match(image_path).group()
             if identifier not in path_dictionary:
@@ -90,9 +88,7 @@ def main(arguments):
     for pattern in args.mask_patterns:
         compiled_pattern = re.compile(pattern)
         mask_paths = Path(args.mask_path).rglob("*")
-        mask_paths = [
-            x for x in mask_paths if compiled_pattern.search(x) is not None
-        ]
+        mask_paths = [x for x in mask_paths if compiled_pattern.search(x) is not None]
         for mask_path in mask_paths:
             identifier = id_pattern.match(mask_path).group()
             if identifier not in path_dictionary:

@@ -32,9 +32,7 @@ def iou(a: np.ndarray, b: np.ndarray) -> float:
 
 def merge_masks(path_list: List[str], argmax: bool) -> sitk.Image:
     images_ = [sitk.ReadImage(x) for x in path_list]
-    images_[1:] = [
-        resample_image_to_target(x, images_[0], True) for x in images_[1:]
-    ]
+    images_[1:] = [resample_image_to_target(x, images_[0], True) for x in images_[1:]]
     images = [sitk.GetArrayFromImage(x) for x in images_]
     image_out = np.stack([np.zeros_like(images[0]), *images])
     if argmax is True:
@@ -121,8 +119,6 @@ def main(arguments):
         if len(path_dict[patient_id]) == n or args.strict is False:
             image_out = merge_masks(path_dict[patient_id], args.argmax)
             image_out = sitk.Cast(image_out, sitk.sitkInt16)
-            output_path_image = os.path.join(
-                args.output_path, patient_id + ".nii.gz"
-            )
+            output_path_image = os.path.join(args.output_path, patient_id + ".nii.gz")
             Path(output_path_image).parent.mkdir(parents=True, exist_ok=True)
             sitk.WriteImage(image_out, output_path_image)

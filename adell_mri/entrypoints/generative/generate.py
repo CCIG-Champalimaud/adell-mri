@@ -126,9 +126,7 @@ def main(arguments):
             args.learning_rate, network_config.get("learning_rate")
         )
         network_config["with_conditioning"] = with_conditioning
-        network_config["cross_attention_dim"] = (
-            256 if with_conditioning else None
-        )
+        network_config["cross_attention_dim"] = 256 if with_conditioning else None
 
     network = get_generative_network(
         network_config=network_config,
@@ -186,13 +184,9 @@ def main(arguments):
         transforms = monai.transforms.Compose(transforms)
         transforms.set_random_state(args.seed)
         data_dict = Dataset(args.dataset_json, rng=rng, verbose=True)
-        data_dict.dataset = {
-            k: {**v, "key": k} for k, v in data_dict.dataset.items()
-        }
+        data_dict.dataset = {k: {**v, "key": k} for k, v in data_dict.dataset.items()}
         if args.excluded_ids is not None:
-            args.excluded_ids = parse_ids(
-                args.excluded_ids, output_format="list"
-            )
+            args.excluded_ids = parse_ids(args.excluded_ids, output_format="list")
             print("Removing IDs specified in --excluded_ids")
             prev_len = len(data_dict)
             data_dict = {
@@ -238,13 +232,9 @@ def main(arguments):
         Path(args.output_path).mkdir(exist_ok=True, parents=True)
         for data in tqdm(dataloader, desc="Generating images"):
             output_paths = [
-                os.path.join(args.output_path, f"{k}_gen.mha")
-                for k in data["key"]
+                os.path.join(args.output_path, f"{k}_gen.mha") for k in data["key"]
             ]
-            if (
-                all(map(os.path.exists, output_paths))
-                and args.overwrite is False
-            ):
+            if all(map(os.path.exists, output_paths)) and args.overwrite is False:
                 continue
             images = data["image"].to(args.dev)
             curr_cat, curr_num = None, None
@@ -281,12 +271,8 @@ def main(arguments):
                 guidance_strength=args.guidance_strength,
             )
             outputs = outputs.detach().float().cpu()
-            for image, output_path, output in zip(
-                images, output_paths, outputs
-            ):
-                output = sitk.GetImageFromArray(
-                    output.permute(3, 1, 2, 0).numpy()
-                )
+            for image, output_path, output in zip(images, output_paths, outputs):
+                output = sitk.GetImageFromArray(output.permute(3, 1, 2, 0).numpy())
                 output.SetSpacing(spacing)
                 output.SetMetaData("checkpoint", args.checkpoint[0])
                 sitk.WriteImage(output, output_path, useCompression=True)
@@ -323,6 +309,4 @@ def main(arguments):
             sitk.WriteImage(output, output_path, useCompression=True)
 
     else:
-        raise Exception(
-            "one of dataset_json, n_samples_gen should be specified"
-        )
+        raise Exception("one of dataset_json, n_samples_gen should be specified")

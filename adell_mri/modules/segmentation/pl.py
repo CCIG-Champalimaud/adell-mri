@@ -180,20 +180,12 @@ class UNetBasePL(pl.LightningModule, ABC):
             print("\tModel parameters:")
             for n, p in self.named_parameters():
                 pn = p.norm()
-                if (
-                    (torch.isnan(pn) is True)
-                    or (torch.isinf(pn) is True)
-                    or True
-                ):
+                if (torch.isnan(pn) is True) or (torch.isinf(pn) is True) or True:
                     print("\t\tparameter norm({})={}".format(n, pn))
             for n, p in self.named_parameters():
                 if p.grad is not None:
                     pg = p.grad.mean()
-                    if (
-                        (torch.isnan(pg) is True)
-                        or (torch.isinf(pg) is True)
-                        or True
-                    ):
+                    if (torch.isnan(pg) is True) or (torch.isinf(pg) is True) or True:
                         print("\t\taverage grad({})={}".format(n, pg))
             raise RuntimeError("nan found in loss (see above for details)")
 
@@ -225,9 +217,7 @@ class UNetBasePL(pl.LightningModule, ABC):
 
     def step(self, x, y, y_class, x_cond, x_fc):
         y = torch.round(y)
-        output = self.forward(
-            X=x, X_skip_layer=x_cond, X_feature_conditioning=x_fc
-        )
+        output = self.forward(X=x, X_skip_layer=x_cond, X_feature_conditioning=x_fc)
         if self.deep_supervision is False:
             prediction, pred_class = output
         else:
@@ -245,9 +235,7 @@ class UNetBasePL(pl.LightningModule, ABC):
                     F.interpolate(y, S, mode=interp, align_corners=True) > 0
                 ).float()
                 loss_value = (
-                    self.calculate_loss(o, y_small).mean()
-                    / (2 ** (t - i))
-                    / (t + 1)
+                    self.calculate_loss(o, y_small).mean() / (2 ** (t - i)) / (t + 1)
                 )
                 additional_losses = additional_losses + loss_value
             loss = loss + additional_losses
@@ -316,9 +304,7 @@ class UNetBasePL(pl.LightningModule, ABC):
 
     def log_loss(self, key, loss, **kwargs):
         for i in range(loss.nelement()):
-            self.log(
-                f"{key}_{i}", loss[i], sync_dist=True, prog_bar=True, **kwargs
-            )
+            self.log(f"{key}_{i}", loss[i], sync_dist=True, prog_bar=True, **kwargs)
         self.log(key, loss.mean(), sync_dist=True, prog_bar=True, **kwargs)
 
     def training_step(self, batch, batch_idx):
@@ -356,9 +342,7 @@ class UNetBasePL(pl.LightningModule, ABC):
 
         self.train_batch_size = x.shape[0]
 
-        output_loss = (
-            loss.mean() if class_loss is None else loss.mean() + class_loss
-        )
+        output_loss = loss.mean() if class_loss is None else loss.mean() + class_loss
 
         return output_loss
 
@@ -510,8 +494,7 @@ class UNetBasePL(pl.LightningModule, ABC):
 
         self.cosine_decay = any(
             [
-                isinstance(self.start_decay, float)
-                and (self.start_decay < 1.0),
+                isinstance(self.start_decay, float) and (self.start_decay < 1.0),
                 isinstance(self.start_decay, int)
                 and (self.start_decay < self.n_epochs),
                 self.warmup_steps > 0,
@@ -554,12 +537,8 @@ class UNetBasePL(pl.LightningModule, ABC):
                 y_det_postprocess_func=get_lesions,
                 num_parallel_calls=8,
             )
-            self.log(
-                "V_AP", picai_eval_metrics.AP, prog_bar=True, sync_dist=True
-            )
-            self.log(
-                "V_R", picai_eval_metrics.score, prog_bar=True, sync_dist=True
-            )
+            self.log("V_AP", picai_eval_metrics.AP, prog_bar=True, sync_dist=True)
+            self.log("V_R", picai_eval_metrics.score, prog_bar=True, sync_dist=True)
             self.log(
                 "V_AUC",
                 picai_eval_metrics.auroc,
@@ -577,12 +556,8 @@ class UNetBasePL(pl.LightningModule, ABC):
                 y_det_postprocess_func=get_lesions,
                 num_parallel_calls=8,
             )
-            self.log(
-                "V_AP", picai_eval_metrics.AP, prog_bar=True, sync_dist=True
-            )
-            self.log(
-                "V_R", picai_eval_metrics.score, prog_bar=True, sync_dist=True
-            )
+            self.log("V_AP", picai_eval_metrics.AP, prog_bar=True, sync_dist=True)
+            self.log("V_R", picai_eval_metrics.score, prog_bar=True, sync_dist=True)
             self.log(
                 "V_AUC",
                 picai_eval_metrics.auroc,
@@ -1215,9 +1190,7 @@ class MIMUNetPL(MIMUNet, UNetBasePL):
                 S = o.shape[-self.spatial_dimensions :]
                 y_small = F.interpolate(y, S, mode="nearest")
                 loss_value = (
-                    self.calculate_loss(o, y_small).mean()
-                    / (2 ** (t - i))
-                    / (t + 1)
+                    self.calculate_loss(o, y_small).mean() / (2 ** (t - i)) / (t + 1)
                 )
                 additional_losses = additional_losses + loss_value
             loss = loss + additional_losses
@@ -1339,9 +1312,7 @@ class BrUNetPL(BrUNet, UNetBasePL):
                 S = o.shape[-self.spatial_dimensions :]
                 y_small = F.interpolate(y, S, mode="nearest")
                 loss_value = (
-                    self.calculate_loss(o, y_small).mean()
-                    / (2 ** (t - i))
-                    / (t + 1)
+                    self.calculate_loss(o, y_small).mean() / (2 ** (t - i)) / (t + 1)
                 )
                 additional_losses = additional_losses + loss_value
             loss = loss + additional_losses
@@ -1402,9 +1373,7 @@ class BrUNetPL(BrUNet, UNetBasePL):
             prog_bar=True,
         )
 
-        output_loss = (
-            loss.mean() if class_loss is None else loss.mean() + class_loss
-        )
+        output_loss = loss.mean() if class_loss is None else loss.mean() + class_loss
 
         return output_loss
 

@@ -13,11 +13,15 @@ from adell_mri.utils.torch_utils import get_generator_and_rng
 
 from ...entrypoints.assemble_args import Parser
 from ...modules.object_detection import YOLONet3d
-from ...monai_transforms import (get_transforms_detection_post,
-                                 get_transforms_detection_pre)
+from ...monai_transforms import (
+    get_transforms_detection_post,
+    get_transforms_detection_pre,
+)
 from ...utils import load_anchors, safe_collate
-from ...utils.dataset_filters import (filter_dictionary_with_filters,
-                                      filter_dictionary_with_presence)
+from ...utils.dataset_filters import (
+    filter_dictionary_with_filters,
+    filter_dictionary_with_presence,
+)
 from ...utils.detection import anchors_from_nested_list
 from ...utils.network_factories import get_detection_network
 from ...utils.pl_utils import get_ckpt_callback, get_devices, get_logger
@@ -106,9 +110,7 @@ def main(arguments):
             data_dict, args.image_keys + [args.mask_key]
         )
     if len(args.filter_on_keys) > 0:
-        data_dict = filter_dictionary_with_filters(
-            data_dict, args.filter_on_keys
-        )
+        data_dict = filter_dictionary_with_filters(data_dict, args.filter_on_keys)
     if args.subsample_size is not None and len(data_dict) > args.subsample_size:
         data_dict = {
             k: data_dict[k]
@@ -138,9 +140,7 @@ def main(arguments):
             args.n_folds, shuffle=True, random_state=args.seed
         ).split(all_pids)
     else:
-        fold_generator = iter(
-            [train_test_split(range(len(all_pids)), test_size=0.2)]
-        )
+        fold_generator = iter([train_test_split(range(len(all_pids)), test_size=0.2)])
 
     for val_fold in range(args.n_folds):
         train_idxs, val_idxs = next(fold_generator)
@@ -175,9 +175,7 @@ def main(arguments):
             "mask_mode": args.mask_mode,
         }
 
-        transforms_train = get_transforms_detection_pre(
-            **transform_arguments_pre
-        )
+        transforms_train = get_transforms_detection_pre(**transform_arguments_pre)
 
         train_dataset = monai.data.CacheDataset(
             path_list_train, monai.transforms.Compose(transforms_train)
@@ -191,13 +189,9 @@ def main(arguments):
             anchor_array = load_anchors(args.anchor_csv)
         if args.min_anchor_area is not None:
             print(
-                "Filtering anchor area (minimum area: {})".format(
-                    args.min_anchor_area
-                )
+                "Filtering anchor area (minimum area: {})".format(args.min_anchor_area)
             )
-            anchor_array = anchor_array[
-                np.prod(anchor_array, 1) > args.min_anchor_area
-            ]
+            anchor_array = anchor_array[np.prod(anchor_array, 1) > args.min_anchor_area]
 
         output_example = YOLONet3d(
             n_channels=1,
@@ -223,15 +217,11 @@ def main(arguments):
 
         transforms_train_val = [
             *get_transforms_detection_pre(**transform_arguments_pre),
-            *get_transforms_detection_post(
-                **transform_arguments_post, augments=[]
-            ),
+            *get_transforms_detection_post(**transform_arguments_post, augments=[]),
         ]
         transforms_val = [
             *get_transforms_detection_pre(**transform_arguments_pre),
-            *get_transforms_detection_post(
-                **transform_arguments_post, augments=[]
-            ),
+            *get_transforms_detection_post(**transform_arguments_post, augments=[]),
         ]
 
         train_dataset = monai.data.CacheDataset(

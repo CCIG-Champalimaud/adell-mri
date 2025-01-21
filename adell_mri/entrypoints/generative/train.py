@@ -6,19 +6,20 @@ from lightning.pytorch import Trainer
 from lightning.pytorch.callbacks import RichProgressBar
 
 from ...monai_transforms import get_augmentations_class as get_augmentations
-from ...monai_transforms import \
-    get_post_transforms_generation as get_post_transforms
-from ...monai_transforms import \
-    get_pre_transforms_generation as get_pre_transforms
-from ...utils import (RandomSlices, collate_last_slice,
-                      conditional_parameter_freezing, safe_collate)
+from ...monai_transforms import get_post_transforms_generation as get_post_transforms
+from ...monai_transforms import get_pre_transforms_generation as get_pre_transforms
+from ...utils import (
+    RandomSlices,
+    collate_last_slice,
+    conditional_parameter_freezing,
+    safe_collate,
+)
 from ...utils.dataset import Dataset
 from ...utils.network_factories import get_generative_network
 from ...utils.parser import compose, get_params, merge_args
 from ...utils.pl_callbacks import EMACallback, LogImageFromDiffusionProcess
 from ...utils.pl_utils import get_ckpt_callback, get_devices, get_logger
-from ...utils.torch_utils import (get_generator_and_rng,
-                                  load_checkpoint_to_model)
+from ...utils.torch_utils import get_generator_and_rng, load_checkpoint_to_model
 from ..assemble_args import Parser
 
 
@@ -120,8 +121,7 @@ def main(arguments):
     with_conditioning = False
     if args.cat_condition_keys is not None:
         categorical_specification = [
-            get_conditional_specification(data_dict, k)
-            for k in args.cat_condition_keys
+            get_conditional_specification(data_dict, k) for k in args.cat_condition_keys
         ]
         presence_keys.extend(args.cat_condition_keys)
         with_conditioning = True
@@ -277,13 +277,9 @@ def main(arguments):
 
     if args.checkpoint is not None:
         checkpoint = args.checkpoint
-        load_checkpoint_to_model(
-            network, checkpoint, args.exclude_from_state_dict
-        )
+        load_checkpoint_to_model(network, checkpoint, args.exclude_from_state_dict)
 
-    conditional_parameter_freezing(
-        network, args.freeze_regex, args.not_freeze_regex
-    )
+    conditional_parameter_freezing(network, args.freeze_regex, args.not_freeze_regex)
 
     # instantiate callbacks and loggers
     callbacks = [RichProgressBar()]
@@ -292,9 +288,7 @@ def main(arguments):
         callbacks.append(ckpt_callback)
 
     if args.ema_decay is not None:
-        callbacks.append(
-            EMACallback(decay=args.ema_decay, use_ema_weights=True)
-        )
+        callbacks.append(EMACallback(decay=args.ema_decay, use_ema_weights=True))
 
     logger = get_logger(
         summary_name=args.summary_name,
@@ -351,9 +345,7 @@ def main(arguments):
     else:
         ckpt_list = ["last"]
     for ckpt_key in ckpt_list:
-        test_metrics = trainer.test(network, train_loader, ckpt_path=ckpt_key)[
-            0
-        ]
+        test_metrics = trainer.test(network, train_loader, ckpt_path=ckpt_key)[0]
         for k in test_metrics:
             out = test_metrics[k]
             if isinstance(out, float) is False:

@@ -5,24 +5,37 @@ import monai
 import numpy as np
 import torch
 from lightning.pytorch import Trainer
-from lightning.pytorch.callbacks import (EarlyStopping, RichProgressBar,
-                                         StochasticWeightAveraging)
+from lightning.pytorch.callbacks import (
+    EarlyStopping,
+    RichProgressBar,
+    StochasticWeightAveraging,
+)
 from sklearn.model_selection import StratifiedKFold, train_test_split
 
 from ...modules.classification.losses import OrdinalSigmoidalLoss
 from ...modules.config_parsing import parse_config_cat, parse_config_unet
 from ...monai_transforms import get_augmentations_class as get_augmentations
 from ...monai_transforms import get_transforms_classification as get_transforms
-from ...utils import (conditional_parameter_freezing, safe_collate,
-                      set_classification_layer_bias)
+from ...utils import (
+    conditional_parameter_freezing,
+    safe_collate,
+    set_classification_layer_bias,
+)
 from ...utils.dataset import Dataset
 from ...utils.logging import CSVLogger
 from ...utils.network_factories import get_deconfounded_classification_network
 from ...utils.parser import get_params, merge_args, parse_ids
-from ...utils.pl_utils import (delete_checkpoints, get_ckpt_callback,
-                               get_devices, get_logger)
-from ...utils.torch_utils import (get_class_weights, get_generator_and_rng,
-                                  load_checkpoint_to_model)
+from ...utils.pl_utils import (
+    delete_checkpoints,
+    get_ckpt_callback,
+    get_devices,
+    get_logger,
+)
+from ...utils.torch_utils import (
+    get_class_weights,
+    get_generator_and_rng,
+    load_checkpoint_to_model,
+)
 from ..assemble_args import Parser
 
 
@@ -164,9 +177,7 @@ def main(arguments):
     positive_labels = args.positive_labels
     if args.label_groups is not None:
         n_classes = len(args.label_groups)
-        label_groups = [
-            label_group.split(",") for label_group in args.label_groups
-        ]
+        label_groups = [label_group.split(",") for label_group in args.label_groups]
         if len(label_groups) == 2:
             positive_labels = label_groups[1]
     elif args.positive_labels is None:
@@ -313,9 +324,7 @@ def main(arguments):
         if args.val_from_train is not None:
             n_train_val = int(len(train_pids) * args.val_from_train)
             train_val_pids = rng.choice(train_pids, n_train_val, replace=False)
-            train_pids = [
-                pid for pid in train_pids if pid not in train_val_pids
-            ]
+            train_pids = [pid for pid in train_pids if pid not in train_val_pids]
         else:
             train_val_pids = val_pids
         train_list = [data_dict[pid] for pid in train_pids]
@@ -376,9 +385,7 @@ def main(arguments):
                 if c in weights:
                     weights[c] += 1
             weight_sum = np.sum([weights[c] for c in args.possible_labels])
-            weights = {
-                k: weight_sum / (1 + weights[k] * len(weights)) for k in weights
-            }
+            weights = {k: weight_sum / (1 + weights[k] * len(weights)) for k in weights}
             weight_vector = np.array([weights[k] for k in classes])
             weight_vector = np.where(weight_vector < 0.25, 0.25, weight_vector)
             weight_vector = np.where(weight_vector > 4, 4, weight_vector)
@@ -409,13 +416,9 @@ def main(arguments):
 
         print("Initializing loss with class_weights: {}".format(class_weights))
         if n_classes == 2:
-            network_config["loss_fn"] = torch.nn.BCEWithLogitsLoss(
-                class_weights
-            )
+            network_config["loss_fn"] = torch.nn.BCEWithLogitsLoss(class_weights)
         elif args.net_type == "ord":
-            network_config["loss_fn"] = OrdinalSigmoidalLoss(
-                class_weights, n_classes
-            )
+            network_config["loss_fn"] = OrdinalSigmoidalLoss(class_weights, n_classes)
         else:
             network_config["loss_fn"] = torch.nn.CrossEntropyLoss(class_weights)
 
@@ -424,9 +427,7 @@ def main(arguments):
         real_bs = bs * n_devices
         if len(train_dataset) < real_bs:
             new_bs = len(train_dataset) // n_devices
-            print(
-                f"Batch size changed from {bs} to {new_bs} (dataset too small)"
-            )
+            print(f"Batch size changed from {bs} to {new_bs} (dataset too small)")
             bs = new_bs
             real_bs = bs * n_devices
 
@@ -486,9 +487,7 @@ def main(arguments):
                 checkpoint = args.checkpoint[val_fold]
             else:
                 checkpoint = args.checkpoint
-            load_checkpoint_to_model(
-                network, checkpoint, args.exclude_from_state_dict
-            )
+            load_checkpoint_to_model(network, checkpoint, args.exclude_from_state_dict)
 
         conditional_parameter_freezing(
             network, args.freeze_regex, args.not_freeze_regex
@@ -551,9 +550,7 @@ def main(arguments):
             check_val_every_n_epoch=1,
         )
 
-        trainer.fit(
-            network, train_loader, train_val_loader, ckpt_path=ckpt_path
-        )
+        trainer.fit(network, train_loader, train_val_loader, ckpt_path=ckpt_path)
 
         # assessing performance on validation set
         print("Validating...")
@@ -563,9 +560,7 @@ def main(arguments):
         else:
             ckpt_list = ["last"]
         for ckpt_key in ckpt_list:
-            test_metrics = trainer.test(
-                network, validation_loader, ckpt_path=ckpt_key
-            )
+            test_metrics = trainer.test(network, validation_loader, ckpt_path=ckpt_key)
             test_metrics = test_metrics[0]
             for k in test_metrics:
                 out = test_metrics[k]

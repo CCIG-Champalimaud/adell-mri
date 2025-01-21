@@ -4,8 +4,14 @@ import torch
 
 from ...custom_types import List, ModuleList, Tuple, Union
 from .batch_ensemble import BatchEnsembleWrapper
-from .res_blocks import (ConvNeXtBlock2d, ConvNeXtBlock3d, ResidualBlock2d,
-                         ResidualBlock3d, ResNeXtBlock2d, ResNeXtBlock3d)
+from .res_blocks import (
+    ConvNeXtBlock2d,
+    ConvNeXtBlock3d,
+    ResidualBlock2d,
+    ResidualBlock3d,
+    ResNeXtBlock2d,
+    ResNeXtBlock3d,
+)
 from .standard_blocks import ConvolutionalBlock2d, ConvolutionalBlock3d
 
 
@@ -43,9 +49,7 @@ class ResNetBackbone(torch.nn.Module):
         spatial_dim: int,
         in_channels: int,
         structure: List[Tuple[int, int, int, int]],
-        maxpool_structure: List[
-            Union[Tuple[int, int], Tuple[int, int, int]]
-        ] = None,
+        maxpool_structure: List[Union[Tuple[int, int], Tuple[int, int, int]]] = None,
         padding=None,
         adn_fn: torch.nn.Module = torch.nn.Identity,
         res_type: str = "resnet",
@@ -230,12 +234,8 @@ class ResNetBackbone(torch.nn.Module):
             X = pooled_X
         return output_list
 
-    def forward_regular(
-        self, X: torch.Tensor, batch_idx: int = None
-    ) -> torch.Tensor:
-        X, _ = self.forward_with_intermediate(
-            X, after_pool=False, batch_idx=batch_idx
-        )
+    def forward_regular(self, X: torch.Tensor, batch_idx: int = None) -> torch.Tensor:
+        X, _ = self.forward_with_intermediate(X, after_pool=False, batch_idx=batch_idx)
         return X
 
     def forward(
@@ -285,9 +285,7 @@ class ProjectionHead(torch.nn.Module):
         ops = OrderedDict()
         for i, fd in enumerate(self.structure[:-1]):
             k = "linear_{}".format(i)
-            ops[k] = torch.nn.Sequential(
-                torch.nn.Linear(prev_d, fd), self.adn_fn(fd)
-            )
+            ops[k] = torch.nn.Sequential(torch.nn.Linear(prev_d, fd), self.adn_fn(fd))
             prev_d = fd
         fd = self.structure[-1]
         ops["linear_{}".format(i + 1)] = torch.nn.Linear(prev_d, fd)

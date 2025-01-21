@@ -15,18 +15,23 @@ from ...modules.layers import ResNet
 from ...monai_transforms import get_augmentations_unet as get_augmentations
 from ...monai_transforms import get_semi_sl_transforms
 from ...monai_transforms import get_transforms_unet as get_transforms
-from ...utils import (GetAllCropsd, PartiallyRandomSampler, RandomSlices,
-                      SlicesToFirst, collate_last_slice, get_loss_param_dict,
-                      safe_collate, safe_collate_crops)
+from ...utils import (
+    GetAllCropsd,
+    PartiallyRandomSampler,
+    RandomSlices,
+    SlicesToFirst,
+    collate_last_slice,
+    get_loss_param_dict,
+    safe_collate,
+    safe_collate_crops,
+)
 from ...utils.dataset import Dataset
 from ...utils.logging import CSVLogger
 from ...utils.network_factories import get_segmentation_network
 from ...utils.parser import parse_ids
 from ...utils.pl_utils import get_ckpt_callback, get_devices, get_logger
-from ...utils.sitk_utils import (get_spacing_quantile,
-                                 spacing_values_from_dataset_json)
-from ...utils.torch_utils import (get_generator_and_rng,
-                                  get_segmentation_sample_weights)
+from ...utils.sitk_utils import get_spacing_quantile, spacing_values_from_dataset_json
+from ...utils.torch_utils import get_generator_and_rng, get_segmentation_sample_weights
 
 torch.backends.cudnn.benchmark = True
 
@@ -271,9 +276,7 @@ def main(arguments):
 
         train_idxs, val_idxs = next(fold_generator)
         if args.use_val_as_train_val is False:
-            train_idxs, train_val_idxs = train_test_split(
-                train_idxs, test_size=0.15
-            )
+            train_idxs, train_val_idxs = train_test_split(train_idxs, test_size=0.15)
         else:
             print("Using validation as training validation")
             train_val_idxs = val_idxs
@@ -286,9 +289,7 @@ def main(arguments):
 
         if args.semi_supervised is True:
             train_semi_sl_list = [
-                data_dict_ssl[pid]
-                for pid in data_dict_ssl
-                if pid not in val_pids
+                data_dict_ssl[pid] for pid in data_dict_ssl if pid not in val_pids
             ]
 
         if args.target_spacing[0] == "infer":
@@ -418,9 +419,7 @@ def main(arguments):
         if args.checkpoint is not None:
             if len(args.checkpoint) >= (val_fold + 1):
                 ckpt_path = args.checkpoint[val_fold]
-                print(
-                    "Resuming training from checkpoint in {}".format(ckpt_path)
-                )
+                print("Resuming training from checkpoint in {}".format(ckpt_path))
 
         transforms_train = monai.transforms.Compose(transforms_train)
         transforms_train.set_random_state(args.seed)
@@ -475,9 +474,7 @@ def main(arguments):
         if args.samples_per_epoch is not None:
             n_samples = args.samples_per_epoch
         else:
-            n_samples = int(
-                len(train_dataset) * args.dataset_iterations_per_epoch
-            )
+            n_samples = int(len(train_dataset) * args.dataset_iterations_per_epoch)
         sampler = torch.utils.data.RandomSampler(
             ["element" for _ in train_idxs],
             num_samples=n_samples,
@@ -676,9 +673,7 @@ def main(arguments):
                 backbone[0].structure[0][0],
                 *[x[0] for x in backbone[0].structure],
             ]
-            network_config["kernel_sizes"] = [
-                3 for _ in network_config["depth"]
-            ]
+            network_config["kernel_sizes"] = [3 for _ in network_config["depth"]]
             # the last sum is for the bottleneck layer
             network_config["strides"] = [2]
             if "backbone_args" in network_config_ssl:
@@ -687,9 +682,7 @@ def main(arguments):
                 mpl = network_config_ssl["maxpool_structure"]
             network_config["strides"].extend(mpl)
             res_ops = [[x.input_layer, *x.operations] for x in backbone]
-            res_pool_ops = [
-                [x.first_pooling, *x.pooling_operations] for x in backbone
-            ]
+            res_pool_ops = [[x.first_pooling, *x.pooling_operations] for x in backbone]
             if args.encoder_checkpoint is not None:
                 # freezes training for resnet encoder
                 for enc in res_ops:
@@ -798,9 +791,7 @@ def main(arguments):
         else:
             ckpt_list = ["last"]
         for ckpt_key in ckpt_list:
-            test_metrics = trainer.test(
-                unet, validation_loader, ckpt_path=ckpt_key
-            )[0]
+            test_metrics = trainer.test(unet, validation_loader, ckpt_path=ckpt_key)[0]
             for k in test_metrics:
                 out = test_metrics[k]
                 if n_classes == 2:
