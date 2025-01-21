@@ -64,7 +64,11 @@ from ..modules.semi_supervised_segmentation.losses import LocalContrastiveLoss
 
 # semi-supervised segmentation
 from ..modules.semi_supervised_segmentation.pl import UNetContrastiveSemiSL
-from ..utils import ExponentialMovingAverage, get_loss_param_dict, loss_factory
+from ..utils.utils import (
+    ExponentialMovingAverage,
+    get_loss_param_dict,
+    loss_factory,
+)
 
 # classification
 from ..utils.batch_preprocessing import BatchPreprocessing

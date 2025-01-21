@@ -5,7 +5,10 @@ sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 import monai
 
-from adell_mri.utils import CreateImageAndWeightsd, ConditionalRescalingd
+from adell_mri.utils.monai_transforms import (
+    CreateImageAndWeightsd,
+    ConditionalRescalingd,
+)
 
 all_keys = ["image", "image_1", "image_2"]
 non_adc_keys = ["image"]

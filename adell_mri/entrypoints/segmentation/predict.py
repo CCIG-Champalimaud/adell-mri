@@ -17,7 +17,7 @@ from ...utils.dataset import Dataset
 from ...utils.inference import SegmentationInference, TensorListReduction
 from ...utils.network_factories import get_segmentation_network
 from ...utils.parser import parse_ids
-from ...utils.sitk_utils import SitkWriter
+from ...utils.sitk_writer import SitkWriter
 
 torch.backends.cudnn.benchmark = True
 

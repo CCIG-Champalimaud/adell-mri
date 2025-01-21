@@ -15,10 +15,12 @@ sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 import torch
 from adell_mri.modules.segmentation import *
 
-from adell_mri.utils import (
+from adell_mri.utils.utils import (
     get_prostatex_path_dictionary,
     get_size_spacing_dict,
     collate_last_slice,
+)
+from adell_mri.utils.monai_transforms import (
     ConvertToOneHot,
     RandomSlices,
     SlicesToFirst,
@@ -106,9 +108,7 @@ if __name__ == "__main__":
         if all([k in path_dictionary[pid] for k in all_keys]):
             fpd[pid] = {k: path_dictionary[pid][k] for k in all_keys}
     path_dictionary = fpd
-    size_dict, spacing_dict = get_size_spacing_dict(
-        path_dictionary, [args.mod]
-    )
+    size_dict, spacing_dict = get_size_spacing_dict(path_dictionary, [args.mod])
 
     for k in size_dict:
         mm = np.median(np.array(size_dict[k]), axis=0)
@@ -178,9 +178,7 @@ if __name__ == "__main__":
 
     all_pids = [k for k in path_dictionary]
 
-    train_idxs, val_idxs = train_test_split(
-        range(len(all_pids)), test_size=0.2
-    )
+    train_idxs, val_idxs = train_test_split(range(len(all_pids)), test_size=0.2)
     train_pids = [all_pids[i] for i in train_idxs]
     val_pids = [all_pids[i] for i in val_idxs]
     path_list_train = [path_dictionary[pid] for pid in train_pids]
@@ -239,9 +237,7 @@ if __name__ == "__main__":
         u.update()
     u.close()
 
-    print(
-        "Average time: {} ({} iterations)".format(np.mean(times), len(times))
-    )
+    print("Average time: {} ({} iterations)".format(np.mean(times), len(times)))
     print(
         "Average time: {} ({} iterations, without first iteration)".format(
             np.mean(times[1:]), len(times) - 1
