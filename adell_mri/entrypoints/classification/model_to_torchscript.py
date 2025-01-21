@@ -11,7 +11,9 @@ sys.path.append(r"..")
 
 
 def main(arguments):
-    parser = argparse.ArgumentParser(description="Converts a model to torchscript")
+    parser = argparse.ArgumentParser(
+        description="Converts a model to torchscript"
+    )
 
     parser.add_argument(
         "--input_shape",
@@ -115,7 +117,9 @@ def main(arguments):
         partial_mixup=False,
     )
 
-    state_dict = torch.load(args.checkpoint, map_location=args.dev)["state_dict"]
+    state_dict = torch.load(args.checkpoint, map_location=args.dev)[
+        "state_dict"
+    ]
     state_dict = {k: state_dict[k] for k in state_dict if "loss_fn" not in k}
     inc = network.load_state_dict(state_dict)
     print(inc)

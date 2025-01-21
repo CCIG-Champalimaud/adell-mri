@@ -191,7 +191,9 @@ class AugmentationWorkhorsed(monai.transforms.RandomizableTransform):
         mask_keys: List[str] = [],
         max_mult: float = 1.0,
         N: int = 5,
-        aug_param_dict: Dict[str, Dict[str, Union[int, float]]] = AUG_PARAM_DICT,
+        aug_param_dict: Dict[
+            str, Dict[str, Union[int, float]]
+        ] = AUG_PARAM_DICT,
         dropout_size: Sequence[int] = (32, 32, 2),
     ):
         """

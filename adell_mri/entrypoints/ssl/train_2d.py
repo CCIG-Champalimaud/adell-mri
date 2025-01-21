@@ -217,7 +217,9 @@ def main(arguments):
         # checking intersections is much much faster in dicts
         train_pids = {pid: "" for pid in data_dict}
 
-    train_list = [value for pid, value in data_dict.items() if pid in train_pids]
+    train_list = [
+        value for pid, value in data_dict.items() if pid in train_pids
+    ]
     train_pids = list(train_pids.keys())
 
     print(f"Training set size: {len(train_list)}")
@@ -305,7 +307,9 @@ def main(arguments):
             drop_last=True,
         )
 
-    train_loader = train_loader_call(network_config_correct["batch_size"], False)
+    train_loader = train_loader_call(
+        network_config_correct["batch_size"], False
+    )
     val_loader = monai.data.ThreadDataLoader(
         train_dataset,
         batch_size=network_config_correct["batch_size"],
@@ -328,7 +332,9 @@ def main(arguments):
     )
 
     if args.checkpoint is not None:
-        state_dict = torch.load(args.checkpoint, map_location=args.dev)["state_dict"]
+        state_dict = torch.load(args.checkpoint, map_location=args.dev)[
+            "state_dict"
+        ]
         inc = ssl.load_state_dict(state_dict)
         print(inc)
 

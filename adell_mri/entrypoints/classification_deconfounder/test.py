@@ -114,7 +114,9 @@ def main(arguments):
     positive_labels = args.positive_labels
     if args.label_groups is not None:
         n_classes = len(args.label_groups)
-        label_groups = [label_group.split(",") for label_group in args.label_groups]
+        label_groups = [
+            label_group.split(",") for label_group in args.label_groups
+        ]
         if len(label_groups) == 2:
             positive_labels = label_groups[1]
     elif positive_labels is None:
@@ -209,7 +211,9 @@ def main(arguments):
 
         print("Testing fold", iteration)
         for u, c in zip(
-            *np.unique([x[args.label_keys] for x in test_list], return_counts=True)
+            *np.unique(
+                [x[args.label_keys] for x in test_list], return_counts=True
+            )
         ):
             print(f"\tCases({u}) = {c}")
 
@@ -226,7 +230,9 @@ def main(arguments):
         if n_classes == 2:
             network_config["loss_fn"] = torch.nn.BCEWithLogitsLoss()
         elif args.net_type == "ord":
-            network_config["loss_fn"] = OrdinalSigmoidalLoss(n_classes=n_classes)
+            network_config["loss_fn"] = OrdinalSigmoidalLoss(
+                n_classes=n_classes
+            )
         else:
             network_config["loss_fn"] = torch.nn.CrossEntropyLoss()
 
@@ -302,14 +308,18 @@ def main(arguments):
                             k, idx = "_".join(k), 0
                     else:
                         idx = 0
-                    x = "{},{},{},{},{}".format(k, checkpoint, iteration, idx, value)
+                    x = "{},{},{},{},{}".format(
+                        k, checkpoint, iteration, idx, value
+                    )
                     output_file.write(x + "\n")
                     print(x)
                     # bootstrap AUC estimate
                 mean, (upper, lower) = bootstrap_metric(
                     network.test_metrics["T_AUC"], 100, 0.5
                 )
-                for idx, (m, u, low) in enumerate(zip(mean, upper, lower)):  # noqa
+                for idx, (m, u, low) in enumerate(
+                    zip(mean, upper, lower)
+                ):  # noqa
                     x = "{},{},{},{},{}".format(
                         "T_AUC_mean", checkpoint, iteration, idx, m
                     )
@@ -347,7 +357,9 @@ def main(arguments):
                         k, idx = "_".join(k), 0
                 else:
                     idx = 0
-                x = "{},{},{},{},{}".format(k, "ensemble", iteration, idx, value)
+                x = "{},{},{},{},{}".format(
+                    k, "ensemble", iteration, idx, value
+                )
                 output_file.write(x + "\n")
                 print(x)
             # bootstrap AUC estimate
@@ -357,7 +369,9 @@ def main(arguments):
                 sample_size=0.5,
             )
             for idx, (m, u, l) in enumerate(zip(mean, upper, lower)):  # noqa
-                x = "{},{},{},{},{}".format("T_AUC_mean", "ensemble", iteration, idx, m)
+                x = "{},{},{},{},{}".format(
+                    "T_AUC_mean", "ensemble", iteration, idx, m
+                )
                 output_file.write(x + "\n")
                 print(x)
                 x = "{},{},{},{},{}".format(

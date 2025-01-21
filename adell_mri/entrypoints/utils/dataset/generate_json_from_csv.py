@@ -15,7 +15,9 @@ desc = "Converts a CSV into a hierarchical JSON file."
 def main(arguments):
     parser = argparse.ArgumentParser(description=desc)
 
-    parser.add_argument("--path", dest="path", help="Path to CSV", required=True)
+    parser.add_argument(
+        "--path", dest="path", help="Path to CSV", required=True
+    )
     parser.add_argument(
         "--id_columns",
         dest="id_columns",

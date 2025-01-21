@@ -73,10 +73,14 @@ def main(arguments):
         args.excluded_ids = parse_ids(args.excluded_ids, output_format="list")
         print("Removing IDs specified in --excluded_ids")
         prev_len = len(data_dict)
-        data_dict = {k: data_dict[k] for k in data_dict if k not in args.excluded_ids}
+        data_dict = {
+            k: data_dict[k] for k in data_dict if k not in args.excluded_ids
+        }
         print("\tRemoved {} IDs".format(prev_len - len(data_dict)))
     if len(args.filter_on_keys) > 0:
-        data_dict = filter_dictionary_with_filters(data_dict, args.filter_on_keys)
+        data_dict = filter_dictionary_with_filters(
+            data_dict, args.filter_on_keys
+        )
     data_dict = filter_dictionary_with_presence(
         data_dict, args.image_keys + clinical_feature_keys
     )
@@ -97,7 +101,9 @@ def main(arguments):
     adc_keys = args.adc_keys if args.adc_keys is not None else []
     adc_keys = [k for k in adc_keys if k in keys]
 
-    ensemble_config = parse_config_ensemble(args.ensemble_config_file, args.n_classes)
+    ensemble_config = parse_config_ensemble(
+        args.ensemble_config_file, args.n_classes
+    )
 
     if args.module_paths is not None:
         config_files = None
@@ -181,7 +187,9 @@ def main(arguments):
         if args.n_classes == 2:
             ensemble_config["loss_fn"] = torch.nn.BCEWithLogitsLoss()
         elif args.net_types[0] == "ord":
-            ensemble_config["loss_fn"] = OrdinalSigmoidalLoss(n_classes=args.n_classes)
+            ensemble_config["loss_fn"] = OrdinalSigmoidalLoss(
+                n_classes=args.n_classes
+            )
         else:
             ensemble_config["loss_fn"] = torch.nn.CrossEntropyLoss()
 
@@ -212,7 +220,9 @@ def main(arguments):
                         mixup_alpha=None,
                         partial_mixup=None,
                     )
-                    for net_type, network_config in zip(args.net_types, network_configs)
+                    for net_type, network_config in zip(
+                        args.net_types, network_configs
+                    )
                 ]
             else:
                 networks = []
@@ -253,7 +263,9 @@ def main(arguments):
             }
 
             with tqdm(total=len(curr_prediction_ids)) as pbar:
-                for identifier, element in zip(curr_prediction_ids, prediction_dataset):
+                for identifier, element in zip(
+                    curr_prediction_ids, prediction_dataset
+                ):
                     pbar.set_description("Predicting {}".format(identifier))
                     output = ensemble.forward(
                         element["image"].unsqueeze(0).to(args.dev),

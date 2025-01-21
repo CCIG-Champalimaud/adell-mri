@@ -75,7 +75,9 @@ def parse_config_ensemble(config_file: str, n_classes: int):
     return network_config
 
 
-def parse_config_ssl(config_file: str, dropout_param: float, n_keys: int, is_vit=False):
+def parse_config_ssl(
+    config_file: str, dropout_param: float, n_keys: int, is_vit=False
+):
     with open(config_file, "r") as o:
         network_config = yaml.safe_load(o)
 
@@ -117,7 +119,9 @@ def parse_config_ssl(config_file: str, dropout_param: float, n_keys: int, is_vit
             dropout_param=dropout_param,
         )
     network_config_correct = {
-        k: network_config[k] for k in network_config if k not in ["norm_fn", "act_fn"]
+        k: network_config[k]
+        for k in network_config
+        if k not in ["norm_fn", "act_fn"]
     }
     if is_vit is False:
         n_c = network_config["backbone_args"]["in_channels"]
@@ -156,7 +160,9 @@ def parse_config_2d_classifier_3d(
     )
 
     network_config_correct = {
-        k: network_config[k] for k in network_config if k not in ["norm_fn", "act_fn"]
+        k: network_config[k]
+        for k in network_config
+        if k not in ["norm_fn", "act_fn"]
     }
 
     return network_config, network_config_correct

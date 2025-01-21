@@ -31,12 +31,16 @@ def normalize_along_slice(
     assert dim < len(sh)
     assert (
         max_value > min_value
-    ), "max_value {} must be larger than min_value {}".format(max_value, min_value)
+    ), "max_value {} must be larger than min_value {}".format(
+        max_value, min_value
+    )
     if dim < 0:
         dim = len(sh) + dim
     dims = ["c", "h", "w", "d"]
     lhs = " ".join(dims)
-    rhs = "{} ({})".format(dims[dim], " ".join([d for d in dims if d != dims[dim]]))
+    rhs = "{} ({})".format(
+        dims[dim], " ".join([d for d in dims if d != dims[dim]])
+    )
     average_shape = [1 if i != dim else sh[dim] for i in range(len(sh))]
     flat_X = einops.rearrange(X, "{} -> {}".format(lhs, rhs))
     dim_max = flat_X.max(-1).values.reshape(average_shape)
@@ -88,7 +92,8 @@ class ConditionalRescalingd(monai.transforms.Transform):
         self.scale = scale
 
         self.transforms = {
-            k: ConditionalRescaling(self.max_value, self.scale) for k in self.keys
+            k: ConditionalRescaling(self.max_value, self.scale)
+            for k in self.keys
         }
 
     def __call__(self, data):
@@ -144,7 +149,9 @@ class BiasFieldCorrection(monai.transforms.Transform):
     SITK.
     """
 
-    def __init__(self, n_fitting_levels: int, n_iter: int, shrink_factor: float):
+    def __init__(
+        self, n_fitting_levels: int, n_iter: int, shrink_factor: float
+    ):
         """
         Args:
             n_fitting_levels (int): number of fitting levels.
@@ -159,17 +166,23 @@ class BiasFieldCorrection(monai.transforms.Transform):
         image_ = image
         mask_image = sitk.OtsuThreshold(image_)
         if self.shrink_factor > 1:
-            image_ = sitk.Shrink(image_, [self.shrink_factor] * image_.GetDimension())
+            image_ = sitk.Shrink(
+                image_, [self.shrink_factor] * image_.GetDimension()
+            )
             mask_image = sitk.Shrink(
                 mask_image, [self.shrink_factor] * mask_image.GetDimension()
             )
         corrector = sitk.N4BiasFieldCorrectionImageFilter()
-        corrector.SetMaximumNumberOfIterations(self.n_fitting_levels * [self.n_iter])
+        corrector.SetMaximumNumberOfIterations(
+            self.n_fitting_levels * [self.n_iter]
+        )
         corrector.SetConvergenceThreshold(0.001)
         corrector.Execute(image_, mask_image)
         log_bf = corrector.GetLogBiasFieldAsImage(image)
         corrected_input_image = image / sitk.Exp(log_bf)
-        corrected_input_image = sitk.Cast(corrected_input_image, sitk.sitkFloat32)
+        corrected_input_image = sitk.Cast(
+            corrected_input_image, sitk.sitkFloat32
+        )
         corrected_input_image.CopyInformation(image)
         for k in image.GetMetaDataKeys():
             v = image.GetMetaData(k)
@@ -227,7 +240,9 @@ class ScaleIntensityAlongDim(monai.transforms.Transform):
     normalizes individual slices along a given dimension dim.
     """
 
-    def __init__(self, min_value: float = 0.0, max_value: float = 1.0, dim: int = -1):
+    def __init__(
+        self, min_value: float = 0.0, max_value: float = 1.0, dim: int = -1
+    ):
         """
         Args:
             min_value (float, optional): min value for output tensor. Defaults

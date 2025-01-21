@@ -27,7 +27,9 @@ def main(arguments):
         print(f"\tImage spacing: {image.GetSpacing()}")
         print(f"\tImage origin: {image.GetOrigin()}")
         print(f"\tImage direction: {image.GetDirection()}")
-        print(f"\tImage number of components: {image.GetNumberOfComponentsPerPixel()}")
+        print(
+            f"\tImage number of components: {image.GetNumberOfComponentsPerPixel()}"
+        )
         print(f"\tImage pixel type: {image.GetPixelIDTypeAsString()}")
         if u.shape[0] > 5:
             print(f"\tNumber of unique values: {len(u)}")

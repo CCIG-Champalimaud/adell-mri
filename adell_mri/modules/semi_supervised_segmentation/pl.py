@@ -140,7 +140,9 @@ class UNetContrastiveSemiSL(UNetSemiSL, UNetBasePL):
         else:
             self.semi_supervised = False
 
-    def unpack_batch(self, batch: dict[str, TensorDict] | TensorDict) -> TensorDict:
+    def unpack_batch(
+        self, batch: dict[str, TensorDict] | TensorDict
+    ) -> TensorDict:
         """
         Unpacks batch for supervised learning.
 
@@ -288,7 +290,9 @@ class UNetContrastiveSemiSL(UNetSemiSL, UNetBasePL):
             torch.Tensor: loss for self-supervised learning step.
         """
 
-        x, x_1, x_2, x_cond, x_fc = self.coherce_batch_size(x, x_1, x_2, x_cond, x_fc)
+        x, x_1, x_2, x_cond, x_fc = self.coherce_batch_size(
+            x, x_1, x_2, x_cond, x_fc
+        )
         with torch.no_grad():
             anchor_1 = (
                 self.forward_features(
@@ -313,7 +317,9 @@ class UNetContrastiveSemiSL(UNetSemiSL, UNetBasePL):
             X=x, X_skip_layer=x_cond, X_feature_conditioning=x_fc
         )
         return (
-            self.loss_fn_semi_sl(features, anchor_1, anchor_2, *args, **kwargs).mean()
+            self.loss_fn_semi_sl(
+                features, anchor_1, anchor_2, *args, **kwargs
+            ).mean()
             * self.ssl_weight
         )
 
@@ -344,9 +350,13 @@ class UNetContrastiveSemiSL(UNetSemiSL, UNetBasePL):
             torch.Tensor: loss for self-supervised learning step.
         """
         if x is not None:
-            return self.step_semi_sl_anchors(x, x_1, x_2, x_cond, x_fc, *args, **kwargs)
+            return self.step_semi_sl_anchors(
+                x, x_1, x_2, x_cond, x_fc, *args, **kwargs
+            )
         else:
-            return self.step_semi_sl_loco(x_1, x_2, x_cond, x_fc, *args, **kwargs)
+            return self.step_semi_sl_loco(
+                x_1, x_2, x_cond, x_fc, *args, **kwargs
+            )
 
     def training_step(
         self, batch: dict[str, TensorDict | torch.Tensor], batch_idx: int
@@ -449,7 +459,9 @@ class UNetContrastiveSemiSL(UNetSemiSL, UNetBasePL):
                 )
                 pred_final, pred_class, loss, class_loss = out
                 output_loss += (
-                    loss.mean() if class_loss is None else loss.mean() + class_loss
+                    loss.mean()
+                    if class_loss is None
+                    else loss.mean() + class_loss
                 ) / (bs // mbs)
 
                 if self.picai_eval is True:

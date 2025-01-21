@@ -24,7 +24,9 @@ def cosine_beta_schedule(
 ):
     steps = timesteps + 1
     x = torch.linspace(0, timesteps, steps)
-    alphas_cumprod = torch.cos(((x / timesteps) + s) / (1 + s) * torch.pi * 0.5) ** 2
+    alphas_cumprod = (
+        torch.cos(((x / timesteps) + s) / (1 + s) * torch.pi * 0.5) ** 2
+    )
     alphas_cumprod = alphas_cumprod / alphas_cumprod[0]
     betas = 1 - (alphas_cumprod[1:] / alphas_cumprod[:-1])
     return torch.clip(betas, 0.0001, 0.9999)
@@ -45,7 +47,9 @@ def scaled_linear_beta_schedule(
     beta_end: float = 0.02,
     s: float = None,
 ):
-    return torch.square(torch.linspace(sqrt(beta_start), sqrt(beta_end), timesteps))
+    return torch.square(
+        torch.linspace(sqrt(beta_start), sqrt(beta_end), timesteps)
+    )
 
 
 def quadratic_beta_schedule(
@@ -161,7 +165,10 @@ class Diffusion:
         else:
             if len(self.img_size) not in [2, 3]:
                 raise TypeError("img_size must be tuple with size 2 or 3")
-            if any([isinstance(x, int) is False for x in self.img_size]) is True:
+            if (
+                any([isinstance(x, int) is False for x in self.img_size])
+                is True
+            ):
                 raise TypeError("img_size must be tuple of int")
 
     def get_shape(self, x: torch.Tensor = None) -> List[int]:
@@ -286,7 +293,9 @@ class Diffusion:
     ):
         return x + (self.alpha_bar[t] - self.alpha_bar[t - 1]) * epsilon
 
-    def step(self, x: torch.Tensor, epsilon: torch.Tensor, t: int, eta: float = 1.0):
+    def step(
+        self, x: torch.Tensor, epsilon: torch.Tensor, t: int, eta: float = 1.0
+    ):
         if self.step_key == "ddpm":
             return self.ddpm_reverse_step(x, epsilon=epsilon, t=t, eta=eta)
         elif self.step_key == "ddim":

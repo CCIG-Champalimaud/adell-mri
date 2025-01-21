@@ -48,7 +48,9 @@ def resize_image_with_crop_or_pad(image, img_size=(64, 64, 64), **kwargs):
             to_padding[i][0] = (img_size[i] - image.shape[i]) // 2
             to_padding[i][1] = img_size[i] - image.shape[i] - to_padding[i][0]
         else:
-            from_indices[i][0] = int(np.floor((image.shape[i] - img_size[i]) / 2.0))
+            from_indices[i][0] = int(
+                np.floor((image.shape[i] - img_size[i]) / 2.0)
+            )
             from_indices[i][1] = from_indices[i][0] + img_size[i]
 
         # create slicer object to crop/leave each dimension
@@ -82,7 +84,9 @@ def read_image(path: PathLike):
 def read_prediction(path: PathLike) -> "npt.NDArray[np.float32]":
     """Read prediction, given a filepath"""
     # read prediction and ensure correct dtype
-    pred: "npt.NDArray[np.float32]" = np.array(read_image(path), dtype=np.float32)
+    pred: "npt.NDArray[np.float32]" = np.array(
+        read_image(path), dtype=np.float32
+    )
     return pred
 
 

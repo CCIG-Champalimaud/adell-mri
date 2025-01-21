@@ -217,7 +217,8 @@ class ImageWriter:
     def __post_init__(self):
         self.queue = Queue()
         self.processes = [
-            Process(target=self.write, args=(self.queue,)) for _ in range(self.n_proc)
+            Process(target=self.write, args=(self.queue,))
+            for _ in range(self.n_proc)
         ]
         for p in self.processes:
             p.start()
@@ -425,7 +426,9 @@ class CalculateMetrics:
             image_stack[:, :, -1] = 1
             if shaded.sum() == 0 and prediction[idx].sum == 0:
                 continue
-            heatmap = visualize_heatmap(image_stack, prediction[idx], do_legend=first)
+            heatmap = visualize_heatmap(
+                image_stack, prediction[idx], do_legend=first
+            )
             output_figure.append(
                 stack_images_pil(
                     Image.fromarray(np.uint8(image_stack * 255)),
@@ -441,7 +444,9 @@ class CalculateMetrics:
         output_figure = stack_images_pil(*output_figure, axis=0)
         return output_figure
 
-    def overlap_dictionary(self, pred: np.ndarray, gt: np.ndarray) -> dict[str, int]:
+    def overlap_dictionary(
+        self, pred: np.ndarray, gt: np.ndarray
+    ) -> dict[str, int]:
         """
         Calculates total positive pixels, intersection and union of two arrays.
 
@@ -502,7 +507,9 @@ class CalculateMetrics:
             min_overlap=self.overlap_threshold,
             y_det_postprocess_func=None,
         )
-        y_list = [{"gt": y[0], "confidence": y[1], "overlap": y[2]} for y in y_list]
+        y_list = [
+            {"gt": y[0], "confidence": y[1], "overlap": y[2]} for y in y_list
+        ]
         gt_value = max([y["gt"] for y in y_list]) if len(y_list) > 0 else 0
         output_dict = {
             "lesions": y_list,
@@ -524,7 +531,9 @@ class CalculateMetrics:
 
     def calculate_metrics_wrapper(
         self,
-        images: tuple[str, str | sitk.Image, str | sitk.Image, str | sitk.Image],
+        images: tuple[
+            str, str | sitk.Image, str | sitk.Image, str | sitk.Image
+        ],
     ):
         """
         Wrapper for self.calculate_metrics where the input is a tuple/list
@@ -691,7 +700,9 @@ def main(arguments):
         all_prediction_paths.extend(
             [str(x) for x in Path(args.prediction_path).glob(pattern)]
         )
-    prediction_dict = file_list_to_dict(all_prediction_paths, args.identifier_pattern)
+    prediction_dict = file_list_to_dict(
+        all_prediction_paths, args.identifier_pattern
+    )
     print(f"Found predictions: {len(all_prediction_paths)}")
 
     if args.generate_examples:
@@ -772,7 +783,9 @@ def main(arguments):
         all_outputs[key] = output
         if args.generate_examples and example is not None:
             Path(args.example_path).mkdir(exist_ok=True, parents=True)
-            image_writer.put(example, os.path.join(args.example_path, key + ".png"))
+            image_writer.put(
+                example, os.path.join(args.example_path, key + ".png")
+            )
     if args.generate_examples:
         print("Writing examples...")
         image_writer.close()
@@ -785,7 +798,9 @@ def main(arguments):
         for key in all_outputs
     }
     case_target = {key: all_outputs[key]["gt"] for key in all_outputs}
-    case_pred = {key: all_outputs[key]["case_confidence"] for key in all_outputs}
+    case_pred = {
+        key: all_outputs[key]["case_confidence"] for key in all_outputs
+    }
     metrics = Metrics(
         lesion_results=lesion_results,
         case_target=case_target,

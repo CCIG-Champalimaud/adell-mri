@@ -53,11 +53,13 @@ class DINO(torch.nn.Module):
 
     def initialize_projection(self):
         if "structure" not in self.projection_head_args:
-            raise KeyError("`structure` must be specified in `projection_head_args`.")
+            raise KeyError(
+                "`structure` must be specified in `projection_head_args`."
+            )
         self.mlp_out_dim = self.projection_head_args["structure"][-1]
-        self.projection_head_args["structure"] = self.projection_head_args["structure"][
-            :-1
-        ]
+        self.projection_head_args["structure"] = self.projection_head_args[
+            "structure"
+        ][:-1]
         self.projection_ = MLP(
             input_dim=self.encoder_.attention_dim,
             output_dim=self.mlp_out_dim,

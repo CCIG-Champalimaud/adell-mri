@@ -139,13 +139,17 @@ def conditional_parameter_freezing(
     if freeze_regex is not None:
         freeze_regex_list = [re.compile(fr) for fr in freeze_regex]
     if do_not_freeze_regex is not None:
-        do_not_freeze_regex_list = [re.compile(dnfr) for dnfr in do_not_freeze_regex]
+        do_not_freeze_regex_list = [
+            re.compile(dnfr) for dnfr in do_not_freeze_regex
+        ]
 
     for key, param in network.named_parameters():
         freeze = False
         if any([fr.search(key) is not None for fr in freeze_regex_list]):
             freeze = True
-        if any([dnfr.search(key) is not None for dnfr in do_not_freeze_regex_list]):
+        if any(
+            [dnfr.search(key) is not None for dnfr in do_not_freeze_regex_list]
+        ):
             freeze = False
         if freeze is True:
             param.requires_grad = False

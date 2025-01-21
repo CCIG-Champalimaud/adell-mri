@@ -221,7 +221,9 @@ def get_loss_param_dict(
     elif loss_key == "mse":
         return kwargs
     else:
-        raise NotImplementedError(f"loss_key {loss_key} not in available loss_keys")
+        raise NotImplementedError(
+            f"loss_key {loss_key} not in available loss_keys"
+        )
 
 
 def unpack_crops(X: list[TensorIterable]) -> TensorList:
@@ -403,7 +405,9 @@ class ExponentialMovingAverage(torch.nn.Module):
     $v_{shadow}$ is the exponential moving average value (i.e. the shadow).
     """
 
-    def __init__(self, decay: float, final_decay: float | None = None, n_steps=None):
+    def __init__(
+        self, decay: float, final_decay: float | None = None, n_steps=None
+    ):
         """
         Args:
             decay (float): decay for the exponential moving average.

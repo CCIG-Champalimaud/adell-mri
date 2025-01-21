@@ -59,7 +59,9 @@ def binary_cross_entropy(
     return -torch.mean((a + b) * scale, dim=1)
 
 
-def mean_squared_error(pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+def mean_squared_error(
+    pred: torch.Tensor, target: torch.Tensor
+) -> torch.Tensor:
     """
     Standard implementation of mean squared error.
 
@@ -76,7 +78,9 @@ def mean_squared_error(pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor
     return torch.mean((target - pred) ** 2, dim=1)
 
 
-def root_mean_squared_error(pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+def root_mean_squared_error(
+    pred: torch.Tensor, target: torch.Tensor
+) -> torch.Tensor:
     """
     Standard implementation of root mean squared error.
 

@@ -59,17 +59,25 @@ class DiffusionUNet(UNet):
         eca_op = EfficientConditioningAttentionBlock
         if self.classifier_free_guidance is True:
             # use this to map classes to self.t_dim vectors
-            self.embedding = torch.nn.Embedding(self.classifier_classes, self.t_dim)
+            self.embedding = torch.nn.Embedding(
+                self.classifier_classes, self.t_dim
+            )
         else:
             self.embedding = None
         self.encoder_eca = torch.nn.ModuleList(
             [eca_op(self.t_dim, d, op_type="linear") for d in self.depth]
         )
         self.decoder_eca = torch.nn.ModuleList(
-            [eca_op(self.t_dim, d, op_type="linear") for d in self.depth[:-1][::-1]]
+            [
+                eca_op(self.t_dim, d, op_type="linear")
+                for d in self.depth[:-1][::-1]
+            ]
         )
         self.link_eca = torch.nn.ModuleList(
-            [eca_op(self.t_dim, d, op_type="linear") for d in self.depth[:-1][::-1]]
+            [
+                eca_op(self.t_dim, d, op_type="linear")
+                for d in self.depth[:-1][::-1]
+            ]
         )
 
     def get_final_layer(self, d: int) -> torch.nn.Module:

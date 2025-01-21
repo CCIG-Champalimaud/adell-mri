@@ -163,7 +163,8 @@ class AHNet(torch.nn.Module):
         )
 
         self.decoder_ops_3d = [
-            AHNetDecoder3d(n_out, self.adn_fn, adn_args) for _ in range(self.n_layers)
+            AHNetDecoder3d(n_out, self.adn_fn, adn_args)
+            for _ in range(self.n_layers)
         ]
 
         # this could perhaps be changed to an atrous operation

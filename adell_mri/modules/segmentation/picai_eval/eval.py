@@ -39,7 +39,11 @@ from .analysis_utils import (
     label_structure,
     parse_detection_map,
 )
-from .image_utils import read_label, read_prediction, resize_image_with_crop_or_pad
+from .image_utils import (
+    read_label,
+    read_prediction,
+    resize_image_with_crop_or_pad,
+)
 from .metrics import Metrics
 
 PathLike = str | Path
@@ -53,7 +57,9 @@ def evaluate_case(
     overlap_func: (
         str | Callable[[npt.NDArray[np.float32], npt.NDArray[np.int32]], float]
     ) = "IoU",
-    case_confidence_func: str | Callable[[npt.NDArray[np.float32]], float] = "max",
+    case_confidence_func: (
+        str | Callable[[npt.NDArray[np.float32]], float]
+    ) = "max",
     allow_unmatched_candidates_with_minimal_overlap: bool = True,
     y_det_postprocess_func: Optional[
         Callable[[npt.NDArray[np.float32]], npt.NDArray[np.float32]]
@@ -144,7 +150,9 @@ def evaluate_case(
             y_list.append((0, lesion_confidence, 0.0))
     else:
         # malignant case, collect overlap between each prediction and ground truth lesion
-        labeled_gt, num_gt_lesions = ndimage.label(y_true, structure=label_structure)
+        labeled_gt, num_gt_lesions = ndimage.label(
+            y_true, structure=label_structure
+        )
         gt_lesion_ids = np.arange(num_gt_lesions)
         overlap_matrix = np.zeros((num_gt_lesions, len(confidences)))
 
@@ -178,10 +186,15 @@ def evaluate_case(
 
         # remove indices where overlap is zero
         mask = (
-            overlap_matrix[matched_lesion_indices, matched_lesion_candidate_indices] > 0
+            overlap_matrix[
+                matched_lesion_indices, matched_lesion_candidate_indices
+            ]
+            > 0
         )
         matched_lesion_indices = matched_lesion_indices[mask]
-        matched_lesion_candidate_indices = matched_lesion_candidate_indices[mask]
+        matched_lesion_candidate_indices = matched_lesion_candidate_indices[
+            mask
+        ]
 
         # all lesion candidates that are matched are TPs
         for lesion_id, lesion_candidate_id in zip(
@@ -191,7 +204,9 @@ def evaluate_case(
             overlap = overlap_matrix[lesion_id, lesion_candidate_id]
             overlap -= 1  # return overlap to [0, 1]
 
-            assert overlap > min_overlap, "Overlap must be greater than min_overlap!"
+            assert (
+                overlap > min_overlap
+            ), "Overlap must be greater than min_overlap!"
 
             y_list.append((1, lesion_confidence, overlap))
 
@@ -285,7 +300,9 @@ def evaluate(
     overlap_func: (
         str | Callable[[npt.NDArray[np.float32], npt.NDArray[np.int32]], float]
     ) = "IoU",
-    case_confidence_func: str | Callable[[npt.NDArray[np.float32]], float] = "max",
+    case_confidence_func: (
+        str | Callable[[npt.NDArray[np.float32]], float]
+    ) = "max",
     allow_unmatched_candidates_with_minimal_overlap: bool = True,
     y_det_postprocess_func: Optional[
         Callable[[npt.NDArray[np.float32]], npt.NDArray[np.float32]]
@@ -472,7 +489,9 @@ def evaluate_folder(
             # construct paths to detection maps and labels
             found_pred, found_label = False, False
             for postfix in detection_map_postfixes:
-                detection_path = os.path.join(y_det_dir, f"{subject_id}{postfix}")
+                detection_path = os.path.join(
+                    y_det_dir, f"{subject_id}{postfix}"
+                )
                 if os.path.exists(detection_path):
                     y_det += [detection_path]
                     found_pred = True
@@ -489,7 +508,9 @@ def evaluate_folder(
             assert (
                 found_pred
             ), f"Did not find prediction for {subject_id} in {y_det_dir}!"
-            assert found_label, f"Did not find label for {subject_id} in {y_true_dir}!"
+            assert (
+                found_label
+            ), f"Did not find label for {subject_id} in {y_true_dir}!"
     else:
         # collect all detection maps found in detection_map_dir
         file_list = sorted(os.listdir(y_det_dir))
@@ -525,7 +546,9 @@ def evaluate_folder(
                     found_label = True
                     break
 
-            assert found_label, f"Did not find label for {subject_id} in {y_true_dir}!"
+            assert (
+                found_label
+            ), f"Did not find label for {subject_id} in {y_true_dir}!"
 
     # ensure files exist
     for subject_id, detection_path in zip(subject_list, y_det):

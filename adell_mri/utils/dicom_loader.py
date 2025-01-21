@@ -216,11 +216,15 @@ class SliceSampler(torch.utils.data.Sampler):
             if n_samples < len(corr_idx):
                 corr_idx = corr_idx[:n_samples]
             else:
-                corr_idx = self.rng.choice(corr_idx, size=n_samples, replace=True)
+                corr_idx = self.rng.choice(
+                    corr_idx, size=n_samples, replace=True
+                )
 
         for idx in corr_idx:
             element = self.correspondence[idx]
-            idx = int(self.rng.choice(element[self.rng.choice(list(element.keys()))]))
+            idx = int(
+                self.rng.choice(element[self.rng.choice(list(element.keys()))])
+            )
             yield idx
 
     def __len__(self) -> int:

@@ -57,8 +57,14 @@ def main(arguments):
             for i in range(arr.shape[0]):
                 for j in range(arr.shape[0]):
                     if i != j:
-                        c1 = arr[i, : args.spatial_dim] + arr[i, args.spatial_dim :]
-                        c2 = arr[j, : args.spatial_dim] + arr[j, args.spatial_dim :]
+                        c1 = (
+                            arr[i, : args.spatial_dim]
+                            + arr[i, args.spatial_dim :]
+                        )
+                        c2 = (
+                            arr[j, : args.spatial_dim]
+                            + arr[j, args.spatial_dim :]
+                        )
                         c1 /= 2
                         c2 /= 2
                         all_dists.append(np.abs(c1 - c2))

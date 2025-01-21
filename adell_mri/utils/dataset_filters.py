@@ -221,7 +221,11 @@ def filter_dictionary_with_filters(
             k, v = f.split("(!match)")
             processed_filters["not_match"].append([k, v])
         else:
-            err = "filter {} must have one of ['=','<','>','!=','(in)'].".format(f)
+            err = (
+                "filter {} must have one of ['=','<','>','!=','(in)'].".format(
+                    f
+                )
+            )
             err += " For example: age>50 or clinical_variable!=true"
             raise NotImplementedError(err)
     out_dict = {}
@@ -231,7 +235,9 @@ def filter_dictionary_with_filters(
             for kk, v in processed_filters[k]:
                 if kk in D[pid]:
                     if k == "eq":
-                        if "[" in str(D[pid][kk]) or isinstance(D[pid][kk], list):
+                        if "[" in str(D[pid][kk]) or isinstance(
+                            D[pid][kk], list
+                        ):
                             tmp = [str(x) for x in D[pid][kk]]
                             if v not in tmp:
                                 check = False
@@ -297,9 +303,13 @@ def filter_dictionary(
     """
     D = deepcopy(D)
     if filters_presence is not None:
-        D = filter_dictionary_with_presence(D, filters_presence, verbose=verbose)
+        D = filter_dictionary_with_presence(
+            D, filters_presence, verbose=verbose
+        )
     if filters_existence is not None:
-        D = filter_dictionary_with_existence(D, filters_existence, verbose=verbose)
+        D = filter_dictionary_with_existence(
+            D, filters_existence, verbose=verbose
+        )
     if (possible_labels is not None) and (label_key is not None):
         D = filter_dictionary_with_possible_labels(
             D, possible_labels, label_key, verbose=verbose

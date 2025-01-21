@@ -7,7 +7,8 @@ import torch.nn.functional as F
 def cat_if_none(tensors: list[torch.Tensor | None], *args, **kwargs):
     if all([t is not None for t in tensors]):
         tensors = [
-            torch.stack(t, axis=-1) if isinstance(t, list) else t for t in tensors
+            torch.stack(t, axis=-1) if isinstance(t, list) else t
+            for t in tensors
         ]
         return torch.cat(tensors, *args, **kwargs)
     return None
@@ -169,7 +170,9 @@ class AdversarialLoss(torch.nn.Module):
         return torch.ones_like(x) * (1 - self.smoothing)
 
     def generator_loss(self, gen_pred: torch.Tensor) -> torch.Tensor:
-        loss = F.binary_cross_entropy_with_logits(gen_pred, torch.ones_like(gen_pred))
+        loss = F.binary_cross_entropy_with_logits(
+            gen_pred, torch.ones_like(gen_pred)
+        )
         return {"adversarial": loss}
 
     def discriminator_loss(
@@ -183,7 +186,9 @@ class AdversarialLoss(torch.nn.Module):
     ) -> torch.Tensor:
         loss = F.binary_cross_entropy_with_logits(
             torch.cat([real_pred, gen_pred]),
-            torch.cat([self.ones_like_smooth(real_pred), torch.zeros_like(gen_pred)]),
+            torch.cat(
+                [self.ones_like_smooth(real_pred), torch.zeros_like(gen_pred)]
+            ),
         )
         return {"adversarial": loss}
 
@@ -194,7 +199,9 @@ class AdversarialLoss(torch.nn.Module):
         discriminator: torch.nn.Module,
     ) -> torch.Tensor:
         return (
-            self.generator_loss(apply_discriminator(gen_samples, discriminator)).add(
+            self.generator_loss(
+                apply_discriminator(gen_samples, discriminator)
+            ).add(
                 self.discriminator_loss(
                     apply_discriminator(real_samples, discriminator)
                 )
@@ -253,8 +260,12 @@ class WGANGPLoss(torch.nn.Module):
         *args,
         **kwargs,
     ) -> torch.Tensor:
-        gen_pred = apply_discriminator(gen_samples, discriminator, *args, **kwargs)
-        real_pred = apply_discriminator(real_samples, discriminator, *args, **kwargs)
+        gen_pred = apply_discriminator(
+            gen_samples, discriminator, *args, **kwargs
+        )
+        real_pred = apply_discriminator(
+            real_samples, discriminator, *args, **kwargs
+        )
         return (
             self.discriminator_loss(
                 gen_pred=gen_pred,
@@ -387,7 +398,9 @@ class SemiSLAdversarialLoss(torch.nn.Module):
         losses = {}
         losses = self.adv_loss.generator_loss(gen_pred)
         if (class_pred is not None) and (class_target is not None):
-            losses["class"] = apply_loss(class_pred, class_target, F.cross_entropy)
+            losses["class"] = apply_loss(
+                class_pred, class_target, F.cross_entropy
+            )
 
         if (reg_pred is not None) and (reg_target is not None):
             losses["reg"] = apply_loss(reg_pred, reg_target, F.mse_loss)
@@ -418,7 +431,9 @@ class SemiSLAdversarialLoss(torch.nn.Module):
             gen_pred=gen_pred, real_pred=real_pred
         )
         if (class_pred is not None) and (class_target is not None):
-            losses["class"] = apply_loss(class_pred, class_target, F.cross_entropy)
+            losses["class"] = apply_loss(
+                class_pred, class_target, F.cross_entropy
+            )
         if (reg_pred is not None) and (reg_target is not None):
             losses["reg"] = apply_loss(reg_pred, reg_target, F.mse_loss)
         return losses
@@ -444,7 +459,9 @@ class SemiSLAdversarialLoss(torch.nn.Module):
                 reg_target=reg_target,
             ),
             self.generator_loss(
-                gen_pred=apply_discriminator(gen_samples, discriminator=discriminator),
+                gen_pred=apply_discriminator(
+                    gen_samples, discriminator=discriminator
+                ),
                 class_pred=class_pred,
                 class_target=class_target,
                 reg_pred=reg_pred,
@@ -488,7 +505,8 @@ class SemiSLWGANGPLoss(torch.nn.Module):
     def cat_if_none(self, tensors: list[torch.Tensor | None], *args, **kwargs):
         if all([t is not None for t in tensors]):
             tensors = [
-                torch.stack(t, axis=-1) if isinstance(t, list) else t for t in tensors
+                torch.stack(t, axis=-1) if isinstance(t, list) else t
+                for t in tensors
             ]
             return torch.cat(tensors, *args, **kwargs)
         return None
@@ -515,7 +533,9 @@ class SemiSLWGANGPLoss(torch.nn.Module):
         losses = {}
         losses = self.adv_loss.generator_loss(gen_pred=gen_pred)
         if (class_pred is not None) and (class_target is not None):
-            losses["class"] = apply_loss(class_pred, class_target, F.cross_entropy)
+            losses["class"] = apply_loss(
+                class_pred, class_target, F.cross_entropy
+            )
 
         if (reg_pred is not None) and (reg_target is not None):
             losses["reg"] = apply_loss(reg_pred, reg_target, F.mse_loss)
@@ -549,7 +569,9 @@ class SemiSLWGANGPLoss(torch.nn.Module):
             real_pred=real_pred,
         )
         if (class_pred is not None) and (class_target is not None):
-            losses["class"] = apply_loss(class_pred, class_target, F.cross_entropy)
+            losses["class"] = apply_loss(
+                class_pred, class_target, F.cross_entropy
+            )
         if (reg_pred is not None) and (reg_target is not None):
             losses["reg"] = apply_loss(reg_pred, reg_target, F.mse_loss)
         return losses
@@ -575,7 +597,9 @@ class SemiSLWGANGPLoss(torch.nn.Module):
                 reg_target=reg_target,
             ),
             self.generator_loss(
-                gen_pred=apply_discriminator(gen_samples, discriminator=discriminator),
+                gen_pred=apply_discriminator(
+                    gen_samples, discriminator=discriminator
+                ),
                 class_pred=class_pred,
                 class_target=class_target,
                 reg_pred=reg_pred,
@@ -619,7 +643,8 @@ class SemiSLRelativisticGANLoss(torch.nn.Module):
     def cat_if_none(self, tensors: list[torch.Tensor | None], *args, **kwargs):
         if all([t is not None for t in tensors]):
             tensors = [
-                torch.stack(t, axis=-1) if isinstance(t, list) else t for t in tensors
+                torch.stack(t, axis=-1) if isinstance(t, list) else t
+                for t in tensors
             ]
             return torch.cat(tensors, *args, **kwargs)
         return None
@@ -647,7 +672,9 @@ class SemiSLRelativisticGANLoss(torch.nn.Module):
         losses = {}
         losses = self.adv_loss.generator_loss(gen_pred, real_pred)
         if (class_pred is not None) and (class_target is not None):
-            losses["class"] = apply_loss(class_pred, class_target, F.cross_entropy)
+            losses["class"] = apply_loss(
+                class_pred, class_target, F.cross_entropy
+            )
 
         if (reg_pred is not None) and (reg_target is not None):
             losses["reg"] = apply_loss(reg_pred, reg_target, F.mse_loss)
@@ -681,7 +708,9 @@ class SemiSLRelativisticGANLoss(torch.nn.Module):
             discriminator=discriminator,
         )
         if (class_pred is not None) and (class_target is not None):
-            losses["class"] = apply_loss(class_pred, class_target, F.cross_entropy)
+            losses["class"] = apply_loss(
+                class_pred, class_target, F.cross_entropy
+            )
         if (reg_pred is not None) and (reg_target is not None):
             losses["reg"] = apply_loss(reg_pred, reg_target, F.mse_loss)
         return losses
@@ -707,7 +736,9 @@ class SemiSLRelativisticGANLoss(torch.nn.Module):
                 reg_target=reg_target,
             ),
             self.generator_loss(
-                gen_pred=apply_discriminator(gen_samples, discriminator=discriminator),
+                gen_pred=apply_discriminator(
+                    gen_samples, discriminator=discriminator
+                ),
                 class_pred=class_pred,
                 class_target=class_target,
                 reg_pred=reg_pred,

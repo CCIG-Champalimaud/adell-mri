@@ -56,7 +56,9 @@ class CategoricalEmbedder(torch.nn.Module):
                     )
                 )
             elif isinstance(cat_feat, (list, tuple)):
-                self.conversions.append({str(k): i for i, k in enumerate(cat_feat)})
+                self.conversions.append(
+                    {str(k): i for i, k in enumerate(cat_feat)}
+                )
                 self.embedders.append(
                     torch.nn.Embedding(
                         len(cat_feat),
@@ -92,7 +94,9 @@ class CategoricalEmbedder(torch.nn.Module):
                 ]
             X_conv = torch.as_tensor(X_conv, device=self.device)
         out = []
-        for x, embedder in zip(X_conv.permute(1, 0).contiguous(), self.embedders):
+        for x, embedder in zip(
+            X_conv.permute(1, 0).contiguous(), self.embedders
+        ):
             out.append(embedder(x))
         out = torch.cat(out, axis=1)
         if len(out.shape) == 2:
@@ -305,7 +309,9 @@ class Embedder(torch.nn.Module):
             curr = self.num_distributions[i]
             tmp = np.mean(curr)
             output.append([tmp for _ in range(n)])
-        output = torch.as_tensor(output, device=self.device, dtype=torch.float32).T
+        output = torch.as_tensor(
+            output, device=self.device, dtype=torch.float32
+        ).T
         return output
 
     def get_random_num(self, n: int = 1) -> torch.Tensor | None:
@@ -325,7 +331,9 @@ class Embedder(torch.nn.Module):
         for i in range(len(self.num_distributions)):
             curr = self.num_distributions[i]
             output.append(self.rng.choice(curr, n))
-        output = torch.as_tensor(output, device=self.device, dtype=torch.float32).T
+        output = torch.as_tensor(
+            output, device=self.device, dtype=torch.float32
+        ).T
         return output
 
     def normalize_numeric_features(self, X: torch.Tensor) -> torch.Tensor:
@@ -376,7 +384,9 @@ class Embedder(torch.nn.Module):
         Returns:
             torch.Tensor: the embedded categorical features.
         """
-        categorical_embeddings, converted_class_X = self.cat_embedder(X, return_X=True)
+        categorical_embeddings, converted_class_X = self.cat_embedder(
+            X, return_X=True
+        )
         if uncondition_idx is not None:
             if uncondition_idx == "all":
                 uncondition_idx = range(

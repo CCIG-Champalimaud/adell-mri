@@ -15,7 +15,9 @@ TensorOrNDarray = Union[np.ndarray, torch.Tensor]
 NDArrayOrTensorDict = Dict[str, TensorOrNDarray]
 FloatOrTensor = Union[torch.Tensor, float]
 SizeDict = Dict[str, List[Union[Tuple[int, int, int], Tuple[int, int]]]]
-SpacingDict = Dict[str, List[Union[Tuple[float, float, float], Tuple[float, float]]]]
+SpacingDict = Dict[
+    str, List[Union[Tuple[float, float, float], Tuple[float, float]]]
+]
 BBDict = Dict[str, Dict[str, Union[int, float]]]
 ModuleList = Union[List[torch.nn.Module], torch.nn.ModuleList]
 AveragingFunctionType = Callable[

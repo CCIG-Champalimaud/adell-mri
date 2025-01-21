@@ -17,7 +17,9 @@ class FeaturePyramidNetworkBackbone(torch.nn.Module):
         backbone: torch.nn.Module,
         spatial_dim: int,
         structure: List[Tuple[int, int, int, int]],
-        maxpool_structure: List[Union[Tuple[int, int], Tuple[int, int, int]]] = None,
+        maxpool_structure: List[
+            Union[Tuple[int, int], Tuple[int, int, int]]
+        ] = None,
         adn_fn: torch.nn.Module = torch.nn.Identity,
     ):
         """Feature pyramid network. Aggregates the intermediate features from a
@@ -66,16 +68,22 @@ class FeaturePyramidNetworkBackbone(torch.nn.Module):
         self.pyramid_ops = torch.nn.ModuleList([])
         self.upscale_ops = torch.nn.ModuleList([])
         prev_inp = self.structure[-1][0]
-        for s, mp in zip(self.structure[-1::-1], self.maxpool_structure[-1::-1]):
+        for s, mp in zip(
+            self.structure[-1::-1], self.maxpool_structure[-1::-1]
+        ):
             i, inter, k, N = s
-            self.pyramid_ops.append(self.res_op(prev_inp, k, inter, i, self.adn_fn))
+            self.pyramid_ops.append(
+                self.res_op(prev_inp, k, inter, i, self.adn_fn)
+            )
             self.upscale_ops.append(self.upscale_op(i, i, mp, stride=mp))
             prev_inp = i
 
     def forward(self, X):
         X, il = self.backbone.forward(X, return_intermediate=True)
         prev_x = X
-        for pyr_op, up_op, x in zip(self.pyramid_ops, self.upscale_ops, il[-1::-1]):
+        for pyr_op, up_op, x in zip(
+            self.pyramid_ops, self.upscale_ops, il[-1::-1]
+        ):
             prev_x = pyr_op(prev_x)
             prev_x = up_op(prev_x)
             # shouldn't be necessary but cannot be easily avoided when working with
@@ -323,7 +331,9 @@ class AtrousSpatialPyramidPooling2d(torch.nn.Module):
                     padding="same",
                 ),
                 self.adn_fn(c),
-                DepthWiseSeparableConvolution2d(c, c, kernel_size=3, padding="same"),
+                DepthWiseSeparableConvolution2d(
+                    c, c, kernel_size=3, padding="same"
+                ),
                 self.adn_fn(c),
             )
             self.layers.append(op)
@@ -380,7 +390,9 @@ class AtrousSpatialPyramidPooling3d(torch.nn.Module):
                     padding="same",
                 ),
                 self.adn_fn(c),
-                DepthWiseSeparableConvolution3d(c, c, kernel_size=3, padding="same"),
+                DepthWiseSeparableConvolution3d(
+                    c, c, kernel_size=3, padding="same"
+                ),
                 self.adn_fn(c),
             )
             self.layers.append(op)
@@ -430,18 +442,24 @@ class ReceptiveFieldBlock2d(torch.nn.Module):
         for rate, o in zip(self.rates, self.out_c_list):
             if rate == 1:
                 op = torch.nn.Sequential(
-                    torch.nn.Conv2d(self.in_channels, o, kernel_size=1, padding="same"),
+                    torch.nn.Conv2d(
+                        self.in_channels, o, kernel_size=1, padding="same"
+                    ),
                     self.adn_fn(o),
                     torch.nn.Conv2d(o, o, kernel_size=3, padding="same"),
                     self.adn_fn(o),
                 )
             else:
                 op = torch.nn.Sequential(
-                    torch.nn.Conv2d(self.in_channels, o, kernel_size=1, padding="same"),
+                    torch.nn.Conv2d(
+                        self.in_channels, o, kernel_size=1, padding="same"
+                    ),
                     self.adn_fn(o),
                     torch.nn.Conv2d(o, o, kernel_size=rate, padding="same"),
                     self.adn_fn(o),
-                    torch.nn.Conv2d(o, o, dilation=rate, kernel_size=3, padding="same"),
+                    torch.nn.Conv2d(
+                        o, o, dilation=rate, kernel_size=3, padding="same"
+                    ),
                     self.adn_fn(o),
                 )
             self.layers.append(op)
@@ -485,7 +503,9 @@ class ReceptiveFieldBlock3d(torch.nn.Module):
         self.rates = rates
         self.adn_fn = adn_fn
 
-        self.out_c_list = split_int_into_n(self.bottleneck_channels, len(self.rates))
+        self.out_c_list = split_int_into_n(
+            self.bottleneck_channels, len(self.rates)
+        )
 
         self.init_layers()
 
@@ -494,22 +514,30 @@ class ReceptiveFieldBlock3d(torch.nn.Module):
         for rate, o in zip(self.rates, self.out_c_list):
             if rate == 1:
                 op = torch.nn.Sequential(
-                    torch.nn.Conv3d(self.in_channels, o, kernel_size=1, padding="same"),
+                    torch.nn.Conv3d(
+                        self.in_channels, o, kernel_size=1, padding="same"
+                    ),
                     self.adn_fn(o),
                     torch.nn.Conv3d(o, o, kernel_size=3, padding="same"),
                     self.adn_fn(o),
                 )
             else:
                 op = torch.nn.Sequential(
-                    torch.nn.Conv3d(self.in_channels, o, kernel_size=1, padding="same"),
+                    torch.nn.Conv3d(
+                        self.in_channels, o, kernel_size=1, padding="same"
+                    ),
                     self.adn_fn(o),
                     torch.nn.Conv3d(o, o, kernel_size=rate, padding="same"),
                     self.adn_fn(o),
-                    torch.nn.Conv3d(o, o, dilation=rate, kernel_size=3, padding="same"),
+                    torch.nn.Conv3d(
+                        o, o, dilation=rate, kernel_size=3, padding="same"
+                    ),
                     self.adn_fn(o),
                 )
             self.layers.append(op)
-        self.final_op = torch.nn.Conv3d(self.bottleneck_channels, self.in_channels, 1)
+        self.final_op = torch.nn.Conv3d(
+            self.bottleneck_channels, self.in_channels, 1
+        )
 
     def forward(self, X: torch.Tensor) -> torch.Tensor:
         outputs = []

@@ -22,7 +22,9 @@ class AdaptivePredictionSets(torch.nn.Module):
         n = y.shape[0]
         pi = pred.argsort(1, descending=True)
         srt = torch.take_along_dim(pred, pi, axis=1).cumsum(axis=1)
-        scores = torch.take_along_dim(srt, pi.argsort(axis=1), axis=1)[range(n), y]
+        scores = torch.take_along_dim(srt, pi.argsort(axis=1), axis=1)[
+            range(n), y
+        ]
         qhat = torch.quantile(
             scores,
             ceil((n + 1) * (1 - self.alpha)) / n,
@@ -39,6 +41,8 @@ class AdaptivePredictionSets(torch.nn.Module):
             pred = F.softmax(pred, -1)
         pi = pred.argsort(1, descending=True)
         srt = torch.take_along_dim(pred, pi, axis=1).cumsum(axis=1)
-        pred_sets = torch.take_along_dim(srt <= self.qhat, pi.argsort(axis=1), axis=1)
+        pred_sets = torch.take_along_dim(
+            srt <= self.qhat, pi.argsort(axis=1), axis=1
+        )
         pred_sets[range(pred.shape[0]), torch.argmax(pred, 1)] = True
         return torch.concatenate([pred_sets.float(), pred], 1)

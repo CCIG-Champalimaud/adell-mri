@@ -11,12 +11,18 @@ desc = "Creates empty masks for a given image key if a condition is fulfilled"
 def main(arguments):
     parser = argparse.ArgumentParser(description=desc)
 
-    parser.add_argument("--json_path", required=True, help="Path to dataset JSON")
+    parser.add_argument(
+        "--json_path", required=True, help="Path to dataset JSON"
+    )
     parser.add_argument(
         "--output_json_path", required=True, help="Path to output dataset JSON"
     )
-    parser.add_argument("--source_key", required=True, help="Key for the source image")
-    parser.add_argument("--output_key", required=True, help="key for the output image")
+    parser.add_argument(
+        "--source_key", required=True, help="Key for the source image"
+    )
+    parser.add_argument(
+        "--output_key", required=True, help="key for the output image"
+    )
     parser.add_argument(
         "--condition",
         required=True,

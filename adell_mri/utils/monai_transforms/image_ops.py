@@ -43,7 +43,9 @@ class FastResample(monai.transforms.Transform):
             spacing = np.array(spacing, np.float64)
             spacing_ratio = spacing / self.target
             output_shape = np.round(
-                np.multiply(spacing_ratio, np.array(X[k].shape[1:], dtype=np.float64))
+                np.multiply(
+                    spacing_ratio, np.array(X[k].shape[1:], dtype=np.float64)
+                )
             ).astype(np.int64)
             intp = self.interpolation_modes[k]
             X[k] = F.interpolate(
@@ -269,8 +271,12 @@ class GetAllCrops(monai.transforms.Transform):
         self.ndim = len(size)
 
     def get_pad_size(self, sh):
-        remainder = [(y - (x % y)) if x > y else 0 for x, y in zip(sh, self.size)]
-        remainder = [x if x < (y // 2) else 0 for x, y in zip(remainder, self.size)]
+        remainder = [
+            (y - (x % y)) if x > y else 0 for x, y in zip(sh, self.size)
+        ]
+        remainder = [
+            x if x < (y // 2) else 0 for x, y in zip(remainder, self.size)
+        ]
         remainder = [(x // 2, x - x // 2) for x in remainder]
         pad_size = [(0, 0), *remainder]
         return pad_size
@@ -341,7 +347,9 @@ class GetAllCropsd(monai.transforms.MapTransform):
 
         self.tr = GetAllCrops(self.size)
 
-    def __call__(self, X: dict[str, torch.Tensor]) -> list[dict[str, torch.Tensor]]:
+    def __call__(
+        self, X: dict[str, torch.Tensor]
+    ) -> list[dict[str, torch.Tensor]]:
         output_crops = {k: X[k] for k in X}
         outputs = []
         for k in self.keys:

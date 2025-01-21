@@ -140,7 +140,9 @@ class MIMUNet(torch.nn.Module):
             diff_from_same.append((prev // 2) - output_tensor.shape[2])
             prev = output_tensor.shape[2]
         minimum_kernel_size = [3 for _ in output]
-        kernel_size = [x + y for x, y in zip(minimum_kernel_size, diff_from_same)]
+        kernel_size = [
+            x + y for x, y in zip(minimum_kernel_size, diff_from_same)
+        ]
         padding = [
             0 if (pad > 1) else (ks // 2)
             for ks, pad in zip(kernel_size, diff_from_same)
@@ -171,7 +173,9 @@ class MIMUNet(torch.nn.Module):
         n = self.n_slices
         b, c, h, w, n_X = X.shape
         if n_X == self.n_slices:
-            X = self.pre_module_op(X).unsqueeze(1)  # unsqueeze a channel dimension
+            X = self.pre_module_op(X).unsqueeze(
+                1
+            )  # unsqueeze a channel dimension
             X = self.module(X)
             output = [S(x) for x, S in zip(X, self.post_module_op)]
         else:  # so that inference runs for arbitrarily sized tensors
@@ -187,7 +191,9 @@ class MIMUNet(torch.nn.Module):
                 sliced_X = self.module(sliced_X)
                 sliced_X = [S(x) for x, S in zip(sliced_X, self.post_module_op)]
                 if output is None:
-                    output = [zeros_like(sx, [-1, -1, -1, -1, n_X]) for sx in sliced_X]
+                    output = [
+                        zeros_like(sx, [-1, -1, -1, -1, n_X]) for sx in sliced_X
+                    ]
                     denominator = [
                         zeros_like(sx, [-1, -1, -1, -1, n_X]) for sx in sliced_X
                     ]
@@ -258,7 +264,9 @@ class MIMUNet(torch.nn.Module):
             upscale_ops = [
                 torch.nn.Sequential(
                     torch.nn.Conv3d(d1, d2, 1),
-                    torch.nn.Upsample(scale_factor=[s, s, 1], mode=self.interpolation),
+                    torch.nn.Upsample(
+                        scale_factor=[s, s, 1], mode=self.interpolation
+                    ),
                 )
                 for d1, d2, s in zip(depths_a, depths_b, self.strides[::-1][1:])
             ]
@@ -340,7 +348,9 @@ class MIMUNet(torch.nn.Module):
             torch.Tensor
         """
         encoding_out = self.v_module(X)
-        encoding_out = [op(x) for op, x in zip(self.feature_reduction, encoding_out)]
+        encoding_out = [
+            op(x) for op, x in zip(self.feature_reduction, encoding_out)
+        ]
         curr = encoding_out[-1]
 
         deep_outputs = []

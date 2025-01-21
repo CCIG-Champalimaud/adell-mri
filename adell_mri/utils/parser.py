@@ -130,7 +130,9 @@ def merge_args(
     return args
 
 
-def compose(path: str, job_name: str, overrides: List[str] = None) -> dict[str, Any]:
+def compose(
+    path: str, job_name: str, overrides: List[str] = None
+) -> dict[str, Any]:
     """
     Loads a Hydra config from a given path, applies optional overrides,
     and returns the config as a dict.

@@ -10,7 +10,9 @@ from pydicom.multival import MultiValue
 from tqdm import tqdm
 
 DICOMInformation = tuple[str, str, str, tuple[float, float, float]]
-DICOMDictionary = dict[str, dict[str, dict[str, str | tuple[float, float, float]]]]
+DICOMDictionary = dict[
+    str, dict[str, dict[str, str | tuple[float, float, float]]]
+]
 
 SEG_SOP_TAG = (0x0008, 0x0060)
 BVALUE_TAG = (0x0018, 0x9087)

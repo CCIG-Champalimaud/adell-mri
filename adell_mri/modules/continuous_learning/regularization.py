@@ -15,7 +15,9 @@ class ElasticWeightConsolidation(torch.nn.Module):
     2. Call it as a term in the loss function, i.e. `loss = loss + ewc(model)`
     """
 
-    def __init__(self, model: torch.nn.Module, keys: List[str] = None, p: int = 2):
+    def __init__(
+        self, model: torch.nn.Module, keys: List[str] = None, p: int = 2
+    ):
         """
         Args:
             model (torch.nn.Module): input model.

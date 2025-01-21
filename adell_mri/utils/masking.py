@@ -51,9 +51,13 @@ class TransformerMasker(torch.nn.Module):
     def sample_patch(self) -> Coords:
         upper_sampling_bound = [
             size - patch_size
-            for size, patch_size in zip(self.image_dimensions, self.max_patch_size)
+            for size, patch_size in zip(
+                self.image_dimensions, self.max_patch_size
+            )
         ]
-        lower_bound = np.array([self.rng.integers(0, i) for i in upper_sampling_bound])
+        lower_bound = np.array(
+            [self.rng.integers(0, i) for i in upper_sampling_bound]
+        )
         patch_size = np.array(
             [
                 self.rng.integers(m, M)
@@ -93,7 +97,10 @@ class TransformerMasker(torch.nn.Module):
         patch_coords = [
             c
             for c in product(
-                *[range(upper_bound[i], lower_bound[i]) for i in range(self.n_dim)]
+                *[
+                    range(upper_bound[i], lower_bound[i])
+                    for i in range(self.n_dim)
+                ]
             )
         ]
         patch_coords = np.array(patch_coords)
@@ -183,9 +190,13 @@ class GenericTransformerMasker(torch.nn.Module):
     def sample_patch(self) -> Coords:
         upper_sampling_bound = [
             size - patch_size
-            for size, patch_size in zip(self.image_dimensions, self.max_patch_size)
+            for size, patch_size in zip(
+                self.image_dimensions, self.max_patch_size
+            )
         ]
-        lower_bound = np.array([self.rng.integers(0, i) for i in upper_sampling_bound])
+        lower_bound = np.array(
+            [self.rng.integers(0, i) for i in upper_sampling_bound]
+        )
         patch_size = np.array(
             [
                 self.rng.integers(m, M)
@@ -198,7 +209,9 @@ class GenericTransformerMasker(torch.nn.Module):
     def sample_patches(self, n_patches: int) -> List[Coords]:
         return [self.sample_patch() for _ in range(n_patches)]
 
-    def retrieve_patch(self, patch_coords: List[int]) -> Tuple[torch.Tensor, List[int]]:
+    def retrieve_patch(
+        self, patch_coords: List[int]
+    ) -> Tuple[torch.Tensor, List[int]]:
         upper_bound, lower_bound = (
             patch_coords[: self.n_dim],
             patch_coords[self.n_dim :],
@@ -206,7 +219,10 @@ class GenericTransformerMasker(torch.nn.Module):
         patch_coords = [
             c
             for c in product(
-                *[range(upper_bound[i], lower_bound[i]) for i in range(self.n_dim)]
+                *[
+                    range(upper_bound[i], lower_bound[i])
+                    for i in range(self.n_dim)
+                ]
             )
         ]
         patch_coords = np.array(patch_coords)
@@ -266,9 +282,13 @@ class ConvolutionalMasker:
     def sample_patch(self) -> Coords:
         upper_sampling_bound = [
             size - patch_size
-            for size, patch_size in zip(self.image_dimensions, self.max_patch_size)
+            for size, patch_size in zip(
+                self.image_dimensions, self.max_patch_size
+            )
         ]
-        lower_bound = np.array([self.rng.integers(0, i) for i in upper_sampling_bound])
+        lower_bound = np.array(
+            [self.rng.integers(0, i) for i in upper_sampling_bound]
+        )
         patch_size = np.array(
             [
                 self.rng.integers(m, M)
@@ -298,7 +318,9 @@ class ConvolutionalMasker:
             x1, y1, z1 = upper_bound
             x2, y2, z2 = lower_bound
             X_patches = X[:, :, x1:x2, y1:y2, z1:z2]
-            long_coords = list(product(range(x1, x2), range(y1, y2), range(z1, z2)))
+            long_coords = list(
+                product(range(x1, x2), range(y1, y2), range(z1, z2))
+            )
 
         return X_patches, long_coords
 

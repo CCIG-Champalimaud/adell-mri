@@ -172,7 +172,9 @@ def main(arguments):
             if np.isnan(data_dict[k][kk]) == False  # noqa
         }
 
-    network_config, loss_key = parse_config_unet(args.config_file, len(keys), n_classes)
+    network_config, loss_key = parse_config_unet(
+        args.config_file, len(keys), n_classes
+    )
 
     label_mode = "binary" if n_classes == 2 else "cat"
     transform_arguments = {
@@ -256,7 +258,9 @@ def main(arguments):
             network_config_ssl["backbone_args"]["maxpool_structure"]
         )
         res_ops = [[x.input_layer, *x.operations] for x in backbone]
-        res_pool_ops = [[x.first_pooling, *x.pooling_operations] for x in backbone]
+        res_pool_ops = [
+            [x.first_pooling, *x.pooling_operations] for x in backbone
+        ]
 
         encoding_operations = [torch.nn.ModuleList([]) for _ in res_ops]
         for i in range(len(res_ops)):
@@ -384,7 +388,9 @@ def main(arguments):
                     )[0]
                     for inference_fn in inference_fns
                 ]
-                pred = [transforms_postprocess({"image": p})["image"] for p in pred]
+                pred = [
+                    transforms_postprocess({"image": p})["image"] for p in pred
+                ]
             elif pred_mode == "deep_features":
                 pred = [
                     inference_fn(
@@ -406,7 +412,9 @@ def main(arguments):
             if pred_mode == "image":
                 pred = np.int32(np.round(pred))
                 pred = np.transpose(pred, [2, 1, 0]).to(torch.int16)
-                output_path = os.path.join(args.output_path, pred_id + ".nii.gz")
+                output_path = os.path.join(
+                    args.output_path, pred_id + ".nii.gz"
+                )
                 t_image = curr_dict[pred_id]["image"]
                 sitk_writer.put(output_path, pred, t_image)
             elif pred_mode in ["probs", "logits"]:
@@ -417,7 +425,9 @@ def main(arguments):
                     pred = np.transpose(pred, [3, 2, 1, 0])
                 elif len(sh) == 5:
                     pred = np.transpose(pred, [4, 0, 3, 2, 1])
-                output_path = os.path.join(args.output_path, pred_id + ".nii.gz")
+                output_path = os.path.join(
+                    args.output_path, pred_id + ".nii.gz"
+                )
                 t_image = curr_dict[pred_id]["image"]
 
                 sitk_writer.put(output_path, pred, t_image)

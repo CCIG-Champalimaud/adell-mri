@@ -91,7 +91,9 @@ def main(arguments):
     args = parser.parse_args(arguments)
 
     if args.net_type == "unet_encoder":
-        network_config, _ = parse_config_unet(args.config_file, args.input_shape[0], 2)
+        network_config, _ = parse_config_unet(
+            args.config_file, args.input_shape[0], 2
+        )
         network_config_correct = deepcopy(network_config)
         for k in network_config:
             if k in ["loss_fn"]:
@@ -130,13 +132,19 @@ def main(arguments):
 
     train_loader_call = None  # noqa
     ssl = ssl.to(args.dev)
-    state_dict = torch.load(args.checkpoint, map_location=args.dev.split(":")[0])[
-        "state_dict"
-    ]
-    state_dict = {k: state_dict[k] for k in state_dict if "prediction_head" not in k}
-    state_dict = {k: state_dict[k] for k in state_dict if "projection_head" not in k}
+    state_dict = torch.load(
+        args.checkpoint, map_location=args.dev.split(":")[0]
+    )["state_dict"]
+    state_dict = {
+        k: state_dict[k] for k in state_dict if "prediction_head" not in k
+    }
+    state_dict = {
+        k: state_dict[k] for k in state_dict if "projection_head" not in k
+    }
     state_dict = {k: state_dict[k] for k in state_dict if "ema" not in k}
-    state_dict = {k: state_dict[k] for k in state_dict if "patch_masker" not in k}
+    state_dict = {
+        k: state_dict[k] for k in state_dict if "patch_masker" not in k
+    }
     state_dict = {k: state_dict[k] for k in state_dict if "predictor" not in k}
     inc = ssl.load_state_dict(state_dict, strict=False)
     print(f"\t{inc}")

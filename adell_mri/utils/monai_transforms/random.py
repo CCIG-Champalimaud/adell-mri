@@ -55,7 +55,9 @@ class RandomAffined(monai.transforms.RandomizableTransform):
         """
 
         self.keys = keys
-        self.spatial_sizes = [np.array(s, dtype=np.int32) for s in spatial_sizes]
+        self.spatial_sizes = [
+            np.array(s, dtype=np.int32) for s in spatial_sizes
+        ]
         self.mode = mode
         self.prob = prob
         self.rotate_range = np.array(rotate_range)
@@ -66,7 +68,9 @@ class RandomAffined(monai.transforms.RandomizableTransform):
         self.copy = copy
 
         self.affine_trans = {
-            k: monai.transforms.Affine(spatial_size=s, mode=m, device=self.device)
+            k: monai.transforms.Affine(
+                spatial_size=s, mode=m, device=self.device
+            )
             for k, s, m in zip(self.keys, self.spatial_sizes, self.mode)
         }
 

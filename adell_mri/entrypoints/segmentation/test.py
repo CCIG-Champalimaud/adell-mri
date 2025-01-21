@@ -171,7 +171,9 @@ def main(arguments):
             if np.isnan(data_dict[k][kk]) == False  # noqa
         }
 
-    network_config, loss_key = parse_config_unet(args.config_file, len(keys), n_classes)
+    network_config, loss_key = parse_config_unet(
+        args.config_file, len(keys), n_classes
+    )
 
     label_mode = "binary" if n_classes == 2 else "cat"
     transform_arguments = {
@@ -254,7 +256,9 @@ def main(arguments):
             network_config_ssl["backbone_args"]["maxpool_structure"]
         )
         res_ops = [[x.input_layer, *x.operations] for x in backbone]
-        res_pool_ops = [[x.first_pooling, *x.pooling_operations] for x in backbone]
+        res_pool_ops = [
+            [x.first_pooling, *x.pooling_operations] for x in backbone
+        ]
 
         encoding_operations = [torch.nn.ModuleList([]) for _ in res_ops]
         for i in range(len(res_ops)):
@@ -296,7 +300,9 @@ def main(arguments):
     n_data = len(test_ids)
     all_metrics = []
     for test_idx in range(n_data):
-        curr_dict = {k: data_dict[k] for k in test_ids[test_idx] if k in data_dict}
+        curr_dict = {
+            k: data_dict[k] for k in test_ids[test_idx] if k in data_dict
+        }
         data_list = [curr_dict[k] for k in curr_dict]
         dataset = monai.data.CacheDataset(
             data_list,
@@ -340,9 +346,13 @@ def main(arguments):
             for checkpoint in networks:
                 unet = networks[checkpoint]
 
-                inference_function.update_base_inference_function(unet.predict_step)
+                inference_function.update_base_inference_function(
+                    unet.predict_step
+                )
 
-                metrics = get_metric_dict(n_classes, False, prefix="T_", dev=args.dev)
+                metrics = get_metric_dict(
+                    n_classes, False, prefix="T_", dev=args.dev
+                )
                 metrics_global = get_metric_dict(
                     n_classes, False, prefix="T_", dev=args.dev
                 )
@@ -352,7 +362,8 @@ def main(arguments):
                 for i in trange(len(dataset), smoothing=1):
                     data_element = dataset[i]
                     data_element = {
-                        k: data_element[k].to(args.dev)[None] for k in data_element
+                        k: data_element[k].to(args.dev)[None]
+                        for k in data_element
                     }
                     test_id = test_ids[test_idx][i]
                     pred = inference_function(
@@ -372,7 +383,10 @@ def main(arguments):
                         all_pred.append(deepcopy(pred))
                         all_truth.append(y.cpu().numpy())
                     pred = (
-                        torch.as_tensor(pred, device=args.dev).round().long().squeeze()
+                        torch.as_tensor(pred, device=args.dev)
+                        .round()
+                        .long()
+                        .squeeze()
                     )
                     if args.per_sample is True:
                         metrics_dict["metrics"][test_id] = {}
@@ -400,15 +414,21 @@ def main(arguments):
                         num_parallel_calls=8,
                     )
                     metrics_dict["global_metrics"]["AP"] = picai_eval_metrics.AP
-                    metrics_dict["global_metrics"]["R"] = picai_eval_metrics.score
-                    metrics_dict["global_metrics"]["AUC"] = picai_eval_metrics.auroc
+                    metrics_dict["global_metrics"][
+                        "R"
+                    ] = picai_eval_metrics.score
+                    metrics_dict["global_metrics"][
+                        "AUC"
+                    ] = picai_eval_metrics.auroc
                 all_metrics.append(metrics_dict)
         else:
             inference_function.update_base_inference_function(
                 [networks[k].predict_step for k in networks]
             )
 
-            metrics = get_metric_dict(n_classes, False, prefix="T_", dev=args.dev)
+            metrics = get_metric_dict(
+                n_classes, False, prefix="T_", dev=args.dev
+            )
             metrics_global = get_metric_dict(
                 n_classes, False, prefix="T_", dev=args.dev
             )
@@ -420,7 +440,9 @@ def main(arguments):
                 metrics_dict["metrics"] = {}
             for i in trange(len(dataset), smoothing=1):
                 data_element = dataset[i]
-                data_element = {k: data_element[k].to(args.dev) for k in data_element}
+                data_element = {
+                    k: data_element[k].to(args.dev) for k in data_element
+                }
                 test_id = test_ids[test_idx][i]
                 pred = inference_function(
                     data_element,

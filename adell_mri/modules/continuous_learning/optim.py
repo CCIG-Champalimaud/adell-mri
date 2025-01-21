@@ -3,7 +3,9 @@ from typing import Dict, List, Union
 import numpy as np
 import torch
 
-ParamGroupDict = Dict[str, Union[List[torch.nn.Parameter], float, int, bool, str, bool]]
+ParamGroupDict = Dict[
+    str, Union[List[torch.nn.Parameter], float, int, bool, str, bool]
+]
 
 
 def create_param_groups(

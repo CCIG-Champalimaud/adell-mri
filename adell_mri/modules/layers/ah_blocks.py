@@ -233,7 +233,9 @@ class AnysotropicHybridResidual(torch.nn.Module):
         return torch.nn.Sequential(
             torch.nn.Conv3d(self.in_channels, self.in_channels, 1),
             self.adn_fn(self.in_channels, **adn_args),
-            torch.nn.Conv3d(self.in_channels, self.in_channels, K, padding="same"),
+            torch.nn.Conv3d(
+                self.in_channels, self.in_channels, K, padding="same"
+            ),
             self.adn_fn(self.in_channels, **adn_args),
             torch.nn.Conv3d(self.in_channels, self.in_channels, 1),
             self.adn_fn(self.in_channels, **adn_args),

@@ -89,7 +89,9 @@ class VICRegLoss(torch.nn.Module):
         norm_cov = off_diagonal(cov) / sqrt(X.shape[1])
         return torch.sum(norm_cov.pow_(2))
 
-    def invariance_loss(self, X1: torch.Tensor, X2: torch.Tensor) -> torch.Tensor:
+    def invariance_loss(
+        self, X1: torch.Tensor, X2: torch.Tensor
+    ) -> torch.Tensor:
         """
         Calculates the invariance loss for VICReg (minimises the MSE
         between the features calculated from two views of the same image).
@@ -122,7 +124,9 @@ class VICRegLoss(torch.nn.Module):
             cov_loss (torch.Tensor) covariance loss
             inv_loss (torch.Tensor) invariance loss
         """
-        var_loss = torch.add(self.variance_loss(X1) / 2, self.variance_loss(X2) / 2)
+        var_loss = torch.add(
+            self.variance_loss(X1) / 2, self.variance_loss(X2) / 2
+        )
         cov_loss = torch.add(
             self.covariance_loss(X1) / adj / 2,
             self.covariance_loss(X2) / adj / 2,
@@ -155,7 +159,9 @@ class VICRegLoss(torch.nn.Module):
 
         flat_max_X1 = self.flatten_if_necessary(X1)
         flat_max_X2 = self.flatten_if_necessary(X2)
-        var_loss, cov_loss, inv_loss = self.vicreg_loss(flat_max_X1, flat_max_X2)
+        var_loss, cov_loss, inv_loss = self.vicreg_loss(
+            flat_max_X1, flat_max_X2
+        )
         return self.lam * inv_loss, self.mu * var_loss, self.nu * cov_loss
 
 
@@ -202,7 +208,9 @@ class VICRegLocalLoss(VICRegLoss):
         self.sparse_coords_1 = None
         self.sparse_coords_2 = None
 
-    def transform_coords(self, coords: torch.Tensor, box: torch.Tensor) -> torch.Tensor:
+    def transform_coords(
+        self, coords: torch.Tensor, box: torch.Tensor
+    ) -> torch.Tensor:
         """
         Takes a set of coords and addapts them to a new coordinate space
         defined by box (0,0 becomes the top left corner of the bounding box).
@@ -223,7 +231,9 @@ class VICRegLocalLoss(VICRegLoss):
         size = b - a
         return coords.unsqueeze(0) * size + a
 
-    def local_loss(self, X1: torch.Tensor, X2: torch.Tensor, all_dists: torch.Tensor):
+    def local_loss(
+        self, X1: torch.Tensor, X2: torch.Tensor, all_dists: torch.Tensor
+    ):
         g = self.gamma
         b = X1.shape[0]
         _, idxs = torch.topk(all_dists.flatten(start_dim=1), g, 1)
@@ -269,7 +279,9 @@ class VICRegLocalLoss(VICRegLoss):
         Returns:
             torch.Tensor: local loss for location
         """
-        assert X1.shape[0] == X2.shape[0], "X1 and X2 need to have the same batch size"
+        assert (
+            X1.shape[0] == X2.shape[0]
+        ), "X1 and X2 need to have the same batch size"
         X1.shape[0]
         coords_X1 = self.transform_coords(self.sparse_coords_1, box_X1)
         coords_X2 = self.transform_coords(self.sparse_coords_2, box_X2)
@@ -289,7 +301,9 @@ class VICRegLocalLoss(VICRegLoss):
         Returns:
             torch.Tensor: local loss for features
         """
-        assert X1.shape[0] == X2.shape[0], "X1 and X2 need to have the same batch size"
+        assert (
+            X1.shape[0] == X2.shape[0]
+        ), "X1 and X2 need to have the same batch size"
         flat_X1 = X1.flatten(start_dim=2).swapaxes(1, 2)
         flat_X2 = X2.flatten(start_dim=2).swapaxes(1, 2)
         all_dists = torch.cdist(flat_X1, flat_X2, p=2)
@@ -359,14 +373,18 @@ class VICRegLocalLoss(VICRegLoss):
                 self.sparse_coords_2 = self.get_sparse_coords(X2)
                 self.shape_2 = X2.shape
 
-        var_loss, cov_loss, inv_loss = self.vicreg_loss(flat_max_X1, flat_max_X2)
+        var_loss, cov_loss, inv_loss = self.vicreg_loss(
+            flat_max_X1, flat_max_X2
+        )
 
         # location and feature local losses are non-symmetric so this
         # symmetrises them
         short_range_local_loss = (
             torch.add(
-                self.location_local_loss(X1, X2, box_X1, box_X2) * (1 - self.alpha),
-                self.location_local_loss(X2, X1, box_X2, box_X1) * (1 - self.alpha),
+                self.location_local_loss(X1, X2, box_X1, box_X2)
+                * (1 - self.alpha),
+                self.location_local_loss(X2, X1, box_X2, box_X1)
+                * (1 - self.alpha),
             )
             / 2
         )

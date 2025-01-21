@@ -255,7 +255,9 @@ def main(arguments):
             drop_last=True,
         )
 
-    train_loader = train_loader_call(network_config_correct["batch_size"], False)
+    train_loader = train_loader_call(
+        network_config_correct["batch_size"], False
+    )
     val_loader = monai.data.ThreadDataLoader(
         train_dataset,
         batch_size=network_config_correct["batch_size"],
@@ -277,7 +279,9 @@ def main(arguments):
     )
 
     if args.checkpoint is not None:
-        state_dict = torch.load(args.checkpoint, map_location=args.dev)["state_dict"]
+        state_dict = torch.load(args.checkpoint, map_location=args.dev)[
+            "state_dict"
+        ]
         inc = ssl.load_state_dict(state_dict)
 
     callbacks = [RichProgressBar()]
@@ -286,7 +290,9 @@ def main(arguments):
         ssl = ssl.to("cuda")
 
     if args.checkpoint is not None:
-        state_dict = torch.load(args.checkpoint, map_location=args.dev)["state_dict"]
+        state_dict = torch.load(args.checkpoint, map_location=args.dev)[
+            "state_dict"
+        ]
         inc = ssl.load_state_dict(state_dict)
         print(inc)
 

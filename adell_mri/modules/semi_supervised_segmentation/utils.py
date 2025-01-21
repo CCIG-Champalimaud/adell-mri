@@ -6,7 +6,9 @@ from itertools import product
 from typing import Any, Dict, List
 
 
-def convert_arguments_pre(transform_arguments: Dict[str, Any], image_keys: List[str]):
+def convert_arguments_pre(
+    transform_arguments: Dict[str, Any], image_keys: List[str]
+):
     """
     Converts the transform arguments dictionary for use in semi-supervised learning.
     Used internally by get_semi_sl_transforms.
@@ -33,7 +35,9 @@ def convert_arguments_pre(transform_arguments: Dict[str, Any], image_keys: List[
         : len(image_keys)
     ]
     transform_arguments_semi_sl["intp_resampling_augmentations"] = (
-        transform_arguments_semi_sl["intp_resampling_augmentations"][: len(image_keys)]
+        transform_arguments_semi_sl["intp_resampling_augmentations"][
+            : len(image_keys)
+        ]
     )
     return transform_arguments_semi_sl
 
@@ -66,7 +70,9 @@ def convert_arguments_post(
     transform_arguments_semi_sl["all_keys"] = image_keys
     transform_arguments_semi_sl["track_meta"] = True
     transform_arguments_semi_sl["output_image_key"] = f"semi_sl_image_{idx}"
-    transform_arguments_semi_sl["image_keys"] = [f"{k}_aug_{idx}" for k in image_keys]
+    transform_arguments_semi_sl["image_keys"] = [
+        f"{k}_aug_{idx}" for k in image_keys
+    ]
     return transform_arguments_semi_sl
 
 
@@ -90,7 +96,9 @@ def convert_arguments_augment_all(
     Returns:
         A new dict with modified arguments for semi-supervised learning.
     """
-    augment_arguments_semi_sl = {k: augment_arguments[k] for k in augment_arguments}
+    augment_arguments_semi_sl = {
+        k: augment_arguments[k] for k in augment_arguments
+    }
     augment_arguments_semi_sl["augment"] = [
         "affine",
         "shear",
@@ -128,7 +136,9 @@ def convert_arguments_augment_individual(
     Returns:
         A new dict with modified arguments for semi-supervised learning.
     """
-    augment_arguments_semi_sl = {k: augment_arguments[k] for k in augment_arguments}
+    augment_arguments_semi_sl = {
+        k: augment_arguments[k] for k in augment_arguments
+    }
     augment_arguments_semi_sl["augment"] = [
         "intensity",
         "noise",
@@ -136,7 +146,11 @@ def convert_arguments_augment_individual(
         "blur",
         "trivial",
     ]
-    augment_arguments_semi_sl["all_keys"] = [f"{k}_aug_{idx}" for k in image_keys]
-    augment_arguments_semi_sl["image_keys"] = [f"{k}_aug_{idx}" for k in image_keys]
+    augment_arguments_semi_sl["all_keys"] = [
+        f"{k}_aug_{idx}" for k in image_keys
+    ]
+    augment_arguments_semi_sl["image_keys"] = [
+        f"{k}_aug_{idx}" for k in image_keys
+    ]
     augment_arguments_semi_sl["has_label"] = False
     return augment_arguments_semi_sl

@@ -30,7 +30,10 @@ from ...utils import (
 from ...utils.dataset import Dataset
 from ...utils.parser import parse_ids
 from ...utils.pl_utils import get_ckpt_callback, get_devices, get_logger
-from ...utils.sitk_utils import get_spacing_quantile, spacing_values_from_dataset_json
+from ...utils.sitk_utils import (
+    get_spacing_quantile,
+    spacing_values_from_dataset_json,
+)
 
 torch.backends.cudnn.benchmark = True
 
@@ -192,7 +195,9 @@ def main(arguments):
 
     all_pids = [k for k in data_dict]
 
-    network_config, loss_key = parse_config_unet(args.config_file, len(keys), n_classes)
+    network_config, loss_key = parse_config_unet(
+        args.config_file, len(keys), n_classes
+    )
     if args.learning_rate is not None:
         network_config["learning_rate"] = args.learning_rate
     if args.batch_size is not None:
@@ -230,7 +235,9 @@ def main(arguments):
 
         train_idxs, val_idxs = next(fold_generator)
         if args.use_val_as_train_val is False:
-            train_idxs, train_val_idxs = train_test_split(train_idxs, test_size=0.15)
+            train_idxs, train_val_idxs = train_test_split(
+                train_idxs, test_size=0.15
+            )
         else:
             train_val_idxs = val_idxs
         train_pids = [all_pids[i] for i in train_idxs]
@@ -344,7 +351,9 @@ def main(arguments):
         if args.checkpoint is not None:
             if len(args.checkpoint) >= (val_fold + 1):
                 ckpt_path = args.checkpoint[val_fold]
-                print("Resuming training from checkpoint in {}".format(ckpt_path))
+                print(
+                    "Resuming training from checkpoint in {}".format(ckpt_path)
+                )
 
         transforms_train = monai.transforms.Compose(transforms_train)
         transforms_train.set_random_state(args.seed)
@@ -384,14 +393,18 @@ def main(arguments):
                     "Setting up partially random sampler/adaptive weights"
                 )
                 for x in t:
-                    intersection = set.intersection(set(label_keys), set(x.keys()))
+                    intersection = set.intersection(
+                        set(label_keys), set(x.keys())
+                    )
                     if len(intersection) > 0:
                         masks = monai.transforms.LoadImaged(
                             keys=label_keys, allow_missing_keys=True
                         )(x)
                         total = []
                         for k in intersection:
-                            for u, c in zip(*np.unique(masks[k], return_counts=True)):
+                            for u, c in zip(
+                                *np.unique(masks[k], return_counts=True)
+                            ):
                                 if u not in total:
                                     total.append(u)
                                 if u != 0:
@@ -572,7 +585,9 @@ def main(arguments):
         else:
             ckpt_list = ["last"]
         for ckpt_key in ckpt_list:
-            test_metrics = trainer.test(unet, validation_loader, ckpt_path=ckpt_key)[0]
+            test_metrics = trainer.test(
+                unet, validation_loader, ckpt_path=ckpt_key
+            )[0]
             for k in test_metrics:
                 out = test_metrics[k]
                 if n_classes == 2:

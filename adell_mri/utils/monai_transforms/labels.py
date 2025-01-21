@@ -74,7 +74,8 @@ class LabelOperatord(monai.transforms.Transform):
     def get_label_correspondence(self):
         if self.label_groups is not None:
             self.label_groups = [
-                [str(x) for x in label_group] for label_group in self.label_groups
+                [str(x) for x in label_group]
+                for label_group in self.label_groups
             ]
             self.possible_labels_match = {}
             for i, label_group in enumerate(self.label_groups):
@@ -174,7 +175,9 @@ class CombineBinaryLabelsd(monai.transforms.Transform):
     Combines binary label maps.
     """
 
-    def __init__(self, keys: list[str], mode: str = "any", output_key: str = None):
+    def __init__(
+        self, keys: list[str], mode: str = "any", output_key: str = None
+    ):
         """
         Args:
             keys (list[str]): list of keys.
@@ -249,7 +252,9 @@ class ConvertToOneHot(monai.transforms.Transform):
     several binary class problems into a single multi-class problem.
     """
 
-    def __init__(self, keys: str, out_key: str, priority_key: str, bg: bool = True):
+    def __init__(
+        self, keys: str, out_key: str, priority_key: str, bg: bool = True
+    ):
         """
         Args:
             keys (str): keys that willbe used to construct the one-hot
@@ -352,7 +357,9 @@ class DbscanAssistedSegmentSelection(monai.transforms.MapTransform):
             sizes = {}
             for label in unique_labels:
                 idxs = labels == label
-                dist_to_centre[label] = np.square(np.mean(coords[idxs]) - image_centre)
+                dist_to_centre[label] = np.square(
+                    np.mean(coords[idxs]) - image_centre
+                )
                 sizes[label] = np.sum(idxs)
 
             labels_to_keep = []
@@ -363,7 +370,9 @@ class DbscanAssistedSegmentSelection(monai.transforms.MapTransform):
                 labels_to_keep.extend(sorted_labels)
 
             if self.filter_by_dist_to_centre is True:
-                sorted_labels = sorted(dist_to_centre.keys(), key=lambda k: sizes[k])
+                sorted_labels = sorted(
+                    dist_to_centre.keys(), key=lambda k: sizes[k]
+                )
                 label_to_keep = None
                 idx = 0
                 while label_to_keep is None:

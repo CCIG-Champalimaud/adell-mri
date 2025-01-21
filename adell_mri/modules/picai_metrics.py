@@ -30,7 +30,9 @@ label_structure = np.ones((3, 3, 3))
 
 
 class Metrics:
-    lesion_results: Union[Dict[Hashable, List[Tuple[int, float, float]]], PathLike]
+    lesion_results: Union[
+        Dict[Hashable, List[Tuple[int, float, float]]], PathLike
+    ]
     case_target: Optional[Dict[Hashable, int]] = None
     case_pred: Optional[Dict[Hashable, float]] = None
     case_weight: Optional[Union[Dict[Hashable, float], List[float]]] = None
@@ -75,7 +77,8 @@ class Metrics:
                 self.case_weight = {idx: 1 for idx in subject_list}
             else:
                 self.case_weight = {
-                    idx: weight for idx, weight in zip(subject_list, self.case_weight)
+                    idx: weight
+                    for idx, weight in zip(subject_list, self.case_weight)
                 }
 
         if self.lesion_weight is None:
@@ -91,10 +94,16 @@ class Metrics:
             self.lesion_results = {
                 idx: self.lesion_results[idx] for idx in subject_list
             }
-            self.lesion_weight = {idx: self.lesion_weight[idx] for idx in subject_list}
-            self.case_target = {idx: self.case_target[idx] for idx in subject_list}
+            self.lesion_weight = {
+                idx: self.lesion_weight[idx] for idx in subject_list
+            }
+            self.case_target = {
+                idx: self.case_target[idx] for idx in subject_list
+            }
             self.case_pred = {idx: self.case_pred[idx] for idx in subject_list}
-            self.case_weight = {idx: self.case_weight[idx] for idx in subject_list}
+            self.case_weight = {
+                idx: self.case_weight[idx] for idx in subject_list
+            }
 
     # aggregates
     def calc_auroc(self, subject_list: Optional[List[str]] = None) -> float:
@@ -139,7 +148,9 @@ class Metrics:
         return [
             (is_lesion, confidence, overlap)
             for subject_id in subject_list
-            for is_lesion, confidence, overlap in self.lesion_results[subject_id]
+            for is_lesion, confidence, overlap in self.lesion_results[
+                subject_id
+            ]
         ]
 
     @property
@@ -267,8 +278,12 @@ class Metrics:
                 )
 
         # define placeholders
-        FP: "npt.NDArray[np.float32]" = np.zeros_like(self.thresholds, dtype=np.float32)
-        TP: "npt.NDArray[np.float32]" = np.zeros_like(self.thresholds, dtype=np.float32)
+        FP: "npt.NDArray[np.float32]" = np.zeros_like(
+            self.thresholds, dtype=np.float32
+        )
+        TP: "npt.NDArray[np.float32]" = np.zeros_like(
+            self.thresholds, dtype=np.float32
+        )
 
         # for each threshold: count FPs and TPs
         for i, th in enumerate(self.thresholds):
@@ -310,7 +325,9 @@ class Metrics:
         precision, recall, thresholds = precision_recall_curve(
             y_true=y_true,
             probas_pred=y_pred,
-            sample_weight=self.get_lesion_weight_flat(subject_list=subject_list),
+            sample_weight=self.get_lesion_weight_flat(
+                subject_list=subject_list
+            ),
         )
 
         # set precision to zero at a threshold of "zero", as those lesion
@@ -331,7 +348,9 @@ class Metrics:
             "recall": recall,
         }
 
-    def calculate_ROC(self, subject_list: Optional[List[str]] = None) -> Dict[str, Any]:
+    def calculate_ROC(
+        self, subject_list: Optional[List[str]] = None
+    ) -> Dict[str, Any]:
         """
         Generate Receiver Operating Characteristic curve for case-level risk stratification.
         """
@@ -424,7 +443,9 @@ class Metrics:
         self.case_target = {
             idx: int(float(val)) for idx, val in metrics["case_target"].items()
         }
-        self.case_pred = {idx: float(val) for idx, val in metrics["case_pred"].items()}
+        self.case_pred = {
+            idx: float(val) for idx, val in metrics["case_pred"].items()
+        }
         self.case_weight = {
             idx: float(val) for idx, val in metrics["case_weight"].items()
         }
@@ -522,7 +543,9 @@ def calculate_iou(
 def read_prediction(path: PathLike) -> "npt.NDArray[np.float32]":
     """Read prediction, given a filepath"""
     # read prediction and ensure correct dtype
-    pred: "npt.NDArray[np.float32]" = np.array(read_image(path), dtype=np.float32)
+    pred: "npt.NDArray[np.float32]" = np.array(
+        read_image(path), dtype=np.float32
+    )
     return pred
 
 
@@ -549,7 +572,9 @@ def resize_image_with_crop_or_pad(image, img_size=(64, 64, 64), **kwargs):
             to_padding[i][0] = (img_size[i] - image.shape[i]) // 2
             to_padding[i][1] = img_size[i] - image.shape[i] - to_padding[i][0]
         else:
-            from_indices[i][0] = int(np.floor((image.shape[i] - img_size[i]) / 2.0))
+            from_indices[i][0] = int(
+                np.floor((image.shape[i] - img_size[i]) / 2.0)
+            )
             from_indices[i][1] = from_indices[i][0] + img_size[i]
 
         # create slicer object to crop/leave each dimension
@@ -641,7 +666,9 @@ def evaluate_case(
             y_list.append((0, lesion_confidence, 0.0))
     else:
         # malignant case, collect overlap between each prediction and ground truth lesion
-        labeled_gt, num_gt_lesions = ndimage.label(y_true, structure=label_structure)
+        labeled_gt, num_gt_lesions = ndimage.label(
+            y_true, structure=label_structure
+        )
         gt_lesion_ids = np.arange(num_gt_lesions)
         overlap_matrix = np.zeros((num_gt_lesions, len(confidences)))
 
@@ -673,10 +700,15 @@ def evaluate_case(
 
         # remove indices where overlap is zero
         mask = (
-            overlap_matrix[matched_lesion_indices, matched_lesion_candidate_indices] > 0
+            overlap_matrix[
+                matched_lesion_indices, matched_lesion_candidate_indices
+            ]
+            > 0
         )
         matched_lesion_indices = matched_lesion_indices[mask]
-        matched_lesion_candidate_indices = matched_lesion_candidate_indices[mask]
+        matched_lesion_candidate_indices = matched_lesion_candidate_indices[
+            mask
+        ]
 
         # all lesion candidates that are matched are TPs
         for lesion_id, lesion_candidate_id in zip(
@@ -686,7 +718,9 @@ def evaluate_case(
             overlap = overlap_matrix[lesion_id, lesion_candidate_id]
             overlap -= 1  # return overlap to [0, 1]
 
-            assert overlap > min_overlap, "Overlap must be greater than min_overlap!"
+            assert (
+                overlap > min_overlap
+            ), "Overlap must be greater than min_overlap!"
 
             y_list.append((1, lesion_confidence, overlap))
 

@@ -88,7 +88,9 @@ class BBToAdjustedAnchors(monai.transforms.Transform):
         bb_vertices = np.array(bb_vertices)
         if len(bb_vertices.shape) < 2:
             bb_vertices = bb_vertices[np.newaxis, :]
-        bb_vertices = np.stack([bb_vertices[:, :3], bb_vertices[:, 3:]], axis=-1)
+        bb_vertices = np.stack(
+            [bb_vertices[:, :3], bb_vertices[:, 3:]], axis=-1
+        )
         # bb_vertices[:,:,1]-bb_vertices[:,:,0]
         output = np.zeros([1 + 7 * len(self.long_anchors), *self.output_sh])
         # no vertices present
@@ -104,7 +106,9 @@ class BBToAdjustedAnchors(monai.transforms.Transform):
         for i in range(rel_bb_vert.shape[0]):
             hits = 0
             all_iou = []
-            rel_bb_size = np.subtract(rel_bb_vert[i, :, 1], rel_bb_vert[i, :, 0])
+            rel_bb_size = np.subtract(
+                rel_bb_vert[i, :, 1], rel_bb_vert[i, :, 0]
+            )
             center = np.mean(rel_bb_vert[i, :, :], axis=-1)
             bb_vol = np.prod(rel_bb_size + 1 / rel_sh)
             cl = classes[i]
@@ -122,7 +126,9 @@ class BBToAdjustedAnchors(monai.transforms.Transform):
                 union_vol = anchor_vol + bb_vol - inter_vol
 
                 iou = inter_vol / union_vol
-                intersection_idx = np.logical_and(iou > self.iou_thresh, intersects)
+                intersection_idx = np.logical_and(
+                    iou > self.iou_thresh, intersects
+                )
                 box_coords = self.long_coords[intersection_idx]
 
                 all_iou.append(iou)
@@ -443,7 +449,9 @@ class RandAffineWithBoxesd(monai.transforms.RandomizableTransform):
     the same affine transform to a bounding box with format xy(z)xy(z).
     """
 
-    def __init__(self, image_keys: list[str], box_keys: list[str], *args, **kwargs):
+    def __init__(
+        self, image_keys: list[str], box_keys: list[str], *args, **kwargs
+    ):
         """
         Args:
             image_keys (List[str]): list of image keys.
@@ -453,7 +461,9 @@ class RandAffineWithBoxesd(monai.transforms.RandomizableTransform):
         self.image_keys = image_keys
         self.box_keys = box_keys
 
-        self.rand_affine_d = monai.transforms.RandAffined(image_keys, *args, **kwargs)
+        self.rand_affine_d = monai.transforms.RandAffined(
+            image_keys, *args, **kwargs
+        )
 
     def get_all_corners(self, tl, br, n_dim):
         # (b, number_of_corners, number_of_dimensions)

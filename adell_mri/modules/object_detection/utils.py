@@ -10,7 +10,9 @@ maxpool_default = [(2, 2, 2), (1, 1, 1), (2, 2, 1), (2, 2, 1)]
 pyramid_default = [3, 5, [7, 7, 5], [9, 9, 5], [11, 11, 5]]
 
 
-def check_overlap(bb1: torch.Tensor, bb2: torch.Tensor, ndim: int = 3) -> torch.Tensor:
+def check_overlap(
+    bb1: torch.Tensor, bb2: torch.Tensor, ndim: int = 3
+) -> torch.Tensor:
     return torch.logical_and(
         torch.any(bb1[:, ndim:] > bb2[:, :ndim], axis=1),
         torch.any(bb1[:, :ndim] < bb2[:, ndim:], axis=1),
@@ -21,7 +23,9 @@ def bb_volume(bb: torch.Tensor, ndim: int = 3) -> torch.Tensor:
     return torch.prod(bb[:, ndim:] - bb[:, :ndim] + 1, axis=1)
 
 
-def calculate_iou(bb1: torch.Tensor, bb2: torch.Tensor, ndim: int = 3) -> torch.Tensor:
+def calculate_iou(
+    bb1: torch.Tensor, bb2: torch.Tensor, ndim: int = 3
+) -> torch.Tensor:
     inter_tl = torch.maximum(bb1[:, :ndim], bb2[:, :ndim])
     inter_br = torch.minimum(bb1[:, ndim:], bb2[:, ndim:])
     inter_volume = torch.prod(inter_br - inter_tl + 1, axis=1)

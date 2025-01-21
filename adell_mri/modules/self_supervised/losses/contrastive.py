@@ -34,7 +34,9 @@ class KLDivergence(torch.nn.Module):
             return X.flatten(start_dim=2).mean(-1)
         return X
 
-    def forward(self, X_1: torch.Tensor, X_2: torch.Tensor, anchors: torch.Tensor):
+    def forward(
+        self, X_1: torch.Tensor, X_2: torch.Tensor, anchors: torch.Tensor
+    ):
         if self.mode == "global":
             X_1 = self.average_pooling(X_1)
             X_2 = self.average_pooling(X_2)
@@ -105,12 +107,16 @@ class ContrastiveDistanceLoss(torch.nn.Module):
 
         if self.loss_type not in self.loss_options:
             raise Exception(
-                "Loss `{}` not in `{}`".format(self.loss_type, self.loss_options)
+                "Loss `{}` not in `{}`".format(
+                    self.loss_type, self.loss_options
+                )
             )
 
         if self.dist_type not in self.dist_options:
             raise Exception(
-                "dist_type `{}` not in `{}`".format(self.loss_type, self.dist_options)
+                "dist_type `{}` not in `{}`".format(
+                    self.loss_type, self.dist_options
+                )
             )
 
     def dist(self, x: torch.Tensor, y: torch.Tensor):
@@ -145,7 +151,9 @@ class ContrastiveDistanceLoss(torch.nn.Module):
         # retrieve negative examples with the lowest distance to
         # each anchor
         hard_negatives = (
-            torch.where(is_same, torch.ones_like(dist) * torch.inf, dist).min(1).values
+            torch.where(is_same, torch.ones_like(dist) * torch.inf, dist)
+            .min(1)
+            .values
         )
         # retrieve positive examples with the highest distance to
         # each anchor

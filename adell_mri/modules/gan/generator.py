@@ -109,7 +109,9 @@ class CrossAttention(torch.nn.Module):
         self.use_flash_attention = use_flash_attention
         inner_dim = num_head_channels * num_attention_heads
         cross_attention_dim = (
-            cross_attention_dim if cross_attention_dim is not None else query_dim
+            cross_attention_dim
+            if cross_attention_dim is not None
+            else query_dim
         )
 
         self.scale = 1 / math.sqrt(num_head_channels)
@@ -131,7 +133,9 @@ class CrossAttention(torch.nn.Module):
         reshape their input as instances in the batch.
         """
         batch_size, seq_len, dim = x.shape
-        x = x.reshape(batch_size, seq_len, self.num_heads, dim // self.num_heads)
+        x = x.reshape(
+            batch_size, seq_len, self.num_heads, dim // self.num_heads
+        )
         x = x.permute(0, 2, 1, 3).reshape(
             batch_size * self.num_heads, seq_len, dim // self.num_heads
         )
@@ -143,7 +147,9 @@ class CrossAttention(torch.nn.Module):
         dimension.
         """
         batch_size, seq_len, dim = x.shape
-        x = x.reshape(batch_size // self.num_heads, self.num_heads, seq_len, dim)
+        x = x.reshape(
+            batch_size // self.num_heads, self.num_heads, seq_len, dim
+        )
         x = x.permute(0, 2, 1, 3).reshape(
             batch_size // self.num_heads, seq_len, dim * self.num_heads
         )
@@ -155,7 +161,9 @@ class CrossAttention(torch.nn.Module):
         query = query.contiguous()
         key = key.contiguous()
         value = value.contiguous()
-        x = xformers.ops.memory_efficient_attention(query, key, value, attn_bias=None)
+        x = xformers.ops.memory_efficient_attention(
+            query, key, value, attn_bias=None
+        )
         return x
 
     def _attention(
@@ -452,7 +460,9 @@ class AttentionBlock(torch.nn.Module):
         self.num_channels = num_channels
 
         self.num_heads = (
-            num_channels // num_head_channels if num_head_channels is not None else 1
+            num_channels // num_head_channels
+            if num_head_channels is not None
+            else 1
         )
         self.scale = 1 / math.sqrt(num_channels / self.num_heads)
 
@@ -471,7 +481,9 @@ class AttentionBlock(torch.nn.Module):
 
     def reshape_heads_to_batch_dim(self, x: torch.Tensor) -> torch.Tensor:
         batch_size, seq_len, dim = x.shape
-        x = x.reshape(batch_size, seq_len, self.num_heads, dim // self.num_heads)
+        x = x.reshape(
+            batch_size, seq_len, self.num_heads, dim // self.num_heads
+        )
         x = x.permute(0, 2, 1, 3).reshape(
             batch_size * self.num_heads, seq_len, dim // self.num_heads
         )
@@ -479,7 +491,9 @@ class AttentionBlock(torch.nn.Module):
 
     def reshape_batch_dim_to_heads(self, x: torch.Tensor) -> torch.Tensor:
         batch_size, seq_len, dim = x.shape
-        x = x.reshape(batch_size // self.num_heads, self.num_heads, seq_len, dim)
+        x = x.reshape(
+            batch_size // self.num_heads, self.num_heads, seq_len, dim
+        )
         x = x.permute(0, 2, 1, 3).reshape(
             batch_size // self.num_heads, seq_len, dim * self.num_heads
         )
@@ -491,7 +505,9 @@ class AttentionBlock(torch.nn.Module):
         query = query.contiguous()
         key = key.contiguous()
         value = value.contiguous()
-        x = xformers.ops.memory_efficient_attention(query, key, value, attn_bias=None)
+        x = xformers.ops.memory_efficient_attention(
+            query, key, value, attn_bias=None
+        )
         return x
 
     def _attention(
@@ -552,7 +568,9 @@ class AttentionBlock(torch.nn.Module):
         if self.spatial_dims == 2:
             x = x.transpose(-1, -2).reshape(batch, channel, height, width)
         if self.spatial_dims == 3:
-            x = x.transpose(-1, -2).reshape(batch, channel, height, width, depth)
+            x = x.transpose(-1, -2).reshape(
+                batch, channel, height, width, depth
+            )
 
         return x + residual
 
@@ -605,7 +623,9 @@ class Downsample(torch.nn.Module):
                 )
             self.op = Pool[Pool.AVG, spatial_dims](kernel_size=2, stride=2)
 
-    def forward(self, x: torch.Tensor, emb: torch.Tensor | None = None) -> torch.Tensor:
+    def forward(
+        self, x: torch.Tensor, emb: torch.Tensor | None = None
+    ) -> torch.Tensor:
         del emb
         if x.shape[1] != self.num_channels:
             raise ValueError(
@@ -658,7 +678,9 @@ class Upsample(torch.nn.Module):
         else:
             self.conv = None
 
-    def forward(self, x: torch.Tensor, emb: torch.Tensor | None = None) -> torch.Tensor:
+    def forward(
+        self, x: torch.Tensor, emb: torch.Tensor | None = None
+    ) -> torch.Tensor:
         del emb
         if x.shape[1] != self.num_channels:
             raise ValueError("Input channels should be equal to num_channels")
@@ -741,10 +763,14 @@ class ResnetBlock(torch.nn.Module):
         if self.up:
             self.upsample = Upsample(spatial_dims, in_channels, use_conv=False)
         elif down:
-            self.downsample = Downsample(spatial_dims, in_channels, use_conv=False)
+            self.downsample = Downsample(
+                spatial_dims, in_channels, use_conv=False
+            )
 
         if self.class_emb_channels is not None:
-            self.class_emb_proj = torch.nn.Linear(class_emb_channels, self.out_channels)
+            self.class_emb_proj = torch.nn.Linear(
+                class_emb_channels, self.out_channels
+            )
         else:
             self.class_emb_proj = None
 
@@ -1415,7 +1441,9 @@ class UpBlock(torch.nn.Module):
             if self.no_skip_connection is False:
                 res_hidden_states = res_hidden_states_list[-1]
                 res_hidden_states_list = res_hidden_states_list[:-1]
-                hidden_states = torch.cat([hidden_states, res_hidden_states], dim=1)
+                hidden_states = torch.cat(
+                    [hidden_states, res_hidden_states], dim=1
+                )
 
             hidden_states = resnet(hidden_states, emb)
 
@@ -1542,7 +1570,9 @@ class AttnUpBlock(torch.nn.Module):
             if self.no_skip_connection is False:
                 res_hidden_states = res_hidden_states_list[-1]
                 res_hidden_states_list = res_hidden_states_list[:-1]
-                hidden_states = torch.cat([hidden_states, res_hidden_states], dim=1)
+                hidden_states = torch.cat(
+                    [hidden_states, res_hidden_states], dim=1
+                )
 
             hidden_states = resnet(hidden_states, emb)
             hidden_states = attn(hidden_states)
@@ -1682,7 +1712,9 @@ class CrossAttnUpBlock(torch.nn.Module):
             if self.no_skip_connection is False:
                 res_hidden_states = res_hidden_states_list[-1]
                 res_hidden_states_list = res_hidden_states_list[:-1]
-                hidden_states = torch.cat([hidden_states, res_hidden_states], dim=1)
+                hidden_states = torch.cat(
+                    [hidden_states, res_hidden_states], dim=1
+                )
 
             hidden_states = resnet(hidden_states, emb)
             hidden_states = attn(hidden_states, context=context)
@@ -2029,7 +2061,9 @@ class Generator(torch.nn.Module):
             )
 
         # All number of channels should be multiple of num_groups
-        if any((out_channel % norm_num_groups) != 0 for out_channel in num_channels):
+        if any(
+            (out_channel % norm_num_groups) != 0 for out_channel in num_channels
+        ):
             raise ValueError(
                 "DiffusionModelUNet expects all num_channels being multiple of norm_num_groups"
             )
@@ -2172,8 +2206,12 @@ class Generator(torch.nn.Module):
                 norm_eps=norm_eps,
                 add_upsample=not is_final_block,
                 resblock_updown=resblock_updown,
-                with_attn=(reversed_attention_levels[i] and not with_conditioning),
-                with_cross_attn=(reversed_attention_levels[i] and with_conditioning),
+                with_attn=(
+                    reversed_attention_levels[i] and not with_conditioning
+                ),
+                with_cross_attn=(
+                    reversed_attention_levels[i] and with_conditioning
+                ),
                 num_head_channels=reversed_num_head_channels[i],
                 transformer_num_layers=transformer_num_layers,
                 cross_attention_dim=cross_attention_dim,

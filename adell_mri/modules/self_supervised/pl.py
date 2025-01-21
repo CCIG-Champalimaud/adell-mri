@@ -1186,7 +1186,9 @@ class DINOPL(DINO, SelfSLBasePL):
         loss = self.loss(y_1, y_2)
         return loss
 
-    def step(self, batch, loss_str: str, metrics: dict | None = None, train=False):
+    def step(
+        self, batch, loss_str: str, metrics: dict | None = None, train=False
+    ):
         x1, x2 = batch[self.aug_image_key_1], batch[self.aug_image_key_2]
         if self.channels_to_batch is True:
             x1 = x1.reshape(-1, 1, *x1.shape[2:])
@@ -1207,7 +1209,9 @@ class DINOPL(DINO, SelfSLBasePL):
                 metrics,
                 log=True,
             )
-        self.log(loss_str, loss_value, on_step=True, on_epoch=True, prog_bar=True)
+        self.log(
+            loss_str, loss_value, on_step=True, on_epoch=True, prog_bar=True
+        )
         if self.ema is not None and train is True:
             self.ema.update(self, exclude_keys=["centers"])
         self.update_centers(torch.cat([t_1, t_2]))
@@ -1297,13 +1301,19 @@ class iBOTPL(iBOT, SelfSLBasePL):
             teacher_score_method=self.teacher_score_method,
         )
 
-    def calculate_loss_global(self, y_red_1: torch.Tensor, y_red_2: torch.Tensor):
+    def calculate_loss_global(
+        self, y_red_1: torch.Tensor, y_red_2: torch.Tensor
+    ):
         return self.loss_global(a=y_red_1, b=y_red_2.detach())
 
-    def calculate_loss_mask(self, a: torch.Tensor, b: torch.Tensor, m: list[int]):
+    def calculate_loss_mask(
+        self, a: torch.Tensor, b: torch.Tensor, m: list[int]
+    ):
         return self.loss_mask(a[:, m], b[:, m].detach())
 
-    def step(self, batch, loss_str: str, metrics: dict | None = None, train=False):
+    def step(
+        self, batch, loss_str: str, metrics: dict | None = None, train=False
+    ):
         x1, x2 = batch[self.aug_image_key_1], batch[self.aug_image_key_2]
         if self.channels_to_batch is True:
             x1 = x1.reshape(-1, 1, *x1.shape[2:])

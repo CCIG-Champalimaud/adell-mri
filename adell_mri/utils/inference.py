@@ -37,7 +37,9 @@ def get_example(X: MultiFormatInput) -> TensorOrArray:
     elif isinstance(X, (tuple, list)):
         x = X[0]
     else:
-        raise NotImplementedError("Supported inputs are np.ndarray, dict, tuple, list")
+        raise NotImplementedError(
+            "Supported inputs are np.ndarray, dict, tuple, list"
+        )
     return x
 
 
@@ -135,7 +137,9 @@ def stack_array(X: List[TensorOrArray], *args, **kwargs) -> TensorOrArray:
         return torch.stack(X, *args, **kwargs)
 
 
-def multi_format_cat(X: List[MultiFormatInput], *args, **kwargs) -> MultiFormatInput:
+def multi_format_cat(
+    X: List[MultiFormatInput], *args, **kwargs
+) -> MultiFormatInput:
     """
     Concatenates a list of multi-format inputs (np.ndarray, torch.Tensor, dict,
     tuple, list).
@@ -166,10 +170,14 @@ def multi_format_cat(X: List[MultiFormatInput], *args, **kwargs) -> MultiFormatI
                 output[i].append(x[i])
         return [cat_array(o) for o in output]
     else:
-        raise NotImplementedError("Supported inputs are np.ndarray, dict, tuple, list")
+        raise NotImplementedError(
+            "Supported inputs are np.ndarray, dict, tuple, list"
+        )
 
 
-def multi_format_stack(X: List[MultiFormatInput], *args, **kwargs) -> MultiFormatInput:
+def multi_format_stack(
+    X: List[MultiFormatInput], *args, **kwargs
+) -> MultiFormatInput:
     """
     Stacks a list of multi-format inputs (np.ndarray, torch.Tensor, dict,
     tuple, list).
@@ -200,7 +208,9 @@ def multi_format_stack(X: List[MultiFormatInput], *args, **kwargs) -> MultiForma
                 output[i].append(x[i])
         return [stack_array(o) for o in output]
     else:
-        raise NotImplementedError("Supported inputs are np.ndarray, dict, tuple, list")
+        raise NotImplementedError(
+            "Supported inputs are np.ndarray, dict, tuple, list"
+        )
 
 
 def multi_format_stack_or_cat(
@@ -410,7 +420,9 @@ class SlidingWindowSegmentation:
 
         self.ndim = len(sliding_window_size)
 
-    def adjust_if_necessary(self, x1: int, x2: int, M: int, a: int) -> Tuple[int, int]:
+    def adjust_if_necessary(
+        self, x1: int, x2: int, M: int, a: int
+    ) -> Tuple[int, int]:
         """Adjusts coordinate bounds x2 and x1 if x2 is larger than M. If that is
         the case, x1 is adjusted to M-a and x2 is adjusted to M.
 
@@ -530,7 +542,9 @@ class SlidingWindowSegmentation:
             (x1, x2), (y1, y2), (z1, z2) = coords
             return X[..., x1:x2, y1:y2, z1:z2]
 
-    def extract_patch(self, X: MultiFormatInput, coords: Coords) -> MultiFormatInput:
+    def extract_patch(
+        self, X: MultiFormatInput, coords: Coords
+    ) -> MultiFormatInput:
         """
         Extracts patches from a possibly 1-level nested structure of tensors or
         numpy arrays.
@@ -567,7 +581,9 @@ class SlidingWindowSegmentation:
             st = "Supported inputs are np.ndarray, torch.Tensor, dict, tuple, list"
             raise NotImplementedError(st)
 
-    def get_all_crops_2d(self, X: MultiFormatInput) -> Tuple[MultiFormatInput, Coords]:
+    def get_all_crops_2d(
+        self, X: MultiFormatInput
+    ) -> Tuple[MultiFormatInput, Coords]:
         """
         Gets all crops in a 2D image. For a given set of crop bounds x1 and x2,
         if any of these exceeds the input size, they are adjusted such that they
@@ -597,7 +613,9 @@ class SlidingWindowSegmentation:
                 coords = ((i_1, i_2), (j_1, j_2))
                 yield self.extract_patch(X, coords), coords
 
-    def get_all_crops_3d(self, X: MultiFormatInput) -> Tuple[MultiFormatInput, Coords]:
+    def get_all_crops_3d(
+        self, X: MultiFormatInput
+    ) -> Tuple[MultiFormatInput, Coords]:
         """
         Gets all crops in a 3D image. For a given set of crop bounds x1 and x2,
         if any of these exceeds the input size, they are adjusted such that they
@@ -682,7 +700,9 @@ class SlidingWindowSegmentation:
             output_denominator[..., x1:x2, y1:y2] += 1.0
         elif self.ndim == 3:
             (x1, x2), (y1, y2), (z1, z2) = coords
-            output_array[..., x1:x2, y1:y2, z1:z2] += tmp_out.squeeze(0).squeeze(0)
+            output_array[..., x1:x2, y1:y2, z1:z2] += tmp_out.squeeze(
+                0
+            ).squeeze(0)
             output_denominator[..., x1:x2, y1:y2, z1:z2] += 1.0
         return output_array, output_denominator
 
@@ -711,7 +731,9 @@ class SlidingWindowSegmentation:
         elif len(output_size) < (self.ndim + 2):
             output_size[0] = self.n_classes
         else:
-            raise Exception("length of input array shape should be <= self.ndim+2")
+            raise Exception(
+                "length of input array shape should be <= self.ndim+2"
+            )
         output_array = zeros_fn(output_size).to(device)
         output_denominator = zeros_fn(output_size).to(device)
         batch = []
@@ -809,7 +831,9 @@ class SegmentationInference:
 
         self.update_base_inference_function(base_inference_function)
 
-    def update_base_inference_function(self, base_inference_function: list[callable]):
+    def update_base_inference_function(
+        self, base_inference_function: list[callable]
+    ):
         if base_inference_function is None:
             return
         inference_function = base_inference_function
@@ -863,7 +887,9 @@ class SegmentationInference:
                 )
         self.inference_function = inference_function
 
-    def call_regular(self, X: MultiFormatInput, *args, **kwargs) -> TensorOrArray:
+    def call_regular(
+        self, X: MultiFormatInput, *args, **kwargs
+    ) -> TensorOrArray:
         if isinstance(self.inference_function, (list, tuple)):
             output = [
                 inference_function(X, *args, **kwargs)
@@ -878,7 +904,9 @@ class SegmentationInference:
 
         return output
 
-    def call_dropout(self, X: MultiFormatInput, *args, **kwargs) -> TensorOrArray:
+    def call_dropout(
+        self, X: MultiFormatInput, *args, **kwargs
+    ) -> TensorOrArray:
         outputs = []
         if isinstance(self.inference_function, (list, tuple)):
             for _ in range(self.mc_iterations):

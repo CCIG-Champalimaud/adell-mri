@@ -59,10 +59,12 @@ def log_image(
     images = images.detach().to("cpu")
     if len(images.shape) == 5:
         n_slices = images.shape[slice_dim]
-        slice_idxs = np.linspace(0, n_slices, num=n_slices_out + 2, dtype=np.int32)[
-            1:-1
-        ]
-        images = torch.index_select(images, slice_dim, torch.as_tensor(slice_idxs))
+        slice_idxs = np.linspace(
+            0, n_slices, num=n_slices_out + 2, dtype=np.int32
+        )[1:-1]
+        images = torch.index_select(
+            images, slice_dim, torch.as_tensor(slice_idxs)
+        )
         images = torch.split(images, 1, dim=slice_dim)
         images = torch.cat(images, -2).squeeze(-1)
     # do some form of acceptable conversion here if images are not BW, RGB or
@@ -86,12 +88,16 @@ def log_image(
 
     step = trainer.global_step
     if caption is not None:
-        trainer.logger.log_image(key=key, images=images, caption=caption, step=step)
+        trainer.logger.log_image(
+            key=key, images=images, caption=caption, step=step
+        )
     else:
         trainer.logger.log_image(key=key, images=images, step=step)
 
 
-def reshape_weight_to_matrix(weight: torch.Tensor, dim: int = 0) -> torch.Tensor:
+def reshape_weight_to_matrix(
+    weight: torch.Tensor, dim: int = 0
+) -> torch.Tensor:
     """
     Reshapes an n-dimensional tensor into a matrix.
 
@@ -304,7 +310,9 @@ class LogImageFromDiffusionProcess(Callback):
         ep = pl_module.current_epoch
         if ep % self.every_n_epochs == 0 and ep > 0:
             with torch.inference_mode():
-                images = pl_module.generate_image(size=self.size, n=self.n_images)
+                images = pl_module.generate_image(
+                    size=self.size, n=self.n_images
+                )
             log_image(
                 trainer,
                 key="Generated images",
@@ -391,7 +399,9 @@ class LogImageFromGAN(Callback):
             for key in self.additional_image_keys:
                 self.storage[key].extend(batch[key].detach().to("cpu"))
 
-    def on_train_epoch_end(self, trainer: Trainer, pl_module: LightningModule) -> None:
+    def on_train_epoch_end(
+        self, trainer: Trainer, pl_module: LightningModule
+    ) -> None:
         dev = next(pl_module.parameters()).device
         ep = pl_module.current_epoch
         if ep % self.every_n_epochs == 0 and ep > 0:
@@ -408,7 +418,10 @@ class LogImageFromGAN(Callback):
                         size=self.n_images,
                     )
                     kwargs["input_tensor"] = torch.stack(
-                        [self.storage[self.conditional_key][idx] for idx in idxs]
+                        [
+                            self.storage[self.conditional_key][idx]
+                            for idx in idxs
+                        ]
                     ).to(dev)
                     images_to_log["Input images"] = kwargs["input_tensor"]
                 else:
@@ -492,7 +505,8 @@ class ModelCheckpointWithMetadata(ModelCheckpoint):
         if self._enable_version_counter:
             version_cnt = self.STARTING_VERSION
             while (
-                self.file_exists(filepath, trainer) and filepath != self.last_model_path
+                self.file_exists(filepath, trainer)
+                and filepath != self.last_model_path
             ):
                 filepath = self.format_checkpoint_name(
                     monitor_candidates,
@@ -509,10 +523,14 @@ class ModelCheckpointWithMetadata(ModelCheckpoint):
             and self.save_top_k != 0
             and self.link_best_as_last
         ):
-            self._link_checkpoint(trainer, self._last_checkpoint_saved, filepath)
+            self._link_checkpoint(
+                trainer, self._last_checkpoint_saved, filepath
+            )
         else:
             self._save_checkpoint(trainer, filepath)
-        if previous and self._should_remove_checkpoint(trainer, previous, filepath):
+        if previous and self._should_remove_checkpoint(
+            trainer, previous, filepath
+        ):
             self._remove_checkpoint(trainer, previous)
 
 
@@ -568,7 +586,9 @@ class EMACallback(Callback):
         if self.update_train_weights:
             self.copy_to(self.ema.parameters(), pl_module.parameters())
 
-    def on_validation_epoch_start(self, trainer: Trainer, pl_module: LightningModule):
+    def on_validation_epoch_start(
+        self, trainer: Trainer, pl_module: LightningModule
+    ):
         """
         Validation is performed using EMA parameters.
         """

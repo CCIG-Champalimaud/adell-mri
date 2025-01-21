@@ -34,7 +34,9 @@ def get_relative_position_indices(window_size: Size2dOr3d) -> torch.Tensor:
     relative_coords = torch.subtract(
         coords_flatten[:, :, None], coords_flatten[:, None, :]
     )  # n, Wh*Ww, Wh*Ww
-    relative_coords = relative_coords.permute(1, 2, 0).contiguous()  # Wh*Ww, Wh*Ww, n
+    relative_coords = relative_coords.permute(
+        1, 2, 0
+    ).contiguous()  # Wh*Ww, Wh*Ww, n
     for i in range(n):
         # shift to start from 0
         relative_coords[:, :, i] = relative_coords[:, :, i] + window_size[i] - 1
@@ -201,7 +203,9 @@ class SelfAttention(torch.nn.Module):
         self.qkv_dim = self.attention_dim * 2 + self.output_dim
         self.qkv = torch.nn.Linear(self.input_dim, self.qkv_dim, bias=False)
         self.q_idx = torch.arange(self.attention_dim).long()
-        self.k_idx = torch.arange(self.attention_dim, self.attention_dim * 2).long()
+        self.k_idx = torch.arange(
+            self.attention_dim, self.attention_dim * 2
+        ).long()
         self.v_idx = torch.arange(self.attention_dim * 2, self.qkv_dim).long()
         self.sm = torch.nn.Softmax(1)
         self.reg_const = torch.sqrt(torch.as_tensor(self.attention_dim))
@@ -277,7 +281,9 @@ class MultiHeadSelfAttention(torch.nn.Module):
         assert (
             attention_dim % n_heads
         ) == 0, "attention_dim must be divisible by n_heads"
-        assert (hidden_dim % n_heads) == 0, "hidden_dim must be divisible by n_heads"
+        assert (
+            hidden_dim % n_heads
+        ) == 0, "hidden_dim must be divisible by n_heads"
 
         self.init_layers()
         self.init_output_layer()
@@ -301,7 +307,9 @@ class MultiHeadSelfAttention(torch.nn.Module):
         self.k_idx = torch.arange(a, b).long()
         self.v_idx = torch.arange(b, c).long()
         self.sm = torch.nn.Softmax(-1)
-        self.reg_const = torch.sqrt(torch.as_tensor(self.attention_dim / self.n_heads))
+        self.reg_const = torch.sqrt(
+            torch.as_tensor(self.attention_dim / self.n_heads)
+        )
         self.drop_op = torch.nn.Dropout(self.dropout_rate)
         self.q_norm = torch.nn.LayerNorm(real_attention_dim)
         self.k_norm = torch.nn.LayerNorm(real_attention_dim)
@@ -312,7 +320,9 @@ class MultiHeadSelfAttention(torch.nn.Module):
                     self.n_heads,
                 )
             )
-            torch.nn.init.trunc_normal_(self.relative_position_bias_table, std=0.02)
+            torch.nn.init.trunc_normal_(
+                self.relative_position_bias_table, std=0.02
+            )
             self.relative_position_index = get_relative_position_indices(
                 self.window_size
             )
@@ -348,9 +358,9 @@ class MultiHeadSelfAttention(torch.nn.Module):
             len(b),
             len(b) + 2,
         ]
-        QKV = QKV.reshape(*b, t, self.n_heads, self.qkv_dim // self.n_heads).permute(
-            *permute_dims
-        )
+        QKV = QKV.reshape(
+            *b, t, self.n_heads, self.qkv_dim // self.n_heads
+        ).permute(*permute_dims)
         Q, K, V = (
             QKV[..., self.q_idx],
             QKV[..., self.k_idx],

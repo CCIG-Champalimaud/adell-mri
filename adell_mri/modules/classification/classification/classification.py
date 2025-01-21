@@ -103,7 +103,9 @@ class VGGBackbone(torch.nn.Module):
         )
         self.output_features = int(self.output_features * self.depth_mult)
 
-    def forward_features(self, X: torch.Tensor, batch_idx: int = None) -> torch.Tensor:
+    def forward_features(
+        self, X: torch.Tensor, batch_idx: int = None
+    ) -> torch.Tensor:
         """Forward method for features only.
 
         Args:
@@ -209,7 +211,9 @@ class VGG(torch.nn.Module):
             ),
         )
 
-    def forward_features(self, X: torch.Tensor, batch_idx: int = None) -> torch.Tensor:
+    def forward_features(
+        self, X: torch.Tensor, batch_idx: int = None
+    ) -> torch.Tensor:
         """Forward method for features only.
 
         Args:
@@ -318,9 +322,13 @@ class CatNet(torch.nn.Module):
 
         if self.adn_fn is None:
             if self.spatial_dim == 2:
-                self.adn_fn = lambda s: ActDropNorm(s, norm_fn=torch.nn.BatchNorm2d)
+                self.adn_fn = lambda s: ActDropNorm(
+                    s, norm_fn=torch.nn.BatchNorm2d
+                )
             if self.spatial_dim == 3:
-                self.adn_fn = lambda s: ActDropNorm(s, norm_fn=torch.nn.BatchNorm3d)
+                self.adn_fn = lambda s: ActDropNorm(
+                    s, norm_fn=torch.nn.BatchNorm3d
+                )
 
         self.init_layers()
         self.init_classification_layer()
@@ -366,7 +374,9 @@ class CatNet(torch.nn.Module):
             )
         )
 
-    def forward_features(self, X: torch.Tensor, *args, **kwargs) -> torch.Tensor:
+    def forward_features(
+        self, X: torch.Tensor, *args, **kwargs
+    ) -> torch.Tensor:
         """Forward method for features.
 
         Args:
@@ -418,7 +428,9 @@ class OrdNet(CatNet):
             torch.nn.ReLU(),
             torch.nn.Linear(self.last_size, 1),
         )
-        self.bias = torch.nn.parameter.Parameter(torch.zeros([1, self.n_classes - 1]))
+        self.bias = torch.nn.parameter.Parameter(
+            torch.zeros([1, self.n_classes - 1])
+        )
         self.last_act = torch.nn.Sigmoid()
 
     def forward_features(self, X: torch.Tensor) -> torch.Tensor:
@@ -432,7 +444,9 @@ class OrdNet(CatNet):
         """
         return self.forward(X, return_features=True)
 
-    def forward(self, X: torch.Tensor, return_features: bool = False) -> torch.Tensor:
+    def forward(
+        self, X: torch.Tensor, return_features: bool = False
+    ) -> torch.Tensor:
         """Forward method.
 
         Args:
@@ -539,7 +553,9 @@ class SegCatNet(torch.nn.Module):
         )
 
     def init_weighted_average(self):
-        self.weighted_average = torch.nn.Linear(self.nc * 2, self.nc, bias=False)
+        self.weighted_average = torch.nn.Linear(
+            self.nc * 2, self.nc, bias=False
+        )
 
     def forward(self, X, **kwargs):
         times = {}
@@ -626,7 +642,9 @@ class UNetEncoder(UNet):
         """
         return self.forward_features(X, return_features=True)
 
-    def forward(self, X: torch.Tensor, return_features: bool = False) -> torch.Tensor:
+    def forward(
+        self, X: torch.Tensor, return_features: bool = False
+    ) -> torch.Tensor:
         """Forward pass for this class.
 
         Args:
@@ -661,7 +679,9 @@ class ViTClassifier(ViT):
     Implementation of the vision transformer (ViT) as a classifier.
     """
 
-    def __init__(self, n_classes: int, use_class_token: bool = False, *args, **kwargs):
+    def __init__(
+        self, n_classes: int, use_class_token: bool = False, *args, **kwargs
+    ):
         """
         Args:
             n_classes (int): number of classses.
@@ -708,7 +728,9 @@ class ViTClassifier(ViT):
         """
         return self.forward(X, return_features=True)
 
-    def forward(self, X: torch.Tensor, return_features: bool = False) -> torch.Tensor:
+    def forward(
+        self, X: torch.Tensor, return_features: bool = False
+    ) -> torch.Tensor:
         """Forward pass.
 
         Args:
@@ -755,7 +777,9 @@ class FactorizedViTClassifier(FactorizedViT):
     block (between slices).
     """
 
-    def __init__(self, n_classes: int, use_class_token: bool = False, *args, **kwargs):
+    def __init__(
+        self, n_classes: int, use_class_token: bool = False, *args, **kwargs
+    ):
         """
         Args:
             n_classes (int): number of classses.
@@ -802,7 +826,9 @@ class FactorizedViTClassifier(FactorizedViT):
         """
         return self.forward(X, return_features=True)
 
-    def forward(self, X: torch.Tensor, return_features: bool = False) -> torch.Tensor:
+    def forward(
+        self, X: torch.Tensor, return_features: bool = False
+    ) -> torch.Tensor:
         """Forward pass.
 
         Args:
@@ -835,7 +861,9 @@ class MONAIViTClassifier(torch.nn.Module):
     as those used in ViT and FactorizedViT.
     """
 
-    def __init__(self, n_classes: int, use_class_token: bool = False, *args, **kwargs):
+    def __init__(
+        self, n_classes: int, use_class_token: bool = False, *args, **kwargs
+    ):
         import monai
 
         kwargs["use_class_token"] = use_class_token
@@ -928,7 +956,9 @@ class TabularClassifier(torch.nn.Module):
             feature_stds = torch.as_tensor(self.feature_stds).reshape(1, -1)
 
         self.mu = torch.nn.Parameter(feature_means.float(), requires_grad=False)
-        self.sigma = torch.nn.Parameter(feature_stds.float(), requires_grad=False)
+        self.sigma = torch.nn.Parameter(
+            feature_stds.float(), requires_grad=False
+        )
 
     def normalize(self, X: torch.Tensor) -> torch.Tensor:
         return (X - self.mu) / self.sigma
@@ -976,7 +1006,9 @@ class HybridClassifier(torch.nn.Module):
             )
             raise ValueError(err_message)
 
-    def forward(self, X_conv: torch.Tensor, X_tab: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self, X_conv: torch.Tensor, X_tab: torch.Tensor
+    ) -> torch.Tensor:
         class_conv = self.convolutional_module(X_conv)
         class_tab = self.tabular_module(X_tab)
 

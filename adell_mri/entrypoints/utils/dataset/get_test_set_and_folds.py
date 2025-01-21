@@ -57,7 +57,9 @@ def main(arguments):
         default=0.30,
         type=float,
     )
-    parser.add_argument("--seed", dest="seed", help="random seed", default=42, type=int)
+    parser.add_argument(
+        "--seed", dest="seed", help="random seed", default=42, type=int
+    )
     parser.add_argument(
         "--excluded_ids",
         dest="excluded_ids",
@@ -94,7 +96,8 @@ def main(arguments):
                 if s not in data_dict[k]:
                     data_dict[k][s] = None
         strata = [
-            "".join([str(data_dict[k][kk]) for kk in args.stratify]) for k in data_dict
+            "".join([str(data_dict[k][kk]) for kk in args.stratify])
+            for k in data_dict
         ]
         for u, c in zip(*np.unique(strata, return_counts=True)):
             if c < args.n_folds * 2:
@@ -152,7 +155,8 @@ def main(arguments):
 
     for i, (train_idxs, val_idxs) in enumerate(fold_generator):
         output.append(
-            f"cv{i+1}," + ",".join([all_pids[all_train_pids[i]] for i in val_idxs])
+            f"cv{i+1},"
+            + ",".join([all_pids[all_train_pids[i]] for i in val_idxs])
         )
 
     if args.output_path is not None:

@@ -132,14 +132,17 @@ def main(arguments):
     else:
         iterator = map(read_retrieve_dicom, all_dcm_paths)
         for out, st_id, se_id in tqdm(iterator, total=len(all_dcm_paths)):
-            add_to_dict(organized_dataset, study_uid=st_id, series_uid=se_id, value=out)
+            add_to_dict(
+                organized_dataset, study_uid=st_id, series_uid=se_id, value=out
+            )
 
     suv = {}
     for study_uid in organized_dataset:
         suv[study_uid] = {}
         for series_uid in organized_dataset[study_uid]:
             suv[study_uid][series_uid] = {
-                k: [] for k in chain(TAGS_TO_RETRIEVE.values(), ADDITIONAL_FIELDS)
+                k: []
+                for k in chain(TAGS_TO_RETRIEVE.values(), ADDITIONAL_FIELDS)
             }
             for instance in organized_dataset[study_uid][series_uid]:
                 for k in instance:

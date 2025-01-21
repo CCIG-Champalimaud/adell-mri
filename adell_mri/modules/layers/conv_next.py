@@ -90,7 +90,9 @@ class ConvNeXtBackbone(torch.nn.Module):
         spatial_dim: int,
         in_channels: int,
         structure: List[Tuple[int, int, int, int]],
-        maxpool_structure: List[Union[Tuple[int, int], Tuple[int, int, int]]] = None,
+        maxpool_structure: List[
+            Union[Tuple[int, int], Tuple[int, int, int]]
+        ] = None,
         first_layer_stride: int | List[int] = 4,
         padding=None,
         adn_fn: torch.nn.Module = torch.nn.Identity,
@@ -144,7 +146,9 @@ class ConvNeXtBackbone(torch.nn.Module):
     def init_input_layer(self):
         f = self.structure[0][0]
         return torch.nn.Sequential(
-            self.conv_op(self.in_channels, f, 4, stride=self.first_layer_stride),
+            self.conv_op(
+                self.in_channels, f, 4, stride=self.first_layer_stride
+            ),
             LayerNorm(f, data_format="channels_first"),
         )
 
@@ -253,7 +257,9 @@ class ConvNeXtV2Backbone(torch.nn.Module):
         spatial_dim: int,
         in_channels: int,
         structure: List[Tuple[int, int, int, int]],
-        maxpool_structure: List[Union[Tuple[int, int], Tuple[int, int, int]]] = None,
+        maxpool_structure: List[
+            Union[Tuple[int, int], Tuple[int, int, int]]
+        ] = None,
         padding=None,
         batch_ensemble: int = 0,
     ):
@@ -315,7 +321,9 @@ class ConvNeXtV2Backbone(torch.nn.Module):
             if self.batch_ensemble > 0:
                 op.append(self.res_op(inp, k, inter, inp, torch.nn.Identity))
                 op = torch.nn.Sequential(*op)
-                op = BatchEnsembleWrapper(op, self.batch_ensemble, prev_inp, inp)
+                op = BatchEnsembleWrapper(
+                    op, self.batch_ensemble, prev_inp, inp
+                )
             else:
                 op.append(self.res_op(inp, k, inter, inp))
                 op = torch.nn.Sequential(*op)
@@ -366,7 +374,9 @@ class ConvNeXtV2Backbone(torch.nn.Module):
         mask: torch.Tensor = None,
     ) -> torch.Tensor:
         if return_intermediate is True:
-            return self.forward_with_intermediate(X, mask=mask, after_pool=after_pool)
+            return self.forward_with_intermediate(
+                X, mask=mask, after_pool=after_pool
+            )
         else:
             return self.forward_regular(X, mask=mask, batch_idx=batch_idx)
 

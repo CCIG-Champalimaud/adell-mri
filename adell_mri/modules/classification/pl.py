@@ -109,7 +109,9 @@ def get_metric_dict(
             "F1": lambda: torchmetrics.FBetaScore(
                 task="multiclass", num_classes=nc, average=average
             ),
-            "AUC": lambda: torchmetrics.AUROC(task="multiclass", num_classes=nc),
+            "AUC": lambda: torchmetrics.AUROC(
+                task="multiclass", num_classes=nc
+            ),
             "CalErr": lambda: torchmetrics.CalibrationError(
                 task="multiclass", num_classes=nc
             ),
@@ -278,7 +280,9 @@ class ClassPLABC(pl.LightningModule, ABC):
         if self.calibrated is True:
             prediction = self.calibration(prediction)
         else:
-            RuntimeError("Model needs to be calibrated before calibrated prediction")
+            RuntimeError(
+                "Model needs to be calibrated before calibrated prediction"
+            )
         return prediction
 
     def train_dataloader(self) -> torch.utils.data.DataLoader:
@@ -292,7 +296,9 @@ class ClassPLABC(pl.LightningModule, ABC):
                 p for (n, p) in self.named_parameters() if "classification" in n
             ]
             params_body = [
-                p for (n, p) in self.named_parameters() if "classification" not in n
+                p
+                for (n, p) in self.named_parameters()
+                if "classification" not in n
             ]
             parameters = [
                 {"params": params_head, "weight_decay": wd_body},
@@ -590,7 +596,9 @@ class SegCatNetPL(SegCatNet, pl.LightningModule):
             y = torch.round(y)
         except Exception:
             y = torch.round(y.float())
-        prediction = self.forward(x, X_skip_layer=x_cond, X_feature_conditioning=x_fc)
+        prediction = self.forward(
+            x, X_skip_layer=x_cond, X_feature_conditioning=x_fc
+        )
         prediction = torch.squeeze(prediction, 1)
         if len(y.shape) > 1:
             y = torch.squeeze(y, 1)
@@ -1548,7 +1556,12 @@ class DeconfoundedNetPL(DeconfoundedNetGeneric, ClassPLABC):
         y = self.embedder(y)
         d = pred[0].device
         return (
-            sum([F.cross_entropy(p, y_.to(d)) / len(pred) for p, y_ in zip(pred, y)])
+            sum(
+                [
+                    F.cross_entropy(p, y_.to(d)) / len(pred)
+                    for p, y_ in zip(pred, y)
+                ]
+            )
             * self.conf_mult
         )
 
@@ -1615,7 +1628,8 @@ class DeconfoundedNetPL(DeconfoundedNetGeneric, ClassPLABC):
         output = self.step(batch, with_params=True)
         losses, _ = output[:4], output[4:]
         losses = [
-            loss_val.mean() if loss_val is not None else None for loss_val in losses
+            loss_val.mean() if loss_val is not None else None
+            for loss_val in losses
         ]
         self.log_losses(losses, "tr")
         return sum([loss_val for loss_val in losses if loss_val is not None])
@@ -1624,7 +1638,8 @@ class DeconfoundedNetPL(DeconfoundedNetGeneric, ClassPLABC):
         output = self.step(batch, with_params=False)
         losses, pred_y = output[:4], output[4:]
         losses = [
-            loss_val.mean() if loss_val is not None else None for loss_val in losses
+            loss_val.mean() if loss_val is not None else None
+            for loss_val in losses
         ]
         self.log_losses(losses, "val")
         self.update_metrics(
@@ -1640,7 +1655,8 @@ class DeconfoundedNetPL(DeconfoundedNetGeneric, ClassPLABC):
         output = self.step(batch, with_params=False)
         losses, pred_y = output[:4], output[4:]
         losses = [
-            loss_val.mean() if loss_val is not None else None for loss_val in losses
+            loss_val.mean() if loss_val is not None else None
+            for loss_val in losses
         ]
         self.log_losses(losses, "test")
         self.update_metrics(
@@ -1653,7 +1669,9 @@ class DeconfoundedNetPL(DeconfoundedNetGeneric, ClassPLABC):
         )
         return sum([loss_val for loss_val in losses if loss_val is not None])
 
-    def update_metrics(self, prediction, y, metrics, log: bool = True, **kwargs):
+    def update_metrics(
+        self, prediction, y, metrics, log: bool = True, **kwargs
+    ):
         y = y.long()
         if self.n_classes == 2:
             prediction = torch.sigmoid(prediction).squeeze(1)

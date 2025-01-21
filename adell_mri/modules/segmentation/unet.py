@@ -234,7 +234,9 @@ class UNet(torch.nn.Module):
                 self.conv_op_enc = self.asp_3d
                 self.conv_op_dec = self.sae_3d
 
-    def conv_block_2d(self, in_d, out_d, kernel_size, stride=None, padding=None):
+    def conv_block_2d(
+        self, in_d, out_d, kernel_size, stride=None, padding=None
+    ):
         """
         Convenience wrapper for 2d convolutional block."""
         if padding is None:
@@ -247,7 +249,9 @@ class UNet(torch.nn.Module):
             torch.nn.Conv2d(in_d, out_d, kernel_size, 1, padding),
         )
 
-    def conv_block_3d(self, in_d, out_d, kernel_size, stride=None, padding=None):
+    def conv_block_3d(
+        self, in_d, out_d, kernel_size, stride=None, padding=None
+    ):
         """
         Convenience wrapper for 3d convolutional block."""
         if padding is None:
@@ -270,7 +274,9 @@ class UNet(torch.nn.Module):
         if stride is None:
             stride = 1
         return torch.nn.Sequential(
-            torch.nn.Conv2d(in_d, in_d, kernel_size, stride, padding, groups=in_d),
+            torch.nn.Conv2d(
+                in_d, in_d, kernel_size, stride, padding, groups=in_d
+            ),
             self.adn_fn(in_d),
             torch.nn.Conv2d(in_d, out_d, 1, 1, padding),
         )
@@ -285,12 +291,16 @@ class UNet(torch.nn.Module):
         if stride is None:
             stride = 1
         return torch.nn.Sequential(
-            torch.nn.Conv3d(in_d, in_d, kernel_size, stride, padding, groups=in_d),
+            torch.nn.Conv3d(
+                in_d, in_d, kernel_size, stride, padding, groups=in_d
+            ),
             self.adn_fn(in_d),
             torch.nn.Conv3d(in_d, out_d, 1, 1, padding),
         )
 
-    def res_block_conv_2d(self, in_d, out_d, kernel_size, stride=None, padding=None):
+    def res_block_conv_2d(
+        self, in_d, out_d, kernel_size, stride=None, padding=None
+    ):
         """
         Convenience wrapper for ResidualBlock2d."""
         if in_d > 32:
@@ -311,7 +321,9 @@ class UNet(torch.nn.Module):
                 else:
                     new_padding.append(p)
             return torch.nn.Sequential(
-                ResidualBlock2d(in_d, kernel_size, inter_d, out_d, adn_fn=self.adn_fn),
+                ResidualBlock2d(
+                    in_d, kernel_size, inter_d, out_d, adn_fn=self.adn_fn
+                ),
                 torch.nn.MaxPool2d(stride, stride, padding=new_padding),
             )
         else:
@@ -319,7 +331,9 @@ class UNet(torch.nn.Module):
                 in_d, kernel_size, inter_d, out_d, adn_fn=self.adn_fn
             )
 
-    def res_block_conv_3d(self, in_d, out_d, kernel_size, stride=None, padding=None):
+    def res_block_conv_3d(
+        self, in_d, out_d, kernel_size, stride=None, padding=None
+    ):
         """
         Convenience wrapper for ResidualBlock3d."""
         if in_d > 32:
@@ -340,7 +354,9 @@ class UNet(torch.nn.Module):
                 else:
                     new_padding.append(p)
             return torch.nn.Sequential(
-                ResidualBlock3d(in_d, kernel_size, inter_d, out_d, adn_fn=self.adn_fn),
+                ResidualBlock3d(
+                    in_d, kernel_size, inter_d, out_d, adn_fn=self.adn_fn
+                ),
                 torch.nn.MaxPool3d(stride, stride, padding=new_padding),
             )
         else:
@@ -398,17 +414,25 @@ class UNet(torch.nn.Module):
                 upscale_ops = [
                     torch.nn.Sequential(
                         torch.nn.Conv2d(d1, d2, 1),
-                        torch.nn.Upsample(scale_factor=s, mode=self.interpolation),
+                        torch.nn.Upsample(
+                            scale_factor=s, mode=self.interpolation
+                        ),
                     )
-                    for d1, d2, s in zip(depths_a, depths_b, self.strides[::-1][1:])
+                    for d1, d2, s in zip(
+                        depths_a, depths_b, self.strides[::-1][1:]
+                    )
                 ]
             if self.spatial_dimensions == 3:
                 upscale_ops = [
                     torch.nn.Sequential(
                         torch.nn.Conv3d(d1, d2, 1),
-                        torch.nn.Upsample(scale_factor=s, mode=self.interpolation),
+                        torch.nn.Upsample(
+                            scale_factor=s, mode=self.interpolation
+                        ),
                     )
-                    for d1, d2, s in zip(depths_a, depths_b, self.strides[::-1][1:])
+                    for d1, d2, s in zip(
+                        depths_a, depths_b, self.strides[::-1][1:]
+                    )
                 ]
         elif self.upscale_type == "transpose":
             upscale_ops = []
@@ -441,7 +465,9 @@ class UNet(torch.nn.Module):
         elif self.link_type == "attention":
             self.link_ops = torch.nn.ModuleList(
                 [
-                    SelfAttentionBlock(self.spatial_dimensions, d, d, [16, 16, 1])
+                    SelfAttentionBlock(
+                        self.spatial_dimensions, d, d, [16, 16, 1]
+                    )
                     for d in self.depth[-2::-1]
                 ]
             )
@@ -532,7 +558,9 @@ class UNet(torch.nn.Module):
                 self.conv_op_enc(d, d, kernel_size=k, stride=s, padding=p),
                 self.adn_fn(d),
             )
-            self.encoding_operations.append(torch.nn.ModuleList([op, op_downsample]))
+            self.encoding_operations.append(
+                torch.nn.ModuleList([op, op_downsample])
+            )
             previous_d = d
         op = torch.nn.Sequential(
             self.conv_op_enc(
@@ -545,7 +573,9 @@ class UNet(torch.nn.Module):
             self.adn_fn(self.depth[-1]),
         )
         op_downsample = torch.nn.Identity()
-        self.encoding_operations.append(torch.nn.ModuleList([op, op_downsample]))
+        self.encoding_operations.append(
+            torch.nn.ModuleList([op, op_downsample])
+        )
 
     def init_encoder_backbone(self):
         """
@@ -701,7 +731,9 @@ class UNet(torch.nn.Module):
             )
             self.feature_conditioning_ops.append(op)
 
-    def unsqueeze_to_dim(self, X: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+    def unsqueeze_to_dim(
+        self, X: torch.Tensor, target: torch.Tensor
+    ) -> torch.Tensor:
         n = len(target.shape) - len(X.shape)
         if n > 0:
             for _ in range(n):
@@ -982,7 +1014,9 @@ class BrUNet(UNet, torch.nn.Module):
                     self.conv_op_enc(d, d, kernel_size=k, stride=s, padding=p),
                     self.adn_fn(d),
                 )
-                encoding_operations.append(torch.nn.ModuleList([op, op_downsample]))
+                encoding_operations.append(
+                    torch.nn.ModuleList([op, op_downsample])
+                )
                 previous_d = d
             op = torch.nn.Sequential(
                 self.conv_op_enc(
@@ -1098,7 +1132,9 @@ class BrUNet(UNet, torch.nn.Module):
         """
         if X_weights is None:
             X_weights = [torch.ones(X[0].shape[0]).to(X[0].device) for _ in X]
-        assert len(X) == len(X_weights), "X and X_weights should have identical length"
+        assert len(X) == len(
+            X_weights
+        ), "X and X_weights should have identical length"
         assert all(
             [x.shape[0] == xw.shape[0] for x, xw in zip(X, X_weights)]
         ), "The elements of X and X_weights should have identical batch sizes"
@@ -1147,7 +1183,10 @@ class BrUNet(UNet, torch.nn.Module):
         for i, tensors in enumerate(zip(*encoding_out_pre_merge)):
             merge_op = self.merge_ops[i]
             merged_tensor = sum(
-                [merge_op[j](tensors[j]) / w_sum for j in range(self.n_input_branches)]
+                [
+                    merge_op[j](tensors[j]) / w_sum
+                    for j in range(self.n_input_branches)
+                ]
             )
             encoding_out.append(merged_tensor)
 

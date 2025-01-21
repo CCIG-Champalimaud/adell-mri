@@ -48,7 +48,7 @@ requires-dist = [
     { name = "lightning", specifier = "==2.1" },
     { name = "monai", specifier = ">=1.3.0" },
     { name = "multiprocess", specifier = "==0.70.13" },
-    { name = "nibabel", specifier = "==5.1.0" },
+    { name = "nibabel", specifier = ">=5.1.0" },
     { name = "numpy", specifier = ">=1.26" },
     { name = "omegaconf", specifier = "==2.3.0" },
     { name = "pillow", specifier = ">=10.3.0" },

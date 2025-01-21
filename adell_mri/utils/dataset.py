@@ -50,11 +50,15 @@ def subsample_dataset(
             split = [int(p * subsample_size) for p in ps]
             ss = []
             for k, s in zip(strata, split):
-                ss.extend(rng.choice(strata[k], size=s, replace=False, shuffle=False))
+                ss.extend(
+                    rng.choice(strata[k], size=s, replace=False, shuffle=False)
+                )
             data_dict = {k: data_dict[k] for k in ss}
         else:
             s = subsample_size * len(data_dict)
-            ss = rng.choice(list(data_dict.keys()), subsample_size, replace=False)
+            ss = rng.choice(
+                list(data_dict.keys()), subsample_size, replace=False
+            )
             data_dict = {k: data_dict[k] for k in ss}
     return data_dict
 
@@ -93,7 +97,9 @@ class Dataset:
 
     def fill_conditional(self, filters: list[str]):
         if filters is not None:
-            self.dataset = fill_conditional(self.dataset, filters, verbose=self.verbose)
+            self.dataset = fill_conditional(
+                self.dataset, filters, verbose=self.verbose
+            )
 
     def fill_missing_with_value(self, filters: list[str]):
         if filters is not None:
@@ -149,7 +155,9 @@ class Dataset:
                 f"Selecting {len(key_list)} keys from {self.dataset_name}"
             )
             self.print_verbose(f"\tBefore: {n_start} samples")
-            self.dataset = {k: self.dataset[k] for k in self.dataset if k in key_list}
+            self.dataset = {
+                k: self.dataset[k] for k in self.dataset if k in key_list
+            }
         elif excluded_key_list is not None:
             excluded_key_list = parse_ids(excluded_key_list, "list")
             self.print_verbose(
@@ -157,7 +165,9 @@ class Dataset:
             )
             self.print_verbose(f"\tBefore: {n_start} samples")
             self.dataset = {
-                k: self.dataset[k] for k in self.dataset if k not in excluded_key_list
+                k: self.dataset[k]
+                for k in self.dataset
+                if k not in excluded_key_list
             }
         elif subsample_size is not None:
             self.print_verbose(
@@ -192,7 +202,9 @@ class Dataset:
             filter_is_optional=filter_dict.get("filter_is_optional", False),
         )
         if "excluded_ids" in filter_dict:
-            self.subsample_dataset(excluded_key_list=filter_dict["excluded_ids"])
+            self.subsample_dataset(
+                excluded_key_list=filter_dict["excluded_ids"]
+            )
         if "subsample_size" in filter_dict:
             self.subsample_dataset(
                 subsample_size=filter_dict["subsample_size"],

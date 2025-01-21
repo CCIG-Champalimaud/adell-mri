@@ -70,7 +70,9 @@ def extract_lesion_candidates_dynamic(
     working_softmax = softmax.copy()
     dynamic_hard_blobs = np.zeros_like(softmax)
     confidences: List[Tuple[int, float]] = []
-    dynamic_indexed_blobs: "npt.NDArray[np.int_]" = np.zeros_like(softmax, dtype=int)
+    dynamic_indexed_blobs: "npt.NDArray[np.int_]" = np.zeros_like(
+        softmax, dtype=int
+    )
 
     while len(confidences) < num_lesions_to_extract:
         tumor_index = 1 + len(confidences)
@@ -208,7 +210,9 @@ def extract_lesion_candidates(
             max_prob_round_decimals=max_prob_round_decimals,
         )
     else:
-        threshold = float(threshold)  # convert threshold to float, if it wasn't already
+        threshold = float(
+            threshold
+        )  # convert threshold to float, if it wasn't already
         (
             all_hard_blobs,
             confidences,

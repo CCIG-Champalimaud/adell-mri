@@ -34,7 +34,9 @@ class GPULock:
         self.path = path
 
         self.locked_gpus = []
-        self.available_devices = [str(i) for i in range(torch.cuda.device_count())]
+        self.available_devices = [
+            str(i) for i in range(torch.cuda.device_count())
+        ]
         atexit.register(self.unlock_all)
 
     def get_locked_gpus(self) -> list[str]:
@@ -46,7 +48,9 @@ class GPULock:
         """
         if os.path.exists(self.path):
             with open(self.path, "r") as o:
-                locked_gpus = [x.strip() for x in o.readlines() if x.strip() != ""]
+                locked_gpus = [
+                    x.strip() for x in o.readlines() if x.strip() != ""
+                ]
             return locked_gpus
         else:
             return []
@@ -167,7 +171,9 @@ def get_emptiest_gpus(n: int = 1) -> List[int]:
         int:
     """
     mem = allocated_memory_per_gpu()
-    least_mem_gpu = sorted(allocated_memory_per_gpu().keys(), key=lambda i: mem[i])[:n]
+    least_mem_gpu = sorted(
+        allocated_memory_per_gpu().keys(), key=lambda i: mem[i]
+    )[:n]
     return least_mem_gpu
 
 

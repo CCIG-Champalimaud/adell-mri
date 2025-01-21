@@ -65,9 +65,13 @@ class DinoLoss(torch.nn.Module):
 
             if self.reduce_handle is not None:
                 self.reduce_handle.wait()
-            _t = self.async_batch_center / (self.len_teacher_output * world_size)
+            _t = self.async_batch_center / (
+                self.len_teacher_output * world_size
+            )
 
-            self.centers = self.centers * self.center_m + _t * (1 - self.center_m)
+            self.centers = self.centers * self.center_m + _t * (
+                1 - self.center_m
+            )
 
             self.updated = True
 
@@ -83,7 +87,9 @@ class DinoLoss(torch.nn.Module):
         self.len_teacher_output = len(x)
         self.async_batch_center = torch.sum(x, dim=0, keepdim=True)
         if dist.is_initialized():
-            self.reduce_handle = dist.all_reduce(self.async_batch_center, async_op=True)
+            self.reduce_handle = dist.all_reduce(
+                self.async_batch_center, async_op=True
+            )
 
     def get_scores_teacher(self, x: torch.Tensor):
         if self.teacher_score_method == "center":
