@@ -52,7 +52,7 @@ requires-dist = [
     { name = "numpy", specifier = "==1.26" },
     { name = "omegaconf", specifier = "==2.3.0" },
     { name = "pillow", specifier = ">=10.3.0" },
-    { name = "pydicom", specifier = "==2.4.3" },
+    { name = "pydicom", specifier = ">=2.4.3" },
     { name = "pytest", specifier = "==7.2.0" },
     { name = "pyyaml", specifier = "==6.0" },
     { name = "scikit-image", specifier = "==0.20" },
