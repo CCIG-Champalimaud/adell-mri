@@ -175,7 +175,11 @@ class ResNetBackbone(torch.nn.Module):
             for _ in range(1, N - 1):
                 op.append(self.res_op(inp, k, inter, inp, self.adn_fn))
             if self.batch_ensemble > 0:
-                op.append(self.res_op(inp, k, inter, inp, torch.nn.Identity))
+                op.append(
+                    self.res_op(
+                        inp, k, inter, inp, self.adn_fn, skip_activation=True
+                    )
+                )
                 op = torch.nn.Sequential(*op)
                 be_op = BatchEnsembleWrapper(
                     None, self.batch_ensemble, prev_inp, inp, self.adn_fn
