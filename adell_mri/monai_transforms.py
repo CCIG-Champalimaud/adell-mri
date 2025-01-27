@@ -970,12 +970,13 @@ def get_augmentations_class(
             flip_axis = [flip_axis]
         flips = []
         for i in range(len(flip_axis)):
-            axes_to_flip = list(itertools.combinations(flip_axis, i + 1))
-            flips.append(
-                monai.transforms.RandFlipd(
-                    all_keys_with_mask, prob=prob, spatial_axis=axes_to_flip
+            axes_to_flip = itertools.combinations(flip_axis, i + 1)
+            for axis_to_flip in axes_to_flip:
+                flips.append(
+                    monai.transforms.RandFlipd(
+                        all_keys_with_mask, prob=prob, spatial_axis=axis_to_flip
+                    )
                 )
-            )
         augments.append(monai.transforms.OneOf(flips))
 
     if "blur" in augment:
