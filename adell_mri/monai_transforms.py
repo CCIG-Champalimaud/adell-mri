@@ -2,6 +2,7 @@ from typing import Any, Dict, List
 
 import itertools
 import monai
+import monai.transforms
 import numpy as np
 import torch
 
@@ -937,13 +938,15 @@ def get_augmentations_class(
     if "flip" in augment:
         if isinstance(flip_axis, int):
             flip_axis = [flip_axis]
+        flips = []
         for i in range(flip_axis):
             axes_to_flip = list(itertools.combinations([flip_axis], i + 1))
-            augments.append(
+            flips.append(
                 monai.transforms.RandFlipd(
                     all_keys_with_mask, prob=prob, spatial_axis=axes_to_flip
                 )
             )
+        augments.append(monai.transforms.OneOf(flips))
 
     if "blur" in augment:
         augments.extend([monai.transforms.RandGaussianSmoothd(image_keys)])
