@@ -924,15 +924,43 @@ def get_augmentations_class(
                 monai.transforms.RandStdShiftIntensityd(
                     image_keys, factors=0.1, prob=prob
                 ),
-                monai.transforms.RandShiftIntensityd(
-                    image_keys, offsets=0.1, prob=prob
-                ),
             ]
         )
 
     if "noise" in augment:
         augments.extend(
-            [monai.transforms.RandRicianNoised(image_keys, std=0.02, prob=prob)]
+            [
+                monai.transforms.RandRicianNoised(
+                    image_keys, std=0.02, prob=prob
+                ),
+                monai.transforms.RandGibbsNoised(
+                    image_keys, alpha=(0.3, 0.6), prob=prob
+                ),
+            ]
+        )
+
+    if "lowres" in augment:
+        augments.append(
+            monai.transforms.RandSimulateLowResolutiond(
+                image_keys,
+                zoom_range=[0.8, 1.2],
+                prob=prob,
+            )
+        )
+
+    if "intensity" in augment:
+        augments.extend(
+            [
+                monai.transforms.RandAdjustContrastd(
+                    image_keys, gamma=(0.5, 1.5), prob=prob
+                ),
+                monai.transforms.RandStdShiftIntensityd(
+                    image_keys, factors=0.1, prob=prob
+                ),
+                monai.transforms.RandShiftIntensityd(
+                    image_keys, offsets=0.1, prob=prob
+                ),
+            ]
         )
 
     if "flip" in augment:
@@ -973,6 +1001,17 @@ def get_augmentations_class(
             monai.transforms.RandAffined(
                 all_keys_with_mask,
                 shear_range=((0.9, 1.1), (0.9, 1.1), (0.9, 1.1)),
+                prob=prob,
+                mode=intp_resampling_augmentations,
+                padding_mode="zeros",
+            )
+        )
+
+    if "distort" in augment:
+        augments.append(
+            monai.transforms.RandGridDistortiond(
+                all_keys_with_mask,
+                distort_limit=0.05,
                 prob=prob,
                 mode=intp_resampling_augmentations,
                 padding_mode="zeros",
