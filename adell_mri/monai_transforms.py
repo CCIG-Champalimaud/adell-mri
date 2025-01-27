@@ -895,6 +895,8 @@ def get_augmentations_class(
         "shear",
         "flip",
         "blur",
+        "lowres",
+        "distort",
         "trivial",
     ]
     all_keys_with_mask = [k for k in all_keys]
