@@ -969,8 +969,8 @@ def get_augmentations_class(
         if isinstance(flip_axis, int):
             flip_axis = [flip_axis]
         flips = []
-        for i in range(flip_axis):
-            axes_to_flip = list(itertools.combinations([flip_axis], i + 1))
+        for i in range(len(flip_axis)):
+            axes_to_flip = list(itertools.combinations(flip_axis, i + 1))
             flips.append(
                 monai.transforms.RandFlipd(
                     all_keys_with_mask, prob=prob, spatial_axis=axes_to_flip
