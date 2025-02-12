@@ -9,6 +9,7 @@ from lightning.pytorch.callbacks import EarlyStopping, RichProgressBar
 from sklearn.model_selection import KFold, train_test_split
 from tqdm import tqdm
 
+from adell_mri.utils.logging import CSVLogger
 from adell_mri.utils.torch_utils import get_generator_and_rng
 
 from ...entrypoints.assemble_args import Parser
@@ -226,7 +227,7 @@ def main(arguments):
         args.n_folds = len(folds)
         fold_generator = iter(folds)
 
-    output_file = open(args.metric_path, "w")
+    csv_logger = CSVLogger(args.metric_path, not args.resume_from_last)
     for val_fold in range(args.n_folds):
         print("=" * 80)
         print("Starting fold={}".format(val_fold))
@@ -338,7 +339,11 @@ def main(arguments):
             resume_from_last=args.resume_from_last,
             val_fold=val_fold,
             monitor=args.monitor,
-            metadata={"transform_arguments": transform_arguments},
+            metadata={
+                "train_pids": train_pids,
+                "val_pids": val_pids,
+                "transform_arguments": transform_arguments,
+            },
         )
         ckpt = ckpt_callback is not None
         if status == "finished":
@@ -578,10 +583,7 @@ def main(arguments):
         trainer.fit(unet, train_loader, train_val_loader, ckpt_path=ckpt_path)
 
         print("Validating...")
-        if ckpt is True:
-            ckpt_list = ["last", "best"]
-        else:
-            ckpt_list = ["last"]
+        ckpt_list = ["last", "best"] if ckpt is True else ["last"]
         for ckpt_key in ckpt_list:
             test_metrics = trainer.test(
                 unet, validation_loader, ckpt_path=ckpt_key
@@ -593,13 +595,29 @@ def main(arguments):
                         value = float(out.detach().numpy())
                     except Exception:
                         value = float(out)
-                    x = "{},{},{},{},{}".format(k, ckpt_key, val_fold, 0, value)
-                    output_file.write(x + "\n")
+                    x = {
+                        "metric": k,
+                        "checkpoint": ckpt_key,
+                        "val_fold": val_fold,
+                        "idx": 0,
+                        "value": value,
+                        "n_train": len(train_pids),
+                        "n_val": len(val_pids),
+                    }
+                    csv_logger.log(x)
                     print(x)
                 else:
                     for i, v in enumerate(out):
-                        x = "{},{},{},{},{}".format(k, ckpt_key, val_fold, i, v)
-                        output_file.write(x + "\n")
+                        x = {
+                            "metric": k,
+                            "checkpoint": ckpt_key,
+                            "val_fold": val_fold,
+                            "idx": i,
+                            "value": v,
+                            "n_train": len(train_pids),
+                            "n_val": len(val_pids),
+                        }
+                        csv_logger.log(x)
                         print(x)
 
         print("=" * 80)

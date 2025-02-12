@@ -344,6 +344,7 @@ def main(arguments):
             monitor=args.monitor,
             metadata={
                 "train_pids": train_pids,
+                "val_pids": val_pids,
                 "transform_arguments": transform_arguments,
             },
         )
@@ -558,11 +559,7 @@ def main(arguments):
         )
 
         # assessing performance on validation set
-        print("Validating...")
-        if ckpt is True:
-            ckpt_list = ["best", "last"]
-        else:
-            ckpt_list = ["last"]
+        ckpt_list = ["last", "best"] if ckpt is True else ["last"]
         for ckpt_key in ckpt_list:
             test_metrics = trainer.test(
                 network, validation_loader, ckpt_path=ckpt_key
@@ -580,6 +577,8 @@ def main(arguments):
                         "val_fold": val_fold,
                         "idx": 0,
                         "value": value,
+                        "n_train": len(train_pids),
+                        "n_val": len(val_pids),
                     }
                     csv_logger.log(x)
                     print(x)
@@ -591,6 +590,8 @@ def main(arguments):
                             "val_fold": val_fold,
                             "idx": i,
                             "value": v,
+                            "n_train": len(train_pids),
+                            "n_val": len(val_pids),
                         }
                         csv_logger.log(x)
                         print(x)

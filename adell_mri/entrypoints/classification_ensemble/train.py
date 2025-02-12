@@ -8,6 +8,8 @@ from lightning.pytorch import Trainer
 from lightning.pytorch.callbacks import EarlyStopping, RichProgressBar
 from sklearn.model_selection import StratifiedKFold, train_test_split
 
+from adell_mri.utils.logging import CSVLogger
+
 from ...entrypoints.assemble_args import Parser
 from ...modules.classification.pl import GenericEnsemblePL
 from ...modules.config_parsing import (
@@ -300,6 +302,7 @@ def main(arguments):
         args.n_folds = len(folds)
         fold_generator = iter(folds)
 
+    csv_logger = CSVLogger(args.metric_path, not args.resume_from_last)
     for val_fold in range(args.n_folds):
         train_idxs, val_idxs = next(fold_generator)
         train_pids = [all_pids[i] for i in train_idxs]
@@ -358,6 +361,7 @@ def main(arguments):
             monitor=args.monitor,
             metadata={
                 "train_pids": train_pids,
+                "val_pids": val_pids,
                 "transform_arguments": transform_arguments,
             },
         )
@@ -605,10 +609,7 @@ def main(arguments):
         # assessing performance on validation set
         print("Validating...")
 
-        if ckpt is True:
-            ckpt_list = ["last", "best"]
-        else:
-            ckpt_list = ["last"]
+        ckpt_list = ["last", "best"] if ckpt is True else ["last"]
         for ckpt_key in ckpt_list:
             test_metrics = trainer.test(
                 ensemble, validation_loader, ckpt_path=ckpt_key
@@ -628,8 +629,16 @@ def main(arguments):
                         k, idx = "_".join(k), 0
                 else:
                     idx = 0
-                x = "{},{},{},{},{}".format(k, ckpt_key, val_fold, idx, value)
-                output_file.write(x + "\n")
+                x = {
+                    "metric": k,
+                    "checkpoint": ckpt_key,
+                    "val_fold": val_fold,
+                    "idx": idx,
+                    "value": value,
+                    "n_train": len(train_pids),
+                    "n_val": len(val_pids),
+                }
+                csv_logger.log(x)
                 print(x)
 
         if args.delete_checkpoints is True:

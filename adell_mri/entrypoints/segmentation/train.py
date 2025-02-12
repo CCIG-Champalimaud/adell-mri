@@ -416,7 +416,11 @@ def main(arguments):
             resume_from_last=args.resume_from_last,
             val_fold=val_fold,
             monitor=args.monitor,
-            metadata={"transform_arguments": transform_arguments},
+            metadata={
+                "train_pids": train_pids,
+                "val_pids": val_pids,
+                "transform_arguments": transform_arguments,
+            },
         )
         ckpt = ckpt_callback is not None
         if status == "finished":
@@ -802,10 +806,7 @@ def main(arguments):
         trainer.fit(unet, train_loader, train_val_loader, ckpt_path=ckpt_path)
 
         print("Validating...")
-        if ckpt is True:
-            ckpt_list = ["last", "best"]
-        else:
-            ckpt_list = ["last"]
+        ckpt_list = ["last", "best"] if ckpt is True else ["last"]
         for ckpt_key in ckpt_list:
             test_metrics = trainer.test(
                 unet, validation_loader, ckpt_path=ckpt_key
@@ -823,6 +824,8 @@ def main(arguments):
                         "val_fold": val_fold,
                         "idx": 0,
                         "value": value,
+                        "n_train": len(train_pids),
+                        "n_val": len(val_pids),
                     }
                     csv_logger.log(x)
                     print(x)
@@ -834,6 +837,8 @@ def main(arguments):
                             "val_fold": val_fold,
                             "idx": i,
                             "value": v,
+                            "n_train": len(train_pids),
+                            "n_val": len(val_pids),
                         }
                         csv_logger.log(x)
                         print(x)

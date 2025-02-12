@@ -306,6 +306,14 @@ def main(arguments):
         resume_from_last=args.resume_from_last,
         val_fold=None,
         monitor="val_loss",
+        metadata={
+            "train_pids": train_pids,
+            "network_config": network_config,
+            "transform_arguments": {
+                "pre": pre_transform_args,
+                "post": post_transform_args,
+            },
+        },
     )
     if ckpt_callback is not None:
         callbacks.append(ckpt_callback)

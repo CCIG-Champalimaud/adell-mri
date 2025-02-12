@@ -24,6 +24,7 @@ from ...utils.utils import safe_collate
 from ...utils.torch_utils import set_classification_layer_bias
 from ...utils.batch_preprocessing import BatchPreprocessing
 from ...utils.dataset import Dataset
+from adell_mri.utils.logging import CSVLogger
 from ...utils.parser import get_params, merge_args, parse_ids
 from ...utils.pl_utils import (
     GPULock,
@@ -260,6 +261,7 @@ def main(arguments):
         args.n_folds = len(folds)
         fold_generator = iter(folds)
 
+    csv_logger = CSVLogger(args.metric_path, not args.resume_from_last)
     for val_fold in range(args.n_folds):
         train_idxs, val_idxs = next(fold_generator)
 
@@ -542,12 +544,8 @@ def main(arguments):
         # assessing performance on validation set
         print("Validating...")
 
-        if ckpt is True:
-            ckpt_list = ["last", "best"]
-        else:
-            ckpt_list = ["last"]
+        ckpt_list = ["last", "best"] if ckpt is True else ["last"]
         for ckpt_key in ckpt_list:
-            torch.cuda.empty_cache()
             test_metrics = trainer.test(
                 network, validation_loader, ckpt_path=ckpt_key
             )[0]
@@ -558,14 +556,31 @@ def main(arguments):
                         value = float(out.detach().numpy())
                     except Exception:
                         value = float(out)
-                    x = "{},{},{},{},{}".format(k, ckpt_key, val_fold, 0, value)
-                    output_file.write(x + "\n")
+                    x = {
+                        "metric": k,
+                        "checkpoint": ckpt_key,
+                        "val_fold": val_fold,
+                        "idx": 0,
+                        "value": value,
+                        "n_train": len(train_pids),
+                        "n_val": len(val_pids),
+                    }
+                    csv_logger.log(x)
                     print(x)
                 else:
                     for i, v in enumerate(out):
-                        x = "{},{},{},{},{}".format(k, ckpt_key, val_fold, i, v)
-                        output_file.write(x + "\n")
+                        x = {
+                            "metric": k,
+                            "checkpoint": ckpt_key,
+                            "val_fold": val_fold,
+                            "idx": i,
+                            "value": v,
+                            "n_train": len(train_pids),
+                            "n_val": len(val_pids),
+                        }
+                        csv_logger.log(x)
                         print(x)
+            trainer.test_loop._results.clear()
 
         del network
         del train_dataset

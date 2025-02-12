@@ -165,7 +165,7 @@ def main(arguments):
         roi_size = [int(x) for x in args.random_crop_size]
 
     is_ijepa = args.ssl_method == "ijepa"
-    transform_pre_arguments = {
+    pre_transform_args = {
         "all_keys": all_keys,
         "copied_keys": copied_keys,
         "adc_keys": adc_image_keys,
@@ -179,7 +179,7 @@ def main(arguments):
         "jpeg_dataset": args.jpeg_dataset,
     }
 
-    transform_post_arguments = {
+    post_transform_args = {
         "all_keys": all_keys,
         "copied_keys": copied_keys,
         "skip_augmentations": is_ijepa,
@@ -206,9 +206,9 @@ def main(arguments):
             network_config_correct["feature_map_dimensions"] = feature_map_size
 
     transforms = [
-        *get_pre_transforms_ssl(**transform_pre_arguments),
+        *get_pre_transforms_ssl(**pre_transform_args),
         *get_augmentations_ssl(**augmentation_args),
-        *get_post_transforms_ssl(**transform_post_arguments),
+        *get_post_transforms_ssl(**post_transform_args),
     ]
 
     if args.train_pids is not None:
@@ -348,6 +348,14 @@ def main(arguments):
         resume_from_last=args.resume_from_last,
         val_fold=None,
         monitor="val_loss",
+        metadata={
+            "train_pids": train_pids,
+            "network_config": network_config,
+            "transform_arguments": {
+                "pre": pre_transform_args,
+                "post": post_transform_args,
+            },
+        },
     )
     if ckpt_callback is not None:
         callbacks.append(ckpt_callback)
@@ -368,8 +376,8 @@ def main(arguments):
         tags={
             "network_config": network_config,
             "transform_arguments": {
-                "pre": transform_pre_arguments,
-                "post": transform_post_arguments,
+                "pre": pre_transform_args,
+                "post": post_transform_args,
             },
             "augment_arguments": augmentation_args,
         },
