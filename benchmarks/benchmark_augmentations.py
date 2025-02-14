@@ -33,13 +33,14 @@ if __name__ == "__main__":
     print(all_augments)
     ah = AugmentationWorkhorsed(all_augments, ["image"], N=2)
 
-    I = {"image": np.random.rand(1, 256, 256, 32)}
+    I = {"image": np.random.rand(1, 256, 256, 16)}
 
     N = args.n_iter
 
     for k in ah.transforms:
+        print(f"Benchmarking {k}")
         a = time.time()
         for _ in trange(N):
             ah.transforms[k](I)
         b = time.time()
-        print(k, (b - a) / N)
+        print((b - a) / N)

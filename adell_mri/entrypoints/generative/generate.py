@@ -95,7 +95,7 @@ def main(arguments):
 
     g, rng = get_generator_and_rng(args.seed)
 
-    ckpt = torch.load(args.checkpoint[0])
+    ckpt = torch.load(args.checkpoint[0], weights_only=False)
 
     accelerator, devices, strategy = get_devices(args.dev)
     n_devices = len(devices) if isinstance(devices, list) else devices

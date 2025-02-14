@@ -321,7 +321,7 @@ def get_ckpt_callback(
             else:
                 value = max_epochs
                 key = "epoch"
-            ckpt_value = torch.load(ckpt_path)[key]
+            ckpt_value = torch.load(ckpt_path, weights_only=False)[key]
             if ckpt_value >= (value - 1):
                 print("Training has finished for this fold, skipping")
                 status = "finished"

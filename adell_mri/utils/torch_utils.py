@@ -39,7 +39,7 @@ def load_checkpoint_to_model(
         return
     elif isinstance(checkpoint, str):
         print(f"Loading checkpoint from {checkpoint}")
-        sd = torch.load(checkpoint)
+        sd = torch.load(checkpoint, weights_only=False)
     else:
         sd = checkpoint
     if "state_dict" in sd:

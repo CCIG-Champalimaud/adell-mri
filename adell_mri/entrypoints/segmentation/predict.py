@@ -324,7 +324,9 @@ def main(arguments):
 
         networks = []
         for checkpoint in checkpoint_list:
-            state_dict = torch.load(checkpoint)["state_dict"]
+            state_dict = torch.load(checkpoint, weights_only=False)[
+                "state_dict"
+            ]
             state_dict = {
                 k: state_dict[k]
                 for k in state_dict

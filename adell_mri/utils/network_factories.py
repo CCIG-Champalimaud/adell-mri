@@ -434,7 +434,9 @@ def get_segmentation_network(
         )
         if encoder_checkpoint is not None and res_config_file is None:
             for encoder, ckpt in zip(unet.encoders, encoder_checkpoint):
-                encoder.load_state_dict(torch.load(ckpt)["state_dict"])
+                encoder.load_state_dict(
+                    torch.load(ckpt, weights_only=False)["state_dict"]
+                )
 
     elif net_type == "unetpp":
         encoding_operations = encoding_operations[0]

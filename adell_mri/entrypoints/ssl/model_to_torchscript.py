@@ -133,7 +133,7 @@ def main(arguments):
     train_loader_call = None  # noqa
     ssl = ssl.to(args.dev)
     state_dict = torch.load(
-        args.checkpoint, map_location=args.dev.split(":")[0]
+        args.checkpoint, map_location=args.dev.split(":")[0], weights_only=False
     )["state_dict"]
     state_dict = {
         k: state_dict[k] for k in state_dict if "prediction_head" not in k

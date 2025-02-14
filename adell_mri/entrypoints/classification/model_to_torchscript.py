@@ -117,9 +117,9 @@ def main(arguments):
         partial_mixup=False,
     )
 
-    state_dict = torch.load(args.checkpoint, map_location=args.dev)[
-        "state_dict"
-    ]
+    state_dict = torch.load(
+        args.checkpoint, map_location=args.dev, weights_only=False
+    )["state_dict"]
     state_dict = {k: state_dict[k] for k in state_dict if "loss_fn" not in k}
     inc = network.load_state_dict(state_dict)
     print(inc)

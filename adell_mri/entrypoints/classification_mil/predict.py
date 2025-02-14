@@ -206,7 +206,9 @@ def main(arguments):
                     **boilerplate_args, **network_config
                 )
 
-            state_dict = torch.load(checkpoint)["state_dict"]
+            state_dict = torch.load(checkpoint, weights_only=False)[
+                "state_dict"
+            ]
             network.load_state_dict(state_dict)
             network = network.eval().to(args.dev)
             kwargs = {}

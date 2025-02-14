@@ -279,9 +279,9 @@ def main(arguments):
     )
 
     if args.checkpoint is not None:
-        state_dict = torch.load(args.checkpoint, map_location=args.dev)[
-            "state_dict"
-        ]
+        state_dict = torch.load(
+            args.checkpoint, map_location=args.dev, weights_only=False
+        )["state_dict"]
         inc = ssl.load_state_dict(state_dict)
 
     callbacks = [RichProgressBar()]
@@ -290,9 +290,9 @@ def main(arguments):
         ssl = ssl.to("cuda")
 
     if args.checkpoint is not None:
-        state_dict = torch.load(args.checkpoint, map_location=args.dev)[
-            "state_dict"
-        ]
+        state_dict = torch.load(
+            args.checkpoint, map_location=args.dev, weights_only=False
+        )["state_dict"]
         inc = ssl.load_state_dict(state_dict)
         print(inc)
 

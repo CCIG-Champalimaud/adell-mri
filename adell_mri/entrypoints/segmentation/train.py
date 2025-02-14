@@ -678,9 +678,9 @@ def main(arguments):
                 res_net = [ResNet(**network_config_ssl)]
             if args.encoder_checkpoint is not None:
                 for i in range(len(args.encoder_checkpoint)):
-                    res_state_dict = torch.load(args.encoder_checkpoint[i])[
-                        "state_dict"
-                    ]
+                    res_state_dict = torch.load(
+                        args.encoder_checkpoint[i], weights_only=False
+                    )["state_dict"]
                     mismatched = res_net[i].load_state_dict(  # noqa
                         res_state_dict, strict=False
                     )

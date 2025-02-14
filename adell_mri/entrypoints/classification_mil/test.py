@@ -227,7 +227,9 @@ def main(arguments):
                 )
 
             train_loader_call = None  # noqa
-            state_dict = torch.load(checkpoint)["state_dict"]
+            state_dict = torch.load(checkpoint, weights_only=False)[
+                "state_dict"
+            ]
             network.load_state_dict(state_dict)
             network = network.eval().to(args.dev)
             trainer = Trainer(accelerator=accelerator, devices=devices)
