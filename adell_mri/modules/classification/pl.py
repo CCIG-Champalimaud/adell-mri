@@ -1,3 +1,22 @@
+"""
+PyTorch Lightning modules and utilities for classification tasks.
+
+This module contains PyTorch Lightning implementations of various classification models
+and related utilities. It includes support for:
+
+- Binary and multi-class classification
+- Ordinal classification
+- Multiple instance learning
+- Ensemble models
+- Vision Transformer (ViT) based classifiers
+- Hybrid CNN-Transformer architectures
+- Deconfounded classification
+- Conformal prediction
+
+The module provides implementations of metrics, loss functions, and training loops
+optimized for medical image classification tasks.
+"""
+
 import gc
 from abc import ABC
 from typing import Callable
@@ -125,6 +144,17 @@ def get_metric_dict(
 
 
 def meta_tensors_to_tensors(batch):
+    """
+    Converts any MetaTensor instances in a batch to regular PyTorch tensors.
+
+    Args:
+        batch (dict): A dictionary containing tensors, where some values may be
+            MONAI MetaTensor instances.
+
+    Returns:
+        dict: The input batch with all MetaTensor instances converted to regular
+            PyTorch tensors.
+    """
     if has_monai is True:
         for key in batch:
             if isinstance(batch[key], monai.data.MetaTensor):
@@ -144,6 +174,16 @@ class ClassPLABC(pl.LightningModule, ABC):
         self.calibrated = False
 
     def calculate_loss(self, prediction, y, with_params=False):
+        """Calculates loss between prediction and ground truth.
+
+        Args:
+            prediction (torch.Tensor): Model predictions
+            y (torch.Tensor): Ground truth labels
+            with_params (bool, optional): Whether to use loss parameters. Defaults to False.
+
+        Returns:
+            torch.Tensor: Mean loss value
+        """
         y = y.to(prediction.device)
         if self.n_classes > 2:
             if len(y.shape) > 1:
@@ -160,9 +200,27 @@ class ClassPLABC(pl.LightningModule, ABC):
         return loss.mean()
 
     def on_before_batch_transfer(self, batch, dataloader_idx):
+        """Converts any MetaTensors to regular tensors before batch transfer.
+
+        Args:
+            batch: Input batch
+            dataloader_idx: Index of dataloader
+
+        Returns:
+            dict: Batch with MetaTensors converted to regular tensors
+        """
         return meta_tensors_to_tensors(batch)
 
     def training_step(self, batch, batch_idx):
+        """Performs a single training step.
+
+        Args:
+            batch: Input batch containing images and labels
+            batch_idx: Index of current batch
+
+        Returns:
+            torch.Tensor: Training loss
+        """
         x, y = batch[self.image_key], batch[self.label_key]
         if hasattr(self, "training_batch_preproc"):
             if self.training_batch_preproc is not None:
@@ -176,6 +234,15 @@ class ClassPLABC(pl.LightningModule, ABC):
         return loss
 
     def validation_step(self, batch, batch_idx):
+        """Performs a single validation step.
+
+        Args:
+            batch: Input batch containing images and labels
+            batch_idx: Index of current batch
+
+        Returns:
+            torch.Tensor: Validation loss
+        """
         x, y = batch[self.image_key], batch[self.label_key]
         prediction = self.forward(x)
         prediction = torch.squeeze(prediction, 1)
@@ -194,6 +261,16 @@ class ClassPLABC(pl.LightningModule, ABC):
         return loss
 
     def test_step(self, batch, batch_idx):
+        """
+        Performs a single test step.
+
+        Args:
+            batch: Input batch containing images and labels
+            batch_idx: Index of current batch
+
+        Returns:
+            tuple: Test loss and predictions
+        """
         x, y = batch[self.image_key], batch[self.label_key]
         prediction = self.forward(x)
         prediction = torch.squeeze(prediction, 1)
@@ -212,6 +289,9 @@ class ClassPLABC(pl.LightningModule, ABC):
         return loss, prediction
 
     def on_train_start(self):
+        """
+        Called when training begins. Logs hyperparameters.
+        """
         print("Training with the following hyperparameters:")
         parameter_dict = {}
         for k, v in self.hparams.items():
@@ -224,18 +304,21 @@ class ClassPLABC(pl.LightningModule, ABC):
                     if len(v) > 0:
                         parameter_dict[k] = v[0]
             elif isinstance(v, dict):
-                for kk, vv in v:
+                for kk, vv in v.items():
                     parameter_dict[f"{k}_{kk}"] = float(vv)
             elif isinstance(v, (int, float, bool)):
                 parameter_dict[k] = v
         parameter_dict = {
             k: float(parameter_dict[k])
             for k in parameter_dict
-            if isinstance(k, (int, float, bool))
+            if isinstance(parameter_dict[k], (int, float, bool))
         }
         self.log_dict(parameter_dict, sync_dist=True)
 
     def on_train_epoch_end(self):
+        """
+        Called at end of training epoch. Updates learning rate.
+        """
         sch = self.lr_schedulers().state_dict()
         lr = self.learning_rate
         last_lr = sch["_last_lr"][0] if "_last_lr" in sch else lr
@@ -243,6 +326,9 @@ class ClassPLABC(pl.LightningModule, ABC):
         gc.collect()
 
     def on_fit_end(self):
+        """
+        Called when fitting ends. Updates Gaussian process if enabled.
+        """
         if hasattr(self, "gaussian_process"):
             if self.gaussian_process is True:
                 with tqdm(self.training_dataloader_call()) as pbar:
@@ -253,6 +339,12 @@ class ClassPLABC(pl.LightningModule, ABC):
                     self.cov = torch.linalg.inv(self.inv_conv)
 
     def calibrate(self, dataloader):
+        """
+        Calibrates model predictions using adaptive prediction sets.
+
+        Args:
+            dataloader: DataLoader containing calibration data
+        """
         self.calibration = AdaptivePredictionSets(0.2)
         with tqdm(dataloader) as pbar:
             pbar.set_description("Calibrating adaptive prediction sets")
@@ -268,19 +360,47 @@ class ClassPLABC(pl.LightningModule, ABC):
         self.calibrated = True
 
     def on_test_epoch_end(self):
+        """
+        Called at end of test epoch. Logs test metrics.
+        """
         self.log_metrics_end_epoch(self.test_metrics)
 
     def predict_step(self, batch, batch_idx, *args, **kwargs):
+        """
+        Performs prediction on a batch.
+
+        Args:
+            batch: Input batch containing images
+            batch_idx: Index of current batch
+            *args: Additional positional arguments
+            **kwargs: Additional keyword arguments
+
+        Returns:
+            torch.Tensor: Model predictions
+        """
         x = batch[self.image_key]
         prediction = self.forward(x, *args, **kwargs)
         return prediction
 
     def predict_calibrated_step(self, batch, batch_idx, *args, **kwargs):
+        """
+        Performs prediction on a batch using the calibrated model. Model must
+        be calibrated.
+
+        Args:
+            batch: Input batch containing images
+            batch_idx: Index of current batch
+            *args: Additional positional arguments
+            **kwargs: Additional keyword arguments
+
+        Returns:
+            torch.Tensor: Model predictions
+        """
         prediction = self.predict_step(batch)
         if self.calibrated is True:
             prediction = self.calibration(prediction)
         else:
-            RuntimeError(
+            raise RuntimeError(
                 "Model needs to be calibrated before calibrated prediction"
             )
         return prediction
@@ -289,6 +409,14 @@ class ClassPLABC(pl.LightningModule, ABC):
         return self.training_dataloader_call()
 
     def configure_optimizers(self):
+        """
+        Configures the optimizer for the model. If weight decay is a list,
+        decouples body and head weight decay.
+
+        Returns:
+            dict: A dictionary containing the optimizer, learning rate scheduler,
+                and the name of the metric to monitor for early stopping.
+        """
         if isinstance(self.weight_decay, (list, tuple)):
             # decouples body and head weight decay
             wd_body, wd_head = self.weight_decay
@@ -325,6 +453,9 @@ class ClassPLABC(pl.LightningModule, ABC):
         }
 
     def setup_metrics(self):
+        """
+        Sets up the metrics for the model.
+        """
         self.train_metrics = get_metric_dict(self.n_classes, [], prefix="")
         self.val_metrics = get_metric_dict(self.n_classes, None, prefix="V_")
         self.test_metrics = get_metric_dict(
@@ -332,6 +463,19 @@ class ClassPLABC(pl.LightningModule, ABC):
         )
 
     def update_metrics(self, prediction, y, metrics, log=True):
+        """
+        Updates the metrics for the model based on the prediction and ground
+        truth labels.
+
+        Args:
+            prediction (torch.Tensor): The model's prediction output.
+            y (torch.Tensor): The ground truth labels.
+            metrics (dict): A dictionary of metric functions to be updated.
+            log (bool, optional): Whether to log the metrics. Defaults to True.
+
+        Returns:
+            None
+        """
         if self.n_classes > 2:
             prediction = torch.softmax(prediction, 1)
         else:
@@ -351,6 +495,15 @@ class ClassPLABC(pl.LightningModule, ABC):
                 )
 
     def log_metrics_end_epoch(self, metrics):
+        """
+        Logs the metrics at the end of each epoch.
+
+        Args:
+            metrics (dict): A dictionary of metric functions to be logged.
+
+        Returns:
+            None
+        """
         for k in metrics:
             metric = metrics[k].compute()
             if len(metric.shape) == 0:
@@ -476,6 +629,15 @@ class ClassNetPL(ClassPLABC):
         self.n_classes = self.network.n_classes
 
     def update_metrics(self, prediction, y, metrics, log=True):
+        """
+        Update the metrics for the given batch.
+
+        Args:
+            prediction (torch.Tensor): The predicted values.
+            y (torch.Tensor): The true labels.
+            metrics (dict): A dictionary of metrics to update.
+            log (bool, optional): Whether to log the metrics. Defaults to True.
+        """
         if self.net_type == "ord":
             prediction = ordinal_prediction_to_class(prediction)
         elif self.n_classes > 2:
@@ -483,7 +645,7 @@ class ClassNetPL(ClassPLABC):
         else:
             prediction = torch.sigmoid(prediction)
         if len(y.shape) > 1:
-            y.squeeze(1)
+            y = y.squeeze(1)
         for k in metrics:
             metrics[k](prediction, y)
             if log is True:
