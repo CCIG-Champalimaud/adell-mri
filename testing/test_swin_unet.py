@@ -8,9 +8,9 @@ import torch
 from adell_mri.modules.segmentation.unetr import SWINUNet
 from copy import deepcopy
 
-h, w, d, c = 64, 64, 32, 1
+h, w, d, c = 16, 16, 16, 1
 
-depths = [[16, 32, 64], [8, 16, 32, 64]]
+depths = [[16, 32], [8, 16, 32]]
 spatial_dims = [2, 3]
 
 

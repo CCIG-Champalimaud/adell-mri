@@ -8,15 +8,17 @@ import torch
 from adell_mri.modules.diffusion.diffusion_process import Diffusion
 from adell_mri.modules.diffusion.unet import DiffusionUNet
 
+BASE_SIZE = 32
+
 
 @pytest.mark.parametrize("ndim", [2, 3])
 def test_diffusion_process(ndim):
     if ndim == 2:
-        image_size = [64, 64]
-        sh = [1, 1, 64, 64]
+        image_size = [BASE_SIZE, BASE_SIZE]
+        sh = [1, 1, BASE_SIZE, BASE_SIZE]
     if ndim == 3:
-        image_size = [64, 64, 32]
-        sh = [1, 1, 64, 64, 32]
+        image_size = [BASE_SIZE, BASE_SIZE, BASE_SIZE // 2]
+        sh = [1, 1, BASE_SIZE, BASE_SIZE, BASE_SIZE // 2]
     diff_proc = Diffusion(10, 1e-4, 1e-2, image_size)
 
     image = torch.rand(*sh)

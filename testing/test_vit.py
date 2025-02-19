@@ -140,7 +140,6 @@ def test_transformer_erase(embed_method):
     ]
     assert list(out.shape) == size
     assert (
-        list(vit.embedding.rearrange_rescale(out, 1).shape)
-        == output_image_size
+        list(vit.embedding.rearrange_rescale(out, 1).shape) == output_image_size
     )
     assert list(vit.embedding.rearrange_inverse(out).shape) == im_size
