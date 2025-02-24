@@ -37,10 +37,7 @@ class ResidualBlock2d(torch.nn.Module):
         super().__init__()
         self.in_channels = in_channels
         self.kernel_size = kernel_size
-        if inter_channels is not None:
-            self.inter_channels = inter_channels
-        else:
-            self.inter_channels = self.in_channels
+        self.inter_channels = inter_channels
         if out_channels is not None:
             self.out_channels = out_channels
         else:
@@ -135,10 +132,7 @@ class ResidualBlock3d(torch.nn.Module):
         super().__init__()
         self.in_channels = in_channels
         self.kernel_size = kernel_size
-        if inter_channels is not None:
-            self.inter_channels = inter_channels
-        else:
-            self.inter_channels = self.in_channels
+        self.inter_channels = inter_channels
         if out_channels is not None:
             self.out_channels = out_channels
         else:
@@ -282,10 +276,7 @@ class ResNeXtBlock2d(torch.nn.Module):
         super().__init__()
         self.in_channels = in_channels
         self.kernel_size = kernel_size
-        if inter_channels is not None:
-            self.inter_channels = inter_channels
-        else:
-            self.inter_channels = self.in_channels
+        self.inter_channels = inter_channels
         if out_channels is not None:
             self.out_channels = out_channels
         else:
@@ -373,10 +364,7 @@ class ResNeXtBlock3d(torch.nn.Module):
         super().__init__()
         self.in_channels = in_channels
         self.kernel_size = kernel_size
-        if inter_channels is not None:
-            self.inter_channels = inter_channels
-        else:
-            self.inter_channels = self.in_channels
+        self.inter_channels = inter_channels
         if out_channels is not None:
             self.out_channels = out_channels
         else:
