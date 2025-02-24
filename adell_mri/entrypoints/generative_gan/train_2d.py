@@ -8,12 +8,9 @@ from lightning.pytorch import Trainer
 from lightning.pytorch.callbacks import RichProgressBar
 
 from ...modules.config_parsing import parse_config_gan
-from ...monai_transforms import get_augmentations_class as get_augmentations
-from ...monai_transforms import (
-    get_post_transforms_generation as get_post_transforms,
-)
-from ...monai_transforms import (
-    get_pre_transforms_generation as get_pre_transforms,
+from ...transform_factory import (
+    GenerationTransforms,
+    get_augmentations_class as get_augmentations,
 )
 from ...utils.utils import safe_collate
 from ...utils.dicom_dataset import filter_dicom_dict_on_presence
@@ -164,27 +161,19 @@ def main(arguments):
         learning_rate=args.learning_rate,
     )
 
-    transform_pre_arguments = {
+    transform_arguments = {
         "keys": all_image_keys,
         "target_spacing": args.target_spacing,
         "crop_size": args.crop_size,
         "pad_size": args.pad_size,
         "n_dim": 2,
-    }
-
-    transform_post_arguments = {
-        "image_keys": all_image_keys,
-        "crop_size": args.crop_size,
         "cat_keys": args.cat_condition_keys,
         "num_keys": args.num_condition_keys,
     }
 
     augmentation_args = {}
 
-    transforms = [
-        *get_pre_transforms(**transform_pre_arguments),
-        *get_post_transforms(**transform_post_arguments),
-    ]
+    transforms = GenerationTransforms(**transform_arguments)
 
     if args.train_pids is not None:
         train_pids = {pid: "" for pid in args.train_pids}
@@ -272,10 +261,7 @@ def main(arguments):
         metadata={
             "train_pids": train_pids,
             "network_config": network_config,
-            "transform_arguments": {
-                "pre": transform_pre_arguments,
-                "post": transform_post_arguments,
-            },
+            "transform_arguments": transform_arguments,
             "categorical_specification": categorical_specification,
             "numerical_specification": numerical_specification,
         },
@@ -300,10 +286,7 @@ def main(arguments):
         tags={
             "train_pids": train_pids,
             "network_config": network_config,
-            "transform_arguments": {
-                "pre": transform_pre_arguments,
-                "post": transform_post_arguments,
-            },
+            "transform_arguments": transform_arguments,
             "categorical_specification": categorical_specification,
             "numerical_specification": numerical_specification,
         },

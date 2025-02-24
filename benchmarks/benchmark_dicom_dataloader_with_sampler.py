@@ -13,9 +13,8 @@ from adell_mri.utils.dicom_loader import (
     SliceSampler,
     filter_orientations,
 )
-from adell_mri.monai_transforms import get_pre_transforms_ssl
-from adell_mri.monai_transforms import get_post_transforms_ssl
-from adell_mri.monai_transforms import get_augmentations_ssl
+from adell_mri.transform_factory import SSLTransforms
+from adell_mri.transform_factory import get_augmentations_ssl
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -27,7 +26,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    pre_transforms = get_pre_transforms_ssl(
+    transform_factory = SSLTransforms(
         ["image"],
         ["image_copy"],
         adc_keys=[],
@@ -37,7 +36,6 @@ if __name__ == "__main__":
         pad_size=args.crop_size,
         n_dim=2,
     )
-    post_transforms = get_post_transforms_ssl(["image"], ["image_copy"])
     augmentations = get_augmentations_ssl(
         ["image"],
         ["image_copy"],
@@ -54,10 +52,7 @@ if __name__ == "__main__":
 
     dicom_list = [dicom_dict[k] for k in dicom_dict]
     dicom_dataset = DICOMDataset(
-        dicom_list,
-        transform=monai.transforms.Compose(
-            [*pre_transforms, *augmentations, *post_transforms]
-        ),
+        dicom_list, transform=transform_factory.transforms(augmentations)
     )
 
     dicom_sampler = SliceSampler(dicom_dataset=dicom_list, n_iterations=10)

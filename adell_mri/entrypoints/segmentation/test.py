@@ -11,7 +11,7 @@ from ...entrypoints.assemble_args import Parser
 from ...modules.config_parsing import parse_config_ssl, parse_config_unet
 from ...modules.layers import ResNet
 from ...modules.segmentation.pl import evaluate, get_lesions, get_metric_dict
-from ...monai_transforms import get_transforms_unet as get_transforms
+from ...transform_factory.transforms import SegmentationTransforms
 from ...utils.monai_transforms import SlicesToFirst
 from ...utils.utils import collate_last_slice, safe_collate
 from ...utils.dataset import Dataset
@@ -201,10 +201,7 @@ def main(arguments):
         "brunet": args.net_type == "brunet",
     }
 
-    transforms = [
-        *get_transforms("pre", **transform_arguments),
-        *get_transforms("post", **transform_arguments),
-    ]
+    transforms = SegmentationTransforms(**transform_arguments).transforms()
 
     if network_config["spatial_dimensions"] == 2:
         transforms.append(SlicesToFirst(["image", "mask"]))
@@ -307,7 +304,7 @@ def main(arguments):
         data_list = [curr_dict[k] for k in curr_dict]
         dataset = monai.data.CacheDataset(
             data_list,
-            monai.transforms.Compose(transforms),
+            transforms,
             num_workers=args.n_workers,
             cache_rate=args.cache_rate,
         )

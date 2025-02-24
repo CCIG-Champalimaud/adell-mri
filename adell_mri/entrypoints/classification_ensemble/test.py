@@ -14,7 +14,7 @@ from ...modules.config_parsing import (
     parse_config_unet,
 )
 from ...modules.losses import OrdinalSigmoidalLoss
-from ...monai_transforms import get_transforms_classification as get_transforms
+from ...transform_factory.transforms import ClassificationTransforms
 from ...utils.utils import safe_collate
 from ...utils.dataset_filters import (
     filter_dictionary_with_filters,
@@ -178,12 +178,9 @@ def main(arguments):
         "label_mode": label_mode,
     }
 
-    transforms_testing = monai.transforms.Compose(
-        [
-            *get_transforms("pre", **transform_arguments),
-            *get_transforms("post", **transform_arguments),
-        ]
-    )
+    transforms_testing = ClassificationTransforms(
+        **transform_arguments
+    ).transforms()
 
     all_test_ids = parse_ids(args.test_ids)
     for iteration in range(len(all_test_ids)):

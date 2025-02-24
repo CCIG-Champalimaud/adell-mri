@@ -12,7 +12,7 @@ from adell_mri.entrypoints.assemble_args import Parser
 from adell_mri.utils.torch_utils import get_generator_and_rng
 
 from ...modules.config_parsing import parse_config_cat, parse_config_unet
-from ...monai_transforms import get_transforms_classification as get_transforms
+from ...transform_factory.transforms import ClassificationTransforms
 from ...utils.dataset import Dataset
 from ...utils.network_factories import get_deconfounded_classification_network
 from ...utils.parser import get_params, merge_args, parse_ids
@@ -134,12 +134,9 @@ def main(arguments):
         "pad_size": args.pad_size,
     }
 
-    transforms_prediction = monai.transforms.Compose(
-        [
-            *get_transforms("pre", **transform_arguments),
-            *get_transforms("post", **transform_arguments),
-        ]
-    )
+    transforms_prediction = ClassificationTransforms(
+        **transform_arguments
+    ).transforms()
 
     global_output = []
 
