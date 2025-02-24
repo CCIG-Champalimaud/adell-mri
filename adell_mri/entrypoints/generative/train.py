@@ -51,6 +51,7 @@ def main(arguments):
             "filter_on_keys",
             "excluded_ids",
             "augment",
+            "augment_args",
             "cache_rate",
             "subsample_size",
             "val_from_train",
@@ -165,13 +166,12 @@ def main(arguments):
         "num_keys": args.num_condition_keys,
     }
     augmentation_args = {
-        "augment": [] if args.augment is None else args.augment,
-        "all_keys": keys,
-        "mask_key": None,
+        "augment": args.augment,
         "image_keys": keys,
+        "mask_key": None,
         "t2_keys": keys,
         "flip_axis": [0],
-    }
+    } | (eval(args.augment_args) if args.augment_args is not None else {})
 
     transform_factory = GenerationTransforms(**transform_arguments)
     transforms_train = transform_factory.transforms(

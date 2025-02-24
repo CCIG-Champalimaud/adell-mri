@@ -98,6 +98,7 @@ def main(arguments):
             "n_workers",
             "seed",
             "augment",
+            "augment_args",
             "checkpoint_dir",
             "checkpoint_name",
             "checkpoint",
@@ -346,7 +347,7 @@ def main(arguments):
             "random_crop_size": args.random_crop_size,
             "n_crops": args.n_crops,
             "flip_axis": [0, 1, 2],
-        }
+        } | (eval(args.augment_args) if args.augment_args is not None else {})
         if args.random_crop_size:
             get_all_crops_transform = [
                 GetAllCropsd(args.image_keys + ["mask"], args.random_crop_size)

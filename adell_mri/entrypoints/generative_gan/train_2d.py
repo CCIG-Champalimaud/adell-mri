@@ -66,6 +66,7 @@ def main(arguments):
             "cat_condition_keys",
             "num_condition_keys",
             "augment",
+            "augment_args",
             "subsample_size",
             "target_spacing",
             "pad_size",

@@ -79,6 +79,7 @@ def main(arguments):
             "n_workers",
             "seed",
             "augment",
+            "augment_args",
             "label_smoothing",
             "mixup_alpha",
             "partial_mixup",
@@ -247,10 +248,9 @@ def main(arguments):
     augment_arguments = {
         "augment": args.augment,
         "t2_keys": t2_keys,
-        "all_keys": keys,
         "image_keys": keys,
         "mask_key": mask_key,
-    }
+    } | (eval(args.augment_args) if args.augment_args is not None else {})
 
     transform_factory = ClassificationTransforms(**transform_arguments)
     transforms_train = transform_factory.transforms(

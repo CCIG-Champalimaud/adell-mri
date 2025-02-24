@@ -326,6 +326,11 @@ argument_factory = {
     "augment": dict(
         type=str, nargs="+", default=[], help="Use data augmentations"
     ),
+    "augment_args": dict(
+        type=str,
+        default=None,
+        help="Arguments for augmentations (specified as Python dict, interpreted at runtime)",
+    ),
     "label_smoothing": dict(
         default=None, type=float, help="Label smoothing value"
     ),

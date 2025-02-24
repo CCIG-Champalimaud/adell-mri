@@ -71,6 +71,7 @@ def main(arguments):
             "n_workers",
             "seed",
             "augment",
+            "augment_args",
             "label_smoothing",
             "mixup_alpha",
             "partial_mixup",
@@ -199,10 +200,9 @@ def main(arguments):
     augment_arguments = {
         "augment": args.augment,
         "t2_keys": t2_keys,
-        "all_keys": keys,
         "image_keys": keys,
         "flip_axis": None,
-    }
+    } | (eval(args.augment_args) if args.augment_args is not None else {})
 
     final_transforms = [
         EinopsRearranged("image", "c h w d -> 1 h w (d c)"),

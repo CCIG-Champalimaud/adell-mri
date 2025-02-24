@@ -64,6 +64,7 @@ def main(arguments):
             well defined when objects are close to the border)"
                 },
             ),
+            "augment_args",
             "loss_gamma",
             "loss_comb",
             "max_epochs",
@@ -182,6 +183,12 @@ def main(arguments):
             "output_size": None,
             "iou_threshold": args.iou_threshold,
         }
+        augment_arguments = {
+            "augment": args.augment,
+            "image_keys": keys,
+            "box_keys": [box_key],
+            "t2_keys": t2_keys,
+        } | (eval(args.augment_args) if args.augment_args is not None else {})
 
         transform_factory = DetectionTransforms(**transform_arguments)
 
@@ -223,9 +230,7 @@ def main(arguments):
         train_dataset = monai.data.CacheDataset(
             [x for x in train_dataset],
             monai.transforms.Compose(
-                get_augmentations_detection(
-                    args.augment, keys, [box_key], t2_keys
-                ),
+                get_augmentations_detection(**augment_arguments),
                 transform_factory.post_transforms(),
             ),
         )

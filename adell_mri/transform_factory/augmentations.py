@@ -178,7 +178,12 @@ def get_augmentations_unet(
 
 
 def get_augmentations_class(
-    augment, all_keys, mask_key, image_keys, t2_keys, flip_axis=[0, 1]
+    augment: list[str],
+    image_keys: list[str],
+    mask_key: str,
+    t2_keys: list[str],
+    flip_axis: list[int] = [0, 1],
+    prob: float = 0.1,
 ):
     valid_arg_list = [
         "intensity",
@@ -192,10 +197,10 @@ def get_augmentations_class(
         "distort",
         "trivial",
     ]
-    all_keys_with_mask = [k for k in all_keys]
+    all_keys_with_mask = [k for k in image_keys]
     if mask_key is not None:
         all_keys_with_mask.append(mask_key)
-    intp_resampling_augmentations = [
+    intp = [
         "bilinear" if k != mask_key else "nearest" for k in all_keys_with_mask
     ]
     for a in augment:
@@ -205,9 +210,8 @@ def get_augmentations_class(
             )
     augments = []
 
-    prob = 0.1
     if "trivial" in augment:
-        augments.append(monai.transforms.Identityd(all_keys))
+        augments.append(monai.transforms.Identityd(image_keys))
         prob = 1.0
 
     if "intensity" in augment:
@@ -286,8 +290,9 @@ def get_augmentations_class(
                 all_keys_with_mask,
                 translate_range=[4, 4, 1],
                 rotate_range=[np.pi / 16],
+                scale_range=[0.1, 0.1, 0.05],
                 prob=prob,
-                mode=intp_resampling_augmentations,
+                mode=intp,
                 padding_mode="zeros",
             )
         )
@@ -298,7 +303,7 @@ def get_augmentations_class(
                 all_keys_with_mask,
                 shear_range=((0.9, 1.1), (0.9, 1.1), (0.9, 1.1)),
                 prob=prob,
-                mode=intp_resampling_augmentations,
+                mode=intp,
                 padding_mode="zeros",
             )
         )
@@ -309,7 +314,7 @@ def get_augmentations_class(
                 all_keys_with_mask,
                 distort_limit=0.05,
                 prob=prob,
-                mode=intp_resampling_augmentations,
+                mode=intp,
                 padding_mode="zeros",
             )
         )
