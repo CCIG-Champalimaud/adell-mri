@@ -12,7 +12,7 @@ from ...modules.classification.pl import (
     TransformableTransformerPL,
 )
 from ...modules.config_parsing import parse_config_2d_classifier_3d
-from ...monai_transforms import get_transforms_classification as get_transforms
+from ...transform_factory.transforms import ClassificationTransforms
 from ...utils.utils import safe_collate
 from ...utils.monai_transforms import EinopsRearranged, ScaleIntensityAlongDimd
 from ...utils.dataset import Dataset
@@ -148,10 +148,8 @@ def main(arguments):
         "label_mode": label_mode,
     }
 
-    transforms = monai.transforms.Compose(
-        [
-            *get_transforms("pre", **transform_arguments),
-            *get_transforms("post", **transform_arguments),
+    transforms = ClassificationTransforms(**transform_arguments).transforms(
+        final_transforms=[
             EinopsRearranged("image", "c h w d -> 1 h w (d c)"),
             ScaleIntensityAlongDimd("image", dim=-1),
         ]

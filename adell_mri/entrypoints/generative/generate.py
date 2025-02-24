@@ -3,17 +3,13 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from cv2 import transform
 import monai
 import SimpleITK as sitk
 import torch
 from tqdm import tqdm
 
-from ...monai_transforms import (
-    get_post_transforms_generation as get_post_transforms,
-)
-from ...monai_transforms import (
-    get_pre_transforms_generation as get_pre_transforms,
-)
+from ...transform_factory import GenerationTransforms
 from ...utils.utils import safe_collate
 from ...utils.dataset import Dataset
 from ...utils.network_factories import get_generative_network
@@ -42,6 +38,10 @@ def fetch_specifications(state_dict: dict[str, Any]):
         if metadata["numerical_specification"] is not None:
             num_spec = metadata["numerical_specification"]
     transform_args = metadata["transform_arguments"]
+    if ("pre" in transform_args) and ("post" in transform_args):
+        transform_args = transform_args["pre"] | transform_args["post"]
+    if "image_keys" in transform_args:
+        del transform_args["image_keys"]
     spacing = metadata["transform_arguments"]["pre"]["target_spacing"]
     return network_config, cat_spec, num_spec, spacing, transform_args
 
@@ -176,14 +176,7 @@ def main(arguments):
     network = network.to(dtype=inference_dtype)
     if args.dataset_json is not None:
         print("Setting up transforms...")
-        transform_pre_arguments = transform_args["pre"]
-        transform_post_arguments = transform_args["post"]
-
-        transforms = [
-            *get_pre_transforms(**transform_pre_arguments),
-            *get_post_transforms(**transform_post_arguments),
-        ]
-        transforms = monai.transforms.Compose(transforms)
+        transforms = GenerationTransforms(transform_args).transforms()
         transforms.set_random_state(args.seed)
         data_dict = Dataset(args.dataset_json, rng=rng, verbose=True)
         data_dict.dataset = {

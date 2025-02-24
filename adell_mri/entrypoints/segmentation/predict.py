@@ -11,7 +11,7 @@ from tqdm import tqdm
 from ...entrypoints.assemble_args import Parser
 from ...modules.config_parsing import parse_config_ssl, parse_config_unet
 from ...modules.layers import ResNet
-from ...monai_transforms import get_transforms_unet as get_transforms
+from ...transform_factory.transforms import SegmentationTransforms
 from ...utils.utils import collate_last_slice, safe_collate
 from ...utils.monai_transforms import SlicesToFirst
 from ...utils.dataset import Dataset
@@ -203,10 +203,7 @@ def main(arguments):
         "convert_to_tensor": False,
     }
 
-    transforms = [
-        *get_transforms("pre", **transform_arguments),
-        *get_transforms("post", **transform_arguments),
-    ]
+    transforms = SegmentationTransforms(**transform_arguments).transforms()
 
     if network_config["spatial_dimensions"] == 2:
         transforms.append(SlicesToFirst(["image"]))
@@ -312,7 +309,7 @@ def main(arguments):
         curr_dict = {k: data_dict[k] for k in pred_ids}
 
         transform_input = transforms[0]
-        transforms_preprocess = monai.transforms.Compose(transforms[1:])
+        transforms_preprocess = transforms[1:]
         transforms_postprocess = monai.transforms.Invertd(
             "image", transforms_preprocess
         )

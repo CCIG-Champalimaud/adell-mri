@@ -14,8 +14,10 @@ from sklearn.model_selection import StratifiedKFold, train_test_split
 
 from ...modules.classification.losses import OrdinalSigmoidalLoss
 from ...modules.config_parsing import parse_config_cat, parse_config_unet
-from ...monai_transforms import get_augmentations_class as get_augmentations
-from ...monai_transforms import get_transforms_classification as get_transforms
+from ...transform_factory import (
+    ClassificationTransforms,
+    get_augmentations_class as get_augmentations,
+)
 from ...utils.utils import safe_collate
 from ...utils.torch_utils import (
     conditional_parameter_freezing,
@@ -250,21 +252,12 @@ def main(arguments):
         "mask_key": mask_key,
     }
 
-    transforms_train = monai.transforms.Compose(
-        [
-            *get_transforms("pre", **transform_arguments),
-            get_augmentations(**augment_arguments),
-            *get_transforms("post", **transform_arguments),
-        ]
+    transform_factory = ClassificationTransforms(**transform_arguments)
+    transforms_train = transform_factory.transforms(
+        get_augmentations(**augment_arguments)
     )
     transforms_train.set_random_state(args.seed)
-
-    transforms_val = monai.transforms.Compose(
-        [
-            *get_transforms("pre", **transform_arguments),
-            *get_transforms("post", **transform_arguments),
-        ]
-    )
+    transforms_val = transform_factory.transforms()
 
     if args.folds is None:
         if args.n_folds > 1:
