@@ -16,8 +16,10 @@ from ...entrypoints.assemble_args import Parser
 from ...modules.config_parsing import parse_config_unet
 from ...modules.layers.adn_fn import get_adn_fn
 from ...modules.segmentation.pl import MIMUNetPL
-from ...monai_transforms import get_augmentations_unet as get_augmentations
-from ...monai_transforms import get_transforms_unet as get_transforms
+from ...transform_factory import (
+    get_augmentations_unet as get_augmentations,
+)
+from ...transform_factory import SegmentationTransforms
 from ...utils.monai_transforms import GetAllCropsd, SlicesToFirst, RandomSlices
 from ...utils.utils import (
     collate_last_slice,
@@ -297,22 +299,16 @@ def main(arguments):
             ]
         else:
             get_all_crops_transform = []
-        transforms_train = [
-            *get_transforms("pre", **transform_arguments),
-            get_augmentations(**augment_arguments),
-            *get_transforms("post", **transform_arguments),
-        ]
+        transform_factory = SegmentationTransforms(**transform_arguments)
+        transforms_train = transform_factory.transforms(
+            get_augmentations(**augment_arguments)
+        )
 
-        transforms_train_val = [
-            *get_transforms("pre", **transform_arguments_val),
-            *get_all_crops_transform,
-            *get_transforms("post", **transform_arguments_val),
-        ]
+        transforms_train_val = transform_factory.transforms(
+            get_all_crops_transform
+        )
 
-        transforms_val = [
-            *get_transforms("pre", **transform_arguments_val),
-            *get_transforms("post", **transform_arguments_val),
-        ]
+        transforms_val = transform_factory.transforms()
 
         if network_config["spatial_dimensions"] == 2:
             transforms_train.append(
@@ -358,7 +354,6 @@ def main(arguments):
                     "Resuming training from checkpoint in {}".format(ckpt_path)
                 )
 
-        transforms_train = monai.transforms.Compose(transforms_train)
         transforms_train.set_random_state(args.seed)
         train_dataset = monai.data.CacheDataset(
             train_list,
@@ -368,12 +363,10 @@ def main(arguments):
         )
         train_dataset_val = monai.data.CacheDataset(
             train_val_list,
-            monai.transforms.Compose(transforms_train_val),
+            transforms_train_val,
             num_workers=args.n_workers,
         )
-        validation_dataset = monai.data.Dataset(
-            val_list, monai.transforms.Compose(transforms_val)
-        )
+        validation_dataset = monai.data.Dataset(val_list, transforms_val)
 
         n_samples = int(len(train_dataset) * args.dataset_iterations_per_epoch)
         sampler = torch.utils.data.RandomSampler(

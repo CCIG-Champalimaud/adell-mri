@@ -7,10 +7,7 @@ import yaml
 
 from ...entrypoints.assemble_args import Parser
 from ...modules.object_detection import YOLONet3d
-from ...monai_transforms import (
-    get_transforms_detection_post,
-    get_transforms_detection_pre,
-)
+from ...transform_factory.transforms import DetectionTransforms
 from ...utils.utils import load_anchors
 from ...utils.dataset_filters import (
     filter_dictionary_with_filters,
@@ -95,7 +92,7 @@ def main(arguments):
     output_size = output_example[0].shape[2:]
 
     print("Setting up transforms...")
-    transform_arguments_pre = {
+    transform_arguments = {
         "keys": keys,
         "adc_keys": adc_keys,
         "pad_size": pad_size,
@@ -106,26 +103,15 @@ def main(arguments):
         "box_key": None,
         "mask_key": None,
         "mask_mode": None,
-    }
-    transform_arguments_post = {
-        "keys": keys,
         "t2_keys": None,
         "anchor_array": anchor_array,
         "pad_size": pad_size,
         "crop_size": crop_size,
         "output_size": output_size,
         "iou_threshold": args.iou_threshold,
-        "box_class_key": None,
-        "shape_key": None,
-        "box_key": None,
         "predict": False,
     }
-    transforms_predict = monai.transforms.Compose(
-        [
-            get_transforms_detection_pre(**transform_arguments_pre),
-            get_transforms_detection_post(**transform_arguments_post),
-        ]
-    )
+    transforms_predict = DetectionTransforms(**transform_arguments).transforms()
 
     path_list = [data_dict[k] for k in data_dict]
     predict_dataset = monai.data.Dataset(

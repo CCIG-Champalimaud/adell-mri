@@ -12,11 +12,7 @@ from adell_mri.utils.torch_utils import get_generator_and_rng
 
 from ...entrypoints.assemble_args import Parser
 from ...modules.config_parsing import parse_config_ssl, parse_config_unet
-from ...monai_transforms import (
-    get_augmentations_ssl,
-    get_post_transforms_ssl,
-    get_pre_transforms_ssl,
-)
+from ...transform_factory import get_augmentations_ssl, SSLTransforms
 from ...utils.utils import ExponentialMovingAverage, safe_collate
 from ...utils.dicom_dataset import (
     filter_dicom_dict_by_size,
@@ -165,7 +161,7 @@ def main(arguments):
         roi_size = [int(x) for x in args.random_crop_size]
 
     is_ijepa = args.ssl_method == "ijepa"
-    pre_transform_args = {
+    transform_args = {
         "all_keys": all_keys,
         "copied_keys": copied_keys,
         "adc_keys": adc_image_keys,
@@ -177,12 +173,6 @@ def main(arguments):
         "n_dim": 2,
         "skip_augmentations": is_ijepa,
         "jpeg_dataset": args.jpeg_dataset,
-    }
-
-    post_transform_args = {
-        "all_keys": all_keys,
-        "copied_keys": copied_keys,
-        "skip_augmentations": is_ijepa,
     }
 
     augmentation_args = {
@@ -205,11 +195,9 @@ def main(arguments):
         if args.ssl_method in ["ijepa", "ibot"]:
             network_config_correct["feature_map_dimensions"] = feature_map_size
 
-    transforms = [
-        *get_pre_transforms_ssl(**pre_transform_args),
-        *get_augmentations_ssl(**augmentation_args),
-        *get_post_transforms_ssl(**post_transform_args),
-    ]
+    transforms = SSLTransforms(transform_args).transforms(
+        get_augmentations_ssl(**augmentation_args)
+    )
 
     if args.train_pids is not None:
         train_pids = {pid: "" for pid in args.train_pids}
@@ -224,7 +212,6 @@ def main(arguments):
 
     print(f"Training set size: {len(train_list)}")
 
-    transforms = monai.transforms.Compose(transforms)
     transforms.set_random_state(args.seed)
     if args.jpeg_dataset is True:
         train_dataset = monai.data.Dataset(train_list, transforms)
@@ -351,10 +338,7 @@ def main(arguments):
         metadata={
             "train_pids": train_pids,
             "network_config": network_config,
-            "transform_arguments": {
-                "pre": pre_transform_args,
-                "post": post_transform_args,
-            },
+            "transform_arguments": transform_args,
         },
     )
     if ckpt_callback is not None:
@@ -375,10 +359,7 @@ def main(arguments):
         fold=None,
         tags={
             "network_config": network_config,
-            "transform_arguments": {
-                "pre": pre_transform_args,
-                "post": post_transform_args,
-            },
+            "transform_arguments": transform_args,
             "augment_arguments": augmentation_args,
         },
     )

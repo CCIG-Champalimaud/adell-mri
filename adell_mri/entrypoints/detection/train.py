@@ -13,9 +13,9 @@ from adell_mri.utils.torch_utils import get_generator_and_rng
 
 from ...entrypoints.assemble_args import Parser
 from ...modules.object_detection import YOLONet3d
-from ...monai_transforms import (
-    get_transforms_detection_post,
-    get_transforms_detection_pre,
+from ...transform_factory import (
+    DetectionTransforms,
+    get_augmentations_detection,
 )
 from ...utils.utils import load_anchors, safe_collate
 from ...utils.dataset_filters import (
@@ -166,7 +166,7 @@ def main(arguments):
         else:
             target_spacing = [float(x) for x in target_spacing]
 
-        transform_arguments_pre = {
+        transform_arguments = {
             "keys": keys,
             "adc_keys": adc_keys,
             "crop_size": crop_size,
@@ -177,14 +177,15 @@ def main(arguments):
             "box_key": box_key,
             "mask_key": mask_key,
             "mask_mode": args.mask_mode,
+            "t2_keys": t2_keys,
+            "anchor_array": anchor_array,
+            "output_size": output_size,
+            "iou_threshold": args.iou_threshold,
         }
-
-        transforms_train = get_transforms_detection_pre(
-            **transform_arguments_pre
-        )
+        transform_factory = DetectionTransforms(**transform_arguments)
 
         train_dataset = monai.data.CacheDataset(
-            path_list_train, monai.transforms.Compose(transforms_train)
+            path_list_train, transform_factory.pre_transforms()
         )
 
         if args.anchor_csv == "infer":
@@ -225,25 +226,16 @@ def main(arguments):
             "box_key": box_key,
         }
 
-        transforms_train_val = [
-            *get_transforms_detection_pre(**transform_arguments_pre),
-            *get_transforms_detection_post(
-                **transform_arguments_post, augments=[]
-            ),
-        ]
-        transforms_val = [
-            *get_transforms_detection_pre(**transform_arguments_pre),
-            *get_transforms_detection_post(
-                **transform_arguments_post, augments=[]
-            ),
-        ]
+        transforms_train_val = transform_factory.transforms()
+        transforms_val = transform_factory.transforms()
 
         train_dataset = monai.data.CacheDataset(
             [x for x in train_dataset],
             monai.transforms.Compose(
-                get_transforms_detection_post(
-                    **transform_arguments_post, augments=args.augment
-                )
+                get_augmentations_detection(
+                    args.augment, keys, [box_key], t2_keys
+                ),
+                transform_factory.post_transforms(),
             ),
         )
         train_dataset_val = monai.data.CacheDataset(
@@ -315,10 +307,7 @@ def main(arguments):
             resume_from_last=args.resume_from_last,
             val_fold=val_fold,
             monitor=args.monitor,
-            metadata={
-                "transform_arguments_pre": transform_arguments_pre,
-                "transform_arguments_post": transform_arguments_post,
-            },
+            metadata={"transform_arguments": transform_arguments},
         )
         if status == "finished":
             continue
@@ -337,10 +326,7 @@ def main(arguments):
             tags={
                 "network_config": network_config,
                 "augment_arguments": None,
-                "transform_arguments": {
-                    "pre": transform_arguments_pre,
-                    "post": transform_arguments_post,
-                },
+                "transform_arguments": transform_arguments,
             },
         )
 

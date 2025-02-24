@@ -17,8 +17,11 @@ from ...modules.classification.pl import (
     TransformableTransformerPL,
 )
 from ...modules.config_parsing import parse_config_2d_classifier_3d
-from ...monai_transforms import get_augmentations_class as get_augmentations
-from ...monai_transforms import get_transforms_classification as get_transforms
+from ...transform_factory import (
+    ClassificationTransforms,
+    get_augmentations_class as get_augmentations,
+)
+
 from ...utils.monai_transforms import EinopsRearranged, ScaleIntensityAlongDimd
 from ...utils.utils import safe_collate
 from ...utils.torch_utils import set_classification_layer_bias
@@ -33,6 +36,7 @@ from ...utils.pl_utils import (
     get_logger,
 )
 from ...utils.torch_utils import get_generator_and_rng
+from adell_mri import transform_factory
 
 
 def main(arguments):
@@ -200,25 +204,19 @@ def main(arguments):
         "flip_axis": None,
     }
 
-    transforms_common = get_transforms("pre", **transform_arguments)
-    transforms_train = monai.transforms.Compose(
-        [
-            *transforms_common,
-            get_augmentations(**augment_arguments, mask_key=None),
-            *get_transforms("post", **transform_arguments),
-            EinopsRearranged("image", "c h w d -> 1 h w (d c)"),
-            ScaleIntensityAlongDimd("image", dim=-1),
-        ]
-    )
-    transforms_val = monai.transforms.Compose(
-        [
-            *transforms_common,
-            *get_transforms("post", **transform_arguments),
-            EinopsRearranged("image", "c h w d -> 1 h w (d c)"),
-            ScaleIntensityAlongDimd("image", dim=-1),
-        ]
-    )
+    final_transforms = [
+        EinopsRearranged("image", "c h w d -> 1 h w (d c)"),
+        ScaleIntensityAlongDimd("image", dim=-1),
+    ]
 
+    transform_factory = ClassificationTransforms(**transform_arguments)
+    transforms_train = transform_factory.transforms(
+        get_augmentations(**augment_arguments, mask_key=None),
+        final_transforms=final_transforms,
+    )
+    transforms_val = transform_factory.transforms(
+        final_transforms=final_transforms,
+    )
     transforms_train.set_random_state(args.seed)
     transforms_val.set_random_state(args.seed)
 
