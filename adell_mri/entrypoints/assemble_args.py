@@ -357,7 +357,7 @@ argument_factory = {
     ),
     # training (network)
     "dropout_param": dict(
-        type=float, default=0.1, help="Parameter for dropout."
+        type=float, default=0.0, help="Parameter for dropout."
     ),
     "batch_size": dict(type=int, default=None, help="Batch size"),
     "optimizer": dict(
