@@ -178,10 +178,11 @@ def main(arguments):
             "mask_key": mask_key,
             "mask_mode": args.mask_mode,
             "t2_keys": t2_keys,
-            "anchor_array": anchor_array,
-            "output_size": output_size,
+            "anchor_array": None,
+            "output_size": None,
             "iou_threshold": args.iou_threshold,
         }
+
         transform_factory = DetectionTransforms(**transform_arguments)
 
         train_dataset = monai.data.CacheDataset(
@@ -213,18 +214,8 @@ def main(arguments):
         )(torch.ones([1, 1, *crop_size]))
         output_size = output_example[0].shape[2:]
 
-        transform_arguments_post = {
-            "keys": keys,
-            "t2_keys": t2_keys,
-            "anchor_array": anchor_array,
-            "crop_size": crop_size,
-            "pad_size": pad_size,
-            "output_size": output_size,
-            "iou_threshold": args.iou_threshold,
-            "box_class_key": box_class_key,
-            "shape_key": shape_key,
-            "box_key": box_key,
-        }
+        transform_factory.output_size = output_size
+        transform_factory.anchor_array = anchor_array
 
         transforms_train_val = transform_factory.transforms()
         transforms_val = transform_factory.transforms()
