@@ -1,5 +1,3 @@
-from typing import list
-
 import itertools
 import monai
 import monai.transforms

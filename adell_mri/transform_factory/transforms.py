@@ -41,25 +41,24 @@ def box(x):
 
 @dataclass
 class TransformMixin:
-    def pre_transform(self):
+    def pre_transforms(self):
         raise NotImplementedError("pre_transform must be implemented")
 
-    def post_transform(self):
+    def post_transforms(self):
         raise NotImplementedError("post_transform must be implemented")
 
     def transforms(
         self,
         augmentations: monai.transforms.Transform | list | None = None,
-        final_transforms: list[monai.transforms.Transform] | None = None,
+        final_transforms: tuple[monai.transforms.Transform] | None = None,
     ):
-        transforms = [self.pre_transform()]
+        transforms = [*self.pre_transforms()]
         if augmentations:
             if isinstance(augmentations, monai.transforms.Transform):
                 transforms.append(augmentations)
             else:
                 transforms.extend(augmentations)
-            transforms.append(augmentations)
-        transforms.extend(self.post_transform())
+        transforms.extend(self.post_transforms())
         if final_transforms is not None:
             transforms.extend(final_transforms)
         return monai.transforms.Compose(transforms)
@@ -67,26 +66,26 @@ class TransformMixin:
 
 @dataclass
 class SegmentationTransforms(TransformMixin):
-    all_keys: list[str]
-    image_keys: list[str]
-    label_keys: list[str]
-    non_adc_keys: list[str]
-    adc_keys: list[str]
-    target_spacing: list[float]
-    intp: list[str]
-    intp_resampling_augmentations: list[str]
+    all_keys: tuple[str]
+    image_keys: tuple[str]
+    label_keys: tuple[str]
+    non_adc_keys: tuple[str]
+    adc_keys: tuple[str]
+    target_spacing: tuple[float]
+    intp: tuple[str]
+    intp_resampling_augmentations: tuple[str]
     output_image_key: str = "image"
-    possible_labels: list[str] = [0, 1]
-    positive_labels: list[str] = [1]
-    all_aux_keys: list[str] = []
-    resize_keys: list[str] = []
-    feature_keys: list[str] = []
+    possible_labels: tuple[str] = (0, 1)
+    positive_labels: tuple[str] = (1,)
+    all_aux_keys: tuple[str] = tuple()
+    resize_keys: tuple[str] = tuple()
+    feature_keys: tuple[str] = tuple()
     aux_key_net: str = None
     feature_key_net: str = None
-    resize_size: list[int] = None
-    crop_size: list[int] = None
-    pad_size: list[int] = None
-    random_crop_size: list[int] = None
+    resize_size: tuple[int] = None
+    crop_size: tuple[int] = None
+    pad_size: tuple[int] = None
+    random_crop_size: tuple[int] = None
     label_mode: str = None
     fill_missing: bool = False
     brunet: bool = False
@@ -251,20 +250,20 @@ class SegmentationTransforms(TransformMixin):
 
 @dataclass
 class DetectionTransforms(TransformMixin):
-    keys: list[str]
-    adc_keys: list[str]
-    pad_size: list[int]
-    crop_size: list[int]
+    keys: tuple[str]
+    adc_keys: tuple[str]
+    pad_size: tuple[int]
+    crop_size: tuple[int]
     box_class_key: str
     shape_key: str
     box_key: str
     mask_key: str
     anchor_array: np.ndarray | None = None
-    input_size: list[int] | None = None
-    output_size: list[int] | None = None
+    input_size: tuple[int] | None = None
+    output_size: tuple[int] | None = None
     iou_threshold: float | None = 0.5
     mask_mode: str = "mask_is_labels"
-    target_spacing: list[float] = None
+    target_spacing: tuple[float] = None
     predict: bool = False
 
     def pre_transforms(self):
@@ -342,24 +341,24 @@ class DetectionTransforms(TransformMixin):
 
 @dataclass
 class ClassificationTransforms(TransformMixin):
-    keys: list[str]
-    adc_keys: list[str]
-    clinical_feature_keys: list[str]
-    target_spacing: list[float]
-    crop_size: list[int]
-    pad_size: list[int]
+    keys: tuple[str]
+    adc_keys: tuple[str]
+    clinical_feature_keys: tuple[str]
+    target_spacing: tuple[float]
+    crop_size: tuple[int]
+    pad_size: tuple[int]
     image_masking: bool = False
     image_crop_from_mask: bool = False
     mask_key: str = None
     branched: bool = False
-    possible_labels: list[int] = None
-    positive_labels: list[int] = None
-    label_groups: list[int | list[int]] = None
+    possible_labels: tuple[int] = None
+    positive_labels: tuple[int] = None
+    label_groups: tuple[int | tuple[int]] = None
     label_key: str = None
-    target_size: list[int] = None
+    target_size: tuple[int] = None
     label_mode: str = None
-    cat_confounder_keys: list[str] = None
-    cont_confounder_keys: list[str] = None
+    cat_confounder_keys: tuple[str] = None
+    cont_confounder_keys: tuple[str] = None
 
     def __post_init__(self):
         self.non_adc_keys = [k for k in self.keys if k not in self.adc_keys]
@@ -367,7 +366,8 @@ class ClassificationTransforms(TransformMixin):
         if self.mask_key is not None:
             self.all_keys.append(self.mask_key)
         self.interpolation = [
-            "bilinear" if k != self.mask_key else "nearest" for k in all_keys
+            "bilinear" if k != self.mask_key else "nearest"
+            for k in self.all_keys
         ]
 
     def pre_transforms(self):
@@ -518,13 +518,13 @@ class ClassificationTransforms(TransformMixin):
 
 @dataclass
 class GenerationTransforms(TransformMixin):
-    keys: list[str]
-    target_spacing: Optional[list[int]] = None
-    crop_size: Optional[list[int]] = None
-    pad_size: Optional[list[int]] = None
+    keys: tuple[str]
+    target_spacing: tuple[int] | None = None
+    crop_size: tuple[int] | None = None
+    pad_size: tuple[int] | None = None
     n_dim: int = 3
-    cat_keys: Optional[list[str]] = None
-    num_keys: Optional[list[str]] = None
+    cat_keys: tuple[str] | None = None
+    num_keys: tuple[str] | None = None
 
     def pre_transforms(self):
         transforms = [
@@ -598,14 +598,14 @@ class GenerationTransforms(TransformMixin):
 
 @dataclass
 class SSLTransforms(TransformMixin):
-    all_keys: list[str]
-    copied_keys: list[str]
-    adc_keys: list[str]
-    non_adc_keys: list[str]
-    target_spacing: list[float]
-    crop_size: list[int] = None
-    pad_size: list[int] = None
-    resize_size: list[int] = None
+    all_keys: tuple[str]
+    copied_keys: tuple[str]
+    adc_keys: tuple[str]
+    non_adc_keys: tuple[str]
+    target_spacing: tuple[float]
+    crop_size: tuple[int] = None
+    pad_size: tuple[int] = None
+    resize_size: tuple[int] = None
     n_channels: int = 1
     n_dim: int = 3
     skip_augmentations: bool = False
