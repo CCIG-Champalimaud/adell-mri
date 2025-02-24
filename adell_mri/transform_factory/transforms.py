@@ -92,6 +92,18 @@ class SegmentationTransforms(TransformMixin):
     track_meta: bool = False
     convert_to_tensor: bool = True
 
+    def __post_init__(self):
+        self.transform_keys = []
+        if not self.brunet:
+            self.transform_keys.append(self.output_image_key)
+        if self.all_aux_keys:
+            self.transform_keys.append(self.all_aux_keys)
+        if self.feature_keys:
+            self.transform_keys.append(self.feature_keys)
+        if self.brunet:
+            self.transform_keys.extend(self.image_keys)
+        self.mask_key = ["mask"] if self.label_keys is not None else []
+
     def pre_transforms(self):
         transforms = [
             monai.transforms.LoadImaged(
@@ -184,7 +196,6 @@ class SegmentationTransforms(TransformMixin):
 
     def post_transforms(self):
         transforms = []
-        keys = []
 
         if not self.brunet:
             transforms.append(
@@ -194,7 +205,6 @@ class SegmentationTransforms(TransformMixin):
             )
 
         if self.all_aux_keys:
-            keys.append(self.all_aux_keys)
             transforms.append(
                 monai.transforms.ConcatItemsd(
                     self.all_aux_keys, self.aux_key_net
@@ -202,7 +212,6 @@ class SegmentationTransforms(TransformMixin):
             )
 
         if self.feature_keys:
-            keys.append(self.feature_keys)
             transforms.extend(
                 [
                     monai.transforms.EnsureTyped(
@@ -216,34 +225,31 @@ class SegmentationTransforms(TransformMixin):
                     ),
                 ]
             )
-        if self.label_keys is not None:
-            mask_key = ["mask"]
-        else:
-            mask_key = []
+
         if self.convert_to_tensor is True:
             if self.brunet is False:
-                keys.append(self.output_image_key)
                 transforms.append(
                     monai.transforms.ToTensord(
-                        [self.output_image_key] + mask_key,
+                        [self.output_image_key] + self.mask_key,
                         track_meta=self.track_meta,
                         dtype=torch.float32,
                     )
                 )
             else:
-                keys.extend(self.image_keys)
                 transforms.append(
                     monai.transforms.ToTensord(
-                        self.image_keys + mask_key,
+                        self.image_keys + self.mask_key,
                         track_meta=self.track_meta,
                         dtype=torch.float32,
                     )
                 )
-        else:
-            keys.extend(self.image_keys)
 
         if not self.track_meta:
-            transforms.append(monai.transforms.SelectItemsd(keys + mask_key))
+            transforms.append(
+                monai.transforms.SelectItemsd(
+                    self.transform_keys + self.mask_key
+                )
+            )
 
         return transforms
 
@@ -266,34 +272,38 @@ class DetectionTransforms(TransformMixin):
     target_spacing: tuple[float] = None
     predict: bool = False
 
+    def __post_init__(self):
+        self.non_adc_keys = [k for k in self.keys if k not in self.adc_keys]
+        self.image_keys = (
+            self.keys + [self.mask_key]
+            if self.mask_key is not None
+            else self.keys
+        )
+        self.spacing_mode = [
+            "bilinear" if k != self.mask_key else "nearest"
+            for k in self.image_keys
+        ]
+
     def pre_transforms(self):
-        non_adc_keys = [k for k in self.keys if k not in self.adc_keys]
-        if self.mask_key is not None:
-            image_keys = self.keys + [self.mask_key]
-            spacing_mode = [
-                "bilinear" if k != self.mask_key else "nearest"
-                for k in image_keys
-            ]
-        else:
-            image_keys = self.keys
-            spacing_mode = ["bilinear" for k in image_keys]
         transforms = [
-            monai.transforms.LoadImaged(image_keys, ensure_channel_first=True),
-            monai.transforms.Orientationd(image_keys, "RAS"),
+            monai.transforms.LoadImaged(
+                self.image_keys, ensure_channel_first=True
+            ),
+            monai.transforms.Orientationd(self.image_keys, "RAS"),
         ]
         if self.target_spacing is not None:
             transforms.append(
                 monai.transforms.Spacingd(
-                    image_keys, self.target_spacing, mode=spacing_mode
+                    self.image_keys, self.target_spacing, mode=self.spacing_mode
                 )
             )
-        if len(non_adc_keys) > 0:
+        if self.non_adc_keys:
             transforms.append(
                 monai.transforms.ScaleIntensityd(
-                    non_adc_keys, minv=0.0, maxv=1.0
+                    self.non_adc_keys, minv=0.0, maxv=1.0
                 )
             )
-        if len(self.adc_keys) > 0:
+        if self.adc_keys:
             transforms.append(ConditionalRescalingd(self.adc_keys, 500, 0.001))
             transforms.append(Offsetd(self.adc_keys, None))
             transforms.append(
@@ -369,6 +379,18 @@ class ClassificationTransforms(TransformMixin):
             "bilinear" if k != self.mask_key else "nearest"
             for k in self.all_keys
         ]
+        if isinstance(self.positive_labels, int):
+            self.positive_labels = [self.positive_labels]
+        self.crop_size_with_margin = (
+            [int(j) + 16 for j in self.crop_size]
+            if self.crop_size is not None
+            else None
+        )
+        self.crop_size_final = (
+            [int(j) for j in self.crop_size]
+            if self.crop_size is not None
+            else None
+        )
 
     def pre_transforms(self):
         transforms = [
@@ -420,7 +442,7 @@ class ClassificationTransforms(TransformMixin):
         if self.pad_size is not None:
             transforms.append(
                 monai.transforms.SpatialPadd(
-                    self.all_keys, [int(j) + 16 for j in self.crop_size]
+                    self.all_keys, self.crop_size_with_margin
                 )
             )
         # initial crop with margin allows for rotation transforms to not create
@@ -433,13 +455,13 @@ class ClassificationTransforms(TransformMixin):
                 CropFromMaskd(
                     self.all_keys,
                     mask_key=self.mask_key,
-                    output_size=[int(j) + 16 for j in self.crop_size],
+                    output_size=self.crop_size_with_margin,
                 )
             )
         elif self.crop_size is not None:
             transforms.append(
                 monai.transforms.CenterSpatialCropd(
-                    self.all_keys, [int(j) + 16 for j in self.crop_size]
+                    self.all_keys, self.crop_size_with_margin
                 )
             )
         transforms.append(monai.transforms.EnsureTyped(self.all_keys))
@@ -451,7 +473,7 @@ class ClassificationTransforms(TransformMixin):
         if self.crop_size is not None:
             transforms.append(
                 monai.transforms.CenterSpatialCropd(
-                    self.all_keys, [int(j) for j in self.crop_size]
+                    self.all_keys, self.crop_size_final
                 )
             )
         if self.image_masking is True:
@@ -479,8 +501,6 @@ class ClassificationTransforms(TransformMixin):
                     ),
                 ]
             )
-        if isinstance(self.positive_labels, int):
-            self.positive_labels = [self.positive_labels]
         if self.label_key is not None:
             transforms.append(
                 LabelOperatord(
@@ -611,6 +631,18 @@ class SSLTransforms(TransformMixin):
     skip_augmentations: bool = False
     jpeg_dataset: bool = False
 
+    def __post_init__(self):
+        self.output_keys = (
+            ["image"]
+            if self.skip_augmentations
+            else ["augmented_image_1", "augmented_image_2"]
+        )
+        self.concat_keys = (
+            [self.all_keys]
+            if self.skip_augmentations
+            else [self.all_keys, self.copied_keys]
+        )
+
     def pre_transforms(self):
         intp = []
         intp_resampling_augmentations = []
@@ -688,20 +720,10 @@ class SSLTransforms(TransformMixin):
         return transforms
 
     def post_transforms(self):
-        if self.skip_augmentations is False:
-            return [
-                monai.transforms.ConcatItemsd(
-                    self.all_keys, "augmented_image_1"
-                ),
-                monai.transforms.ConcatItemsd(
-                    self.copied_keys, "augmented_image_2"
-                ),
-                monai.transforms.ToTensord(
-                    ["augmented_image_1", "augmented_image_2"], track_meta=False
-                ),
-            ]
-        else:
-            return [
-                monai.transforms.ConcatItemsd(self.all_keys, "image"),
-                monai.transforms.ToTensord(["image"], track_meta=False),
-            ]
+        transforms = []
+        for keys, output_key in zip(self.concat_keys, self.output_keys):
+            transforms.append(monai.transforms.ConcatItemsd(keys, output_key))
+        transforms.append(
+            monai.transforms.ToTensord(self.output_keys, track_meta=False)
+        )
+        return transforms
