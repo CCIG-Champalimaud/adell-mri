@@ -604,7 +604,9 @@ class ClassNetPL(ClassPLABC):
         self.args = args
         self.kwargs = kwargs
 
-        self.save_hyperparameters()
+        self.save_hyperparameters(
+            ignore=["training_dataloader_call", "training_batch_preproc"]
+        )
         self.setup_network()
         self.setup_metrics()
 
@@ -950,7 +952,9 @@ class UNetEncoderPL(UNetEncoder, ClassPLABC):
         self.args = args
         self.kwargs = kwargs
 
-        self.save_hyperparameters()
+        self.save_hyperparameters(
+            ignore=["training_dataloader_call", "training_batch_preproc"]
+        )
         self.setup_metrics()
 
 
@@ -1019,7 +1023,9 @@ class GenericEnsemblePL(GenericEnsemble, ClassPLABC):
         self.args = args
         self.kwargs = kwargs
 
-        self.save_hyperparameters()
+        self.save_hyperparameters(
+            ignore=["training_dataloader_call", "training_batch_preproc"]
+        )
         self.setup_metrics()
 
     def training_step(self, batch, batch_idx):
@@ -1134,7 +1140,13 @@ class AveragingEnsemblePL(AveragingEnsemble, ClassPLABC):
         self.args = args
         self.kwargs = kwargs
 
-        self.save_hyperparameters(ignore=["networks"])
+        self.save_hyperparameters(
+            ignore=[
+                "networks",
+                "training_dataloader_call",
+                "training_batch_preproc",
+            ]
+        )
         self.setup_metrics()
 
     def training_step(self, batch, batch_idx):
@@ -1256,7 +1268,9 @@ class ViTClassifierPL(ViTClassifier, ClassPLABC):
         self.args = args
         self.kwargs = kwargs
 
-        self.save_hyperparameters()
+        self.save_hyperparameters(
+            ignore=["training_dataloader_call", "training_batch_preproc"]
+        )
         self.setup_metrics()
 
 
@@ -1332,7 +1346,9 @@ class FactorizedViTClassifierPL(FactorizedViTClassifier, ClassPLABC):
         self.args = args
         self.kwargs = kwargs
 
-        self.save_hyperparameters()
+        self.save_hyperparameters(
+            ignore=["training_dataloader_call", "training_batch_preproc"]
+        )
         self.setup_metrics()
 
 
@@ -1407,7 +1423,14 @@ class TransformableTransformerPL(TransformableTransformer, ClassPLABC):
         self.args = args
         self.kwargs = kwargs
 
-        self.save_hyperparameters(ignore=["module", "loss_fn"])
+        self.save_hyperparameters(
+            ignore=[
+                "module",
+                "loss_fn",
+                "training_dataloader_call",
+                "training_batch_preproc",
+            ]
+        )
         self.setup_metrics()
 
 
@@ -1482,7 +1505,14 @@ class MultipleInstanceClassifierPL(MultipleInstanceClassifier, ClassPLABC):
         self.args = args
         self.kwargs = kwargs
 
-        self.save_hyperparameters(ignore=["module", "loss_fn"])
+        self.save_hyperparameters(
+            ignore=[
+                "module",
+                "loss_fn",
+                "training_dataloader_call",
+                "training_batch_preproc",
+            ]
+        )
         self.setup_metrics()
 
 
@@ -1569,6 +1599,8 @@ class HybridClassifierPL(HybridClassifier, ClassPLABC):
                 "kwargs",
                 "convolutional_module",
                 "tabular_module",
+                "training_dataloader_call",
+                "training_batch_preproc",
             ]
         )
         self.setup_metrics()
@@ -1711,7 +1743,13 @@ class DeconfoundedNetPL(DeconfoundedNetGeneric, ClassPLABC):
 
         self.conf_mult = 1.0
 
-        self.save_hyperparameters(ignore=["loss_fn"])
+        self.save_hyperparameters(
+            ignore=[
+                "loss_fn",
+                "training_dataloader_call",
+                "training_batch_preproc",
+            ]
+        )
         self.setup_metrics()
 
     def loss_cat_confounder(self, pred: torch.Tensor, y: torch.Tensor):
