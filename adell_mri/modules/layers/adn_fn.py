@@ -31,9 +31,17 @@ norm_fn_dict = {
 
 def get_adn_fn(spatial_dim, norm_fn="batch", act_fn="swish", dropout_param=0.1):
     if norm_fn not in norm_fn_dict:
-        raise "norm_fn must be one of {}".format(norm_fn_dict)
+        raise NotImplementedError(
+            "norm_fn must be one of {}".format(norm_fn_dict.keys())
+        )
     norm_fn = norm_fn_dict[norm_fn][spatial_dim]
     if isinstance(act_fn, str):
+        if act_fn not in activation_factory:
+            raise NotImplementedError(
+                "act_fn must be function or one of {}".format(
+                    activation_factory.keys()
+                )
+            )
         act_fn = activation_factory[act_fn]
 
     return ActDropNormBuilder(
