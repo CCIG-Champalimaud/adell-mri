@@ -184,6 +184,7 @@ def get_augmentations_class(
     t2_keys: list[str],
     flip_axis: list[int] = [0, 1],
     prob: float = 0.1,
+    n_transforms_trivial: int = 1,
 ):
     valid_arg_list = [
         "intensity",
@@ -320,7 +321,12 @@ def get_augmentations_class(
         )
 
     if "trivial" in augment:
-        augments = monai.transforms.OneOf(augments)
+        augments = monai.transforms.Compose(
+            [
+                monai.transforms.OneOf(augments)
+                for _ in range(n_transforms_trivial)
+            ]
+        )
     else:
         augments = monai.transforms.Compose(augments)
     return augments
