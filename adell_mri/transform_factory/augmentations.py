@@ -321,11 +321,8 @@ def get_augmentations_class(
         )
 
     if "trivial" in augment:
-        augments = monai.transforms.Compose(
-            [
-                monai.transforms.OneOf(augments)
-                for _ in range(n_transforms_trivial)
-            ]
+        augments = monai.transforms.SomeOf(
+            augments, num_transforms=n_transforms_trivial
         )
     else:
         augments = monai.transforms.Compose(augments)
