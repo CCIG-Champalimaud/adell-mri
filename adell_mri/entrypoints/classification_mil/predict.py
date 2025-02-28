@@ -241,15 +241,16 @@ def main(arguments):
 
             prediction_output = {
                 k: x.detach().cpu().numpy().tolist()
-                for x, k in zip(prediction_output, prediction_pids)
+                for x, k in zip(prediction_pids, prediction_output)
             }
             prediction_output = {"prediction": prediction_output}
             if len(attention_output) > 0:
                 prediction_output["attention"] = {
                     k: x.detach().cpu().numpy().tolist()
-                    for x, k in zip(attention_output, prediction_pids)
+                    for k, x in zip(prediction_pids, attention_output)
                 }
             prediction_output["checkpoint"] = checkpoint
+            prediction_output["iteration"] = iteration
             all_metrics.append(prediction_output)
 
     Path(args.output_path).parent.mkdir(exist_ok=True, parents=True)
