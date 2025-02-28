@@ -67,7 +67,10 @@ def main(arguments):
     g, rng = get_generator_and_rng(args.seed)
 
     data_dict = Dataset(args.dataset_json, rng=rng, verbose=True)
-    all_prediction_pids = parse_ids(args.prediction_ids)
+    if args.prediction_ids:
+        all_prediction_pids = parse_ids(args.prediction_ids)
+    else:
+        all_prediction_pids = [[k for k in data_dict]]
     if args.excluded_ids is not None:
         excluded_ids = parse_ids(args.excluded_ids, output_format="list")
         a = len(data_dict)
