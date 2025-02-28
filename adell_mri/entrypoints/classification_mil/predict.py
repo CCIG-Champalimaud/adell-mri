@@ -190,7 +190,7 @@ def main(arguments):
                 print("2D module output size not specified, inferring...")
                 input_example = torch.rand(
                     1, 1, *[int(x) for x in args.crop_size][:2]
-                ).to(args.dev.split(":")[0])
+                ).to(args.dev)
                 output = network_config["module"](input_example)
                 network_config["module_out_dim"] = int(output.shape[1])
                 print(
