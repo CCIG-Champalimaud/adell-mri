@@ -49,6 +49,7 @@ def main(arguments):
             "seed",
             "one_to_one",
             "prediction_ids",
+            "ensemble",
             (
                 "prediction_type",
                 "type",
