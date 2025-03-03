@@ -253,10 +253,10 @@ def main(arguments):
                 for k in output_dict["predictions"]:
                     value = np.array(output_dict["predictions"])
                     if k not in output_dict_ensemble["predictions"]:
-                        output_dict_ensemble["predictions"] = []
-                        output_dict_ensemble["n_predictions"] = 0
-                    output_dict_ensemble["predictions"].append(value)
-                    output_dict_ensemble["n_predictions"] += 1
+                        output_dict_ensemble["predictions"][k] = []
+                        output_dict_ensemble["n_predictions"][k] = 0
+                    output_dict_ensemble["predictions"][k].append(value)
+                    output_dict_ensemble["n_predictions"][k] += 1
                 for k in output_dict_ensemble["predictions"]:
                     n = output_dict_ensemble["predictions"][k]
                     d = output_dict_ensemble["n_predictions"][k]
