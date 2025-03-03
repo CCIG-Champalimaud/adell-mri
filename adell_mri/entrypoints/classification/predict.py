@@ -244,7 +244,7 @@ def main(arguments):
 
         if args.ensemble is not None:
             global_output.append(
-                get_ensemble_prediction(global_output), args.ensemble
+                get_ensemble_prediction(global_output, args.ensemble)
             )
     Path(args.output_path).parent.mkdir(exist_ok=True, parents=True)
     with open(args.output_path, "w") as o:
