@@ -9,6 +9,7 @@ import torch
 from tqdm import tqdm
 
 from adell_mri.entrypoints.assemble_args import Parser
+from adell_mri.utils.prediction_utils import get_ensemble_prediction
 
 from ...modules.classification.losses import OrdinalSigmoidalLoss
 from ...modules.config_parsing import parse_config_cat, parse_config_unet
@@ -242,31 +243,9 @@ def main(arguments):
             global_output.append(output_dict)
 
         if args.ensemble is not None:
-            output_dict_ensemble = output_dict = {
-                "iteration": iteration,
-                "prediction_ids": [],
-                "checkpoint": checkpoint_list,
-                "predictions": {},
-                "n_predictions": {},
-            }
-            for output_dict in global_output:
-                for k in output_dict["predictions"]:
-                    value = np.array(output_dict["predictions"])
-                    if k not in output_dict_ensemble["predictions"]:
-                        output_dict_ensemble["predictions"][k] = []
-                        output_dict_ensemble["n_predictions"][k] = 0
-                    output_dict_ensemble["predictions"][k].append(value)
-                    output_dict_ensemble["n_predictions"][k] += 1
-                for k in output_dict_ensemble["predictions"]:
-                    n = output_dict_ensemble["predictions"][k]
-                    d = output_dict_ensemble["n_predictions"][k]
-                    if args.ensemble == "mean":
-                        output_dict_ensemble["predictions"][k] = sum(n) / d
-                    elif args.ensemble == "majority":
-                        u, c = np.unique(n, return_counts=True)
-                        maj = u[np.argmax(c)]
-                        output_dict_ensemble["predictions"][k] = maj
-            global_output.append(output_dict_ensemble)
+            global_output.append(
+                get_ensemble_prediction(global_output), args.ensemble
+            )
     Path(args.output_path).parent.mkdir(exist_ok=True, parents=True)
     with open(args.output_path, "w") as o:
         o.write(json.dumps(global_output))

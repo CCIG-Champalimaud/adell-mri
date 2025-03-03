@@ -6,6 +6,8 @@ import monai
 import torch
 from tqdm import tqdm
 
+from adell_mri.utils.prediction_utils import get_ensemble_prediction
+
 from ...entrypoints.assemble_args import Parser
 from ...modules.classification.pl import (
     MultipleInstanceClassifierPL,
@@ -138,7 +140,7 @@ def main(arguments):
         ]
     )
 
-    all_metrics = []
+    global_output = []
     for iteration, prediction_pids in enumerate(all_prediction_pids):
         prediction_pids = [pid for pid in prediction_pids if pid in data_dict]
         prediction_list = [data_dict[pid] for pid in prediction_pids]
@@ -251,8 +253,13 @@ def main(arguments):
                 }
             prediction_output["checkpoint"] = checkpoint
             prediction_output["iteration"] = iteration
-            all_metrics.append(prediction_output)
+            global_output.append(prediction_output)
+
+        if args.ensemble is not None:
+            global_output = get_ensemble_prediction(
+                global_output, args.ensemble
+            )
 
     Path(args.output_path).parent.mkdir(exist_ok=True, parents=True)
     with open(args.output_path, "w") as o:
-        json.dump(all_metrics, o)
+        json.dump(global_output, o)
