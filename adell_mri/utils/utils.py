@@ -9,20 +9,31 @@ import SimpleITK as sitk
 import torch
 import torch.nn.functional as F
 
-from ..custom_types import (DatasetDict, FloatOrTensor, SizeDict, SpacingDict,
-                            TensorIterable, TensorList)
-from ..modules.segmentation.losses import (binary_cross_entropy,
-                                           binary_focal_loss,
-                                           binary_focal_tversky_loss,
-                                           binary_generalized_dice_loss,
-                                           cat_cross_entropy, combo_loss,
-                                           hybrid_focal_loss, mc_combo_loss,
-                                           mc_focal_loss,
-                                           mc_focal_tversky_loss,
-                                           mc_generalized_dice_loss,
-                                           mc_hybrid_focal_loss,
-                                           mc_unified_focal_loss,
-                                           unified_focal_loss, weighted_mse)
+from ..custom_types import (
+    DatasetDict,
+    FloatOrTensor,
+    SizeDict,
+    SpacingDict,
+    TensorIterable,
+    TensorList,
+)
+from ..modules.segmentation.losses import (
+    binary_cross_entropy,
+    binary_focal_loss,
+    binary_focal_tversky_loss,
+    binary_generalized_dice_loss,
+    cat_cross_entropy,
+    combo_loss,
+    hybrid_focal_loss,
+    mc_combo_loss,
+    mc_focal_loss,
+    mc_focal_tversky_loss,
+    mc_generalized_dice_loss,
+    mc_hybrid_focal_loss,
+    mc_unified_focal_loss,
+    unified_focal_loss,
+    weighted_mse,
+)
 
 loss_factory = {
     "binary": {

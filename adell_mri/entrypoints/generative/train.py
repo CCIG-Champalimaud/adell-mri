@@ -13,9 +13,11 @@ from ...utils.network_factories import get_generative_network
 from ...utils.parser import compose, get_params, merge_args
 from ...utils.pl_callbacks import EMACallback, LogImageFromDiffusionProcess
 from ...utils.pl_utils import get_ckpt_callback, get_devices, get_logger
-from ...utils.torch_utils import (conditional_parameter_freezing,
-                                  get_generator_and_rng,
-                                  load_checkpoint_to_model)
+from ...utils.torch_utils import (
+    conditional_parameter_freezing,
+    get_generator_and_rng,
+    load_checkpoint_to_model,
+)
 from ...utils.utils import collate_last_slice, safe_collate
 from ..assemble_args import Parser
 

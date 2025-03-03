@@ -23,10 +23,16 @@ from ...utils.monai_transforms import GetAllCropsd, RandomSlices, SlicesToFirst
 from ...utils.parser import parse_ids
 from ...utils.pl_utils import get_ckpt_callback, get_devices, get_logger
 from ...utils.samplers import PartiallyRandomSampler
-from ...utils.sitk_utils import (get_spacing_quantile,
-                                 spacing_values_from_dataset_json)
-from ...utils.utils import (collate_last_slice, get_loss_param_dict,
-                            safe_collate, safe_collate_crops)
+from ...utils.sitk_utils import (
+    get_spacing_quantile,
+    spacing_values_from_dataset_json,
+)
+from ...utils.utils import (
+    collate_last_slice,
+    get_loss_param_dict,
+    safe_collate,
+    safe_collate_crops,
+)
 
 torch.backends.cudnn.benchmark = True
 

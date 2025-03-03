@@ -8,8 +8,12 @@ import yaml
 
 from ..custom_types import DatasetDict
 from ..utils.parser import parse_ids
-from .dataset_filters import (fill_conditional, fill_missing_with_value,
-                              filter_dictionary, print_verbose)
+from .dataset_filters import (
+    fill_conditional,
+    fill_missing_with_value,
+    filter_dictionary,
+    print_verbose,
+)
 
 
 def subsample_dataset(

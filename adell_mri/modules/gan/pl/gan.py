@@ -15,8 +15,11 @@ import torch.optim
 from ...diffusion.embedder import Embedder
 from ..discriminator import Discriminator
 from ..generator import Generator
-from ..losses import (SemiSLAdversarialLoss, SemiSLRelativisticGANLoss,
-                      SemiSLWGANGPLoss)
+from ..losses import (
+    SemiSLAdversarialLoss,
+    SemiSLRelativisticGANLoss,
+    SemiSLWGANGPLoss,
+)
 
 
 def mean(x: list[torch.Tensor]) -> torch.Tensor:

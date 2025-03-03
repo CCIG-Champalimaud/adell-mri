@@ -14,8 +14,15 @@ from ..segmentation.unet import UNet
 from .dino import DINO
 from .ibot import iBOT
 from .jepa import IJEPA
-from .losses import (BarlowTwinsLoss, DinoLoss, NTXentLoss, VICRegLocalLoss,
-                     VICRegLoss, byol_loss, simsiam_loss)
+from .losses import (
+    BarlowTwinsLoss,
+    DinoLoss,
+    NTXentLoss,
+    VICRegLocalLoss,
+    VICRegLoss,
+    byol_loss,
+    simsiam_loss,
+)
 
 
 class BarlowTwinsPL(ResNet, pl.LightningModule):

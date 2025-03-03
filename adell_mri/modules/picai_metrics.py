@@ -3,8 +3,20 @@ import itertools
 import json
 import os
 from concurrent.futures import ThreadPoolExecutor
-from typing import (Any, Callable, Dict, Hashable, Iterable, List, Optional,
-                    Path, PathLike, Sized, Tuple, Union)
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    Hashable,
+    Iterable,
+    List,
+    Optional,
+    Path,
+    PathLike,
+    Sized,
+    Tuple,
+    Union,
+)
 
 import numpy as np
 import numpy.typing as npt

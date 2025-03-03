@@ -9,8 +9,10 @@ from tqdm import tqdm
 from adell_mri.utils.prediction_utils import get_ensemble_prediction
 
 from ...entrypoints.assemble_args import Parser
-from ...modules.classification.pl import (MultipleInstanceClassifierPL,
-                                          TransformableTransformerPL)
+from ...modules.classification.pl import (
+    MultipleInstanceClassifierPL,
+    TransformableTransformerPL,
+)
 from ...modules.config_parsing import parse_config_2d_classifier_3d
 from ...transform_factory.transforms import ClassificationTransforms
 from ...utils.dataset import Dataset

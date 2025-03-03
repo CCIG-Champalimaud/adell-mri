@@ -7,8 +7,10 @@ import torch
 from lightning.pytorch import Trainer
 
 from ...entrypoints.assemble_args import Parser
-from ...modules.classification.pl import (MultipleInstanceClassifierPL,
-                                          TransformableTransformerPL)
+from ...modules.classification.pl import (
+    MultipleInstanceClassifierPL,
+    TransformableTransformerPL,
+)
 from ...modules.config_parsing import parse_config_2d_classifier_3d
 from ...transform_factory.transforms import ClassificationTransforms
 from ...utils.dataset import Dataset
