@@ -9,12 +9,17 @@ from tqdm import tqdm
 
 from ...entrypoints.assemble_args import Parser
 from ...modules.classification.pl import GenericEnsemblePL
-from ...modules.config_parsing import (parse_config_cat, parse_config_ensemble,
-                                       parse_config_unet)
+from ...modules.config_parsing import (
+    parse_config_cat,
+    parse_config_ensemble,
+    parse_config_unet,
+)
 from ...modules.losses import OrdinalSigmoidalLoss
 from ...transform_factory.transforms import ClassificationTransforms
-from ...utils.dataset_filters import (filter_dictionary_with_filters,
-                                      filter_dictionary_with_presence)
+from ...utils.dataset_filters import (
+    filter_dictionary_with_filters,
+    filter_dictionary_with_presence,
+)
 from ...utils.network_factories import get_classification_network
 from ...utils.parser import get_params, merge_args, parse_ids
 from ...utils.torch_utils import load_checkpoint_to_model
@@ -79,8 +84,8 @@ def main(arguments):
             data_dict, args.filter_on_keys
         )
     presence_keys = args.image_keys + clinical_feature_keys
-    if mask_key in presence_keys:
-        presence_keys.append(mask_key)
+    if args.mask_key is not None:
+        presence_keys.append(args.mask_key)
     data_dict = filter_dictionary_with_presence(
         data_dict, args.image_keys + clinical_feature_keys
     )
