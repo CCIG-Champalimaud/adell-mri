@@ -1,17 +1,14 @@
-import monai
 from typing import Any
 
+import monai
 import monai.transforms
 
-from ..utils.monai_transforms import CopyEntryd
 from ..modules.semi_supervised_segmentation.utils import (
-    convert_arguments_augment_all,
-    convert_arguments_augment_individual,
-    convert_arguments_post,
-    convert_arguments_pre,
-)
-from .transforms import SegmentationTransforms
+    convert_arguments_augment_all, convert_arguments_augment_individual,
+    convert_arguments_post, convert_arguments_pre)
+from ..utils.monai_transforms import CopyEntryd
 from .augmentations import get_augmentations_unet
+from .transforms import SegmentationTransforms
 
 
 def get_semi_sl_transforms(

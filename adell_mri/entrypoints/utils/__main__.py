@@ -2,7 +2,6 @@ import importlib
 import re
 import sys
 
-
 supported_modes = {
     # preprocessing
     "bias_field_correction": ".preprocessing.bias_field_correction",

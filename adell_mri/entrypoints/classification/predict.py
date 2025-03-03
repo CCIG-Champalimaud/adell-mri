@@ -184,7 +184,7 @@ def main(arguments):
                 dropout_param=0,
                 seed=None,
                 n_classes=args.n_classes,
-                keys=keys,
+                keys=input_keys,
                 clinical_feature_keys=clinical_feature_keys,
                 train_loader_call=None,
                 max_epochs=None,

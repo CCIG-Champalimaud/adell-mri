@@ -13,19 +13,15 @@ from adell_mri.utils.torch_utils import get_generator_and_rng
 
 from ...entrypoints.assemble_args import Parser
 from ...modules.object_detection import YOLONet3d
-from ...transform_factory import (
-    DetectionTransforms,
-    get_augmentations_detection,
-)
-from ...utils.utils import load_anchors, safe_collate
-from ...utils.dataset_filters import (
-    filter_dictionary_with_filters,
-    filter_dictionary_with_presence,
-)
+from ...transform_factory import (DetectionTransforms,
+                                  get_augmentations_detection)
+from ...utils.dataset_filters import (filter_dictionary_with_filters,
+                                      filter_dictionary_with_presence)
 from ...utils.detection import anchors_from_nested_list
 from ...utils.network_factories import get_detection_network
 from ...utils.pl_utils import get_ckpt_callback, get_devices, get_logger
 from ...utils.sitk_utils import spacing_from_dataset_json
+from ...utils.utils import load_anchors, safe_collate
 
 torch.backends.cudnn.benchmark = True
 

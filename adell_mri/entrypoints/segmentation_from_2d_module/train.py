@@ -16,25 +16,17 @@ from ...entrypoints.assemble_args import Parser
 from ...modules.config_parsing import parse_config_unet
 from ...modules.layers.adn_fn import get_adn_fn
 from ...modules.segmentation.pl import MIMUNetPL
-from ...transform_factory import (
-    get_augmentations_unet as get_augmentations,
-)
 from ...transform_factory import SegmentationTransforms
-from ...utils.monai_transforms import GetAllCropsd, SlicesToFirst, RandomSlices
-from ...utils.utils import (
-    collate_last_slice,
-    get_loss_param_dict,
-    safe_collate,
-    safe_collate_crops,
-)
-from ...utils.samplers import PartiallyRandomSampler
+from ...transform_factory import get_augmentations_unet as get_augmentations
 from ...utils.dataset import Dataset
+from ...utils.monai_transforms import GetAllCropsd, RandomSlices, SlicesToFirst
 from ...utils.parser import parse_ids
 from ...utils.pl_utils import get_ckpt_callback, get_devices, get_logger
-from ...utils.sitk_utils import (
-    get_spacing_quantile,
-    spacing_values_from_dataset_json,
-)
+from ...utils.samplers import PartiallyRandomSampler
+from ...utils.sitk_utils import (get_spacing_quantile,
+                                 spacing_values_from_dataset_json)
+from ...utils.utils import (collate_last_slice, get_loss_param_dict,
+                            safe_collate, safe_collate_crops)
 
 torch.backends.cudnn.benchmark = True
 

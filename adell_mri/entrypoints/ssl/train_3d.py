@@ -10,11 +10,11 @@ from adell_mri.utils.torch_utils import get_generator_and_rng
 
 from ...entrypoints.assemble_args import Parser
 from ...modules.config_parsing import parse_config_ssl, parse_config_unet
-from ...transform_factory import get_augmentations_ssl, SSLTransforms
-from ...utils.utils import ExponentialMovingAverage, safe_collate
+from ...transform_factory import SSLTransforms, get_augmentations_ssl
 from ...utils.dataset import Dataset
 from ...utils.network_factories import get_ssl_network
 from ...utils.pl_utils import get_ckpt_callback, get_devices, get_logger
+from ...utils.utils import ExponentialMovingAverage, safe_collate
 
 torch.backends.cudnn.benchmark = True
 

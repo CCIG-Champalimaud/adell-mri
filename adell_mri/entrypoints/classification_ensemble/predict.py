@@ -1,5 +1,6 @@
 import json
 import sys
+from copy import deepcopy
 from pathlib import Path
 
 import monai
@@ -8,17 +9,12 @@ from tqdm import tqdm
 
 from ...entrypoints.assemble_args import Parser
 from ...modules.classification.pl import GenericEnsemblePL
-from ...modules.config_parsing import (
-    parse_config_cat,
-    parse_config_ensemble,
-    parse_config_unet,
-)
+from ...modules.config_parsing import (parse_config_cat, parse_config_ensemble,
+                                       parse_config_unet)
 from ...modules.losses import OrdinalSigmoidalLoss
 from ...transform_factory.transforms import ClassificationTransforms
-from ...utils.dataset_filters import (
-    filter_dictionary_with_filters,
-    filter_dictionary_with_presence,
-)
+from ...utils.dataset_filters import (filter_dictionary_with_filters,
+                                      filter_dictionary_with_presence)
 from ...utils.network_factories import get_classification_network
 from ...utils.parser import get_params, merge_args, parse_ids
 from ...utils.torch_utils import load_checkpoint_to_model
@@ -34,6 +30,7 @@ def main(arguments):
             "image_keys",
             "clinical_feature_keys",
             "adc_keys",
+            "mask_key",
             "n_classes",
             "filter_on_keys",
             "excluded_ids",
@@ -81,6 +78,9 @@ def main(arguments):
         data_dict = filter_dictionary_with_filters(
             data_dict, args.filter_on_keys
         )
+    presence_keys = args.image_keys + clinical_feature_keys
+    if mask_key in presence_keys:
+        presence_keys.append(mask_key)
     data_dict = filter_dictionary_with_presence(
         data_dict, args.image_keys + clinical_feature_keys
     )
@@ -100,6 +100,10 @@ def main(arguments):
     keys = args.image_keys
     adc_keys = args.adc_keys if args.adc_keys is not None else []
     adc_keys = [k for k in adc_keys if k in keys]
+    mask_key = args.mask_key
+    input_keys = deepcopy(keys)
+    if args.mask_key is not None:
+        input_keys.append(args.mask_key)
 
     ensemble_config = parse_config_ensemble(
         args.ensemble_config_file, args.n_classes
@@ -134,6 +138,7 @@ def main(arguments):
     label_mode = "binary" if args.n_classes == 2 else "cat"
     transform_arguments = {
         "keys": keys,
+        "mask_key": mask_key,
         "clinical_feature_keys": clinical_feature_keys,
         "adc_keys": adc_keys,
         "target_spacing": args.target_spacing,
@@ -204,7 +209,7 @@ def main(arguments):
                         dropout_param=0.0,
                         seed=42,
                         n_classes=args.n_classes,
-                        keys=keys,
+                        keys=input_keys,
                         clinical_feature_keys=clinical_feature_keys,
                         train_loader_call=None,
                         max_epochs=None,

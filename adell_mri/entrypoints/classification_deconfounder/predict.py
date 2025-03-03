@@ -9,8 +9,8 @@ import torch
 from tqdm import tqdm
 
 from adell_mri.entrypoints.assemble_args import Parser
-from adell_mri.utils.torch_utils import get_generator_and_rng
 from adell_mri.utils.prediction_utils import get_ensemble_prediction
+from adell_mri.utils.torch_utils import get_generator_and_rng
 
 from ...modules.config_parsing import parse_config_cat, parse_config_unet
 from ...transform_factory.transforms import ClassificationTransforms

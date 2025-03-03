@@ -1,5 +1,6 @@
 import json
 import sys
+from copy import deepcopy
 
 import monai
 import numpy as np
@@ -8,23 +9,18 @@ from lightning.pytorch import Trainer
 
 from ...entrypoints.assemble_args import Parser
 from ...modules.classification.pl import GenericEnsemblePL
-from ...modules.config_parsing import (
-    parse_config_cat,
-    parse_config_ensemble,
-    parse_config_unet,
-)
+from ...modules.config_parsing import (parse_config_cat, parse_config_ensemble,
+                                       parse_config_unet)
 from ...modules.losses import OrdinalSigmoidalLoss
 from ...transform_factory.transforms import ClassificationTransforms
-from ...utils.utils import safe_collate
-from ...utils.dataset_filters import (
-    filter_dictionary_with_filters,
-    filter_dictionary_with_possible_labels,
-    filter_dictionary_with_presence,
-)
+from ...utils.dataset_filters import (filter_dictionary_with_filters,
+                                      filter_dictionary_with_possible_labels,
+                                      filter_dictionary_with_presence)
 from ...utils.network_factories import get_classification_network
 from ...utils.parser import get_params, merge_args, parse_ids
 from ...utils.pl_utils import get_devices
 from ...utils.torch_utils import load_checkpoint_to_model
+from ...utils.utils import safe_collate
 
 
 def main(arguments):
@@ -132,6 +128,9 @@ def main(arguments):
     keys = args.image_keys
     adc_keys = args.adc_keys if args.adc_keys is not None else []
     adc_keys = [k for k in adc_keys if k in keys]
+    input_keys = deepcopy(keys)
+    if args.mask_key is not None:
+        input_keys.append(args.mask_key)
 
     ensemble_config = parse_config_ensemble(
         args.ensemble_config_file, n_classes
@@ -233,7 +232,7 @@ def main(arguments):
                         dropout_param=0.0,
                         seed=42,
                         n_classes=n_classes,
-                        keys=keys,
+                        keys=input_keys,
                         clinical_feature_keys=clinical_feature_keys,
                         train_loader_call=None,
                         max_epochs=None,

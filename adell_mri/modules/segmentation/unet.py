@@ -6,17 +6,13 @@ import torch.nn.functional as F
 
 from ...custom_types import ModuleList
 from ..layers.adn_fn import ActDropNorm, get_adn_fn, norm_fn_dict
-from ..layers.multi_resolution import (
-    AtrousSpatialPyramidPooling2d,
-    AtrousSpatialPyramidPooling3d,
-)
+from ..layers.multi_resolution import (AtrousSpatialPyramidPooling2d,
+                                       AtrousSpatialPyramidPooling3d)
 from ..layers.regularization import UOut
 from ..layers.res_blocks import ResidualBlock2d, ResidualBlock3d
-from ..layers.self_attention import (
-    ConcurrentSqueezeAndExcite2d,
-    ConcurrentSqueezeAndExcite3d,
-    SelfAttentionBlock,
-)
+from ..layers.self_attention import (ConcurrentSqueezeAndExcite2d,
+                                     ConcurrentSqueezeAndExcite3d,
+                                     SelfAttentionBlock)
 from ..layers.utils import crop_to_size
 
 

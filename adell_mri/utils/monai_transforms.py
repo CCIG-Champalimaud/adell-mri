@@ -13,12 +13,8 @@ from skimage import measure
 from skimage.morphology import convex_hull_image
 from sklearn.cluster import DBSCAN
 
-from ..custom_types import (
-    NDArrayOrTensorDict,
-    Size2dOr3d,
-    TensorDict,
-    TensorOrNDarray,
-)
+from ..custom_types import (NDArrayOrTensorDict, Size2dOr3d, TensorDict,
+                            TensorOrNDarray)
 
 
 def normalize_along_slice(

@@ -2,7 +2,6 @@ from dataclasses import dataclass
 from typing import List, Tuple
 
 import numpy as np
-
 import SimpleITK as sitk
 from multiprocess import Pool
 from tqdm import tqdm

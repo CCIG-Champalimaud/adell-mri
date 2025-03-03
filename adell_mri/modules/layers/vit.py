@@ -6,15 +6,8 @@ import einops
 import numpy as np
 import torch
 
-from ...custom_types import (
-    Callable,
-    Dict,
-    List,
-    Size2dOr3d,
-    TensorList,
-    Tuple,
-    Union,
-)
+from ...custom_types import (Callable, Dict, List, Size2dOr3d, TensorList,
+                             Tuple, Union)
 from .adn_fn import get_adn_fn
 from .linear_blocks import MLP, MultiHeadSelfAttention
 from .regularization import ChannelDropout

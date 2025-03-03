@@ -12,36 +12,21 @@ from adell_mri.utils.logging import CSVLogger
 
 from ...entrypoints.assemble_args import Parser
 from ...modules.classification.pl import GenericEnsemblePL
-from ...modules.config_parsing import (
-    parse_config_cat,
-    parse_config_ensemble,
-    parse_config_unet,
-)
+from ...modules.config_parsing import (parse_config_cat, parse_config_ensemble,
+                                       parse_config_unet)
 from ...modules.losses import OrdinalSigmoidalLoss
-from ...transform_factory import (
-    ClassificationTransforms,
-    get_augmentations_class as get_augmentations,
-)
-from ...utils.utils import safe_collate
-from ...utils.torch_utils import (
-    conditional_parameter_freezing,
-    set_classification_layer_bias,
-)
-
+from ...transform_factory import ClassificationTransforms
+from ...transform_factory import get_augmentations_class as get_augmentations
 from ...utils.dataset import Dataset
 from ...utils.network_factories import get_classification_network
 from ...utils.parser import get_params, merge_args, parse_ids
-from ...utils.pl_utils import (
-    delete_checkpoints,
-    get_ckpt_callback,
-    get_devices,
-    get_logger,
-)
-from ...utils.torch_utils import (
-    get_class_weights,
-    get_generator_and_rng,
-    load_checkpoint_to_model,
-)
+from ...utils.pl_utils import (delete_checkpoints, get_ckpt_callback,
+                               get_devices, get_logger)
+from ...utils.torch_utils import (conditional_parameter_freezing,
+                                  get_class_weights, get_generator_and_rng,
+                                  load_checkpoint_to_model,
+                                  set_classification_layer_bias)
+from ...utils.utils import safe_collate
 
 
 def main(arguments):

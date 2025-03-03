@@ -12,13 +12,13 @@ from ...entrypoints.assemble_args import Parser
 from ...modules.config_parsing import parse_config_ssl, parse_config_unet
 from ...modules.layers import ResNet
 from ...transform_factory.transforms import SegmentationTransforms
-from ...utils.utils import collate_last_slice, safe_collate
-from ...utils.monai_transforms import SlicesToFirst
 from ...utils.dataset import Dataset
 from ...utils.inference import SegmentationInference, TensorListReduction
+from ...utils.monai_transforms import SlicesToFirst
 from ...utils.network_factories import get_segmentation_network
 from ...utils.parser import parse_ids
 from ...utils.sitk_writer import SitkWriter
+from ...utils.utils import collate_last_slice, safe_collate
 
 torch.backends.cudnn.benchmark = True
 
