@@ -1,5 +1,6 @@
 from typing import Any, Callable, Dict, List
 
+import os
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -72,6 +73,13 @@ from ..utils.utils import (
     get_loss_param_dict,
     loss_factory,
 )
+
+
+def compile_if_necessary(model: torch.nn.Module):
+    if os.environ.get("TORCH_COMPILE", "False").lower() in ["True", "1"]:
+        if not isinstance(model, torch._dynamo.eval_frame.OptimizedModule):
+            model = torch.compile(model)
+    return model
 
 
 def get_classification_network(
@@ -190,6 +198,7 @@ def get_classification_network(
             **boilerplate_args_hybrid,
         )
 
+    network = compile_if_necessary(network)
     return network
 
 
@@ -258,6 +267,7 @@ def get_deconfounded_classification_network(
         **network_config,
     )
 
+    network = compile_if_necessary(network)
     return network
 
 
@@ -343,6 +353,7 @@ def get_detection_network(
         **net_cfg,
     )
 
+    network = compile_if_necessary(network)
     return network
 
 
@@ -500,6 +511,7 @@ def get_segmentation_network(
             **network_config,
         )
 
+    network = compile_if_necessary(network)
     return unet
 
 
@@ -585,6 +597,7 @@ def get_ssl_network(
         else:
             ssl = SelfSLResNetPL(**boilerplate, **network_config_correct)
 
+    network = compile_if_necessary(network)
     return ssl
 
 
@@ -607,6 +620,7 @@ def get_ssl_network_no_pl(
         else:
             ssl = ResNet(**network_config_correct)
 
+    network = compile_if_necessary(network)
     return ssl
 
 
@@ -664,6 +678,7 @@ def get_generative_network(
         **network_config,
     )
 
+    network = compile_if_necessary(network)
     return network
 
 
@@ -746,4 +761,5 @@ def get_gan_network(
 
     network = GANPL(**boilerplate_args)
 
+    network = compile_if_necessary(network)
     return network
