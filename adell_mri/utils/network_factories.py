@@ -76,7 +76,7 @@ from ..utils.utils import (
 
 
 def compile_if_necessary(model: torch.nn.Module):
-    if os.environ.get("TORCH_COMPILE", "False").lower() in ["True", "1"]:
+    if os.environ.get("TORCH_COMPILE", "False").lower() in ["true", "1"]:
         if not isinstance(model, torch._dynamo.eval_frame.OptimizedModule):
             model = torch.compile(model)
     return model
