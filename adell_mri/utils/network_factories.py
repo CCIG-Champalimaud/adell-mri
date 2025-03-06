@@ -511,7 +511,7 @@ def get_segmentation_network(
             **network_config,
         )
 
-    network = compile_if_necessary(network)
+    unet = compile_if_necessary(unet)
     return unet
 
 
@@ -597,7 +597,7 @@ def get_ssl_network(
         else:
             ssl = SelfSLResNetPL(**boilerplate, **network_config_correct)
 
-    network = compile_if_necessary(network)
+    ssl = compile_if_necessary(ssl)
     return ssl
 
 
@@ -620,7 +620,7 @@ def get_ssl_network_no_pl(
         else:
             ssl = ResNet(**network_config_correct)
 
-    network = compile_if_necessary(network)
+    ssl = compile_if_necessary(ssl)
     return ssl
 
 
