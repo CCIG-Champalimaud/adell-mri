@@ -244,7 +244,7 @@ def main(arguments):
 
             prediction_output = {
                 k: x.detach().cpu().numpy().tolist()
-                for x, k in zip(prediction_pids, prediction_output)
+                for k, x in zip(prediction_pids, prediction_output)
             }
             prediction_output = {"prediction": prediction_output}
             if len(attention_output) > 0:
