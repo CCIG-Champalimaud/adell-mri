@@ -1,5 +1,4 @@
-desc = "Produces a JSON file with all positive coordinates from a set of masks\
-    after applying a set of transforms."
+desc = "Produces a JSON file with all mask coordinates after applying spatial transforms."
 
 
 def main(arguments):
@@ -75,4 +74,4 @@ def main(arguments):
             }
 
     with open(args.output_json, "w") as f:
-        json.dump(all_coords, f)
+        json.dump(all_coords, f, indent=2)
