@@ -1,11 +1,11 @@
-import argparse
-import json
-import re
-
 desc = "Merges two JSON datasets. Solves conflicts using suffixes"
 
 
 def main(arguments):
+    import argparse
+    import json
+    import re
+
     parser = argparse.ArgumentParser(description=desc)
 
     parser.add_argument(

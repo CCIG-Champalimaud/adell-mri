@@ -1,10 +1,4 @@
-import argparse
-import json
 import os
-from multiprocessing import Pool
-from pathlib import Path
-
-from tqdm import tqdm
 
 ImageInformation = tuple[str, str, str]
 ImageDictionary = dict[str, dict[str, dict[str, str]]]
@@ -32,6 +26,13 @@ def update_dict(
 
 
 def main(arguments):
+    import argparse
+    import json
+    from multiprocessing import Pool
+    from pathlib import Path
+
+    from tqdm import tqdm
+
     parser = argparse.ArgumentParser(description=desc)
     parser.add_argument(
         "--input_path",

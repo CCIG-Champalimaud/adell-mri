@@ -1,14 +1,14 @@
-import argparse
-import json
-
-import numpy as np
-import SimpleITK as sitk
-from tqdm import tqdm
-
 desc = "Removes empty masks from dataset JSON"
 
 
 def main(arguments):
+    import argparse
+    import json
+
+    import numpy as np
+    import SimpleITK as sitk
+    from tqdm import tqdm
+
     parser = argparse.ArgumentParser(description=desc)
 
     parser.add_argument(

@@ -1,18 +1,18 @@
-import argparse
-import json
-
-try:
-    import pandas as pd
-except Exception:
-    raise ImportError(
-        "Pandas is required to parse parquet files. ",
-        "Please install it with `pip install pandas`.",
-    )
-
 desc = "Converts a CSV into a hierarchical JSON file."
 
 
 def main(arguments):
+    import argparse
+    import json
+
+    try:
+        import pandas as pd
+    except ImportError:
+        raise ImportError(
+            "Pandas is required to parse parquet files. ",
+            "Please install it with `pip install pandas`.",
+        )
+
     parser = argparse.ArgumentParser(description=desc)
 
     parser.add_argument(

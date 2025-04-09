@@ -1,14 +1,13 @@
-import argparse
-import json
-import os
-
-import SimpleITK as sitk
-from tqdm import tqdm
-
 desc = "Creates empty masks for a given image key if a condition is fulfilled"
 
 
 def main(arguments):
+    import argparse
+    import json
+    import os
+
+    import SimpleITK as sitk
+    from tqdm import tqdm
     parser = argparse.ArgumentParser(description=desc)
 
     parser.add_argument(

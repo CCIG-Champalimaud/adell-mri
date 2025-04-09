@@ -1,12 +1,12 @@
-import argparse
-
-import numpy as np
 
 desc = "Calculates the minimum distance between bounding \
             boxes in the same image."
 
 
 def main(arguments):
+    import argparse
+
+    import numpy as np
     parser = argparse.ArgumentParser(description=desc)
 
     parser.add_argument(

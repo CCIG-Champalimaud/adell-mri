@@ -1,9 +1,4 @@
-import argparse
-import json
-
 import numpy as np
-from pydicom import dcmread
-from tqdm import tqdm
 
 desc = "Prints entries with nan/infinite in DICOM dataset"
 
@@ -18,6 +13,12 @@ def calculate_parameters(x: np.ndarray):
 
 
 def main(arguments):
+    import argparse
+    import json
+
+    from pydicom import dcmread
+    from tqdm import tqdm
+
     parser = argparse.ArgumentParser(description=desc)
 
     parser.add_argument(

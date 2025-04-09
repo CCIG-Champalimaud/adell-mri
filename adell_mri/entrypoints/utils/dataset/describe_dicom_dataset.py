@@ -1,14 +1,7 @@
-import argparse
-import json
 import os
-from itertools import chain
-from multiprocessing import Pool
-from pathlib import Path
-
 from pydicom import dcmread
 from pydicom.multival import MultiValue
 from pydicom.valuerep import IS, DSfloat
-from tqdm import tqdm
 
 desc = "Describes DICOM datasets with general statistics."
 
@@ -84,6 +77,13 @@ def add_to_dict(d: dict, study_uid: str, series_uid: str, value: dict) -> dict:
 
 
 def main(arguments):
+    import argparse
+    import json
+    from itertools import chain
+    from multiprocessing import Pool
+    from pathlib import Path
+    from tqdm import tqdm
+    
     parser = argparse.ArgumentParser(description=desc)
 
     parser.add_argument(

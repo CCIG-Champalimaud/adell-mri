@@ -1,14 +1,14 @@
-import argparse
-import json
-
-import numpy as np
-from sklearn.cluster import KMeans
-from tqdm import tqdm
 
 desc = "Calculates anchors from a dataset JSON."
 
 
 def main(arguments):
+    import argparse
+    import json
+
+    import numpy as np
+    from sklearn.cluster import KMeans
+    from tqdm import tqdm
     parser = argparse.ArgumentParser(description=desc)
 
     parser.add_argument(

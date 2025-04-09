@@ -1,14 +1,7 @@
-import argparse
-import json
-import os
 import re
-from pathlib import Path
-from typing import List
 
 import numpy as np
-from monai.transforms import Compose, LoadImaged, Orientationd
 from skimage import measure
-from tqdm import tqdm
 
 desc = "Creates JSON file with paths and bounding boxes."
 
@@ -56,12 +49,12 @@ def mask_to_bb(img: np.ndarray) -> tuple[list[np.array], list[int]]:
     return bb_vertices, c
 
 
-def search_with_re(all_paths: List[str], re_pattern: str) -> list[str]:
+def search_with_re(all_paths: list[str], re_pattern: str) -> list[str]:
     """
     Filters a list if there is a match with ``re_pattern``.
 
     Args:
-        all_paths (List[str]): list of strings.
+        all_paths (list[str]): list of strings.
         re_pattern (str): pattern that will be searched.
 
     Returns:
@@ -76,6 +69,15 @@ def search_with_re(all_paths: List[str], re_pattern: str) -> list[str]:
 
 
 def main(arguments):
+    import argparse
+    import json
+    import os
+    from pathlib import Path
+
+    import numpy as np
+    from monai.transforms import Compose, LoadImaged, Orientationd
+    from tqdm import tqdm
+    
     parser = argparse.ArgumentParser(description=desc)
     parser.add_argument(
         "--input_path",

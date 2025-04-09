@@ -1,5 +1,3 @@
-import argparse
-import json
 import os
 from multiprocessing import Pool
 from pathlib import Path
@@ -7,12 +5,13 @@ from pathlib import Path
 from pydicom import dcmread, errors
 from pydicom.dataset import FileDataset
 from pydicom.multival import MultiValue
-from tqdm import tqdm
 
 DICOMInformation = tuple[str, str, str, tuple[float, float, float]]
 DICOMDictionary = dict[
     str, dict[str, dict[str, str | tuple[float, float, float]]]
 ]
+
+desc = "Creates JSON file with DICOM paths."
 
 SEG_SOP_TAG = (0x0008, 0x0060)
 BVALUE_TAG = (0x0018, 0x9087)
@@ -47,7 +46,6 @@ def retrieve_bvalue(f: FileDataset) -> float | None:
     return bval
 
 
-desc = "Creates JSON file with DICOM paths."
 
 
 def process_dicom(dcm: str) -> DICOMInformation:
@@ -128,6 +126,13 @@ def update_dict(
 
 
 def main(arguments):
+    import argparse
+    import json
+    from multiprocessing import Pool
+    from pathlib import Path
+
+    from tqdm import tqdm
+
     parser = argparse.ArgumentParser(description=desc)
     parser.add_argument(
         "--input_path",

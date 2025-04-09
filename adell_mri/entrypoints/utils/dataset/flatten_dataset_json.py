@@ -1,10 +1,10 @@
-import argparse
-import json
-
 desc = "Creates individual entries from a hierarchical JSON"
 
 
 def main(arguments):
+    import argparse
+    import json
+
     parser = argparse.ArgumentParser(description=desc)
 
     parser.add_argument(
