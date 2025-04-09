@@ -136,7 +136,7 @@ class Dataset:
             key_list = self.keys()
         else:
             key_list = parse_ids(key_list, "list")
-        return [self[k] for k in self if k in key_list]
+        return [{**self[k], "identifier": k} for k in self if k in key_list]
 
     def keys(self):
         return self.dataset.keys()
