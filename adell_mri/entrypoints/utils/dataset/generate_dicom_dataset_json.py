@@ -46,8 +46,6 @@ def retrieve_bvalue(f: FileDataset) -> float | None:
     return bval
 
 
-
-
 def process_dicom(dcm: str) -> DICOMInformation:
     def get_float_list(f: FileDataset, tag: tuple[int, int]) -> list[float]:
         if tag in f:

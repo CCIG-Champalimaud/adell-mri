@@ -10,6 +10,7 @@ def main(arguments):
     import numpy as np
     import SimpleITK as sitk
     from tqdm import tqdm
+
     parser = argparse.ArgumentParser(description=desc)
 
     parser.add_argument(

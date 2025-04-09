@@ -8,6 +8,7 @@ def main(arguments):
 
     import SimpleITK as sitk
     from tqdm import tqdm
+
     parser = argparse.ArgumentParser(description=desc)
 
     parser.add_argument(

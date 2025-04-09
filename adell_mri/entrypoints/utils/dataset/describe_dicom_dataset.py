@@ -83,7 +83,7 @@ def main(arguments):
     from multiprocessing import Pool
     from pathlib import Path
     from tqdm import tqdm
-    
+
     parser = argparse.ArgumentParser(description=desc)
 
     parser.add_argument(

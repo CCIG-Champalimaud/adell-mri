@@ -77,7 +77,7 @@ def main(arguments):
     import numpy as np
     from monai.transforms import Compose, LoadImaged, Orientationd
     from tqdm import tqdm
-    
+
     parser = argparse.ArgumentParser(description=desc)
     parser.add_argument(
         "--input_path",

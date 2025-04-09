@@ -6,6 +6,7 @@ def main(arguments):
 
     import numpy as np
     import SimpleITK as sitk
+
     parser = argparse.ArgumentParser(description=desc)
 
     parser.add_argument(
