@@ -36,7 +36,7 @@ def main(arguments):
     transform_pipeline = ClassificationTransforms(
         keys=args.image_keys,
         adc_keys=[],
-        clinical_feature_keys=None,
+        clinical_feature_keys=[],
         target_spacing=args.target_spacing,
         crop_size=args.crop_size,
         pad_size=args.pad_size,
@@ -47,7 +47,7 @@ def main(arguments):
         target_size=args.resize_size,
     )
 
-    transforms = transform_pipeline.pre_transforms()
+    transforms = transform_pipeline.transforms()
 
     dataset = Dataset(args.dataset_json)
 
