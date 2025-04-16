@@ -53,9 +53,12 @@ def main(arguments):
 
     monai_dataset = monai.data.Dataset(dataset.to_datalist(), transforms)
 
-    Path(args.output_dir).mkdir(exist_ok=True, parents=True)
+    out_path = Path(args.output_dir)
+    out_path.mkdir(exist_ok=True, parents=True)
 
     for data in tqdm(monai_dataset):
+        study_folder = out_path / data["identifier"]
+        study_folder.mkdir(exist_ok=True, parents=True)
         for idx in range(data["image"].shape[0]):
             seq = data["image"][idx].numpy()
             seq = np.uint8((seq - seq.min()) / (seq.max() - seq.min()) * 255)
@@ -67,8 +70,5 @@ def main(arguments):
                 all_images_for_seq = [seq]
 
             for i, img in enumerate(all_images_for_seq):
-                img_path = (
-                    Path(args.output_dir)
-                    / f"{data['identifier']}_{idx}_{i}.nii.gz"
-                )
+                img_path = study_folder / f"{idx}_{i}.png"
                 io.imsave(img_path, img)
