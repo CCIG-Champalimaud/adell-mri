@@ -20,6 +20,7 @@ supported_modes = {
     "generate_dicom_dataset_json": ".dataset.generate_dicom_dataset_json",
     "generate_image_dataset_json": ".dataset.generate_image_dataset_json",
     "generate_json_from_csv": ".dataset.generate_json_from_csv",
+    "get_image_examples": ".dataset.get_image_examples",
     "get_mask_coordinates": ".dataset.get_mask_coordinates",
     "get_test_set_and_folds": ".dataset.get_test_set_and_folds",
     "get_temporal_test_set_and_folds": ".dataset.get_temporal_test_set_and_folds",
