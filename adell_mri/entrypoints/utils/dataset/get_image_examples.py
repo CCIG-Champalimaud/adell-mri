@@ -12,9 +12,7 @@ def main(arguments):
     from ....utils.dataset import Dataset
     from ....entrypoints.assemble_args import Parser
 
-    parser = argparse.ArgumentParser(description=desc)
-
-    parser = Parser()
+    parser = Parser(description=desc)
 
     # params
     parser.add_argument_by_key(
