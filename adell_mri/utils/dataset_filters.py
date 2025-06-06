@@ -6,6 +6,9 @@ from ..custom_types import DatasetDict
 
 
 def print_verbose(*args, verbose: bool = False, **kwargs):
+    """
+    Prints the arguments if verbose is True.
+    """
     if verbose:
         print(*args, **kwargs)
 
@@ -13,7 +16,8 @@ def print_verbose(*args, verbose: bool = False, **kwargs):
 def fill_missing_with_value(
     D: DatasetDict, filters: List[str], verbose: bool = False
 ) -> DatasetDict:
-    """Imputes missing values with a given value, both present in filters as a
+    """
+    Imputes missing values with a given value, both present in filters as a
     list of strings specified as key:value pairs.
 
     Args:
@@ -286,14 +290,14 @@ def filter_dictionary(
     Args:
         D (DatasetDict): dataset dictionary
         filters_presence (List[str], optional): list of filters for
-            filter_dictionary_with_presence. Defaults to None.
+            :func:`filter_dictionary_with_presence`. Defaults to None.
         filters_existence (List[str], optional): list of filters for
-            filter_dictionary_with_existence. Defaults to None.
+            :func:`filter_dictionary_with_existence`. Defaults to None.
         possible_labels (List[str], optional): list of possible labels.
             Defaults to None.
         label_key (str, optional): label key. Defaults to None.
         filters (List[str], optional): list of filters for
-            filter_dictionary_with_filters. Defaults to None.
+            :func:`filter_dictionary_with_filters`. Defaults to None.
         filter_is_optional (bool, optional): considers the filters to be
             optional. Defaults to False.
         verbose (bool, optional): verbosity. Defaults to False.

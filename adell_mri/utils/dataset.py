@@ -1,7 +1,7 @@
 import json
 from copy import deepcopy
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Iterator
 
 import numpy as np
 import yaml
@@ -65,6 +65,18 @@ def subsample_dataset(
 
 @dataclass
 class Dataset:
+    """
+    A class to handle loading, subsampling and filtering of datasets.
+    Expects the dataset to be a JSON file containing a dictionary with
+    the following format:
+    {"id1": {"key1": value1, "key2": value2, ...}, "id2": {...}, ...}
+
+    Args:
+        path (str | list[str]): path to the dataset file or list of paths.
+        rng (np.random.Generator, optional): random number generator. Defaults to None.
+        seed (int, optional): random seed. Defaults to 42.
+        verbose (bool, optional): verbosity. Defaults to True.
+    """
     path: str | list[str]
     rng: np.random.Generator = None
     seed: int = 42
@@ -79,7 +91,13 @@ class Dataset:
         if self.rng is None:
             self.rng = np.random.default_rng(self.seed)
 
-    def load_dataset(self, path: str):
+    def load_dataset(self, path: str | list[str] | None):
+        """
+        Loads a dataset from a JSON or YAML file.
+
+        Args:
+            path (str | list[str]): path to the dataset file or list of paths.
+        """
         if path is None:
             self.dataset = {}
         elif isinstance(path, list):
@@ -95,13 +113,27 @@ class Dataset:
             for k in dataset:
                 self.dataset[k] = dataset[k]
 
-    def fill_conditional(self, filters: list[str]):
+    def fill_conditional(self, filters: list[str] | None):
+        """
+        Fills missing values in the dataset based on conditional logic.
+        See :func:`fill_conditional` for more details.
+
+        Args:
+            filters (list[str] | None): list of filters to apply.
+        """
         if filters is not None:
             self.dataset = fill_conditional(
                 self.dataset, filters, verbose=self.verbose
             )
 
-    def fill_missing_with_value(self, filters: list[str]):
+    def fill_missing_with_value(self, filters: list[str] | None):
+        """
+        Fills missing values in the dataset with a placeholder value.
+        See :func:`fill_missing_with_value` for more details.
+
+        Args:
+            filters (list[str] | None): list of filters to apply.
+        """
         if filters is not None:
             self.dataset = fill_missing_with_value(
                 self.dataset, filters, verbose=self.verbose
@@ -118,6 +150,29 @@ class Dataset:
         fill_conditional: list[str] = None,
         fill_missing_with_value: list[str] = None,
     ):
+        """
+        Filters the dataset based on a set of filters. In essence,
+        this is a shorthand for fill_conditional, fill_missing_with_value
+        and filter_dictionary.
+        See :func:`fill_conditional`, :func:`fill_missing_with_value` and
+        :func:`filter_dictionary` for more details.
+
+        Args:
+            filters_presence (list[str]): list of keys that should be present
+            to keep an element.
+            filters_existence (list[str]): list of keys that should exist to
+            keep an element (i.e. the file value should exist in the disk).
+            possible_labels (list[str]): list of possible labels.
+            label_key (str): label key for `possible_labels`.
+            filters (list[str]): list of filters to apply. See
+                :func:`filter_dictionary` for more details.
+            filter_is_optional (bool): whether the filter is optional. See
+                :func:`filter_dictionary` for more details.
+            fill_conditional (list[str]): list of filters to apply. See
+                :func:`fill_conditional` for more details.
+            fill_missing_with_value (list[str]): list of filters to apply. See
+                :func:`fill_missing_with_value` for more details.
+        """
         self.fill_conditional(fill_conditional)
         self.fill_missing_with_value(fill_missing_with_value)
         self.dataset = filter_dictionary(
@@ -132,6 +187,15 @@ class Dataset:
         )
 
     def to_datalist(self, key_list: list[str] = None):
+        """
+        Converts the dataset to a list of dictionaries.
+
+        Args:
+            key_list (list[str]): list of keys to include in the list.
+
+        Returns:
+            list[dict]: list of dictionaries.
+        """
         if key_list is None:
             key_list = self.keys()
         else:
@@ -139,6 +203,12 @@ class Dataset:
         return [{**self[k], "identifier": k} for k in self if k in key_list]
 
     def keys(self):
+        """
+        Returns the keys of the dataset.
+
+        Returns:
+            list[str]: list of keys.
+        """
         return self.dataset.keys()
 
     def subsample_dataset(
@@ -148,6 +218,17 @@ class Dataset:
         key_list: list[str] | str = None,
         excluded_key_list: list[str] | str = None,
     ):
+        """
+        Subsamples the dataset.
+
+        Args:
+            subsample_size (int): number of samples to keep.
+            strata_key (str): key to stratify on.
+            key_list (list[str] | str): list of keys to include in the
+                subsample.
+            excluded_key_list (list[str] | str): list of keys to exclude from
+                the subsample.
+        """
         n_start = len(self.dataset)
         if key_list is not None:
             key_list = parse_ids(key_list, "list")
@@ -184,9 +265,33 @@ class Dataset:
         self.print_verbose(f"\tDifference: {n_start - len(self)} samples")
 
     def print_verbose(self, *args, **kwargs):
+        """
+        Prints a message if verbose is True.
+
+        Args:
+            *args: arguments to pass to print.
+            **kwargs: keyword arguments to pass to print.
+        """
         print_verbose(*args, **kwargs, verbose=self.verbose)
 
     def apply_filters(self, **filter_dict: dict[str, Any]):
+        """
+        Applies a set of filters to the dataset. Can also subset the dataset.
+        The relevant filters are:
+            - fill_conditional (for :func:`fill_conditional`)
+            - fill_missing_with_placeholder (for :func:`fill_missing_with_value`)
+            - possible_labels (for :func:`filter_dictionary`)
+            - label_keys (for :func:`filter_dictionary`)
+            - presence_keys (for :func:`filter_dictionary`)
+            - filters_existence (for :func:`filter_dictionary`)
+            - filter_on_keys (for :func:`filter_dictionary`)
+            - filter_is_optional (for :func:`filter_dictionary`)
+            - excluded_ids (for :func:`subsample_dataset`)
+            - subsample_size (for :func:`subsample_dataset`)
+
+        Args:
+            **filter_dict: keyword arguments to pass to filter_dictionary.
+        """
         if "fill_conditional" in filter_dict:
             self.fill_conditional(filters=filter_dict["fill_conditional"])
         if "fill_missing_with_placeholder" in filter_dict:
@@ -212,17 +317,45 @@ class Dataset:
             )
 
     def __getitem__(self, key: str | list[str]):
+        """
+        Returns the value of the dataset for the given key.
+
+        Args:
+            key (str | list[str]): key or list of keys to get.
+
+        Returns:
+            Any: value of the dataset for the given key.
+        """
         if isinstance(key, (list, tuple)):
             return {k: self[k] for k in key}
         else:
             return self.dataset[key]
 
     def __setitem__(self, key: str, value: Any):
+        """
+        Sets the value of the dataset for the given key.
+
+        Args:
+            key (str): key to set.
+            value (Any): value to set.
+        """
         self.dataset[key] = value
 
     def __len__(self):
+        """
+        Returns the number of samples in the dataset.
+
+        Returns:
+            int: number of samples in the dataset.
+        """
         return len(self.dataset)
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[str]:
+        """
+        Returns an iterator over the keys of the dataset.
+
+        Yields:
+            str: key of the dataset.
+        """
         for key in self.keys():
             yield key
