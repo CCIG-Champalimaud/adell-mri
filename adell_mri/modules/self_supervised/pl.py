@@ -6,6 +6,7 @@ import numpy as np
 import torch
 import torchmetrics
 
+from typing import Any
 from ...custom_types import Callable
 from ..layers.conv_next import ConvNeXt
 from ..layers.res_net import ResNet
@@ -14,6 +15,7 @@ from ..segmentation.unet import UNet
 from .dino import DINO
 from .ibot import iBOT
 from .jepa import IJEPA
+from .autoencoders import ViTMaskedAutoEncoder
 from .losses import (
     BarlowTwinsLoss,
     DinoLoss,
@@ -1373,3 +1375,224 @@ class iBOTPL(iBOT, SelfSLBasePL):
     def test_step(self, batch, batch_idx):
         loss = self.step(batch, "test_loss")
         return loss
+
+
+class ViTMaskedAutoEncoderPL(pl.LightningModule):
+    """
+    LightningModule for training ViTMaskedAutoEncoder.
+    """
+
+    def __init__(
+        self,
+        image_size: tuple[int, int],
+        patch_size: tuple[int, int],
+        n_channels: int,
+        input_dim_size: int,
+        encoder_args: dict[str, Any],
+        decoder_args: dict[str, Any],
+        n_epochs: int = 100,
+        n_steps: int | None = None,
+        embed_method: str = "linear",
+        dropout_rate: float = 0.0,
+        mask_fraction: float = 0.75,
+        learning_rate: float = 1e-3,
+        weight_decay: float = 1e-6,
+        warmup_steps: int = 0,
+        start_decay: int = 0,
+        training_dataloader_call: Callable | None = None,
+    ):
+        """
+        Args:
+            image_size (tuple[int, int]): Size of input images (height, width)
+            patch_size (tuple[int, int]): Size of patches (ph, pw)
+            n_channels (int): Number of input channels
+            input_dim_size (int): Dimension of the input embeddings
+            encoder_args (dict[str, Any]): Arguments for the encoder
+            decoder_args (dict[str, Any]): Arguments for the decoder
+            n_epochs (int): Number of epochs. Defaults to 100.
+            n_steps (int | None): Number of steps. Defaults to None.
+            embed_method (str): Embedding method. Defaults to "linear".
+            dropout_rate (float): Dropout rate. Defaults to 0.0.
+            mask_fraction (float): Fraction of patches to mask. Defaults to 0.75.
+            learning_rate (float): Learning rate. Defaults to 1e-3.
+            weight_decay (float): Weight decay. Defaults to 1e-6.
+            warmup_steps (int): Number of warmup steps. Defaults to 0.
+            start_decay (int): Number of steps before decay. Defaults to 0.
+            training_dataloader_call (Callable | None): Function to get training dataloader. Defaults to None.
+        """
+        super().__init__()
+        self.save_hyperparameters()
+
+        self.model = ViTMaskedAutoEncoder(
+            image_size=image_size,
+            patch_size=patch_size,
+            n_channels=n_channels,
+            input_dim_size=input_dim_size,
+            encoder_args=encoder_args,
+            decoder_args=decoder_args,
+            embed_method=embed_method,
+            dropout_rate=dropout_rate,
+            mask_fraction=mask_fraction,
+        )
+
+        # Loss function
+        self.criterion = torch.nn.MSELoss()
+
+        # Training parameters
+        self.learning_rate = learning_rate
+        self.weight_decay = weight_decay
+        self.warmup_steps = warmup_steps
+        self.training_dataloader_call = training_dataloader_call
+        self.n_steps = n_steps
+        self.n_epochs = n_epochs
+        self.start_decay = start_decay
+
+        # Setup metrics
+        self.setup_metrics()
+
+    def setup_metrics(self) -> None:
+        """Initialize metrics for training, validation, and testing."""
+        self.train_metrics = torchmetrics.MetricCollection(
+            {
+                "train_loss": torchmetrics.MeanMetric(),
+                "train_psnr": torchmetrics.PeakSignalNoiseRatio(data_range=1.0),
+            }
+        )
+
+        self.val_metrics = torchmetrics.MetricCollection(
+            {
+                "val_loss": torchmetrics.MeanMetric(),
+                "val_psnr": torchmetrics.PeakSignalNoiseRatio(data_range=1.0),
+            }
+        )
+
+        self.test_metrics = torchmetrics.MetricCollection(
+            {
+                "test_loss": torchmetrics.MeanMetric(),
+                "test_psnr": torchmetrics.PeakSignalNoiseRatio(data_range=1.0),
+            }
+        )
+
+    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        """Forward pass through the model."""
+        return self.model(x)
+
+    def training_step(
+        self, batch: torch.Tensor, batch_idx: int
+    ) -> torch.Tensor:
+        """Training step."""
+        x = batch if isinstance(batch, torch.Tensor) else batch[0]
+        x_recon, mask = self(x)
+
+        # Calculate reconstruction loss
+        loss = self.criterion(x_recon, x)
+
+        # Calculate PSNR
+        mse = torch.nn.functional.mse_loss(x_recon, x, reduction="none")
+        psnr = -10 * torch.log10(mse).mean()
+
+        # Log metrics
+        self.log("train_loss", loss, on_step=True, on_epoch=True, prog_bar=True)
+        self.log("train_psnr", psnr, on_step=True, on_epoch=True, prog_bar=True)
+
+        return loss
+
+    def validation_step(
+        self, batch: torch.Tensor, batch_idx: int
+    ) -> torch.Tensor:
+        """Validation step."""
+        x = batch if isinstance(batch, torch.Tensor) else batch[0]
+        x_recon, _ = self(x)
+
+        loss = self.criterion(x_recon, x)
+
+        # Calculate PSNR
+        mse = torch.nn.functional.mse_loss(x_recon, x, reduction="none")
+        psnr = -10 * torch.log10(mse).mean()
+
+        # Log metrics
+        self.log("val_loss", loss, on_step=False, on_epoch=True, prog_bar=True)
+        self.log("val_psnr", psnr, on_step=False, on_epoch=True, prog_bar=True)
+
+        return loss
+
+    def test_step(self, batch: torch.Tensor, batch_idx: int) -> torch.Tensor:
+        """Test step."""
+        x = batch if isinstance(batch, torch.Tensor) else batch[0]
+        x_recon, _ = self(x)
+
+        loss = self.criterion(x_recon, x)
+
+        # Calculate PSNR
+        mse = torch.nn.functional.mse_loss(x_recon, x, reduction="none")
+        psnr = -10 * torch.log10(mse).mean()
+
+        # Log metrics
+        self.log("test_loss", loss, on_step=False, on_epoch=True, prog_bar=True)
+        self.log("test_psnr", psnr, on_step=False, on_epoch=True, prog_bar=True)
+
+        return loss
+
+    def configure_optimizers(self) -> torch.optim.Optimizer | dict:
+        """Configure optimizers and learning rate schedulers."""
+        if self.n_steps:
+            n = self.n_steps
+            interval = "step"
+        else:
+            n = self.n_epochs
+            interval = "epoch"
+        # Create optimizer with initial learning rate of 0.0 if using warmup
+        initial_lr = 0.0 if self.warmup_steps > 0 else self.learning_rate
+
+        optimizer = torch.optim.AdamW(
+            self.parameters(),
+            lr=initial_lr,  # Will be updated by the scheduler
+            weight_decay=self.weight_decay,
+            betas=(0.9, 0.95),
+        )
+
+        if self.warmup_steps > 0:
+            # Define the learning rate schedule with warmup
+            scheduler = {
+                "scheduler": CosineAnnealingWithWarmupLR(
+                    optimizer,
+                    T_max=n,
+                    start_decay=self.start_decay,
+                    n_warmup_steps=self.warmup_steps,
+                    eta_min=1e-6,
+                ),
+                "interval": interval,
+                "frequency": 1,
+            }
+
+            # Set the base learning rate that will be scaled by the scheduler
+            scheduler["scheduler"].base_lrs = [self.learning_rate]
+
+            return {"optimizer": optimizer, "lr_scheduler": scheduler}
+
+        return optimizer
+
+    def train_dataloader(self) -> torch.utils.data.DataLoader:
+        """Get training dataloader."""
+        if self.training_dataloader_call is None:
+            raise ValueError(
+                "training_dataloader_call must be provided for training"
+            )
+        return self.training_dataloader_call()
+
+    def on_train_epoch_end(self) -> None:
+        """Log metrics at the end of each training epoch."""
+        self.log_dict(self.train_metrics.compute())
+        self.train_metrics.reset()
+
+    def on_validation_epoch_end(self) -> None:
+        """Log metrics at the end of each validation epoch."""
+        self.log_dict(self.val_metrics.compute())
+        self.val_metrics.reset()
+
+    def on_test_epoch_end(self) -> None:
+        """
+        Log metrics at the end of each test epoch.
+        """
+        self.log_dict(self.test_metrics.compute())
+        self.test_metrics.reset()
