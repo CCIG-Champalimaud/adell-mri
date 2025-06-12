@@ -10,7 +10,7 @@ from ..layers.vit import LinearEmbedding, TransformerBlockStack
 
 def random_masking(
     x: torch.Tensor, mask_ratio: float, rng: np.random.RandomState
-) -> torch.Tensor:
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
     Perform per-sample random masking by per-sample shuffling.
     Per-sample shuffling is done by argsort random noise.
@@ -31,9 +31,10 @@ def random_masking(
 
     # sort noise for each sample
     ids_shuffle = torch.argsort(
-        noise, dim=1
+        noise, dim=1, stable=True
     )  # ascend: small is keep, large is remove
-    ids_restore = torch.argsort(ids_shuffle, dim=1)
+    ids_restore = torch.argsort(ids_shuffle, dim=1, stable=True)
+    ids_restore = ids_restore.to(x.device)  # Ensure it's on the same device as input
 
     # keep the first subset
     ids_keep = ids_shuffle[:, :len_keep]
@@ -153,7 +154,13 @@ class ViTAutoEncoder(torch.nn.Module):
 
     def init_encoder(self):
         self.encoder = TransformerBlockStack(
-            input_dim_primary=self.n_features, **self.encoder_args
+            number_of_blocks=self.encoder_args["num_layers"],
+            input_dim_primary=self.n_features,
+            attention_dim=self.n_features,
+            hidden_dim=self.encoder_args["mlp_dim"],
+            n_heads=self.encoder_args["num_heads"],
+            mlp_structure=[self.encoder_args["mlp_dim"]],
+            dropout_rate=self.encoder_args["dropout"],
         )
 
     def init_positional_embedding(self):
@@ -166,7 +173,13 @@ class ViTAutoEncoder(torch.nn.Module):
 
     def init_decoder(self):
         self.decoder = TransformerBlockStack(
-            input_dim_primary=self.n_features, **self.decoder_args
+            number_of_blocks=self.decoder_args["num_layers"],
+            input_dim_primary=self.n_features,
+            attention_dim=self.n_features,
+            hidden_dim=self.decoder_args["mlp_dim"],
+            n_heads=self.decoder_args["num_heads"],
+            mlp_structure=[self.decoder_args["mlp_dim"]],
+            dropout_rate=self.decoder_args["dropout"],
         )
 
     def init_decoder_pred(self):
@@ -199,7 +212,16 @@ class ViTMaskedAutoEncoder(ViTAutoEncoder):
         mask_fraction: float = 0.3,
         seed: int = 42,
     ):
-        super().__init__()
+        super().__init__(
+            image_size=image_size,
+            patch_size=patch_size,
+            n_channels=n_channels,
+            input_dim_size=input_dim_size,
+            encoder_args=encoder_args,
+            decoder_args=decoder_args,
+            embed_method=embed_method,
+            dropout_rate=dropout_rate,
+        )
         self.image_size = image_size
         self.patch_size = patch_size
         self.n_channels = n_channels
@@ -226,28 +248,99 @@ class ViTMaskedAutoEncoder(ViTAutoEncoder):
             self.mask_token, mean=0.0, std=0.02, a=-2.0, b=2.0
         )
 
-    def forward(self, X: torch.Tensor) -> torch.Tensor:
+    def forward(self, X: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         # based on https://github.com/facebookresearch/mae/blob/main/models_mae.py
+        print("\n=== Starting forward pass ===")
+        print(f"Input X shape: {X.shape}")
 
-        X = self.proj(X)  # projection
-        # X_original = X
-        X, mask, ids_restore = random_masking(
-            X, self.mask_fraction, self.rng
-        )  # masking
-
-        X = self.encode(X)
-
-        mask_tokens = self.mask_token.repeat(
-            X.shape[0], ids_restore.shape[1] + 1 - X.shape[1], 1
+        # Project input to embedding space
+        X_embed = self.proj(X)  # [batch_size, seq_len, embed_dim]
+        print(f"X_embed shape: {X_embed.shape}")
+        
+        # Add positional embeddings
+        print(f"positional_embedding shape: {self.positional_embedding.shape}")
+        X_embed = X_embed + self.positional_embedding
+        
+        # Apply random masking
+        print(f"\nCalling random_masking with mask_fraction: {self.mask_fraction}")
+        X_masked, mask, ids_restore = random_masking(
+            X_embed, self.mask_fraction, self.rng
         )
-
-        X_ = torch.cat([X[:, 1:, :], mask_tokens], dim=1)  # no cls token
-        X_ = torch.gather(
-            X_, dim=1, index=ids_restore.unsqueeze(-1).repeat(1, 1, X.shape[2])
-        )  # unshuffle
-        X = torch.cat([X[:, :1, :], X_], dim=1)
-        X[:, 1:, :] = X[:, 1:, :] + self.positional_embedding
-
-        X = self.decoder(X)
-        X = self.decoder_pred(X)
-        return X
+        
+        print("\nAfter random_masking:")
+        print(f"X_masked type: {type(X_masked)}, shape: {X_masked.shape}")
+        print(f"mask type: {type(mask)}, shape: {mask.shape}")
+        print(f"ids_restore type: {type(ids_restore)}, shape: {ids_restore.shape}")
+        print(f"ids_restore: {ids_restore}")
+        
+        # Encode visible tokens
+        print("\nEncoding visible tokens...")
+        encoder_output = self.encoder(X_masked)  # [batch_size, num_visible, embed_dim]
+        # Handle case where encoder returns a tuple (output, attention_weights)
+        if isinstance(encoder_output, tuple):
+            X_encoded = encoder_output[0]
+        else:
+            X_encoded = encoder_output
+        print(f"X_encoded shape: {X_encoded.shape}")
+        
+        # Prepare mask tokens
+        print("\nPreparing mask tokens...")
+        print(f"mask_token shape: {self.mask_token.shape}")
+        print(f"Calculating repeat dimensions:")
+        print(f"  X_encoded.shape[0]: {X_encoded.shape[0]}")
+        print(f"  ids_restore.shape[1]: {ids_restore.shape[1]}")
+        print(f"  X_encoded.shape[1]: {X_encoded.shape[1]}")
+        
+        mask_tokens = self.mask_token.repeat(
+            X_encoded.shape[0], ids_restore.shape[1] - X_encoded.shape[1], 1
+        )
+        
+        # Concatenate encoded visible tokens with mask tokens
+        X_full = torch.cat([X_encoded, mask_tokens], dim=1)
+        
+        # Unshuffle to original order
+        X_unshuffled = torch.gather(
+            X_full, 
+            dim=1, 
+            index=ids_restore.unsqueeze(-1).expand(-1, -1, X_full.shape[2])
+        )
+        
+        # Decode
+        decoder_output = self.decoder(X_unshuffled)
+        # Handle case where decoder returns a tuple (output, attention_weights)
+        if isinstance(decoder_output, tuple):
+            X_decoded = decoder_output[0]
+        else:
+            X_decoded = decoder_output
+        X_reconstructed = self.decoder_pred(X_decoded)  # [batch_size, seq_len, n_features]
+        
+        # Reshape to [batch_size, n_channels, height, width]
+        batch_size = X_reconstructed.shape[0]
+        height = width = int(np.sqrt(X_reconstructed.shape[1]))  # Assuming square patches
+        n_patches = height * width
+        
+        # Get patch dimensions
+        if isinstance(self.patch_size, tuple):
+            patch_h, patch_w = self.patch_size
+        else:
+            patch_h = patch_w = self.patch_size
+            
+        # Reshape to [batch_size, n_patches, patch_h, patch_w, n_channels]
+        X_reconstructed = X_reconstructed.view(
+            batch_size, 
+            n_patches, 
+            patch_h, 
+            patch_w, 
+            self.n_channels
+        )
+        
+        # Reshape to [batch_size, n_channels, height * patch_h, width * patch_w]
+        X_reconstructed = X_reconstructed.permute(0, 4, 1, 2, 3).contiguous()
+        X_reconstructed = X_reconstructed.view(
+            batch_size,
+            self.n_channels,
+            height * patch_h,
+            width * patch_w
+        )
+        
+        return X_reconstructed, mask

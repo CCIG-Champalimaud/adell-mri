@@ -1164,7 +1164,7 @@ class DINOPL(DINO, SelfSLBasePL):
 
         super().__init__(*args, **kwargs)
 
-        # self.save_hyperparameters()
+        self.save_hyperparameters()
         self.setup_metrics()
         self.init_loss()
 
