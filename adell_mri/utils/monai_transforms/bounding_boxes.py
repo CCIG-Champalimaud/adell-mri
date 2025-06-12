@@ -6,7 +6,7 @@ import numpy as np
 import torch
 from skimage import measure
 
-from ...custom_types import Size2dOr3d, TensorOrNDarray
+from ...custom_types import Size2dOr3d, NDArrayOrTensor
 
 
 class BBToAdjustedAnchors(monai.transforms.Transform):
@@ -267,7 +267,7 @@ class MasksToBB(monai.transforms.Transform):
         self.mask_mode = mask_mode
 
     def __call__(
-        self, X: TensorOrNDarray
+        self, X: NDArrayOrTensor
     ) -> tuple[list[np.ndarray], list[int], Size2dOr3d]:
         """
         Converts a binary mask with a channel (first) dimension into a set of
@@ -277,7 +277,7 @@ class MasksToBB(monai.transforms.Transform):
         components. The shape is the shape of the input X.
 
         Args:
-            X (TensorOrNDarray): an array with shape [1,H,W] or [1,H,W,D].
+            X (NDArrayOrTensor): an array with shape [1,H,W] or [1,H,W,D].
 
         Returns:
             tuple[list[np.ndarray], list[int], Size2dOr3d]: a list with bounding

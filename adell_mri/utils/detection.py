@@ -8,11 +8,11 @@ import numpy as np
 from sklearn.cluster import KMeans
 from tqdm import tqdm
 
-from ..custom_types import TensorOrNDarray
+from ..custom_types import NDArrayOrTensor
 
 
 def anchors_from_nested_list(
-    nested_list: List[Dict[str, TensorOrNDarray]],
+    nested_list: List[Dict[str, NDArrayOrTensor]],
     bounding_box_key: str,
     shape_key: str,
     iou_threshold: float = 0.5,
@@ -21,7 +21,7 @@ def anchors_from_nested_list(
     Generate anchors from a nested list of bounding boxes.
 
     Args:
-        nested_list (List[Dict[str, TensorOrNDarray]]): neste list of
+        nested_list (List[Dict[str, NDArrayOrTensor]]): neste list of
             dictionaries with dictionaries where one of the key corresponds to
             bounding boxes.
         bounding_box_key (str): key for bounding boxes.

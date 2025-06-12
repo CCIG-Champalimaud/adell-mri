@@ -4,7 +4,7 @@ import torch
 from skimage.morphology import convex_hull_image
 from sklearn.cluster import DBSCAN
 
-from ...custom_types import NDArrayOrTensorDict, TensorDict, TensorOrNDarray
+from ...custom_types import NDArrayOrTensorDict, TensorDict, NDArrayOrTensor
 
 
 def convex_hull_iter(x: np.ndarray):
@@ -214,7 +214,7 @@ class ConvexHull(monai.transforms.Transform):
     def __init__(self) -> None:
         super().__init__()
 
-    def __call__(self, img: TensorOrNDarray) -> TensorOrNDarray:
+    def __call__(self, img: NDArrayOrTensor) -> NDArrayOrTensor:
         img = monai.utils.convert_to_tensor(
             img, track_meta=monai.data.meta_obj.get_track_meta()
         )

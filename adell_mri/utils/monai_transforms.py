@@ -12,16 +12,17 @@ import numpy as np
 import SimpleITK as sitk
 import torch
 import torch.functional as F
+from monai.data.meta_tensor import MetaTensor
 from pydicom import dcmread
 from skimage import measure
 from skimage.morphology import convex_hull_image
 from sklearn.cluster import DBSCAN
 
 from ..custom_types import (
+    NDArrayOrTensor,
     NDArrayOrTensorDict,
     Size2dOr3d,
     TensorDict,
-    TensorOrNDarray,
 )
 
 
@@ -807,7 +808,7 @@ class MasksToBB(monai.transforms.Transform):
         self.mask_mode = mask_mode
 
     def __call__(
-        self, X: TensorOrNDarray
+        self, X: NDArrayOrTensor
     ) -> tuple[list[np.ndarray], list[int], Size2dOr3d]:
         """
         Converts a binary mask with a channel (first) dimension into a set of
@@ -817,7 +818,7 @@ class MasksToBB(monai.transforms.Transform):
         components. The shape is the shape of the input X.
 
         Args:
-            X (TensorOrNDarray): an array with shape [1,H,W] or [1,H,W,D].
+            X (NDArrayOrTensor): an array with shape [1,H,W] or [1,H,W,D].
 
         Returns:
             tuple[list[np.ndarray], list[int], Size2dOr3d]: a list with bounding
@@ -1376,13 +1377,13 @@ class ConditionalRescaling(monai.transforms.Transform):
         self.max_value = max_value
         self.scale = scale
 
-    def __call__(self, X: TensorOrNDarray) -> TensorOrNDarray:
+    def __call__(self, X: NDArrayOrTensor) -> NDArrayOrTensor:
         """
         Args:
-            X (TensorOrNDarray): array to be rescaled.
+            X (NDArrayOrTensor): array to be rescaled.
 
         Returns:
-            TensorOrNDarray: rescaled array.
+            NDArrayOrTensor: rescaled array.
         """
         if X.max() > self.max_value:
             X = X * self.scale
@@ -1438,13 +1439,13 @@ class Offset(monai.transforms.Transform):
         """
         self.offset = offset
 
-    def __call__(self, data: TensorOrNDarray) -> TensorOrNDarray:
+    def __call__(self, data: NDArrayOrTensor) -> NDArrayOrTensor:
         """
         Args:
-            data (TensorOrNDarray): array to be offset.
+            data (NDArrayOrTensor): array to be offset.
 
         Returns:
-            TensorOrNDarray: offset array.
+            NDArrayOrTensor: offset array.
         """
         offset = data.min() if self.offset is None else self.offset
         return data - offset
@@ -2013,13 +2014,13 @@ class ConvexHull(monai.transforms.Transform):
     def __init__(self) -> None:
         super().__init__()
 
-    def __call__(self, img: TensorOrNDarray) -> TensorOrNDarray:
+    def __call__(self, img: NDArrayOrTensor) -> NDArrayOrTensor:
         """
         Args:
-            img (TensorOrNDarray): image to calculate convex hull of.
+            img (NDArrayOrTensor): image to calculate convex hull of.
 
         Returns:
-            TensorOrNDarray: convex hull of the image.
+            NDArrayOrTensor: convex hull of the image.
         """
         img = monai.utils.convert_to_tensor(
             img, track_meta=monai.data.meta_obj.get_track_meta()
@@ -2662,32 +2663,32 @@ class AdjustSizesd(monai.transforms.MapTransform):
         ]
         return np.pad(X, pad_size)
 
-    def pad(self, X: TensorOrNDarray, out_size: list[int]) -> TensorOrNDarray:
+    def pad(self, X: NDArrayOrTensor, out_size: list[int]) -> NDArrayOrTensor:
         """
         Pads an array or tensor to the specified output size.
 
         Args:
-            X (TensorOrNDarray): array or tensor to pad or crop.
+            X (NDArrayOrTensor): array or tensor to pad or crop.
             out_size (list[int]): output size.
 
         Returns:
-            TensorOrNDarray: padded array or tensor.
+            NDArrayOrTensor: padded array or tensor.
         """
         if isinstance(X, torch.Tensor):
             return self.pad_torch(X, out_size)
         else:
             return self.pad_numpy(X, out_size)
 
-    def crop(self, X: TensorOrNDarray, out_size: list[int]) -> TensorOrNDarray:
+    def crop(self, X: NDArrayOrTensor, out_size: list[int]) -> NDArrayOrTensor:
         """
         Crops an array or tensor to the specified output size.
 
         Args:
-            X (TensorOrNDarray): array or tensor to pad or crop.
+            X (NDArrayOrTensor): array or tensor to pad or crop.
             out_size (list[int]): output size.
 
         Returns:
-            TensorOrNDarray: cropped array or tensor.
+            NDArrayOrTensor: cropped array or tensor.
         """
         sh = X.shape
         crop_dim = [i - j for i, j in zip(sh[-self.ndim :], out_size)]

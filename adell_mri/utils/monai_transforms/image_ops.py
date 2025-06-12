@@ -4,7 +4,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-from ...custom_types import TensorDict, TensorOrNDarray
+from ...custom_types import TensorDict, NDArrayOrTensor
 
 
 class FastResample(monai.transforms.Transform):
@@ -405,13 +405,13 @@ class AdjustSizesd(monai.transforms.MapTransform):
         ]
         return np.pad(X, pad_size)
 
-    def pad(self, X: TensorOrNDarray, out_size: list[int]) -> TensorOrNDarray:
+    def pad(self, X: NDArrayOrTensor, out_size: list[int]) -> NDArrayOrTensor:
         if isinstance(X, torch.Tensor):
             return self.pad_torch(X, out_size)
         else:
             return self.pad_numpy(X, out_size)
 
-    def crop(self, X: TensorOrNDarray, out_size: list[int]) -> TensorOrNDarray:
+    def crop(self, X: NDArrayOrTensor, out_size: list[int]) -> NDArrayOrTensor:
         sh = X.shape
         crop_dim = [i - j for i, j in zip(sh[-self.ndim :], out_size)]
         a = [x // 2 for x in crop_dim]
