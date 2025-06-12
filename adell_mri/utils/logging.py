@@ -1,3 +1,7 @@
+"""
+Includes a logging class which can store data in different formats.
+"""
+
 import os
 from dataclasses import dataclass
 from typing import Any

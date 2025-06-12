@@ -1,3 +1,8 @@
+"""
+Adapts the baseline Dataset and Sampler to work with a structure
+closer to DICOM datasets (organised by study, series and images).
+"""
+
 from collections import abc
 from typing import Callable, Dict, Sequence, Tuple, Union
 

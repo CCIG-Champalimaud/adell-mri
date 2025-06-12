@@ -1,3 +1,7 @@
+"""
+Functions for interval calculation using bootstraping.
+"""
+
 import torch
 import torchmetrics as tmc
 from tqdm import trange

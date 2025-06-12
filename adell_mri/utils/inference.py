@@ -1,3 +1,8 @@
+"""
+Contains functions for inference (conversion to MONAI MetaTensors, 
+test-time augmentation, MC dropout).
+"""
+
 from copy import deepcopy
 from typing import Callable, Dict, List, Sequence, Tuple, Union
 
@@ -44,6 +49,17 @@ def get_example(X: MultiFormatInput) -> TensorOrArray:
 
 
 def make_meta(X: torch.Tensor, source_X: MultiFormatInput) -> TensorOrArray:
+    """
+    Makes a meta tensor from a tensor or a dictionary/list/tuple of tensors.
+    Uses a source tensor to extract meta information.
+
+    Args:
+        X (torch.Tensor): the tensor to make meta from.
+        source_X (MultiFormatInput): the source tensor to extract meta information from.
+
+    Returns:
+        TensorOrArray: the meta tensor.
+    """
     source_X = get_example(source_X)
     if isinstance(source_X, MetaTensor):
         if isinstance(X, (np.ndarray, torch.Tensor)):
@@ -800,11 +816,9 @@ class SegmentationInference:
             flip (bool, optional): triggers flipped prediction. Defaults to False.
             flip_keys (list[str], optional): list of keys for flipping. Defaults
                 to ["image"].
-
             mc_iterations (int, optional): sets the number of iterations for
                 MC dropout (assumes the Dropout modules in the layer are in
                 train mode). Defaults to None (no MC dropout).
-
             ndim (int, optional): number of spatial dimensions. Defaults to 3.
             inference_batch_size (int, optional): batch size for inference.
                 Defaults to 1.
@@ -834,6 +848,12 @@ class SegmentationInference:
     def update_base_inference_function(
         self, base_inference_function: list[callable]
     ):
+        """
+        Updates the base inference function.
+
+        Args:
+            base_inference_function (list[callable]): the base inference function.
+        """
         if base_inference_function is None:
             return
         inference_function = base_inference_function
@@ -890,6 +910,16 @@ class SegmentationInference:
     def call_regular(
         self, X: MultiFormatInput, *args, **kwargs
     ) -> TensorOrArray:
+        """
+        Calls the inference function.
+
+        Args:
+            X (MultiFormatInput): the input data.
+            args, kwargs: arguments and keyword arguments for inference_function.
+
+        Returns:
+            TensorOrArray: output prediction.
+        """
         if isinstance(self.inference_function, (list, tuple)):
             output = [
                 inference_function(X, *args, **kwargs)
@@ -907,6 +937,16 @@ class SegmentationInference:
     def call_dropout(
         self, X: MultiFormatInput, *args, **kwargs
     ) -> TensorOrArray:
+        """
+        Calls the inference function with dropout (for MC dropout).
+
+        Args:
+            X (MultiFormatInput): the input data.
+            args, kwargs: arguments and keyword arguments for inference_function.
+
+        Returns:
+            TensorOrArray: output prediction.
+        """
         outputs = []
         if isinstance(self.inference_function, (list, tuple)):
             for _ in range(self.mc_iterations):
@@ -930,6 +970,16 @@ class SegmentationInference:
         return output
 
     def __call__(self, X: MultiFormatInput, *args, **kwargs) -> TensorOrArray:
+        """
+        Calls the inference function.
+
+        Args:
+            X (MultiFormatInput): the input data.
+            args, kwargs: arguments and keyword arguments for inference_function.
+
+        Returns:
+            TensorOrArray: output prediction.
+        """
         with torch.no_grad():
             if self.mc_iterations is not None:
                 output = self.call_dropout(X, *args, **kwargs)

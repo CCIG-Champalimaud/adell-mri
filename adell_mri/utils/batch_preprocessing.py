@@ -1,4 +1,5 @@
-"""Contains methods that are to be applied to whole batches.
+"""
+Contains methods that are to be applied to whole batches.
 """
 
 from typing import Tuple

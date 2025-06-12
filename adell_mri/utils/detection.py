@@ -1,3 +1,7 @@
+"""
+Functions for detection (bounding box handling mostly).
+"""
+
 from typing import Dict, List
 
 import numpy as np
