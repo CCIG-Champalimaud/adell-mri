@@ -1,4 +1,4 @@
-from typing import Any, Callable, Dict, List
+from typing import Any, Callable
 
 import os
 import numpy as np
@@ -75,6 +75,26 @@ from ..utils.utils import (
     loss_factory,
 )
 
+ALLOWED_NET_TYPES = {
+    "classification": [
+        "unet",
+        "vit",
+        "factorized_vit",
+        "cat",
+        "ord",
+        "vgg",
+    ],
+    "segmentation": [
+        "unet",
+        "brunet",
+        "unetpp",
+        "unetr",
+        "monai_unetr",
+        "swin",
+        "monai_swin",
+    ],
+}
+
 
 def compile_if_necessary(func):
     def wrapper(*args, **kwargs):
@@ -90,12 +110,12 @@ def compile_if_necessary(func):
 @compile_if_necessary
 def get_classification_network(
     net_type: str,
-    network_config: Dict[str, Any],
+    network_config: dict[str, Any],
     dropout_param: float,
     seed: int,
     n_classes: int,
-    keys: List[str],
-    clinical_feature_keys: List[str],
+    keys: list[str],
+    clinical_feature_keys: list[str],
     train_loader_call: Callable,
     max_epochs: int,
     warmup_steps: int,
@@ -107,6 +127,11 @@ def get_classification_network(
     mixup_alpha=None,
     partial_mixup=None,
 ) -> torch.nn.Module:
+    if net_type not in ALLOWED_NET_TYPES["classification"]:
+        raise ValueError(
+            f"net_type '{net_type}' not valid, has to be one of \
+            {ALLOWED_NET_TYPES['classification']}"
+        )
     if net_type == "unet":
         act_fn = network_config["activation_fn"]
         norm_fn = "batch"
@@ -137,8 +162,13 @@ def get_classification_network(
         "start_decay": start_decay,
     }
     if net_type == "unet":
+        depth_val = network_config["depth"]
+        if isinstance(depth_val, (list, tuple)):
+            head_structure = [depth_val[-1] for _ in range(3)]
+        else:
+            head_structure = [depth_val for _ in range(3)]
         network = UNetEncoderPL(
-            head_structure=[network_config["depth"][-1] for _ in range(3)],
+            head_structure=head_structure,
             head_adn_fn=get_adn_fn(
                 1, norm_fn, act_fn="gelu", dropout_param=dropout_param
             ),
@@ -146,7 +176,11 @@ def get_classification_network(
             **network_config,
         )
     elif "vit" in net_type:
-        image_size = [int(x) for x in crop_size]
+        image_size = tuple(int(x) for x in crop_size)
+        if net_type == "factorized_vit" and len(image_size) != 3:
+            raise ValueError(
+                f"factorized_vit requires a 3D image_size, got {image_size}"
+            )
         network_config["image_size"] = image_size
         if net_type == "vit":
             network = ViTClassifierPL(
@@ -169,6 +203,9 @@ def get_classification_network(
             )
 
     else:
+        for k in ["n_channels", "n_classes", "adn_fn"]:
+            if k in network_config:
+                del network_config[k]
         network = ClassNetPL(
             net_type=net_type,
             adn_fn=adn_fn,
@@ -209,14 +246,14 @@ def get_classification_network(
 
 @compile_if_necessary
 def get_deconfounded_classification_network(
-    network_config: Dict[str, Any],
+    network_config: dict[str, Any],
     dropout_param: float,
     seed: int,
     n_classes: int,
-    keys: List[str],
-    cat_confounder_key: List[str],
-    cont_confounder_key: List[str],
-    cat_vars: List[List[str]],
+    keys: list[str],
+    cat_confounder_key: list[str],
+    cont_confounder_key: list[str],
+    cat_vars: list[list[str]],
     cont_vars: int,
     train_loader_call: Callable,
     max_epochs: int,
@@ -278,8 +315,7 @@ def get_deconfounded_classification_network(
 
 @compile_if_necessary
 def get_detection_network(
-    net_type: str,
-    network_config: Dict[str, Any],
+    network_config: dict[str, Any],
     dropout_param: float,
     loss_gamma: float,
     loss_comb: float,
@@ -365,34 +401,40 @@ def get_detection_network(
 @compile_if_necessary
 def get_segmentation_network(
     net_type: str,
-    network_config: Dict[str, Any],
+    network_config: dict[str, Any],
     bottleneck_classification: bool,
-    clinical_feature_keys: List[str],
-    all_aux_keys: List[str],
-    clinical_feature_params: Dict[str, torch.Tensor],
+    clinical_feature_keys: list[str],
+    all_aux_keys: list[str],
+    clinical_feature_params: dict[str, torch.Tensor],
     clinical_feature_key_net: str,
     aux_key_net: str,
     max_epochs: int,
-    encoding_operations: List[torch.nn.Module],
+    encoding_operations: list[torch.nn.Module],
     picai_eval: bool,
     lr_encoder: float,
     encoder_checkpoint: str,
-    res_config_file: str,
+    res_config_file: str | None,
     deep_supervision: bool,
     n_classes: int,
-    keys: List[str],
+    keys: list[str],
     optimizer_str: str = "sgd",
     start_decay: float | int = 1.0,
     warmup_steps: float | int = 0.0,
     train_loader_call: Callable = None,
-    random_crop_size: List[int] = None,
-    crop_size: List[int] = None,
-    pad_size: List[int] = None,
-    resize_size: List[int] = None,
+    random_crop_size: list[int] = None,
+    crop_size: list[int] = None,
+    pad_size: list[int] = None,
+    resize_size: list[int] = None,
     semi_supervised: bool = False,
     max_steps_optim: int = None,
     seed: int = 42,
-) -> torch.nn.Module:
+):
+
+    if net_type not in ALLOWED_NET_TYPES["segmentation"]:
+        raise ValueError(
+            f"net_type '{net_type}' not valid, has to be one of "
+            f"{ALLOWED_NET_TYPES['segmentation']}"
+        )
     def get_size(*size_list):
         for size in size_list:
             if size is not None:
@@ -529,7 +571,7 @@ def get_ssl_network(
     ssl_method: str,
     ema: torch.nn.Module,
     net_type: str,
-    network_config_correct: Dict[str, Any],
+    network_config_correct: dict[str, Any],
     stop_gradient: bool,
 ):
     # Common configuration for SSL methods
@@ -672,9 +714,8 @@ def get_ssl_network(
                 "norm_layer": torch.nn.LayerNorm,
             },
             "projection_head_args": {
-                "in_dim": 96
-                * 14
-                * 14,  # embed_dim * (img_size // patch_size) ** 2
+                # embed_dim * (img_size // patch_size) ** 2
+                "in_dim": 96 * 14 * 14,
                 "hidden_dim": 512,
                 "out_dim": 128,
                 "num_layers": 3,
@@ -722,7 +763,7 @@ def get_ssl_network(
 
 @compile_if_necessary
 def get_ssl_network_no_pl(
-    ssl_method: str, net_type: str, network_config_correct: Dict[str, Any]
+    ssl_method: str, net_type: str, network_config_correct: dict[str, Any]
 ):
     if ssl_method == "ijepa":
         ssl = IJEPA(**network_config_correct)
@@ -745,9 +786,9 @@ def get_ssl_network_no_pl(
 
 @compile_if_necessary
 def get_generative_network(
-    network_config: Dict[str, Any],
-    scheduler_config: Dict[str, Any],
-    categorical_specification: List[List[str] | int],
+    network_config: dict[str, Any],
+    scheduler_config: dict[str, Any],
+    categorical_specification: list[list[str] | int],
     numerical_specification: int,
     uncondition_proba: float,
     train_loader_call: Callable,
@@ -803,12 +844,12 @@ def get_generative_network(
 
 @compile_if_necessary
 def get_gan_network(
-    network_config: Dict[str, Any],
-    generator_config: Dict[str, Any],
-    discriminator_config: Dict[str, Any],
+    network_config: dict[str, Any],
+    generator_config: dict[str, Any],
+    discriminator_config: dict[str, Any],
     training_dataloader_call: Callable,
     input_image_key: str,
-    categorical_specification: List[List[str] | int] | None,
+    categorical_specification: list[list[str] | int] | None,
     numerical_specification: int | None,
     numerical_moments: tuple[list[float], list[float]] | None,
     max_epochs: int,
