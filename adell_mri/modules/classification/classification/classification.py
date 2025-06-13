@@ -934,7 +934,7 @@ class TabularClassifier(torch.nn.Module):
 
         self.init_mlp()
         self.init_normalization_parameters()
-        self.output_features = self.mlp_structure[-1]
+        self.output_features = 1 if self.n_classes == 2 else self.n_classes
 
     def init_mlp(self):
         nc = 1 if self.n_classes == 2 else self.n_classes
