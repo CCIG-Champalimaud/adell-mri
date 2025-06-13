@@ -148,7 +148,7 @@ def main(arguments):
             args.config_file,
             args.dropout_param,
             n_keys=len(keys),
-            is_vit=args.ssl_method in ["ijepa", "dino", "ibot"],
+            is_vit=args.ssl_method in ["ijepa", "dino", "ibot", "mae"],
         )
 
     if args.batch_size is not None:
@@ -160,7 +160,7 @@ def main(arguments):
     else:
         roi_size = [int(x) for x in args.random_crop_size]
 
-    is_ijepa = args.ssl_method == "ijepa"
+    is_ijepa_or_mae = args.ssl_method in ["ijepa", "mae"]
     transform_args = {
         "all_keys": all_keys,
         "copied_keys": copied_keys,
@@ -171,28 +171,28 @@ def main(arguments):
         "pad_size": args.pad_size,
         "n_channels": 1,
         "n_dim": 2,
-        "skip_augmentations": is_ijepa,
+        "skip_augmentations": is_ijepa_or_mae,
         "jpeg_dataset": args.jpeg_dataset,
     }
 
     augmentation_args = {
         "all_keys": all_keys,
-        "copied_keys": copied_keys if is_ijepa is False else [],
+        "copied_keys": copied_keys if is_ijepa_or_mae is False else [],
         "scaled_crop_size": args.scaled_crop_size,
         "roi_size": roi_size,
         "different_crop": args.different_crop,
         "vicregl": args.ssl_method == "vicregl",
         "n_transforms": args.n_transforms,
         "n_dim": 2,
-        "skip_augmentations": is_ijepa,
+        "skip_augmentations": is_ijepa_or_mae,
     }
 
-    if args.ssl_method in ["ijepa", "dino", "ibot"]:
+    if args.ssl_method in ["ijepa", "dino", "ibot", "mae"]:
         image_size = keep_first_not_none(args.scaled_crop_size, args.crop_size)
         patch_size = network_config_correct["backbone_args"]["patch_size"]
         feature_map_size = [i // pi for i, pi in zip(image_size, patch_size)]
         network_config_correct["backbone_args"]["image_size"] = image_size
-        if args.ssl_method in ["ijepa", "ibot"]:
+        if args.ssl_method in ["ijepa", "ibot", "mae"]:
             network_config_correct["feature_map_dimensions"] = feature_map_size
 
     transforms = SSLTransforms(transform_args).transforms(

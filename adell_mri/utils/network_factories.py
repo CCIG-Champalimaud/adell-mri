@@ -60,6 +60,7 @@ from ..modules.self_supervised.pl import (
     SelfSLUNetPL,
     UNet,
     iBOTPL,
+    ViTMaskedAutoEncoderPL,
 )
 from ..modules.semi_supervised_segmentation.losses import LocalContrastiveLoss
 
@@ -75,13 +76,18 @@ from ..utils.utils import (
 )
 
 
-def compile_if_necessary(model: torch.nn.Module):
-    if os.environ.get("TORCH_COMPILE", "False").lower() in ["true", "1"]:
-        if not isinstance(model, torch._dynamo.eval_frame.OptimizedModule):
-            model = torch.compile(model)
-    return model
+def compile_if_necessary(func):
+    def wrapper(*args, **kwargs):
+        model = func(*args, **kwargs)
+        if os.environ.get("TORCH_COMPILE", "False").lower() in ["true", "1"]:
+            if not isinstance(model, torch._dynamo.eval_frame.OptimizedModule):
+                model = torch.compile(model)
+        return model
+
+    return wrapper
 
 
+@compile_if_necessary
 def get_classification_network(
     net_type: str,
     network_config: Dict[str, Any],
@@ -198,10 +204,10 @@ def get_classification_network(
             **boilerplate_args_hybrid,
         )
 
-    network = compile_if_necessary(network)
     return network
 
 
+@compile_if_necessary
 def get_deconfounded_classification_network(
     network_config: Dict[str, Any],
     dropout_param: float,
@@ -267,10 +273,10 @@ def get_deconfounded_classification_network(
         **network_config,
     )
 
-    network = compile_if_necessary(network)
     return network
 
 
+@compile_if_necessary
 def get_detection_network(
     net_type: str,
     network_config: Dict[str, Any],
@@ -353,10 +359,10 @@ def get_detection_network(
         **net_cfg,
     )
 
-    network = compile_if_necessary(network)
     return network
 
 
+@compile_if_necessary
 def get_segmentation_network(
     net_type: str,
     network_config: Dict[str, Any],
@@ -511,10 +517,10 @@ def get_segmentation_network(
             **network_config,
         )
 
-    unet = compile_if_necessary(unet)
     return unet
 
 
+@compile_if_necessary
 def get_ssl_network(
     train_loader_call: Callable,
     max_epochs: int,
@@ -526,47 +532,161 @@ def get_ssl_network(
     network_config_correct: Dict[str, Any],
     stop_gradient: bool,
 ):
-    if ssl_method == "ijepa":
-        boilerplate = {
-            "training_dataloader_call": train_loader_call,
-            "image_key": "image",
-            "n_epochs": max_epochs,
-            "n_steps": max_steps_optim,
-            "warmup_steps": warmup_steps,
-            "ema": ema,
+    # Common configuration for SSL methods
+    common_params = {
+        "training_dataloader_call": train_loader_call,
+        "n_epochs": max_epochs,
+        "n_steps": max_steps_optim,
+        "warmup_steps": warmup_steps,
+        "ema": ema,
+    }
+
+    if ssl_method in ["simclr", "byol", "vicreg", "vicregl"]:
+        # These methods use the standard ResNet architecture
+        config = {
+            "backbone_args": network_config_correct.get(
+                "backbone_args",
+                {
+                    "spatial_dim": 2,
+                    "in_channels": 1,
+                    "structure": [
+                        (64, 64, 3, 2),
+                        (128, 128, 3, 2),
+                        (256, 256, 3, 2),
+                        (512, 512, 3, 2),
+                    ],
+                    "maxpool_structure": [2, 2, 2, 2],
+                    "adn_fn": torch.nn.Identity,
+                    "res_type": "resnet",
+                },
+            ),
+            "projection_head_args": network_config_correct.get(
+                "projection_head_args",
+                {
+                    "in_channels": 512,
+                    "structure": [512, 128],
+                    "adn_fn": torch.nn.Identity,
+                },
+            ),
+            "prediction_head_args": (
+                None
+                if ssl_method == "simclr"
+                else network_config_correct.get(
+                    "prediction_head_args",
+                    {
+                        "in_channels": 128,
+                        "structure": [512, 128],
+                        "adn_fn": torch.nn.Identity,
+                    },
+                )
+            ),
+            "ssl_method": ssl_method,
             "stop_gradient": stop_gradient,
-            "temperature": 0.1,
         }
-        ssl = IJEPAPL(**boilerplate, **network_config_correct)
+        ssl = SelfSLResNetPL(**{**common_params, **config})
+
+    elif ssl_method == "ijepa":
+        # IJEPA specific configuration
+        config = {
+            "image_key": "image",
+            "backbone_args": {
+                "in_channels": 1,
+                "patch_size": (16, 16),
+                "img_size": (224, 224),
+                "embed_dim": 96,
+                "depth": 4,
+                "num_heads": 3,
+                "mlp_ratio": 4.0,
+                "qkv_bias": True,
+                "norm_layer": torch.nn.LayerNorm,
+            },
+            "feature_map_dimensions": network_config_correct.get(
+                "feature_map_dimensions", [14, 14]
+            ),
+            "stop_gradient": stop_gradient,
+        }
+        ssl = IJEPAPL(**{**common_params, **config})
+
+    elif ssl_method == "mae":
+        # MAE specific configuration
+        config = {
+            "image_key": "image",
+            "backbone_args": {
+                "in_channels": 1,
+                "patch_size": (16, 16),
+                "img_size": (224, 224),
+                "embed_dim": 96,
+                "depth": 4,
+                "num_heads": 3,
+                "mlp_ratio": 4.0,
+                "qkv_bias": True,
+                "norm_layer": torch.nn.LayerNorm,
+            },
+            "mask_ratio": 0.75,
+        }
+        ssl = ViTMaskedAutoEncoderPL(**{**common_params, **config})
 
     elif ssl_method == "dino":
-        boilerplate = {
-            "training_dataloader_call": train_loader_call,
+        # DINO specific configuration
+        config = {
             "aug_image_key_1": "augmented_image_1",
             "aug_image_key_2": "augmented_image_2",
-            "n_epochs": max_epochs,
-            "n_steps": max_steps_optim,
-            "warmup_steps": warmup_steps,
-            "ema": ema,
-            "stop_gradient": stop_gradient,
+            "backbone_args": {
+                "in_channels": 1,
+                "patch_size": (16, 16),
+                "img_size": (224, 224),
+                "embed_dim": 96,
+                "depth": 4,
+                "num_heads": 3,
+                "mlp_ratio": 4.0,
+                "qkv_bias": True,
+                "norm_layer": torch.nn.LayerNorm,
+            },
+            "projection_head_args": {
+                "in_dim": 96
+                * 14
+                * 14,  # embed_dim * (img_size // patch_size) ** 2
+                "hidden_dim": 512,
+                "out_dim": 128,
+                "num_layers": 3,
+            },
             "temperature": 0.1,
+            "stop_gradient": stop_gradient,
         }
-        ssl = DINOPL(**boilerplate, **network_config_correct)
+        ssl = DINOPL(**{**common_params, **config})
 
     elif ssl_method == "ibot":
-        boilerplate = {
-            "training_dataloader_call": train_loader_call,
+        # iBOT specific configuration
+        config = {
             "aug_image_key_1": "augmented_image_1",
             "aug_image_key_2": "augmented_image_2",
-            "n_epochs": max_epochs,
-            "n_steps": max_steps_optim,
-            "warmup_steps": warmup_steps,
-            "ema": ema,
-            "stop_gradient": stop_gradient,
+            "backbone_args": {
+                "in_channels": 1,
+                "patch_size": (16, 16),
+                "img_size": (224, 224),
+                "embed_dim": 96,
+                "depth": 4,
+                "num_heads": 3,
+                "mlp_ratio": 4.0,
+                "qkv_bias": True,
+                "norm_layer": torch.nn.LayerNorm,
+            },
+            "projection_head_args": {
+                "in_dim": 96
+                * 14
+                * 14,  # embed_dim * (img_size // patch_size) ** 2
+                "hidden_dim": 512,
+                "out_dim": 128,
+                "num_layers": 3,
+            },
+            "feature_map_dimensions": [14, 14],
+            "n_encoder_features": 96,
+            "min_patch_size": 2,
+            "max_patch_size": 8,
             "temperature": 0.1,
+            "stop_gradient": stop_gradient,
         }
-        ssl = iBOTPL(**boilerplate, **network_config_correct)
-
+        ssl = iBOTPL(**{**common_params, **config})
     else:
         if ssl_method == "simclr":
             # simclr only uses a projection head, no prediction head
@@ -597,10 +717,10 @@ def get_ssl_network(
         else:
             ssl = SelfSLResNetPL(**boilerplate, **network_config_correct)
 
-    ssl = compile_if_necessary(ssl)
     return ssl
 
 
+@compile_if_necessary
 def get_ssl_network_no_pl(
     ssl_method: str, net_type: str, network_config_correct: Dict[str, Any]
 ):
@@ -620,10 +740,10 @@ def get_ssl_network_no_pl(
         else:
             ssl = ResNet(**network_config_correct)
 
-    ssl = compile_if_necessary(ssl)
     return ssl
 
 
+@compile_if_necessary
 def get_generative_network(
     network_config: Dict[str, Any],
     scheduler_config: Dict[str, Any],
@@ -678,10 +798,10 @@ def get_generative_network(
         **network_config,
     )
 
-    network = compile_if_necessary(network)
     return network
 
 
+@compile_if_necessary
 def get_gan_network(
     network_config: Dict[str, Any],
     generator_config: Dict[str, Any],
@@ -761,5 +881,4 @@ def get_gan_network(
 
     network = GANPL(**boilerplate_args)
 
-    network = compile_if_necessary(network)
     return network

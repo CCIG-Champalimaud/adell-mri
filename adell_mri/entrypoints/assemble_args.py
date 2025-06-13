@@ -687,6 +687,7 @@ argument_factory = {
             "vicreg",
             "vicregl",
             "ijepa",
+            "mae",
             "dino",
             "ibot",
         ],
