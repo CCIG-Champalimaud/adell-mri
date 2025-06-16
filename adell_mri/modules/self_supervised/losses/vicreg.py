@@ -282,7 +282,6 @@ class VICRegLocalLoss(VICRegLoss):
         assert (
             X1.shape[0] == X2.shape[0]
         ), "X1 and X2 need to have the same batch size"
-        X1.shape[0]
         coords_X1 = self.transform_coords(self.sparse_coords_1, box_X1)
         coords_X2 = self.transform_coords(self.sparse_coords_2, box_X2)
         all_dists = torch.cdist(coords_X1, coords_X2, p=2)
