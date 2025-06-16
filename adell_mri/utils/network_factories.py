@@ -20,12 +20,6 @@ from ..modules.classification.pl import (
     ViTClassifierPL,
 )
 from ..modules.diffusion.embedder import Embedder
-from ..modules.diffusion.inferer import DiffusionInfererSkipSteps
-
-# diffusion
-from ..modules.diffusion.pl import DiffusionUNetPL
-from ..modules.gan.discriminator import Discriminator
-from ..modules.gan.generator import Generator
 
 # gan
 from ..modules.gan.pl import GANPL
@@ -805,9 +799,11 @@ def get_generative_network(
     warmup_steps: int,
     start_decay: int,
     diffusion_steps: int,
-) -> DiffusionUNetPL:
+) -> torch.nn.Module:
     try:
         from generative.networks.schedulers import DDPMScheduler
+        from ..modules.diffusion.inferer import DiffusionInfererSkipSteps
+        from ..modules.diffusion.pl import DiffusionUNetPL
     except ImportError:
         raise ImportError(
             "Please install the generative package to diffusion models"
@@ -874,6 +870,15 @@ def get_gan_network(
     steps_per_epoch: int,
     pct_start: int,
 ) -> torch.nn.Module:
+    try:
+        from ..modules.gan.discriminator import Discriminator
+        from ..modules.gan.generator import Generator
+    except ImportError:
+        raise ImportError(
+            "Please install the generative package to use gan models"
+            "(go to https://github.com/Project-MONAI/GenerativeModels for "
+            "instructions)"
+        )
     boilerplate_args = {
         "real_image_key": "image",
         "classification_target_key": None,
