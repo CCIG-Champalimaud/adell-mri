@@ -84,13 +84,13 @@ class EfficientConditioningAttentionBlock(torch.nn.Module):
             )
 
     def forward(self, X: torch.Tensor, cls: torch.Tensor) -> torch.Tensor:
-        n_channels = len(X.shape)
+        in_channels = len(X.shape)
         cls = self.class_to_channels(cls)
         if self.op_type == "conv":
             cls = F.sigmoid(self.op(cls.unsqueeze(1))).permute(0, 2, 1)
         elif self.op_type == "linear":
             cls = F.sigmoid(self.op(cls).unsqueeze(-1))
         cls = cls.reshape(
-            -1, self.input_channels, 1, *[1 for _ in range(n_channels - 3)]
+            -1, self.input_channels, 1, *[1 for _ in range(in_channels - 3)]
         )
         return X * cls

@@ -11,7 +11,7 @@ def model_config():
         "image_key": "image",
         "image_size": (32, 32),
         "patch_size": (8, 8),
-        "n_channels": 1,
+        "in_channels": 1,
         "input_dim_size": 64,
         "encoder_args": {
             "num_layers": 2,

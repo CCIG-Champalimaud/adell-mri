@@ -289,19 +289,19 @@ class ResNeXtBlock2d(torch.nn.Module):
     def init_layers(self):
         if self.inter_channels is None:
             self.inter_channels = self.output_channels
-        self.n_channels_splits = split_int_into_n(
+        self.in_channels_splits = split_int_into_n(
             self.inter_channels, n=self.n_splits
         )
         self.ops = torch.nn.ModuleList([])
-        for n_channels in self.n_channels_splits:
+        for in_channels in self.in_channels_splits:
             op = torch.nn.Sequential(
-                torch.nn.Conv2d(self.in_channels, n_channels, 1),
-                self.adn_fn(n_channels),
+                torch.nn.Conv2d(self.in_channels, in_channels, 1),
+                self.adn_fn(in_channels),
                 torch.nn.Conv2d(
-                    n_channels, n_channels, self.kernel_size, padding="same"
+                    in_channels, in_channels, self.kernel_size, padding="same"
                 ),
-                self.adn_fn(n_channels),
-                torch.nn.Conv2d(n_channels, self.out_channels, 1),
+                self.adn_fn(in_channels),
+                torch.nn.Conv2d(in_channels, self.out_channels, 1),
             )
             self.ops.append(op)
 
@@ -378,19 +378,19 @@ class ResNeXtBlock3d(torch.nn.Module):
     def init_layers(self):
         if self.inter_channels is None:
             self.inter_channels = self.output_channels
-        self.n_channels_splits = split_int_into_n(
+        self.in_channels_splits = split_int_into_n(
             self.inter_channels, n=self.n_splits
         )
         self.ops = torch.nn.ModuleList([])
-        for n_channels in self.n_channels_splits:
+        for in_channels in self.in_channels_splits:
             op = torch.nn.Sequential(
-                torch.nn.Conv3d(self.in_channels, n_channels, 1),
-                self.adn_fn(n_channels),
+                torch.nn.Conv3d(self.in_channels, in_channels, 1),
+                self.adn_fn(in_channels),
                 torch.nn.Conv3d(
-                    n_channels, n_channels, self.kernel_size, padding="same"
+                    in_channels, in_channels, self.kernel_size, padding="same"
                 ),
-                self.adn_fn(n_channels),
-                torch.nn.Conv3d(n_channels, self.out_channels, 1),
+                self.adn_fn(in_channels),
+                torch.nn.Conv3d(in_channels, self.out_channels, 1),
             )
             self.ops.append(op)
 
@@ -640,7 +640,7 @@ class ConvNeXtBlockVTwo2d(torch.nn.Module):
         self.norm = torch.nn.LayerNorm(in_channels, eps=1e-6)
         self.pwconv1 = torch.nn.Linear(in_channels, inter_channels)
         self.act = torch.nn.GELU()
-        self.grn = GRN(n_channels=inter_channels, reduce_dims=(1, 2))
+        self.grn = GRN(in_channels=inter_channels, reduce_dims=(1, 2))
         self.pwconv2 = torch.nn.Linear(inter_channels, in_channels)
         if out_channels != in_channels:
             self.out_layer = torch.nn.Sequential(
@@ -717,7 +717,7 @@ class ConvNeXtBlockVTwo3d(torch.nn.Module):
         self.norm = torch.nn.LayerNorm(in_channels, eps=1e-6)
         self.pwconv1 = torch.nn.Linear(in_channels, inter_channels)
         self.act = torch.nn.GELU()
-        self.grn = GRN(n_channels=inter_channels, reduce_dims=(1, 2, 3))
+        self.grn = GRN(in_channels=inter_channels, reduce_dims=(1, 2, 3))
         self.pwconv2 = torch.nn.Linear(inter_channels, in_channels)
         if out_channels != in_channels:
             self.out_layer = torch.nn.Sequential(

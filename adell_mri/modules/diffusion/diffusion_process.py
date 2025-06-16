@@ -308,7 +308,7 @@ class Diffusion:
         self,
         model: torch.nn.Module,
         n: int = 1,
-        n_channels: int = 1,
+        in_channels: int = 1,
         x: torch.Tensor = None,
         classification: torch.Tensor = None,
         classification_scale: float = 3.0,
@@ -321,7 +321,7 @@ class Diffusion:
             model (torch.nn.Module): diffusion model predicting noise in image.
             n (int, optional): number of samples (batch size in image or class
                 conditioning overrides this). Defaults to 1.
-            n_channels (int, optional): number of channels (channel number in
+            in_channels (int, optional): number of channels (channel number in
                 image conditioning overrides this). Defaults to 1.
             x (torch.Tensor, optional): input image for conditioning. Defaults
                 to None.
@@ -347,7 +347,7 @@ class Diffusion:
         else:
             # fetch a model parameter to retrieve parameter
             device = next(model.parameters()).device
-            x = torch.randn((n, n_channels, *self.img_size)).to(device)
+            x = torch.randn((n, in_channels, *self.img_size)).to(device)
         self.alpha = self.alpha.to(x.device)
         self.beta = self.beta.to(x.device)
         self.alpha_bar = self.alpha_bar.to(x.device)

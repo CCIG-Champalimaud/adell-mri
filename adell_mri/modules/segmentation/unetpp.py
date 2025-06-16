@@ -32,7 +32,7 @@ class UNetPlusPlus(UNet):
         padding: int = 0,
         dropout_param: float = 0.1,
         activation_fn: torch.nn.Module = torch.nn.PReLU,
-        n_channels: int = 1,
+        in_channels: int = 1,
         n_classes: int = 2,
         depth: list = [16, 32, 64],
         kernel_sizes: list = [3, 3, 3],
@@ -72,7 +72,7 @@ class UNetPlusPlus(UNet):
                 to 0.1.
             activation_fn (torch.nn.Module, optional): activation function to
                 be applied after normalizing. Defaults to torch.nn.PReLU.
-            n_channels (int, optional): number of channels in input. Defaults
+            in_channels (int, optional): number of channels in input. Defaults
                 to 1.
             n_classes (int, optional): number of output classes. Defaults to 2.
             depth (list, optional): defines the depths of each layer of the
@@ -113,7 +113,7 @@ class UNetPlusPlus(UNet):
             padding=padding,
             dropout_param=dropout_param,
             activation_fn=activation_fn,
-            n_channels=n_channels,
+            in_channels=in_channels,
             n_classes=n_classes,
             depth=depth,
             kernel_sizes=kernel_sizes,

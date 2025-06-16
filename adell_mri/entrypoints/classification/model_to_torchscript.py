@@ -24,8 +24,8 @@ def main(arguments):
         required=True,
     )
     parser.add_argument(
-        "--n_channels",
-        dest="n_channels",
+        "-in_channels",
+        dest="in_channels",
         type=int,
         help="Number of input channels",
         required=True,
@@ -81,7 +81,7 @@ def main(arguments):
 
     if args.net_type == "unet":
         network_config, _ = parse_config_unet(
-            args.config_file, args.n_channels, args.n_classes
+            args.config_file, args.in_channels, args.n_classes
         )
     else:
         network_config = parse_config_cat(args.config_file)
@@ -101,7 +101,7 @@ def main(arguments):
         dropout_param=0.0,
         seed=42,
         n_classes=args.n_classes,
-        keys=["image_{}".format(i) for i in range(args.n_channels)],
+        keys=["image_{}".format(i) for i in range(args.in_channels)],
         clinical_feature_keys=[
             "tab_{}".format(i) for i in range(args.n_clinical_features)
         ],
@@ -125,7 +125,7 @@ def main(arguments):
     print(inc)
     network.eval()
 
-    # example = torch.rand(1, args.n_channels, *args.input_shape).to(args.dev)
+    # example = torch.rand(1, argsin_channels, *args.input_shape).to(args.dev)
     traced_network = network.to_torchscript()
 
     torch.jit.save(traced_network, args.output_model_path)

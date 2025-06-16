@@ -48,7 +48,7 @@ class MIMUNet(torch.nn.Module):
         depth: List[int] = None,
         padding: List[int] = None,
         adn_fn: Callable = get_adn_fn(3, "instance", "relu", 0.1),
-        n_channels: int = None,
+        in_channels: int = None,
         n_slices: int = None,
         deep_supervision: bool = False,
         upscale_type: str = "upsample",
@@ -62,7 +62,7 @@ class MIMUNet(torch.nn.Module):
             n_classes (int): number of output classes.
             adn_fn (Callable, optional): ADN function for the feature extraction
                 module. Defaults to get_adn_fn( 1,"layer","gelu",0.1).
-            n_channels (int, optional): number of channels. Defaults to None.
+            in_channels (int, optional): number of channels. Defaults to None.
             n_slices (int, optional): number of slices. Defaults to None.
             deep_supervision (bool, optional): forward method returns
                 segmentation predictions obtained from each decoder block.
@@ -78,7 +78,7 @@ class MIMUNet(torch.nn.Module):
         self.depth = depth
         self.padding = padding
         self.adn_fn = adn_fn
-        self.n_channels = n_channels
+        self.in_channels = in_channels
         self.n_slices = n_slices
         self.deep_supervision = deep_supervision
         self.upscale_type = upscale_type
@@ -106,7 +106,7 @@ class MIMUNet(torch.nn.Module):
                     einops.layers.torch.Rearrange(
                         "(b s c) D h w -> b (c D) h w s",
                         s=self.n_slices,
-                        c=self.n_channels,
+                        c=self.in_channels,
                         D=d,
                     )
                     for d in self.depth
@@ -120,7 +120,7 @@ class MIMUNet(torch.nn.Module):
                 [
                     einops.layers.torch.Rearrange(
                         "(b c) D h w s -> b c D h w s",
-                        c=self.n_channels,
+                        c=self.in_channels,
                         D=d,
                     )
                     for d in self.depth
@@ -151,11 +151,11 @@ class MIMUNet(torch.nn.Module):
         return depth, padding, kernel_size
 
     def init_feature_reduction(self):
-        if self.n_channels > 1:
+        if self.in_channels > 1:
             self.feature_reduction = torch.nn.ModuleList(
                 [
                     torch.nn.Sequential(
-                        torch.nn.Conv3d(d * self.n_channels, d, 1),
+                        torch.nn.Conv3d(d * self.in_channels, d, 1),
                         self.adn_fn(d),
                     )
                     for d in self.depth

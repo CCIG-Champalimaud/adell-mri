@@ -142,7 +142,7 @@ def minimal_network_config(ssl_method):
         return {
             "image_size": (224, 224),
             "patch_size": (16, 16),
-            "n_channels": 1,
+            "in_channels": 1,
             "input_dim_size": 768,
             "encoder_args": {
                 "embed_dim": 96,
@@ -397,7 +397,7 @@ def test_mae_network():
     img_size = (224, 224)  # (height, width)
     patch_size = (16, 16)  # (ph, pw)
     mask_ratio = 0.75
-    n_channels = 1
+    in_channels = 1
     # Ensure input_dim_size is divisible by num_heads (3)
     input_dim_size = 96  # 96 is divisible by 3 (32 per head)
     mlp_dim = 384  # 384 is divisible by 3 (128 per head)
@@ -455,7 +455,7 @@ def test_mae_network():
         (
             "unet_encoder",
             {
-                "n_channels": 1,
+                "in_channels": 1,
                 "n_classes": 8,
                 "depth": [8, 16],
             },

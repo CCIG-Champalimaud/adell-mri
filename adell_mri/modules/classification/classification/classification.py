@@ -69,7 +69,7 @@ class VGGBackbone(torch.nn.Module):
     def __init__(
         self,
         spatial_dimensions: int = 3,
-        n_channels: int = 1,
+        in_channels: int = 1,
         depth_mult: float = 1.0,
         feature_extraction=None,
         resnet_structure=None,
@@ -82,7 +82,7 @@ class VGGBackbone(torch.nn.Module):
         Args:
             spatial_dimensions (int, optional): number of spatial dimensions.
                 Defaults to 3.
-            n_channels (int, optional): number of input channels. Defaults to
+           in_channels (int, optional): number of input channels. Defaults to
                 1.
             depth_mult (float, optional): multiplies the feature extractor
                 depths. Defaults to 1.0 (64, 128, 256).
@@ -90,7 +90,7 @@ class VGGBackbone(torch.nn.Module):
                 Defautls to 0.
         """
         super().__init__()
-        self.in_channels = n_channels
+        self.in_channels = in_channels
         self.depth_mult = depth_mult
         self.batch_ensemble = batch_ensemble
 
@@ -146,7 +146,7 @@ class VGG(torch.nn.Module):
     def __init__(
         self,
         spatial_dimensions: int = 3,
-        n_channels: int = 1,
+        in_channels: int = 1,
         n_classes: int = 2,
         depth_mult: float = 1.0,
         feature_extraction=None,
@@ -162,7 +162,7 @@ class VGG(torch.nn.Module):
         Args:
             spatial_dimensions (int, optional): number of spatial dimensions.
                 Defaults to 3.
-            n_channels (int, optional): number of input channels. Defaults to
+            in_channels (int, optional): number of input channels. Defaults to
                 1.
             n_classes (int, optional): number of classes. Defaults to 2.
             depth_mult (float, optional): multiplies the feature extractor
@@ -176,7 +176,7 @@ class VGG(torch.nn.Module):
                 None (512).
         """
         super().__init__()
-        self.in_channels = n_channels
+        self.in_channels = in_channels
         self.n_classes = n_classes
         self.depth_mult = depth_mult
         self.batch_ensemble = batch_ensemble
@@ -262,7 +262,7 @@ class CatNet(torch.nn.Module):
     def __init__(
         self,
         spatial_dimensions: int = 3,
-        n_channels: int = 1,
+        in_channels: int = 1,
         n_classes: int = 2,
         feature_extraction: torch.nn.Module = None,
         resnet_structure: List[Tuple[int, int, int, int]] = resnet_default,
@@ -277,7 +277,7 @@ class CatNet(torch.nn.Module):
         Args:
             spatial_dimensions (int, optional): number of spatial dimensions.
                 Defaults to 3.
-            n_channels (int, optional): number of input channels. Defaults to
+            in_channels (int, optional): number of input channels. Defaults to
                 1.
             n_classes (int, optional): number of classes. Defaults to 2.
             feature_extraction (torch.nn.Module, optional): module to use for
@@ -309,7 +309,7 @@ class CatNet(torch.nn.Module):
         """
         super().__init__()
         self.spatial_dim = spatial_dimensions
-        self.in_channels = n_channels
+        self.in_channels = in_channels
         self.n_classes = n_classes
         self.feature_extraction = feature_extraction
         self.resnet_structure = resnet_structure
@@ -721,7 +721,7 @@ class ViTClassifier(ViT):
 
         Args:
             X (torch.Tensor): tensor of shape
-                [-1,self.n_channels,*self.image_size]
+                [-1,self.in_channels,*self.image_size]
 
         Returns:
             torch.Tensor: feature tensor.
@@ -735,7 +735,7 @@ class ViTClassifier(ViT):
 
         Args:
             X (torch.Tensor): tensor of shape
-                [-1,self.n_channels,*self.image_size]
+                [-1,self.in_channels,*self.image_size]
             return_features (bool, optional): returns the features rather than
                 the classification_head output. Defaults to False.
 
@@ -819,7 +819,7 @@ class FactorizedViTClassifier(FactorizedViT):
 
         Args:
             X (torch.Tensor): tensor of shape
-                [-1,self.n_channels,*self.image_size]
+                [-1,self.in_channels,*self.image_size]
 
         Returns:
             torch.Tensor: feature tensor.
@@ -833,7 +833,7 @@ class FactorizedViTClassifier(FactorizedViT):
 
         Args:
             X (torch.Tensor): tensor of shape
-                [-1,self.n_channels,*self.image_size]
+                [-1,self.in_channels,*self.image_size]
             return_features (bool, optional): returns the features rather than
                 the classification_head output. Defaults to False.
 
@@ -876,7 +876,7 @@ class MONAIViTClassifier(torch.nn.Module):
             nc = self.n_classes
 
         self.network = monai.networks.nets.vit.ViT(
-            in_channels=kwargs["n_channels"],
+            in_channels=kwargs["in_channels"],
             img_size=[int(x) for x in kwargs["image_size"]],
             patch_size=kwargs["patch_size"],
             hidden_size=kwargs["hidden_dim"],
@@ -893,7 +893,7 @@ class MONAIViTClassifier(torch.nn.Module):
 
         Args:
             X (torch.Tensor): tensor of shape
-                [-1,self.n_channels,*self.image_size]
+                [-1,self.in_channels,*self.image_size]
 
         Returns:
             torch.Tensor: tensor of shape [...,self.input_dim_primary]

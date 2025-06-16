@@ -13,7 +13,7 @@ class VGGAutoencoder(torch.nn.Module):
     def __init__(
         self,
         spatial_dimensions: int = 3,
-        n_channels: int = 1,
+        in_channels: int = 1,
         feature_extraction=None,
         resnet_structure=None,
         maxpool_structure=None,
@@ -26,7 +26,7 @@ class VGGAutoencoder(torch.nn.Module):
         Args:
             spatial_dimensions (int, optional): number of spatial dimensions.
                 Defaults to 3.
-            n_channels (int, optional): number of input channels. Defaults to
+            in_channels (int, optional): number of input channels. Defaults to
                 1.
             n_classes (int, optional): number of classes. Defaults to 2.
             classification_structure (List[int], optional): structure of the
@@ -35,7 +35,7 @@ class VGGAutoencoder(torch.nn.Module):
                 Defautls to 0.
         """
         super().__init__()
-        self.in_channels = n_channels
+        self.in_channels = in_channels
 
         self.encoder_block = self.encoder(in_channels=self.in_channels)
         self.decoder_block = self.decoder(in_channels=self.in_channels)

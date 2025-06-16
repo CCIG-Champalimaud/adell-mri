@@ -151,7 +151,7 @@ def get_classification_network(
         label_smoothing, mixup_alpha, partial_mixup, seed
     )
     boilerplate_args = {
-        "n_channels": len(keys),
+        "in_channels": len(keys),
         "n_classes": n_classes,
         "training_dataloader_call": train_loader_call,
         "image_key": "image",
@@ -203,7 +203,7 @@ def get_classification_network(
             )
 
     else:
-        for k in ["n_channels", "n_classes", "adn_fn"]:
+        for k in ["in_channels", "n_classes", "adn_fn"]:
             if k in network_config:
                 del network_config[k]
         network = ClassNetPL(
@@ -284,7 +284,7 @@ def get_deconfounded_classification_network(
     else:
         cat_conv = None
     boilerplate_args = {
-        "n_channels": len(keys),
+        "in_channels": len(keys),
         "n_classes": n_classes,
         "training_dataloader_call": train_loader_call,
         "image_key": "image",
@@ -481,8 +481,8 @@ def get_segmentation_network(
         )
 
     elif net_type == "brunet":
-        nc = network_config["n_channels"]
-        network_config["n_channels"] = nc // len(keys)
+        nc = network_config["in_channels"]
+        network_config["in_channels"] = nc // len(keys)
         unet = BrUNetPL(
             encoders=encoding_operations,
             image_keys=keys,
@@ -660,7 +660,7 @@ def get_ssl_network(
             "image_key": "image",
             "image_size": encoder_args.get("image_size", (224, 224)),
             "patch_size": encoder_args.get("patch_size", (16, 16)),
-            "n_channels": encoder_args.get("n_channels", 1),
+            "in_channels": encoder_args.get("in_channels", 1),
             "input_dim_size": encoder_args.get("embed_dim", 96),
             "encoder_args": {
                 "embed_dim": encoder_args.get("embed_dim", 96),

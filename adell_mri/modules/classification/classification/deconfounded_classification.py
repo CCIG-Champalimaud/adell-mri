@@ -153,7 +153,7 @@ class DeconfoundedNetGeneric(torch.nn.Module):
     def __init__(
         self,
         n_classes: int,
-        n_channels: int = 1,
+        in_channels: int = 1,
         feature_extraction_module: torch.nn.Module | str = "vgg",
         classification_structure: list[int] = [512, 512, 512],
         n_dim: int = 3,
@@ -168,7 +168,7 @@ class DeconfoundedNetGeneric(torch.nn.Module):
         """
         Args:
             n_classes (int): number of classes.
-            n_channels (int): number of input channels. Defaults to 1.
+            in_channels (int): number of input channels. Defaults to 1.
             feature_extraction_module (torch.nn.Module): feature extraction
                 module. Can be a torch module or a string corresponding to
                 either "vgg" (for VGG) or "cat" (for CatNet). Defaults to
@@ -192,7 +192,7 @@ class DeconfoundedNetGeneric(torch.nn.Module):
         super().__init__()
         self.n_classes = n_classes
         self.feature_extraction_module = feature_extraction_module
-        self.n_channels = n_channels
+        self.in_channels = in_channels
         self.classification_structure = classification_structure
         self.n_dim = n_dim
         self.n_features_deconfounder = n_features_deconfounder
@@ -220,9 +220,9 @@ class DeconfoundedNetGeneric(torch.nn.Module):
 
     def get_output_feature_size(self):
         if self.n_dim == 2:
-            example = torch.rand(1, self.n_channels, 64, 64)
+            example = torch.rand(1, self.in_channels, 64, 64)
         elif self.n_dim == 3:
-            example = torch.rand(1, self.n_channels, 64, 64, 16)
+            example = torch.rand(1, self.in_channels, 64, 64, 16)
         self.n_output_features = (
             self.feature_extraction_module.forward_features(example).shape[1]
         )
@@ -233,14 +233,14 @@ class DeconfoundedNetGeneric(torch.nn.Module):
                 self.feature_extraction_module = VGG(
                     *self.args,
                     **self.kwargs,
-                    n_channels=self.n_channels,
+                    in_channels=self.in_channels,
                     n_classes=self.n_classes,
                 )
             elif self.feature_extraction_module == "cat":
                 self.feature_extraction_module = CatNet(
                     *self.args,
                     **self.kwargs,
-                    n_channels=self.n_channels,
+                    in_channels=self.in_channels,
                     n_classes=self.n_classes,
                 )
             else:

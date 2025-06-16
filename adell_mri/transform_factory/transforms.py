@@ -626,7 +626,7 @@ class SSLTransforms(TransformMixin):
     crop_size: tuple[int] = None
     pad_size: tuple[int] = None
     resize_size: tuple[int] = None
-    n_channels: int = 1
+    in_channels: int = 1
     n_dim: int = 3
     skip_augmentations: bool = False
     jpeg_dataset: bool = False
@@ -654,7 +654,7 @@ class SSLTransforms(TransformMixin):
             monai.transforms.LoadImaged(
                 self.all_keys, ensure_channel_first=True, image_only=True
             ),
-            SampleChannelDimd(self.all_keys, self.n_channels),
+            SampleChannelDimd(self.all_keys, self.in_channels),
         ]
         if self.jpeg_dataset is False and self.n_dim == 2:
             transforms.extend(

@@ -14,7 +14,7 @@ from adell_mri.modules.layers.adn_fn import get_adn_fn
 image_size = [32, 32, 16]
 patch_size = [4, 4, 2]
 window_size = [8, 8, 4]
-n_channels = 1
+in_channels = 1
 attention_dim = 164
 hidden_dim = 128
 batch_size = 4
@@ -49,7 +49,7 @@ def test_swin(s, image_size, patch_size, window_size, embed_method):
         image_size=image_size,
         patch_size=patch_size,
         window_size=window_size,
-        n_channels=n_channels,
+        in_channels=in_channels,
         attention_dim=attention_dim,
         hidden_dim=hidden_dim,
         shift_size=s,
@@ -59,8 +59,8 @@ def test_swin(s, image_size, patch_size, window_size, embed_method):
         mlp_structure=[128, 128],
         adn_fn=torch.nn.Identity,
     )
-    out = st(torch.rand(size=[batch_size, n_channels, *image_size]), scale=1)
-    assert_dim = [batch_size, n_channels, *image_size]
+    out = st(torch.rand(size=[batch_size, in_channels, *image_size]), scale=1)
+    assert_dim = [batch_size, in_channels, *image_size]
     assert list(out.shape) == assert_dim
 
 
@@ -92,7 +92,7 @@ def test_swin_stack(scale, image_size, patch_size, window_size, embed_method):
         image_size=image_size,
         patch_size=patch_size,
         window_size=window_size,
-        n_channels=n_channels,
+        in_channels=in_channels,
         attention_dim=attention_dim,
         hidden_dim=hidden_dim,
         shift_sizes=[0, 1, 2],
@@ -103,9 +103,9 @@ def test_swin_stack(scale, image_size, patch_size, window_size, embed_method):
         adn_fn=torch.nn.Identity,
     )
     out = st(
-        torch.rand(size=[batch_size, n_channels, *image_size]), scale=scale
+        torch.rand(size=[batch_size, in_channels, *image_size]), scale=scale
     )
-    new_n_channels = n_channels * scale ** len(image_size)
+    new_in_channels = in_channels * scale ** len(image_size)
     new_image_size = [x // scale for x in image_size]
-    assert_dim = [batch_size, new_n_channels, *new_image_size]
+    assert_dim = [batch_size, new_in_channels, *new_image_size]
     assert list(out.shape) == assert_dim

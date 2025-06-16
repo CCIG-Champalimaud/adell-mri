@@ -8,16 +8,16 @@ import torch
 from adell_mri.modules.classification import VGG
 
 image_size = [32, 32, 32]
-n_channels = 3
+in_channels = 3
 n_classes = 2
 
 
 @pytest.mark.parametrize("n_dim,be", [[3, 0], [3, 1], [3, 2]])
 def test_vgg(n_dim, be):
     vgg_mod = VGG(
-        spatial_dimensions=n_dim, n_channels=n_channels, n_classes=n_classes
+        spatial_dimensions=n_dim, in_channels=in_channels, n_classes=n_classes
     )
-    input_tensor = torch.ones([2, n_channels, *image_size[:n_dim]])
+    input_tensor = torch.ones([2, in_channels, *image_size[:n_dim]])
     assert list(vgg_mod(input_tensor).shape) == [2, 1]
     if be > 0:
         for i in range(be):
@@ -28,11 +28,11 @@ def test_vgg_names():
     # tests whether parameter names remain unchanged (allows for an easier
     # extension of the module using batch ensemble)
     vgg_mod = VGG(
-        spatial_dimensions=3, n_channels=n_channels, n_classes=n_classes
+        spatial_dimensions=3, in_channels=in_channels, n_classes=n_classes
     )
     vgg_mod_be = VGG(
         spatial_dimensions=3,
-        n_channels=n_channels,
+        in_channels=in_channels,
         n_classes=n_classes,
         batch_ensemble=2,
     )

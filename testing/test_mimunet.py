@@ -36,7 +36,7 @@ def test_unet_base():
         upscale_type="transpose",
         link_type="identity",
         n_classes=2,
-        n_channels=c,
+        in_channels=c,
         n_slices=d,
     )
     o = a(i)
@@ -54,7 +54,7 @@ def test_unet_base_more_channels():
         upscale_type="transpose",
         link_type="identity",
         n_classes=2,
-        n_channels=c,
+        in_channels=c,
         n_slices=d,
     )
     o = a(i)

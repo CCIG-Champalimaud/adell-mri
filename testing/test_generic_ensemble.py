@@ -33,7 +33,7 @@ resnet_args = {
 
 input_shape = [16, 1, 32, 32, 32]
 depth = [16, 32, 64]
-n_channels = 1
+in_channels = 1
 n_classes = 2
 n_elements = 3
 head_adn_fn = get_adn_fn(1, "batch", act_fn="swish", dropout_param=0.1)
@@ -45,7 +45,7 @@ S = [[2, 2, 1], [2, 2, 1], [2, 2, 2], [2, 2, 2]]
 )
 def test_ensemble_unet_encoders(sd, sae):
     networks = [
-        UNet(sd, n_channels=n_channels, depth=depth, encoder_only=True)
+        UNet(sd, in_channels=in_channels, depth=depth, encoder_only=True)
         for _ in range(n_elements)
     ]
 

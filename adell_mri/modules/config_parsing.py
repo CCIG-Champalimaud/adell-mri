@@ -17,7 +17,7 @@ unet_args = [
     "padding",
     "dropout_param",
     "activation_fn",
-    "n_channels",
+    "in_channels",
     "n_classes",
     "depth",
     "kernel_sizes",
@@ -54,7 +54,7 @@ def parse_config_unet(config_file, n_keys, n_classes):
     if "batch_size" not in network_config:
         network_config["batch_size"] = 1
 
-    network_config["n_channels"] = n_keys * network_config["n_channels"]
+    network_config["in_channels"] = n_keys * network_config["in_channels"]
     return network_config, loss_keys
 
 
@@ -127,7 +127,7 @@ def parse_config_ssl(
         n_c = network_config["backbone_args"]["in_channels"]
         network_config["backbone_args"]["in_channels"] = n_keys * n_c
     else:
-        network_config["backbone_args"]["n_channels"] = n_keys
+        network_config["backbone_args"]["in_channels"] = n_keys
 
     return network_config, network_config_correct
 
@@ -195,7 +195,7 @@ def parse_config_gan(
     generator_config["out_channels"] = len(target_keys)
     generator_config["spatial_dims"] = 2
     discriminator_config["spatial_dim"] = 2
-    discriminator_config["n_channels"] = disc_channels
+    discriminator_config["in_channels"] = disc_channels
 
     for k in kwargs:
         if kwargs[k] is not None:

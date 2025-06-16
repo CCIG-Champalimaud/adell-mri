@@ -169,7 +169,7 @@ def main(arguments):
         "target_spacing": args.target_spacing,
         "crop_size": args.crop_size,
         "pad_size": args.pad_size,
-        "n_channels": 1,
+        "in_channels": 1,
         "n_dim": 2,
         "skip_augmentations": is_ijepa_or_mae,
         "jpeg_dataset": args.jpeg_dataset,

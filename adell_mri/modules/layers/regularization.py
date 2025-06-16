@@ -158,15 +158,15 @@ class GRN(torch.nn.Module):
     [1] https://arxiv.org/pdf/2301.00808.pdf
     """
 
-    def __init__(self, n_channels: int, reduce_dims: Tuple[int] = (1, 2)):
+    def __init__(self, in_channels: int, reduce_dims: Tuple[int] = (1, 2)):
         """
         Args:
-            n_channels (int): number of input channels.
+            in_channels (int): number of input channels.
             reduce_dims (Tuple[int]): performs the global reduction along these
                 dimensions.
         """
         super().__init__()
-        self.n_channels = n_channels
+        self.in_channels = in_channels
         self.reduce_dims = reduce_dims
 
     def init_parameters(self):
@@ -174,7 +174,7 @@ class GRN(torch.nn.Module):
         Initialise gamma and beta.
         """
         sh = [1 for _ in range(self.spatial_dimensions + 1)]
-        sh.append(self.n_channels)
+        sh.append(self.in_channels)
         self.gamma = torch.nn.Parameter(torch.zeros(sh))
         self.beta = torch.nn.Parameter(torch.zeros(sh))
 
@@ -201,14 +201,14 @@ class ChannelDropout(torch.nn.Module):
         if self.dropout_prob > 0 and self.training is True:
             sh = X.shape
             n_batches = sh[0]
-            n_channels = sh[self.channel_axis]
-            dropout = torch.rand([n_batches, n_channels]) > self.dropout_prob
+            in_channels = sh[self.channel_axis]
+            dropout = torch.rand([n_batches, in_channels]) > self.dropout_prob
             new_shape = []
             for idx in range(len(sh)):
                 if idx == 0:
                     new_shape.append(n_batches)
                 elif idx == self.channel_axis:
-                    new_shape.append(n_channels)
+                    new_shape.append(in_channels)
                 else:
                     new_shape.append(1)
             dropout = dropout.reshape(*new_shape)

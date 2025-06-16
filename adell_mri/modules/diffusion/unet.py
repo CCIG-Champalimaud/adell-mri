@@ -41,9 +41,9 @@ class DiffusionUNet(UNet):
         *args,
         **kwargs,
     ):
-        if "n_channels" not in kwargs:
-            raise Exception("n_channels must be defined")
-        kwargs["n_classes"] = kwargs["n_channels"]
+        if "in_channels" not in kwargs:
+            raise Exception("in_channels must be defined")
+        kwargs["n_classes"] = kwargs["in_channels"]
         kwargs["encoding_operations"] = None
         kwargs["bottleneck_classification"] = False
         kwargs["feature_conditioning"] = None
@@ -95,7 +95,7 @@ class DiffusionUNet(UNet):
             op = torch.nn.Conv3d
         # maps back to [0,1] range
         return torch.nn.Sequential(
-            op(d, d, 3, padding=1), self.adn_fn(d), op(d, self.n_channels, 1)
+            op(d, d, 3, padding=1), self.adn_fn(d), op(d, self.in_channels, 1)
         )
 
     def forward(

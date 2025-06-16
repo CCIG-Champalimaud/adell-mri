@@ -45,7 +45,7 @@ class UNet(torch.nn.Module):
         padding: str = "same",
         dropout_param: float = 0.1,
         activation_fn: torch.nn.Module = torch.nn.PReLU,
-        n_channels: int = 1,
+        in_channels: int = 1,
         n_classes: int = 2,
         depth: list = [16, 32, 64],
         kernel_sizes: list = [3, 3, 3],
@@ -91,7 +91,7 @@ class UNet(torch.nn.Module):
             to 0.1.
         activation_fn (torch.nn.Module, optional): activation function to
             be applied after normalizing. Defaults to torch.nn.PReLU.
-        n_channels (int, optional): number of channels in input. Defaults
+        in_channels (int, optional): number of channels in input. Defaults
             to 1.
         n_classes (int, optional): number of output classes. Defaults to 2.
         depth (list, optional): defines the depths of each layer of the
@@ -135,7 +135,7 @@ class UNet(torch.nn.Module):
         self.padding = padding
         self.dropout_param = dropout_param
         self.activation_fn = activation_fn
-        self.n_channels = n_channels
+        self.in_channels = in_channels
         self.n_classes = n_classes
         self.depth = depth
         self.kernel_sizes = kernel_sizes
@@ -536,7 +536,7 @@ class UNet(torch.nn.Module):
         """
         Initializes the encoder operations."""
         self.encoding_operations = torch.nn.ModuleList([])
-        previous_d = self.n_channels
+        previous_d = self.in_channels
         for i in range(len(self.depth) - 1):
             d, k, s = self.depth[i], self.kernel_sizes[i], self.strides[i]
             if isinstance(s, int) is True:
@@ -866,7 +866,7 @@ class BrUNet(UNet, torch.nn.Module):
         padding: str = "same",
         dropout_param: float = 0.1,
         activation_fn: torch.nn.Module = torch.nn.PReLU,
-        n_channels: int = 1,
+        in_channels: int = 1,
         n_classes: int = 2,
         depth: list = [16, 32, 64],
         kernel_sizes: list = [3, 3, 3],
@@ -910,7 +910,7 @@ class BrUNet(UNet, torch.nn.Module):
             to 0.1.
         activation_fn (torch.nn.Module, optional): activation function to
             be applied after normalizing. Defaults to torch.nn.PReLU.
-        n_channels (int, optional): number of channels in input. Defaults
+        in_channels (int, optional): number of channels in input. Defaults
             to 1.
         n_classes (int, optional): number of output classes. Defaults to 2.
         depth (list, optional): defines the depths of each layer of the
@@ -953,7 +953,7 @@ class BrUNet(UNet, torch.nn.Module):
         self.padding = padding
         self.dropout_param = dropout_param
         self.activation_fn = activation_fn
-        self.n_channels = n_channels
+        self.in_channels = in_channels
         self.n_classes = n_classes
         self.depth = depth
         self.kernel_sizes = kernel_sizes
@@ -992,7 +992,7 @@ class BrUNet(UNet, torch.nn.Module):
         self.encoders = torch.nn.ModuleList([])
         for _ in range(self.n_input_branches):
             encoding_operations = torch.nn.ModuleList([])
-            previous_d = self.n_channels
+            previous_d = self.in_channels
             for i in range(len(self.depth) - 1):
                 d, k, s = self.depth[i], self.kernel_sizes[i], self.strides[i]
                 if isinstance(s, int) is True:

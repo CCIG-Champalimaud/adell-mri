@@ -213,7 +213,7 @@ def main(arguments):
             ]
 
         output_example = YOLONet3d(
-            n_channels=1,
+            in_channels=1,
             n_classes=args.n_classes,
             adn_fn=torch.nn.Identity,
             anchor_sizes=anchor_array,

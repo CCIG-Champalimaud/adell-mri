@@ -207,23 +207,23 @@ class EinopsRearranged(monai.transforms.Transform):
 
 class SampleChannelDim(monai.transforms.Transform):
     """
-    Randomly selects n_channels channels from a multi-channel dim.
+    Randomly selects in_channels channels from a multi-channel dim.
     """
 
-    def __init__(self, n_channels: int, channel_dim: int = 0):
+    def __init__(self, in_channels: int, channel_dim: int = 0):
         """
         Args:
-            n_channels (int): number of channels to be randomly selected.
+            in_channels (int): number of channels to be randomly selected.
             channel_dim (int, optional): dimension for the channels. Defaults
                 to 0.
         """
-        self.n_channels = n_channels
+        self.in_channels = in_channels
         self.channel_dim = channel_dim
 
     def __call__(self, X):
-        if X.shape[self.channel_dim] > self.n_channels:
+        if X.shape[self.channel_dim] > self.in_channels:
             samples = np.random.choice(
-                X.shape[self.channel_dim], self.n_channels, replace=False
+                X.shape[self.channel_dim], self.in_channels, replace=False
             )
             X = X.index_select(self.channel_dim, torch.as_tensor(samples))
         return X
@@ -234,19 +234,19 @@ class SampleChannelDimd(monai.transforms.MapTransform):
     Dictionary version of SampleChannelDim.
     """
 
-    def __init__(self, keys: list[str], n_channels: int, channel_dim: int = 0):
+    def __init__(self, keys: list[str], in_channels: int, channel_dim: int = 0):
         """
         Args:
             keys (list[str]): Keys to apply channel sampling to.
-            n_channels (int): number of channels to sample.
+            in_channels (int): number of channels to sample.
             channel_dim (int, optional): dimension for the channels. Defaults
                 to 0.
         """
         self.keys = keys
-        self.n_channels = n_channels
+        self.in_channels = in_channels
         self.channel_dim = channel_dim
 
-        self.transform = SampleChannelDim(self.n_channels, self.channel_dim)
+        self.transform = SampleChannelDim(self.in_channels, self.channel_dim)
 
     def __call__(self, X: dict[str, torch.Tensor]):
         for k in self.keys:

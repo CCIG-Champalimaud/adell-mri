@@ -12,7 +12,7 @@ from adell_mri.modules.layers.adn_fn import get_adn_fn
 image_size = [32, 32, 32]
 patch_size = [4, 4, 4]
 window_size = [16, 16, 16]
-n_channels = 2
+in_channels = 2
 
 attention_dim = 64
 hidden_dim = 64
@@ -36,7 +36,7 @@ def test_transformer(embed_method, scale):
     vit = ViT(
         image_size=image_size,
         patch_size=patch_size,
-        n_channels=n_channels,
+        in_channels=in_channels,
         number_of_blocks=4,
         attention_dim=attention_dim,
         hidden_dim=hidden_dim,
@@ -46,8 +46,8 @@ def test_transformer(embed_method, scale):
         mlp_structure=[64, 64],
         adn_fn=adn_fn,
     )
-    im_size = [batch_size] + [n_channels] + image_size
-    output_image_size = [batch_size, n_channels * scale ** len(image_size)]
+    im_size = [batch_size] + [in_channels] + image_size
+    output_image_size = [batch_size, in_channels * scale ** len(image_size)]
     output_image_size += [x // scale for x in image_size]
     im = torch.rand(im_size)
     out, _ = vit(im)
@@ -76,7 +76,7 @@ def test_transformer_windowed(embed_method, scale):
     vit = ViT(
         image_size=image_size,
         patch_size=patch_size,
-        n_channels=n_channels,
+        in_channels=in_channels,
         number_of_blocks=4,
         attention_dim=attention_dim,
         hidden_dim=hidden_dim,
@@ -87,8 +87,8 @@ def test_transformer_windowed(embed_method, scale):
         window_size=window_size,
         adn_fn=adn_fn,
     )
-    im_size = [batch_size] + [n_channels] + image_size
-    output_image_size = [batch_size, n_channels * scale ** len(image_size)]
+    im_size = [batch_size] + [in_channels] + image_size
+    output_image_size = [batch_size, in_channels * scale ** len(image_size)]
     output_image_size += [x // scale for x in image_size]
     im = torch.rand(im_size)
     out, _ = vit(im)
@@ -113,7 +113,7 @@ def test_transformer_erase(embed_method):
     vit = ViT(
         image_size=image_size,
         patch_size=patch_size,
-        n_channels=n_channels,
+        in_channels=in_channels,
         number_of_blocks=4,
         attention_dim=attention_dim,
         hidden_dim=hidden_dim,
@@ -125,8 +125,8 @@ def test_transformer_erase(embed_method):
         adn_fn=adn_fn,
         patch_erasing=0.1,
     )
-    im_size = [batch_size] + [n_channels] + image_size
-    output_image_size = [batch_size, n_channels * 1 ** len(image_size)]
+    im_size = [batch_size] + [in_channels] + image_size
+    output_image_size = [batch_size, in_channels * 1 ** len(image_size)]
     output_image_size += [x // 1 for x in image_size]
     im = torch.rand(im_size)
     out, _ = vit(im)

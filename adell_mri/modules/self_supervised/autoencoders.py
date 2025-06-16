@@ -152,7 +152,7 @@ class ViTAutoEncoder(torch.nn.Module):
         self,
         image_size: Size2dOr3d,
         patch_size: Size2dOr3d,
-        n_channels: int,
+        in_channels: int,
         input_dim_size: int,
         encoder_args: Dict[str, Any],
         decoder_args: Dict[str, Any],
@@ -164,7 +164,7 @@ class ViTAutoEncoder(torch.nn.Module):
         Args:
             image_size (Size2dOr3d): size of the image.
             patch_size (Size2dOr3d): size of the patch.
-            n_channels (int): number of input channels.
+            in_channels (int): number of input channels.
             input_dim_size (int): size of the input dimension.
             encoder_args (Dict[str, Any]): arguments for the encoder. Follows
                 the signature for class:`TransformerBlockStack`.
@@ -179,7 +179,7 @@ class ViTAutoEncoder(torch.nn.Module):
         super().__init__()
         self.image_size = image_size
         self.patch_size = patch_size
-        self.n_channels = n_channels
+        self.in_channels = in_channels
         self.input_dim_size = input_dim_size
         self.encoder_args = encoder_args
         self.decoder_args = decoder_args
@@ -200,7 +200,7 @@ class ViTAutoEncoder(torch.nn.Module):
         self.proj = LinearEmbedding(
             self.image_size,
             self.patch_size,
-            n_channels=self.n_channels,
+            in_channels=self.in_channels,
             dropout_rate=self.dropout_rate,
             embed_method=self.embed_method,
             use_class_token=False,
@@ -252,7 +252,7 @@ class ViTAutoEncoder(torch.nn.Module):
             torch.nn.Linear(self.n_features, dps),
             torch.nn.GELU(),
             torch.nn.Linear(
-                dps, int(np.prod(self.patch_size)) * self.n_channels
+                dps, int(np.prod(self.patch_size)) * self.in_channels
             ),
         )
 
@@ -282,7 +282,7 @@ class ViTMaskedAutoEncoder(ViTAutoEncoder):
         self,
         image_size: Size2dOr3d,
         patch_size: Size2dOr3d,
-        n_channels: int,
+        in_channels: int,
         input_dim_size: int,
         encoder_args: Dict[str, Any],
         decoder_args: Dict[str, Any],
@@ -296,7 +296,7 @@ class ViTMaskedAutoEncoder(ViTAutoEncoder):
         Args:
             image_size (Size2dOr3d): size of the image.
             patch_size (Size2dOr3d): size of the patch.
-            n_channels (int): number of input channels.
+            in_channels (int): number of input channels.
             input_dim_size (int): size of the input dimension.
             encoder_args (Dict[str, Any]): arguments for the encoder. Follows
                 the signature for class:`TransformerBlockStack`.
@@ -314,7 +314,7 @@ class ViTMaskedAutoEncoder(ViTAutoEncoder):
         super().__init__(
             image_size=image_size,
             patch_size=patch_size,
-            n_channels=n_channels,
+            in_channels=in_channels,
             input_dim_size=input_dim_size,
             encoder_args=encoder_args,
             decoder_args=decoder_args,
@@ -399,26 +399,26 @@ class ViTMaskedAutoEncoder(ViTAutoEncoder):
             X_decoded = decoder_output
         X_reconstructed = self.decoder_pred(X_decoded)  # [batch_size, seq_len, n_features]
 
-        # Reshape to [batch_size, n_channels, height, width]
+        # Reshape to [batch_size, in_channels, height, width]
         batch_size = X_reconstructed.shape[0]
         n_patches = (height // self.patch_size[0]) * (
             width // self.patch_size[1]
         )
 
-        # Reshape to [batch_size, n_patches, patch_h, patch_w, n_channels]
+        # Reshape to [batch_size, n_patches, patch_h, patch_w, in_channels]
         X_reconstructed = X_reconstructed.view(
             batch_size,
             n_patches,
             self.patch_size[0],
             self.patch_size[1],
-            self.n_channels,
+            self.in_channels,
         )
 
-        # Reshape to [batch_size, n_channels, height, width]
+        # Reshape to [batch_size, in_channels, height, width]
         X_reconstructed = X_reconstructed.permute(0, 4, 1, 2, 3).contiguous()
         X_reconstructed = X_reconstructed.view(
             batch_size,
-            self.n_channels,
+            self.in_channels,
             height,
             width,
         )

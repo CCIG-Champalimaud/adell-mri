@@ -83,7 +83,7 @@ def main(arguments):
         network_config = yaml.safe_load(o)
 
     output_example = YOLONet3d(
-        n_channels=1,
+        in_channels=1,
         n_c=2,
         adn_fn=torch.nn.Identity,
         anchor_sizes=anchor_array,

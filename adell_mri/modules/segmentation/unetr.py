@@ -11,6 +11,7 @@ from .unet import UNet
 
 
 class UNETR(UNet, torch.nn.Module):
+
     def __init__(
         self,
         # parametrize linear embedding and transformer
@@ -37,7 +38,7 @@ class UNETR(UNet, torch.nn.Module):
         padding: int = 0,
         dropout_param: float = 0.0,
         activation_fn: torch.nn.Module = torch.nn.PReLU,
-        n_channels: int = 1,
+        in_channels: int = 1,
         n_classes: int = 2,
         depth: list = [16, 32, 64],
         kernel_sizes: list = [3, 3, 3],
@@ -112,7 +113,7 @@ class UNETR(UNet, torch.nn.Module):
                 to 0.1.
             activation_fn (torch.nn.Module, optional): activation function to
                 be applied after normalizing. Defaults to torch.nn.PReLU.
-            n_channels (int, optional): number of channels in input. Defaults
+            in_channels (int, optional): number of channels in input. Defaults
                 to 1.
             n_classes (int, optional): number of output classes. Defaults to 2.
             depth (list, optional): defines the depths of each layer of the
@@ -164,7 +165,7 @@ class UNETR(UNet, torch.nn.Module):
         self.padding = padding
         self.dropout_param = dropout_param
         self.activation_fn = activation_fn
-        self.n_channels = n_channels
+        self.in_channels = in_channels
         self.n_classes = n_classes
         self.depth = depth
         self.kernel_sizes = kernel_sizes
@@ -179,8 +180,8 @@ class UNETR(UNet, torch.nn.Module):
         # define the scale of the reconstructions
         self.scale = int(2 ** len(self.return_at))
         # define the number of channels in the reconstructed ViT outputs
-        self.n_channels_rec = np.prod(
-            [self.scale**self.spatial_dimensions, self.n_channels]
+        self.in_channels_rec = np.prod(
+            [self.scale**self.spatial_dimensions, self.in_channels]
         )
 
         # check parameters
@@ -224,7 +225,7 @@ class UNETR(UNet, torch.nn.Module):
         self.vit = ViT(
             image_size=self.image_size,
             patch_size=self.patch_size,
-            n_channels=self.n_channels,
+            in_channels=self.in_channels,
             number_of_blocks=self.number_of_blocks,
             attention_dim=self.attention_dim,
             hidden_dim=self.hidden_dim,
@@ -248,7 +249,7 @@ class UNETR(UNet, torch.nn.Module):
                 LinearEmbedding(
                     image_size=self.image_size,
                     patch_size=self.patch_size,
-                    n_channels=self.n_channels,
+                    in_channels=self.in_channels,
                     out_dim=self.embedding_size,
                     dropout_rate=0.0,
                     embed_method="linear",
@@ -264,8 +265,10 @@ class UNETR(UNet, torch.nn.Module):
         Initialises the first encoder.
         """
         self.first_encoder = torch.nn.Sequential(
-            self.adn_fn(self.n_channels),
-            self.conv_op_enc(self.n_channels, self.depth[0], 3, padding="same"),
+            self.adn_fn(self.in_channels),
+            self.conv_op_enc(
+                self.in_channels, self.depth[0], 3, padding="same"
+            ),
             self.adn_fn(self.depth[0]),
         )
 
@@ -298,7 +301,7 @@ class UNETR(UNet, torch.nn.Module):
         to be U-Net compliant.
         """
         self.reconstructed_dim = [
-            self.n_channels_rec,
+            self.in_channels_rec,
             *[x // self.scale for x in self.image_size],
         ]
         self.reconstruction_ops = torch.nn.ModuleList([])
@@ -307,11 +310,11 @@ class UNETR(UNet, torch.nn.Module):
             i = i + 1
             n_ops = self.n_skip_connections - i
             rec_op_seq = self.unetr_transp_block(
-                self.n_channels_rec, d, n_ops - 1, 3
+                self.in_channels_rec, d, n_ops - 1, 3
             )
             self.reconstruction_ops.append(rec_op_seq)
         self.bottleneck_reconstruction = self.conv_op_enc(
-            self.n_channels_rec, self.depth[-1], 1, 1
+            self.in_channels_rec, self.depth[-1], 1, 1
         )
 
     def forward(
@@ -447,7 +450,7 @@ class MonaiUNETR(UNet, torch.nn.Module):
         padding: int = 0,
         dropout_param: float = 0.0,
         activation_fn: torch.nn.Module = torch.nn.PReLU,
-        n_channels: int = 1,
+        in_channels: int = 1,
         n_classes: int = 2,
         depth: list = [16, 32, 64],
         kernel_sizes: list = [3, 3, 3],
@@ -513,7 +516,7 @@ class MonaiUNETR(UNet, torch.nn.Module):
                 to 0.1.
             activation_fn (torch.nn.Module, optional): activation function to
                 be applied after normalizing. Defaults to torch.nn.PReLU.
-            n_channels (int, optional): number of channels in input. Defaults
+            in_channels (int, optional): number of channels in input. Defaults
                 to 1.
             n_classes (int, optional): number of output classes. Defaults to 2.
             depth (list, optional): defines the depths of each layer of the
@@ -567,7 +570,7 @@ class MonaiUNETR(UNet, torch.nn.Module):
         self.padding = padding
         self.dropout_param = dropout_param
         self.activation_fn = activation_fn
-        self.n_channels = n_channels
+        self.in_channels = in_channels
         self.n_classes = n_classes
         self.depth = depth
         self.kernel_sizes = kernel_sizes
@@ -580,7 +583,7 @@ class MonaiUNETR(UNet, torch.nn.Module):
         from monai.networks.nets import UNETR
 
         self.network = UNETR(
-            self.n_channels,
+            self.in_channels,
             1 if self.n_classes == 2 else self.n_classes,
             [int(x) for x in self.image_size],
         )
@@ -650,7 +653,7 @@ class SWINUNet(UNet):
         padding: int = 0,
         dropout_param: float = 0.0,
         activation_fn: torch.nn.Module = torch.nn.PReLU,
-        n_channels: int = 1,
+        in_channels: int = 1,
         n_classes: int = 2,
         depth: list = [16, 32, 64],
         kernel_sizes: list = [3, 3, 3],
@@ -714,7 +717,7 @@ class SWINUNet(UNet):
                 to 0.1.
             activation_fn (torch.nn.Module, optional): activation function to
                 be applied after normalizing. Defaults to torch.nn.PReLU.
-            n_channels (int, optional): number of channels in input. Defaults
+            in_channels (int, optional): number of channels in input. Defaults
                 to 1.
             n_classes (int, optional): number of output classes. Defaults to 2.
             depth (list, optional): defines the depths of each layer of the
@@ -768,7 +771,7 @@ class SWINUNet(UNet):
         self.padding = padding
         self.dropout_param = dropout_param
         self.activation_fn = activation_fn
-        self.n_channels = n_channels
+        self.in_channels = in_channels
         self.n_classes = n_classes
         self.depth = depth
         self.kernel_sizes = kernel_sizes
@@ -832,8 +835,10 @@ class SWINUNet(UNet):
         Initialises the first encoder.
         """
         self.first_encoder = torch.nn.Sequential(
-            self.adn_fn(self.n_channels),
-            self.conv_op_enc(self.n_channels, self.depth[0], 3, padding="same"),
+            self.adn_fn(self.in_channels),
+            self.conv_op_enc(
+                self.in_channels, self.depth[0], 3, padding="same"
+            ),
             self.adn_fn(self.depth[0]),
         )
 
@@ -847,12 +852,12 @@ class SWINUNet(UNet):
         """Initialises SWin and infers the number of channels at
         (intermediary) output reconstruction.
         """
-        self.n_channels_rec = []
+        self.in_channels_rec = []
         self.first_swin_block = SWINTransformerBlockStack(
             image_size=self.image_size,
             patch_size=self.patch_size,
             window_size=self.window_size,
-            n_channels=self.n_channels,
+            in_channels=self.in_channels,
             shift_sizes=self.shift_sizes[0],
             attention_dim=self.embedding_size[0],
             hidden_dim=self.embedding_size[0],
@@ -868,15 +873,15 @@ class SWINUNet(UNet):
         self.swin_blocks = torch.nn.ModuleList([])
         image_size = self.image_size
         for i in range(self.number_of_blocks - 1):
-            n_channels = self.n_channels
+            in_channels = self.in_channels
             if i > 0:
-                n_channels *= np.prod([np.prod(s) for s in self.strides[:i]])
-                self.n_channels_rec.append(n_channels)
+                in_channels *= np.prod([np.prod(s) for s in self.strides[:i]])
+                self.in_channels_rec.append(in_channels)
             swin_block = SWINTransformerBlockStack(
                 image_size=image_size,
                 patch_size=self.patch_size,
                 window_size=self.window_size,
-                n_channels=n_channels,
+                in_channels=in_channels,
                 shift_sizes=self.shift_sizes[i + 1],
                 attention_dim=self.embedding_size[i + 1],
                 hidden_dim=self.embedding_size[i + 1],
@@ -891,8 +896,8 @@ class SWINUNet(UNet):
             )
             self.swin_blocks.append(swin_block)
             image_size = [x // s for x, s in zip(image_size, self.strides[i])]
-        self.n_channels_rec.append(
-            self.n_channels * np.prod([np.prod(s) for s in self.strides[:-1]])
+        self.in_channels_rec.append(
+            self.in_channels * np.prod([np.prod(s) for s in self.strides[:-1]])
         )
 
     def init_reconstruction_ops(self):
@@ -901,15 +906,17 @@ class SWINUNet(UNet):
         """
         layer_norm = get_adn_fn(self.spatial_dimensions, "layer", None, 0.0)
         self.first_rec_op = torch.nn.Sequential(
-            layer_norm(self.n_channels),
-            self.conv_op_enc(self.n_channels, self.depth[0], 3, padding="same"),
+            layer_norm(self.in_channels),
+            self.conv_op_enc(
+                self.in_channels, self.depth[0], 3, padding="same"
+            ),
             self.adn_fn(self.depth[0]),
         )
         self.reconstruction_ops = torch.nn.ModuleList([])
         for i, d in enumerate(self.depth[1:]):
             rec_op_seq = torch.nn.Sequential(
-                layer_norm(self.n_channels_rec[i]),
-                self.conv_op_enc(self.n_channels_rec[i], d, 1, padding="same"),
+                layer_norm(self.in_channels_rec[i]),
+                self.conv_op_enc(self.in_channels_rec[i], d, 1, padding="same"),
                 self.conv_op_enc(d, d, 3, padding="same"),
                 self.adn_fn(d),
             )
@@ -1040,7 +1047,7 @@ class MonaiSWINUNet(UNet):
         padding: int = 0,
         dropout_param: float = 0.0,
         activation_fn: torch.nn.Module = torch.nn.PReLU,
-        n_channels: int = 1,
+        in_channels: int = 1,
         n_classes: int = 2,
         depth: list = [16, 32, 64],
         kernel_sizes: list = [3, 3, 3],
@@ -1108,7 +1115,7 @@ class MonaiSWINUNet(UNet):
                 to 0.1.
             activation_fn (torch.nn.Module, optional): activation function to
                 be applied after normalizing. Defaults to torch.nn.PReLU.
-            n_channels (int, optional): number of channels in input. Defaults
+            in_channels (int, optional): number of channels in input. Defaults
                 to 1.
             n_classes (int, optional): number of output classes. Defaults to 2.
             depth (list, optional): defines the depths of each layer of the
@@ -1164,7 +1171,7 @@ class MonaiSWINUNet(UNet):
         self.padding = padding
         self.dropout_param = dropout_param
         self.activation_fn = activation_fn
-        self.n_channels = n_channels
+        self.in_channels = in_channels
         self.n_classes = n_classes
         self.depth = depth
         self.kernel_sizes = kernel_sizes
@@ -1182,7 +1189,7 @@ class MonaiSWINUNet(UNet):
         feature_size = 24 if self.attention_dim is None else self.attention_dim
         self.network = SwinUNETR(
             img_size=[int(x) for x in self.image_size],
-            in_channels=self.n_channels,
+            in_channels=self.in_channels,
             out_channels=1 if self.n_classes == 2 else self.n_classes,
             feature_size=feature_size,
             drop_rate=self.dropout_rate,

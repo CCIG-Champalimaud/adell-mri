@@ -603,7 +603,7 @@ class SelfSLUNetPL(UNet, SelfSLBasePL):
         self.channels_to_batch = channels_to_batch
 
         if channels_to_batch is True:
-            kwargs["n_channels"] = 1
+            kwargs["in_channels"] = 1
 
         kwargs["encoder_only"] = True
         super().__init__(*args, **kwargs)
@@ -1387,7 +1387,7 @@ class ViTMaskedAutoEncoderPL(pl.LightningModule):
         image_key: str,
         image_size: tuple[int, int],
         patch_size: tuple[int, int],
-        n_channels: int,
+        in_channels: int,
         input_dim_size: int,
         encoder_args: dict[str, Any],
         decoder_args: dict[str, Any],
@@ -1407,7 +1407,7 @@ class ViTMaskedAutoEncoderPL(pl.LightningModule):
             image_key (str): Key for the image in the batch
             image_size (tuple[int, int]): Size of input images (height, width)
             patch_size (tuple[int, int]): Size of patches (ph, pw)
-            n_channels (int): Number of input channels
+            in_channels (int): Number of input channels
             input_dim_size (int): Dimension of the input embeddings
             encoder_args (dict[str, Any]): Arguments for the encoder
             decoder_args (dict[str, Any]): Arguments for the decoder
@@ -1428,7 +1428,7 @@ class ViTMaskedAutoEncoderPL(pl.LightningModule):
         self.model = ViTMaskedAutoEncoder(
             image_size=image_size,
             patch_size=patch_size,
-            n_channels=n_channels,
+            in_channels=in_channels,
             input_dim_size=input_dim_size,
             encoder_args=encoder_args,
             decoder_args=decoder_args,

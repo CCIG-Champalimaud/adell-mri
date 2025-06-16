@@ -217,9 +217,10 @@ def sinusoidal_positional_encoding(n_tokens, dim_size):
 
 
 class SliceLinearEmbedding(torch.nn.Module):
+
     def __init__(
         self,
-        n_channels: int,
+        in_channels: int,
         image_size: Tuple[int, int, int],
         patch_size: Union[Tuple[int, int], Tuple[int, int, int]],
         embedding_size: int = None,
@@ -231,7 +232,7 @@ class SliceLinearEmbedding(torch.nn.Module):
         learnable_embedding: bool = True,
     ):
         super().__init__()
-        self.n_channels = n_channels
+        self.in_channels = in_channels
         self.image_size = image_size
         self.patch_size = patch_size
         self.embedding_size = embedding_size
@@ -252,7 +253,7 @@ class SliceLinearEmbedding(torch.nn.Module):
                 ]
             )
         )
-        self.embedding_size = int(np.prod([*patch_size[:2], n_channels]))
+        self.embedding_size = int(np.prod([*patch_size[:2], in_channels]))
 
         self.init_linear_layers_if_necessary()
         self.init_conv_layers_if_necessary()
@@ -264,7 +265,7 @@ class SliceLinearEmbedding(torch.nn.Module):
         if self.embed_method == "convolutional":
             self.conv = torch.nn.Sequential(
                 torch.nn.Conv2d(
-                    self.n_channels,
+                    self.in_channels,
                     self.true_n_features,
                     self.patch_size[:2],
                     stride=self.patch_size[:2],
@@ -287,7 +288,7 @@ class SliceLinearEmbedding(torch.nn.Module):
 
     def linearize_image_slices(self, image: torch.Tensor) -> torch.Tensor:
         h, w, s = self.image_size
-        c = self.n_channels
+        c = self.in_channels
         x, y, z = self.patch_size
         if self.embed_method == "linear":
             return einops.rearrange(
@@ -358,7 +359,7 @@ class SliceLinearEmbedding(torch.nn.Module):
 
         Args:
             X (torch.Tensor): a tensor with shape
-                [-1,self.n_channels,*self.image_size]
+                [-1,self.in_channels,*self.image_size]
 
         Returns:
             torch.Tensor: the embedding of X, with size
@@ -407,7 +408,7 @@ class LinearEmbedding(torch.nn.Module):
         self,
         image_size: Size2dOr3d,
         patch_size: Size2dOr3d,
-        n_channels: int,
+        in_channels: int,
         out_dim: int = None,
         window_size: Size2dOr3d = None,
         dropout_rate: float = 0.0,
@@ -423,7 +424,7 @@ class LinearEmbedding(torch.nn.Module):
         Args:
             image_size (Size2dOr3d): size of the input image.
             patch_size (Size2dOr3d): size of the patch size.
-            n_channels (int): number of channels in the input image.
+            in_channels (int): number of channels in the input image.
             out_dim (int): number of dimensions in output.
             window_size (Size2dOr3d, optional): window size for windowed
                 multi-head attention. Defaults to None (no windowing)
@@ -450,7 +451,7 @@ class LinearEmbedding(torch.nn.Module):
         super().__init__()
         self.image_size = image_size
         self.patch_size = patch_size
-        self.n_channels = n_channels
+        self.in_channels = in_channels
         self.out_dim = out_dim
         self.window_size = window_size
         self.dropout_rate = dropout_rate
@@ -500,14 +501,14 @@ class LinearEmbedding(torch.nn.Module):
         if self.embed_method == "convolutional":
             if self.n_dims == 2:
                 self.conv = torch.nn.Conv2d(
-                    self.n_channels,
+                    self.in_channels,
                     self.true_n_features,
                     self.patch_size,
                     stride=self.patch_size,
                 )
             elif self.n_dims == 3:
                 self.conv = torch.nn.Conv3d(
-                    self.n_channels,
+                    self.in_channels,
                     self.true_n_features,
                     self.patch_size,
                     stride=self.patch_size,
@@ -555,11 +556,11 @@ class LinearEmbedding(torch.nn.Module):
                 )
             ]
         if self.channel_to_token is True:
-            extra_patches = self.n_channels
+            extra_patches = self.in_channels
             extra_features = 1
         else:
             extra_patches = 1
-            extra_features = self.n_channels
+            extra_features = self.in_channels
         self.n_patches = int(np.prod(self.n_patches_split) * extra_patches)
         self.n_features = int(np.prod(self.patch_size) * extra_features)
 
@@ -617,7 +618,7 @@ class LinearEmbedding(torch.nn.Module):
         einop_dict.update(
             {k: int(s) for s, k in zip(self.n_patches_split, ["h", "w", "d"])}
         )
-        einop_dict["c"] = self.n_channels
+        einop_dict["c"] = self.in_channels
         if self.n_dims == 3:
             lh.append(["d", "z"])
             rh[-2].append("d")
@@ -821,8 +822,8 @@ class LinearEmbedding(torch.nn.Module):
                 self.image_size[i] // scale[i]
                 for i in range(len(self.image_size))
             ]
-            n_channels = self.n_channels * np.prod(scale)
-            X = X.reshape(-1, n_channels, *image_size)
+            in_channels = self.in_channels * np.prod(scale)
+            X = X.reshape(-1, in_channels, *image_size)
         return X
 
     def forward(
@@ -832,7 +833,7 @@ class LinearEmbedding(torch.nn.Module):
 
         Args:
             X (torch.Tensor): a tensor with shape
-                [-1,self.n_channels,*self.image_size]
+                [-1,self.in_channels,*self.image_size]
             no_pos_embed (bool, optional): skips the addition of the positional
                 embedding.
 
@@ -988,7 +989,7 @@ class SWINTransformerBlock(torch.nn.Module):
         image_size: Size2dOr3d,
         patch_size: Size2dOr3d,
         window_size: Size2dOr3d,
-        n_channels: int,
+        in_channels: int,
         attention_dim: int = None,
         hidden_dim: int = None,
         embedding_size: int = None,
@@ -1007,7 +1008,7 @@ class SWINTransformerBlock(torch.nn.Module):
             patch_size (Size2dOr3d): size of the patch size.
             window_size (Size2dOr3d, optional): window size for windowed
                 multi-head attention. Defaults to None (no windowing)
-            n_channels (int): number of channels in the input image.
+            in_channels (int): number of channels in the input image.
             attention_dim (int): size of attention. Defaults to None (same as
                 inferred input dimension).
             hidden_dim (int): size of hidden dimension (output of attention
@@ -1040,7 +1041,7 @@ class SWINTransformerBlock(torch.nn.Module):
         self.image_size = image_size
         self.patch_size = patch_size
         self.window_size = window_size
-        self.n_channels = n_channels
+        self.in_channels = in_channels
         self.attention_dim = attention_dim
         self.hidden_dim = hidden_dim
         self.embedding_size = embedding_size
@@ -1062,7 +1063,7 @@ class SWINTransformerBlock(torch.nn.Module):
         self.embedding = LinearEmbedding(
             image_size=self.image_size,
             patch_size=self.patch_size,
-            n_channels=self.n_channels,
+            in_channels=self.in_channels,
             window_size=self.window_size,
             dropout_rate=self.dropout_rate_embedding,
             embed_method=self.embed_method,
@@ -1086,7 +1087,7 @@ class SWINTransformerBlock(torch.nn.Module):
 
     def init_layers(self):
         if isinstance(self.mlp_structure, float):
-            self.mlp_structure = [int(self.n_channels * self.mlp_structure)]
+            self.mlp_structure = [int(self.in_channels * self.mlp_structure)]
 
         input_dim_primary = self.input_dim_primary
 
@@ -1111,10 +1112,10 @@ class SWINTransformerBlock(torch.nn.Module):
         )
 
         self.norm_op_1 = torch.nn.LayerNorm(input_dim_primary)
-        self.norm_op_2 = torch.nn.LayerNorm(self.n_channels)
+        self.norm_op_2 = torch.nn.LayerNorm(self.in_channels)
         self.mlp = MLP(
-            self.n_channels,
-            self.n_channels,
+            self.in_channels,
+            self.in_channels,
             self.mlp_structure,
             self.adn_fn,
         )
@@ -1157,7 +1158,7 @@ class SWINTransformerBlock(torch.nn.Module):
 
         Args:
             X (torch.Tensor): tensor of shape
-                [-1,self.n_channels,*self.image_size]
+                [-1,self.in_channels,*self.image_size]
             scale (int): downsampling scale for output. Defaults to None
                 (returns the non-rearranged output).
 
@@ -1206,7 +1207,7 @@ class SWINTransformerBlock(torch.nn.Module):
 
         Args:
             X (torch.Tensor): tensor of shape
-                [-1,self.n_channels,*self.image_size]
+                [-1,self.in_channels,*self.image_size]
             scale (int): downsampling scale for output. Defaults to None
                 (returns the non-rearranged output).
 
@@ -1411,7 +1412,7 @@ class SWINTransformerBlockStack(torch.nn.Module):
         patch_size: Size2dOr3d,
         window_size: Size2dOr3d,
         shift_sizes: List[int],
-        n_channels: int,
+        in_channels: int,
         attention_dim: int = None,
         hidden_dim: int = None,
         embedding_size: int = None,
@@ -1431,7 +1432,7 @@ class SWINTransformerBlockStack(torch.nn.Module):
                 multi-head attention. Defaults to None (no windowing)
             shift_sizes (List[int], optional): list of shift sizes in
                 patches.
-            n_channels (int): number of channels in the input image.
+            in_channels (int): number of channels in the input image.
             input_dim_primary (int): size of input.
             attention_dim (int): size of attention.
             hidden_dim (int): size of hidden dimension (output of attention
@@ -1462,7 +1463,7 @@ class SWINTransformerBlockStack(torch.nn.Module):
         self.patch_size = patch_size
         self.window_size = window_size
         self.shift_sizes = shift_sizes
-        self.n_channels = n_channels
+        self.in_channels = in_channels
         self.attention_dim = attention_dim
         self.hidden_dim = hidden_dim
         self.embedding_size = embedding_size
@@ -1540,7 +1541,7 @@ class SWINTransformerBlockStack(torch.nn.Module):
                 image_size=self.image_size,
                 patch_size=self.patch_size,
                 window_size=self.window_size,
-                n_channels=self.n_channels,
+                in_channels=self.in_channels,
                 attention_dim=ad,
                 hidden_dim=hd,
                 embedding_size=self.embedding_size,
@@ -1564,7 +1565,7 @@ class SWINTransformerBlockStack(torch.nn.Module):
 
         Args:
             X (torch.Tensor): tensor of shape
-                [-1,self.n_channels,*self.image_size]
+                [-1,self.in_channels,*self.image_size]
 
         Returns:
             torch.Tensor: tensor of shape [...,self.input_dim_primary]
@@ -1591,7 +1592,7 @@ class ViT(torch.nn.Module):
         self,
         image_size: Size2dOr3d,
         patch_size: Size2dOr3d,
-        n_channels: int,
+        in_channels: int,
         number_of_blocks: int,
         attention_dim: int,
         hidden_dim: int = None,
@@ -1613,7 +1614,7 @@ class ViT(torch.nn.Module):
         Args:
             image_size (Size2dOr3d): size of the input image.
             patch_size (Size2dOr3d): size of the patch size.
-            n_channels (int): number of channels in the input image.
+            in_channels (int): number of channels in the input image.
             number_of_blocks (int): number of blocks to be stacked.
             attention_dim (int): size of attention.
             hidden_dim (int, optional): size of hidden dimension (output of
@@ -1656,7 +1657,7 @@ class ViT(torch.nn.Module):
         super().__init__()
         self.image_size = image_size
         self.patch_size = patch_size
-        self.n_channels = n_channels
+        self.in_channels = in_channels
         self.number_of_blocks = number_of_blocks
         self.attention_dim = attention_dim
         self.hidden_dim = hidden_dim
@@ -1677,7 +1678,7 @@ class ViT(torch.nn.Module):
         self.embedding = LinearEmbedding(
             image_size=self.image_size,
             patch_size=self.patch_size,
-            n_channels=self.n_channels,
+            in_channels=self.in_channels,
             window_size=self.window_size,
             out_dim=embedding_size,
             embed_method=self.embed_method,
@@ -1735,7 +1736,7 @@ class ViT(torch.nn.Module):
 
         Args:
             X (torch.Tensor): tensor of shape
-                [-1,self.n_channels,*self.image_size]
+                [-1,self.in_channels,*self.image_size]
             return_at (Union[str,List[int]], optional): sets the intermediary
                 outputs that will be returned together with the final output.
 
@@ -1776,7 +1777,7 @@ class FactorizedViT(torch.nn.Module):
         self,
         image_size: Size2dOr3d,
         patch_size: Size2dOr3d,
-        n_channels: int,
+        in_channels: int,
         number_of_blocks: int,
         attention_dim: int,
         hidden_dim: int = None,
@@ -1795,7 +1796,7 @@ class FactorizedViT(torch.nn.Module):
         Args:
             image_size (Size2dOr3d): size of the input image.
             patch_size (Size2dOr3d): size of the patch size.
-            n_channels (int): number of channels in the input image.
+            in_channels (int): number of channels in the input image.
             number_of_blocks (int): number of blocks to be stacked.
             attention_dim (int): size of attention.
             hidden_dim (int, optional): size of hidden dimension (output of
@@ -1833,7 +1834,7 @@ class FactorizedViT(torch.nn.Module):
         super().__init__()
         self.image_size = image_size
         self.patch_size = patch_size
-        self.n_channels = n_channels
+        self.in_channels = in_channels
         self.number_of_blocks = number_of_blocks
         self.attention_dim = attention_dim
         self.hidden_dim = hidden_dim
@@ -1851,7 +1852,7 @@ class FactorizedViT(torch.nn.Module):
         self.embedding = SliceLinearEmbedding(
             image_size=self.image_size,
             patch_size=self.patch_size,
-            n_channels=self.n_channels,
+            in_channels=self.in_channels,
             embedding_size=self.embedding_size,
             dropout_rate=self.dropout_rate,
             embed_method=self.embed_method,
@@ -1916,7 +1917,7 @@ class FactorizedViT(torch.nn.Module):
 
         Args:
             X (torch.Tensor): tensor of shape
-                [-1,self.n_channels,*self.image_size]
+                [-1,self.in_channels,*self.image_size]
 
         Returns:
             torch.Tensor: tensor of shape [...,self.input_dim_primary]

@@ -28,7 +28,7 @@ def test_diffusion_process(ndim):
     assert noise_image.shape == image.shape
 
     model = DiffusionUNet(
-        n_channels=1,
+        in_channels=1,
         padding=1,
         spatial_dimensions=ndim,
         upscale_type="transpose",
@@ -40,7 +40,7 @@ def test_diffusion_process(ndim):
     assert random_sample_input.shape == image.shape
 
     model = DiffusionUNet(
-        n_channels=1,
+        in_channels=1,
         padding=1,
         spatial_dimensions=ndim,
         classifier_free_guidance=True,

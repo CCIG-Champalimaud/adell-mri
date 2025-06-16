@@ -28,7 +28,7 @@ def test_ibot():
         backbone_args={
             "image_size": [img_size, img_size],
             "patch_size": [patch_size, patch_size],
-            "n_channels": 1,
+            "in_channels": 1,
             "number_of_blocks": 4,
             "attention_dim": attention_dim,
             "embedding_size": attention_dim,

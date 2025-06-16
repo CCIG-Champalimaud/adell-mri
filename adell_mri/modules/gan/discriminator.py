@@ -18,7 +18,7 @@ class Discriminator(torch.nn.Module):
     def __init__(
         self,
         backbone: str | torch.nn.Module = "convnext",
-        n_channels: int = 1,
+        in_channels: int = 1,
         additional_features: int = 0,
         additional_classification_targets: list[int] = None,
         additional_regression_targets: int = None,
@@ -32,7 +32,7 @@ class Discriminator(torch.nn.Module):
                 specifying the type of discriminator. If a module is specified,
                 it should have an ``output_features`` attribute with the number
                 of output features. Defaults to "convnext".
-            n_channels (int, optional): number of input channels. Defaults to
+            in_channels (int, optional): number of input channels. Defaults to
                 1.
             additional_features (int, optional): number of additional features
                 for classification. These are appended to the bottleneck.
@@ -48,7 +48,7 @@ class Discriminator(torch.nn.Module):
         """
         super().__init__()
         self.net_type = backbone
-        self.n_channels = n_channels
+        self.in_channels = in_channels
         self.additional_features = additional_features
         self.additional_classification_targets = (
             additional_classification_targets
@@ -88,7 +88,7 @@ class Discriminator(torch.nn.Module):
             NotImplementedError: if ``net_type`` is a string and the string is
                 not present in ``self.backbone_conversion``.
         """
-        self.network_kwargs["in_channels"] = self.n_channels
+        self.network_kwargs["in_channels"] = self.in_channels
         if isinstance(self.net_type, str):
             if self.net_type not in self.backbone_conversion:
                 raise NotImplementedError(

@@ -11,10 +11,11 @@ from .utils import maxpool_default, nms_nd, pyramid_default, resnet_default
 
 
 class YOLONet3d(torch.nn.Module):
+
     def __init__(
         self,
         backbone_str: str = "resnet",
-        n_channels: int = 1,
+        in_channels: int = 1,
         n_classes: int = 2,
         anchor_sizes: List = np.ones([1, 6]),
         dev: str = "cuda",
@@ -28,7 +29,7 @@ class YOLONet3d(torch.nn.Module):
         """Implementation of a YOLO network for object detection in 3d.
 
         Args:
-            n_channels (int, optional): number of input channels. Defaults to
+            in_channels (int, optional): number of input channels. Defaults to
                 1.
             n_classes (int, optional): number of classes. Defaults to 2.
             anchor_sizes (List, optional): anchor sizes. Defaults to
@@ -50,7 +51,7 @@ class YOLONet3d(torch.nn.Module):
         """
         super().__init__()
         self.backbone_str = backbone_str
-        self.in_channels = n_channels
+        self.in_channels = in_channels
         self.n_classes = n_classes
         self.anchor_sizes = anchor_sizes
         self.resnet_structure = resnet_structure
@@ -311,9 +312,10 @@ class YOLONet3d(torch.nn.Module):
 
 
 class CoarseDetector3d(torch.nn.Module):
+
     def __init__(
         self,
-        n_channels: int = 1,
+        in_channels: int = 1,
         anchor_sizes: List = np.ones([1, 6]),
         dev: str = "cuda",
         resnet_structure: List[Tuple[int, int, int, int]] = resnet_default,
@@ -326,7 +328,7 @@ class CoarseDetector3d(torch.nn.Module):
         """Implementation of a YOLO network for object detection in 3d.
 
         Args:
-            n_channels (int, optional): number of input channels. Defaults to
+            in_channels (int, optional): number of input channels. Defaults to
                 1.
             anchor_sizes (List, optional): anchor sizes. Redundant (kept for
                 compatibility purposes). Defaults to np.ones([1,6]).
@@ -346,7 +348,7 @@ class CoarseDetector3d(torch.nn.Module):
         """
 
         super().__init__()
-        self.in_channels = n_channels
+        self.in_channels = in_channels
         self.anchor_sizes = anchor_sizes
         self.resnet_structure = resnet_structure
         self.maxpool_structure = maxpool_structure
