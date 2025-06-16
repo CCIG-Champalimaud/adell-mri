@@ -113,10 +113,11 @@ class ConvNeXtAutoEncoder(torch.nn.Module):
 
 
 class ViTAutoEncoder(torch.nn.Module):
+
     def __init__(
         self,
-        image_size: int,
-        patch_size: int,
+        image_size: Size2dOr3d,
+        patch_size: Size2dOr3d,
         n_channels: int,
         input_dim_size: int,
         encoder_args: Dict[str, Any],
@@ -201,8 +202,8 @@ class ViTMaskedAutoEncoder(ViTAutoEncoder):
 
     def __init__(
         self,
-        image_size: int,
-        patch_size: int,
+        image_size: Size2dOr3d,
+        patch_size: Size2dOr3d,
         n_channels: int,
         input_dim_size: int,
         encoder_args: Dict[str, Any],
