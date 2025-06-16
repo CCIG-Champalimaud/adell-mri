@@ -143,9 +143,7 @@ class CosineAnnealingWithWarmupLR(_LRScheduler):
         self.start_decay = float_to_epochs(self.start_decay, self.T_max)
 
         self.last_lr = None
-        super(CosineAnnealingWithWarmupLR, self).__init__(
-            optimizer, last_epoch, verbose
-        )
+        super(CosineAnnealingWithWarmupLR, self).__init__(optimizer, last_epoch)
 
     def get_lr(self):
         return self._get_closed_form_lr()
