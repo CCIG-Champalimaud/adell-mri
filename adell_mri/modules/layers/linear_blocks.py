@@ -278,9 +278,6 @@ class MultiHeadSelfAttention(torch.nn.Module):
         self.dropout_rate = dropout_rate
         self.window_size = window_size
 
-        print(attention_dim)
-        print(n_heads)
-
         assert (
             attention_dim % n_heads
         ) == 0, "attention_dim must be divisible by n_heads"
