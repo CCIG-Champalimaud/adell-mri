@@ -114,6 +114,36 @@ class LayerNormChannelsFirst(torch.nn.Module):
         return x
 
 
+class L2NormalizationLayer(torch.nn.Module):
+    """
+    L2 Normalization layer.
+    """
+
+    def __init__(self, in_channels: int | None = None, dim=1, eps=1e-12):
+        """
+        Args:
+            in_channels (int, optional): number of input channels. Not used.
+            dim (int, optional): dimension along which to normalize. Defaults
+                to 1.
+            eps (float, optional): small value to avoid division by zero.
+                Defaults to 1e-12.
+        """
+        super().__init__()
+        self.in_channels = in_channels
+        self.dim = dim
+        self.eps = eps
+
+    def forward(self, x):
+        """
+        Args:
+            x (torch.Tensor): input tensor.
+
+        Returns:
+            torch.Tensor: normalized tensor.
+        """
+        return F.normalize(x, p=2, dim=self.dim, eps=self.eps)
+
+
 class GRN(torch.nn.Module):
     """
     Global response normalization suggested in the ConvNeXtV2 paper [1]. For a

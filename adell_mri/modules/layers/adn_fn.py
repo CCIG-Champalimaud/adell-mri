@@ -3,7 +3,7 @@ from typing import OrderedDict
 import torch
 
 from ..activations import activation_factory
-from ..layers.regularization import LayerNormChannelsFirst
+from ..layers.regularization import LayerNormChannelsFirst, L2NormalizationLayer
 
 norm_fn_dict = {
     "batch": {
@@ -25,6 +25,11 @@ norm_fn_dict = {
         1: torch.nn.Identity,
         2: torch.nn.Identity,
         3: torch.nn.Identity,
+    },
+    "l2": {
+        1: L2NormalizationLayer,
+        2: L2NormalizationLayer,
+        3: L2NormalizationLayer,
     },
 }
 

@@ -342,10 +342,13 @@ class ResNet(torch.nn.Module):
 
     def init_projection_head(self):
         if self.projection_head_args is not None:
-            try:
-                d = self.projection_head_args["structure"][-1]
+            d = self.projection_head_args["structure"][-1]
+            if "last_layer_norm" in self.projection_head_args:
+                norm_fn = self.projection_head_args["last_layer_norm"]
+                del self.projection_head_args["last_layer_norm"]
+            elif hasattr(self.projection_head_args["adn_fn"](d), "norm_fn"):
                 norm_fn = self.projection_head_args["adn_fn"](d).norm_fn
-            except Exception:
+            else:
                 norm_fn = torch.nn.LayerNorm
             self.projection_head = torch.nn.Sequential(
                 ProjectionHead(**self.projection_head_args), norm_fn(d)
