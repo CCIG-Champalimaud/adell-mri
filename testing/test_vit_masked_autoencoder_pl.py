@@ -8,6 +8,7 @@ from adell_mri.modules.self_supervised.pl import ViTMaskedAutoEncoderPL
 @pytest.fixture
 def model_config():
     return {
+        "image_key": "image",
         "image_size": (32, 32),
         "patch_size": (8, 8),
         "n_channels": 1,

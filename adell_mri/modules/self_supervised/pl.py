@@ -1458,21 +1458,27 @@ class ViTMaskedAutoEncoderPL(pl.LightningModule):
         self.train_metrics = torchmetrics.MetricCollection(
             {
                 "train_loss": torchmetrics.MeanMetric(),
-                "train_psnr": torchmetrics.PeakSignalNoiseRatio(data_range=1.0),
+                "train_psnr": torchmetrics.image.PeakSignalNoiseRatio(
+                    data_range=1.0
+                ),
             }
         )
 
         self.val_metrics = torchmetrics.MetricCollection(
             {
                 "val_loss": torchmetrics.MeanMetric(),
-                "val_psnr": torchmetrics.PeakSignalNoiseRatio(data_range=1.0),
+                "val_psnr": torchmetrics.image.PeakSignalNoiseRatio(
+                    data_range=1.0
+                ),
             }
         )
 
         self.test_metrics = torchmetrics.MetricCollection(
             {
                 "test_loss": torchmetrics.MeanMetric(),
-                "test_psnr": torchmetrics.PeakSignalNoiseRatio(data_range=1.0),
+                "test_psnr": torchmetrics.image.PeakSignalNoiseRatio(
+                    data_range=1.0
+                ),
             }
         )
 

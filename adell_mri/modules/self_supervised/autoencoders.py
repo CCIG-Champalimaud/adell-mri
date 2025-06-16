@@ -1,3 +1,7 @@
+"""
+Implements ViT-based autoencoder and masked autoencoder.
+"""
+
 from typing import Any, Dict, List, Tuple
 
 import numpy as np
@@ -9,7 +13,7 @@ from ..layers.vit import LinearEmbedding, TransformerBlockStack
 
 
 def random_masking(
-    x: torch.Tensor, mask_ratio: float, rng: np.random.RandomState
+    x: torch.Tensor, mask_ratio: float, rng: np.random.Generator
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
     Perform per-sample random masking by per-sample shuffling.
@@ -52,6 +56,9 @@ def random_masking(
 
 
 class ConvNeXtAutoEncoder(torch.nn.Module):
+    """
+    A ConvNeXt-based autoencoder.
+    """
     def __init__(
         self,
         image_size: Size2dOr3d,
@@ -61,6 +68,15 @@ class ConvNeXtAutoEncoder(torch.nn.Module):
         spatial_dim: int = 2,
         batch_ensemble: int = 0,
     ):
+        """
+        Args:
+            image_size (Size2dOr3d): size of the image.
+            in_channels (int): number of input channels.
+            encoder_structure (List[Tuple[int, int, int, int]]): structure of the encoder.
+            decoder_structure (List[Tuple[int, int, int, int]]): structure of the decoder.
+            spatial_dim (int, optional): number of dimensions. Defaults to 2.
+            batch_ensemble (int, optional): number of batch ensemble modules. Defaults to 0.
+        """
         super().__init__()
         self.image_size = image_size
         self.in_channels = in_channels
@@ -75,6 +91,9 @@ class ConvNeXtAutoEncoder(torch.nn.Module):
         ]
 
     def init_encoder(self):
+        """
+        Initialize the encoder.
+        """
         self.encoder = ConvNeXtV2Backbone(
             spatial_dim=self.spatial_dim,
             in_channels=self.in_channels,
@@ -84,17 +103,26 @@ class ConvNeXtAutoEncoder(torch.nn.Module):
         )
 
     def conv(self, *args, **kwargs):
+        """
+        Initialize the convolutional layer.
+        """
         if self.spatial_dim == 2:
             return torch.nn.Conv2d(*args, **kwargs)
         if self.spatial_dim == 3:
             return torch.nn.Conv3d(*args, **kwargs)
 
     def init_proj(self):
+        """
+        Initialize the projection layer.
+        """
         input_channels = self.encoder_structure[-1][0]
         output_channels = self.decoder_structure[0][0]
         self.proj = self.conv(input_channels, output_channels, 1)
 
     def init_decoder(self):
+        """
+        Initialize the decoder.
+        """
         self.encoder = ConvNeXtV2Backbone(
             spatial_dim=self.spatial_dim,
             in_channels=self.in_channels,
@@ -104,6 +132,9 @@ class ConvNeXtAutoEncoder(torch.nn.Module):
         )
 
     def init_pred(self):
+        """
+        Initialize the prediction layer.
+        """
         input_channels = self.decoder_structure[-1][0]
         output_channels = int(np.prod(self.patch_size))
         self.pred = self.conv(input_channels, output_channels, 1)
@@ -113,6 +144,9 @@ class ConvNeXtAutoEncoder(torch.nn.Module):
 
 
 class ViTAutoEncoder(torch.nn.Module):
+    """
+    ViT autoencoder.
+    """
 
     def __init__(
         self,
@@ -124,7 +158,24 @@ class ViTAutoEncoder(torch.nn.Module):
         decoder_args: Dict[str, Any],
         embed_method: str = "linear",
         dropout_rate: float = 0.0,
+        decoder_pred_ratio: float = 4.0,
     ):
+        """
+        Args:
+            image_size (Size2dOr3d): size of the image.
+            patch_size (Size2dOr3d): size of the patch.
+            n_channels (int): number of input channels.
+            input_dim_size (int): size of the input dimension.
+            encoder_args (Dict[str, Any]): arguments for the encoder. Follows
+                the signature for class:`TransformerBlockStack`.
+            decoder_args (Dict[str, Any]): arguments for the decoder. Follows
+                the signature for class:`TransformerBlockStack`.
+            embed_method (str, optional): embedding method. Defaults to
+                "linear".
+            dropout_rate (float, optional): dropout rate. Defaults to 0.0.
+            decoder_pred_ratio (float, optional): ratio of the decoder
+                prediction layer to the decoder output. Defaults to 4.0.
+        """
         super().__init__()
         self.image_size = image_size
         self.patch_size = patch_size
@@ -134,6 +185,7 @@ class ViTAutoEncoder(torch.nn.Module):
         self.decoder_args = decoder_args
         self.embed_method = embed_method
         self.dropout_rate = dropout_rate
+        self.decoder_pred_ratio = decoder_pred_ratio
 
         self.init_projection()
         self.init_encoder()
@@ -142,6 +194,9 @@ class ViTAutoEncoder(torch.nn.Module):
         self.init_decoder_pred()
 
     def init_projection(self):
+        """
+        Initialize the projection layer.
+        """
         self.proj = LinearEmbedding(
             self.image_size,
             self.patch_size,
@@ -154,6 +209,9 @@ class ViTAutoEncoder(torch.nn.Module):
         self.n_features = self.proj.true_n_features
 
     def init_encoder(self):
+        """
+        Initialize the encoder.
+        """
         self.encoder = TransformerBlockStack(
             number_of_blocks=self.encoder_args["num_layers"],
             input_dim_primary=self.n_features,
@@ -165,14 +223,16 @@ class ViTAutoEncoder(torch.nn.Module):
         )
 
     def init_positional_embedding(self):
-        self.positional_embedding = torch.nn.Parameter(
-            torch.rand(1, self.n_patches, self.n_features)
-        )
-        torch.nn.init.trunc_normal_(
-            self.positional_embedding, mean=0.0, std=0.02, a=-2.0, b=2.0
-        )
+        """
+        Defines the positional embedding as the embedding from the patching
+        layer.
+        """
+        self.positional_embedding = self.proj.positional_embedding
 
     def init_decoder(self):
+        """
+        Initialize the decoder.
+        """
         self.decoder = TransformerBlockStack(
             number_of_blocks=self.decoder_args["num_layers"],
             input_dim_primary=self.n_features,
@@ -184,14 +244,32 @@ class ViTAutoEncoder(torch.nn.Module):
         )
 
     def init_decoder_pred(self):
-        self.decoder_pred = torch.nn.Linear(
-            self.n_features, int(np.prod(self.patch_size)) * self.n_channels
+        """
+        Initialize the decoder prediction layer.
+        """
+        dps = int(self.decoder_pred_ratio * self.n_features)
+        self.decoder_pred = torch.nn.Sequential(
+            torch.nn.Linear(self.n_features, dps),
+            torch.nn.GELU(),
+            torch.nn.Linear(
+                dps, int(np.prod(self.patch_size)) * self.n_channels
+            ),
         )
 
     def forward(self, X: torch.Tensor) -> torch.Tensor:
+        """
+        Forward pass.
+
+        Args:
+            X (torch.Tensor): Input tensor.
+
+        Returns:
+            torch.Tensor: Output tensor.
+        """
         X = self.proj(X)
         X = self.encoder(X) + self.positional_embedding
         X = self.decoder(X)
+        X = self.decoder_pred(X)
         return X
 
 
@@ -210,9 +288,29 @@ class ViTMaskedAutoEncoder(ViTAutoEncoder):
         decoder_args: Dict[str, Any],
         embed_method: str = "linear",
         dropout_rate: float = 0.0,
+        decoder_pred_ratio: float = 4.0,
         mask_fraction: float = 0.3,
         seed: int = 42,
     ):
+        """
+        Args:
+            image_size (Size2dOr3d): size of the image.
+            patch_size (Size2dOr3d): size of the patch.
+            n_channels (int): number of input channels.
+            input_dim_size (int): size of the input dimension.
+            encoder_args (Dict[str, Any]): arguments for the encoder. Follows
+                the signature for class:`TransformerBlockStack`.
+            decoder_args (Dict[str, Any]): arguments for the decoder. Follows
+                the signature for class:`TransformerBlockStack`.
+            embed_method (str, optional): embedding method. Defaults to
+                "linear".
+            dropout_rate (float, optional): dropout rate. Defaults to 0.0.
+            decoder_pred_ratio (float, optional): ratio of the decoder
+                prediction layer to the decoder output. Defaults to 4.0.
+            mask_fraction (float, optional): fraction of patches to mask.
+                Defaults to 0.3.
+            seed (int, optional): random seed. Defaults to 42.
+        """
         super().__init__(
             image_size=image_size,
             patch_size=patch_size,
@@ -222,15 +320,8 @@ class ViTMaskedAutoEncoder(ViTAutoEncoder):
             decoder_args=decoder_args,
             embed_method=embed_method,
             dropout_rate=dropout_rate,
+            decoder_pred_ratio=decoder_pred_ratio,
         )
-        self.image_size = image_size
-        self.patch_size = patch_size
-        self.n_channels = n_channels
-        self.input_dim_size = input_dim_size
-        self.encoder_args = encoder_args
-        self.decoder_args = decoder_args
-        self.embed_method = embed_method
-        self.dropout_rate = dropout_rate
         self.mask_fraction = mask_fraction
         self.seed = seed
 
@@ -244,19 +335,31 @@ class ViTMaskedAutoEncoder(ViTAutoEncoder):
         self.rng = np.random.default_rng(self.seed)
 
     def init_mask_token(self):
-        self.mask_token = torch.nn.Parameter(torch.rand(1, 1, self.n_features))
-        torch.nn.init.trunc_normal_(
-            self.mask_token, mean=0.0, std=0.02, a=-2.0, b=2.0
+        """
+        Initialize the mask token.
+        """
+        self.mask_token_scale = torch.nn.Parameter(torch.ones(1))
+        self.mask_token = torch.nn.Parameter(
+            torch.randn(1, 1, self.n_features) * 0.02
         )
 
     def forward(self, X: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        """
+        Forward pass.
+
+        Args:
+            X (torch.Tensor): Input tensor.
+
+        Returns:
+            tuple[torch.Tensor, torch.Tensor]: Tuple of encoded and decoded
+                tensors.
+        """
         # based on https://github.com/facebookresearch/mae/blob/main/models_mae.py
+
+        batch_size, _, height, width = X.shape
 
         # Project input to embedding space
         X_embed = self.proj(X)  # [batch_size, seq_len, embed_dim]
-
-        # Add positional embeddings
-        X_embed = X_embed + self.positional_embedding
 
         # Apply random masking
         X_masked, mask, ids_restore = random_masking(
@@ -271,7 +374,7 @@ class ViTMaskedAutoEncoder(ViTAutoEncoder):
         else:
             X_encoded = encoder_output
 
-        mask_tokens = self.mask_token.repeat(
+        mask_tokens = self.mask_token_scale * self.mask_token.repeat(
             X_encoded.shape[0], ids_restore.shape[1] - X_encoded.shape[1], 1
         )
 
@@ -285,6 +388,8 @@ class ViTMaskedAutoEncoder(ViTAutoEncoder):
             index=ids_restore.unsqueeze(-1).expand(-1, -1, X_full.shape[2])
         )
 
+        X_unshuffled = X_unshuffled + self.positional_embedding
+
         # Decode
         decoder_output = self.decoder(X_unshuffled)
         # Handle case where decoder returns a tuple (output, attention_weights)
@@ -296,31 +401,26 @@ class ViTMaskedAutoEncoder(ViTAutoEncoder):
 
         # Reshape to [batch_size, n_channels, height, width]
         batch_size = X_reconstructed.shape[0]
-        height = width = int(np.sqrt(X_reconstructed.shape[1]))  # Assuming square patches
-        n_patches = height * width
-
-        # Get patch dimensions
-        if isinstance(self.patch_size, tuple):
-            patch_h, patch_w = self.patch_size
-        else:
-            patch_h = patch_w = self.patch_size
+        n_patches = (height // self.patch_size[0]) * (
+            width // self.patch_size[1]
+        )
 
         # Reshape to [batch_size, n_patches, patch_h, patch_w, n_channels]
         X_reconstructed = X_reconstructed.view(
-            batch_size, 
-            n_patches, 
-            patch_h, 
-            patch_w, 
-            self.n_channels
+            batch_size,
+            n_patches,
+            self.patch_size[0],
+            self.patch_size[1],
+            self.n_channels,
         )
 
-        # Reshape to [batch_size, n_channels, height * patch_h, width * patch_w]
+        # Reshape to [batch_size, n_channels, height, width]
         X_reconstructed = X_reconstructed.permute(0, 4, 1, 2, 3).contiguous()
         X_reconstructed = X_reconstructed.view(
             batch_size,
             self.n_channels,
-            height * patch_h,
-            width * patch_w
+            height,
+            width,
         )
 
         return X_reconstructed, mask
