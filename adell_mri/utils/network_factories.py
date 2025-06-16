@@ -629,18 +629,21 @@ def get_ssl_network(
 
     elif ssl_method == "ijepa":
         # IJEPA specific configuration
+        backbone_args: dict = network_config_correct.get("backbone_args", {})
         config = {
             "image_key": "image",
             "backbone_args": {
-                "in_channels": 1,
-                "patch_size": (16, 16),
-                "img_size": (224, 224),
-                "embed_dim": 96,
-                "depth": 4,
-                "num_heads": 3,
-                "mlp_ratio": 4.0,
-                "qkv_bias": True,
-                "norm_layer": torch.nn.LayerNorm,
+                "in_channels": backbone_args.get("in_channels", 1),
+                "patch_size": backbone_args.get("patch_size", (16, 16)),
+                "img_size": backbone_args.get("img_size", (224, 224)),
+                "embed_dim": backbone_args.get("embed_dim", 96),
+                "depth": backbone_args.get("depth", 4),
+                "num_heads": backbone_args.get("num_heads", 3),
+                "mlp_ratio": backbone_args.get("mlp_ratio", 4.0),
+                "qkv_bias": backbone_args.get("qkv_bias", True),
+                "norm_layer": backbone_args.get(
+                    "norm_layer", torch.nn.LayerNorm
+                ),
             },
             "feature_map_dimensions": network_config_correct.get(
                 "feature_map_dimensions", [14, 14]
@@ -651,21 +654,29 @@ def get_ssl_network(
 
     elif ssl_method == "mae":
         # MAE specific configuration
+        encoder_args: dict = network_config_correct.get("encoder_args", {})
+        decoder_args: dict = network_config_correct.get("decoder_args", {})
         config = {
             "image_key": "image",
-            "backbone_args": {
-                "in_channels": 1,
-                "patch_size": (16, 16),
-                "img_size": (224, 224),
-                "embed_dim": 96,
-                "depth": 4,
-                "num_heads": 3,
-                "mlp_ratio": 4.0,
-                "qkv_bias": True,
-                "norm_layer": torch.nn.LayerNorm,
+            "image_size": encoder_args.get("image_size", (224, 224)),
+            "patch_size": encoder_args.get("patch_size", (16, 16)),
+            "n_channels": encoder_args.get("n_channels", 1),
+            "input_dim_size": encoder_args.get("embed_dim", 96),
+            "encoder_args": {
+                "embed_dim": encoder_args.get("embed_dim", 96),
+                "num_layers": encoder_args.get("num_layers", 4),
+                "num_heads": encoder_args.get("num_heads", 4),
+                "mlp_dim": encoder_args.get("mlp_dim", 96 * 4),
             },
-            "mask_ratio": 0.75,
+            "decoder_args": {
+                "embed_dim": decoder_args.get("embed_dim", 96),
+                "num_layers": decoder_args.get("num_layers", 4),
+                "num_heads": decoder_args.get("num_heads", 4),
+                "mlp_dim": decoder_args.get("mlp_dim", 96 * 4),
+            },
+            "mask_fraction": network_config_correct.get("mask_fraction", 0.75),
         }
+        del common_params["ema"]
         ssl = ViTMaskedAutoEncoderPL(**{**common_params, **config})
 
     elif ssl_method == "dino":

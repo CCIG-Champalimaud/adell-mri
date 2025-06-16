@@ -1384,6 +1384,7 @@ class ViTMaskedAutoEncoderPL(pl.LightningModule):
 
     def __init__(
         self,
+        image_key: str,
         image_size: tuple[int, int],
         patch_size: tuple[int, int],
         n_channels: int,
@@ -1403,6 +1404,7 @@ class ViTMaskedAutoEncoderPL(pl.LightningModule):
     ):
         """
         Args:
+            image_key (str): Key for the image in the batch
             image_size (tuple[int, int]): Size of input images (height, width)
             patch_size (tuple[int, int]): Size of patches (ph, pw)
             n_channels (int): Number of input channels
@@ -1439,6 +1441,7 @@ class ViTMaskedAutoEncoderPL(pl.LightningModule):
         self.criterion = torch.nn.MSELoss()
 
         # Training parameters
+        self.image_key = image_key
         self.learning_rate = learning_rate
         self.weight_decay = weight_decay
         self.warmup_steps = warmup_steps

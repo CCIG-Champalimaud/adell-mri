@@ -160,7 +160,7 @@ class ViTAutoEncoder(torch.nn.Module):
             hidden_dim=self.encoder_args["mlp_dim"],
             n_heads=self.encoder_args["num_heads"],
             mlp_structure=[self.encoder_args["mlp_dim"]],
-            dropout_rate=self.encoder_args["dropout"],
+            dropout_rate=self.encoder_args.get("dropout", 0.0),
         )
 
     def init_positional_embedding(self):
@@ -179,7 +179,7 @@ class ViTAutoEncoder(torch.nn.Module):
             hidden_dim=self.decoder_args["mlp_dim"],
             n_heads=self.decoder_args["num_heads"],
             mlp_structure=[self.decoder_args["mlp_dim"]],
-            dropout_rate=self.decoder_args["dropout"],
+            dropout_rate=self.decoder_args.get("dropout", 0.0),
         )
 
     def init_decoder_pred(self):
@@ -250,61 +250,40 @@ class ViTMaskedAutoEncoder(ViTAutoEncoder):
 
     def forward(self, X: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         # based on https://github.com/facebookresearch/mae/blob/main/models_mae.py
-        print("\n=== Starting forward pass ===")
-        print(f"Input X shape: {X.shape}")
 
         # Project input to embedding space
         X_embed = self.proj(X)  # [batch_size, seq_len, embed_dim]
-        print(f"X_embed shape: {X_embed.shape}")
-        
+
         # Add positional embeddings
-        print(f"positional_embedding shape: {self.positional_embedding.shape}")
         X_embed = X_embed + self.positional_embedding
-        
+
         # Apply random masking
-        print(f"\nCalling random_masking with mask_fraction: {self.mask_fraction}")
         X_masked, mask, ids_restore = random_masking(
             X_embed, self.mask_fraction, self.rng
         )
-        
-        print("\nAfter random_masking:")
-        print(f"X_masked type: {type(X_masked)}, shape: {X_masked.shape}")
-        print(f"mask type: {type(mask)}, shape: {mask.shape}")
-        print(f"ids_restore type: {type(ids_restore)}, shape: {ids_restore.shape}")
-        print(f"ids_restore: {ids_restore}")
-        
+
         # Encode visible tokens
-        print("\nEncoding visible tokens...")
         encoder_output = self.encoder(X_masked)  # [batch_size, num_visible, embed_dim]
         # Handle case where encoder returns a tuple (output, attention_weights)
         if isinstance(encoder_output, tuple):
             X_encoded = encoder_output[0]
         else:
             X_encoded = encoder_output
-        print(f"X_encoded shape: {X_encoded.shape}")
-        
-        # Prepare mask tokens
-        print("\nPreparing mask tokens...")
-        print(f"mask_token shape: {self.mask_token.shape}")
-        print(f"Calculating repeat dimensions:")
-        print(f"  X_encoded.shape[0]: {X_encoded.shape[0]}")
-        print(f"  ids_restore.shape[1]: {ids_restore.shape[1]}")
-        print(f"  X_encoded.shape[1]: {X_encoded.shape[1]}")
-        
+
         mask_tokens = self.mask_token.repeat(
             X_encoded.shape[0], ids_restore.shape[1] - X_encoded.shape[1], 1
         )
-        
+
         # Concatenate encoded visible tokens with mask tokens
         X_full = torch.cat([X_encoded, mask_tokens], dim=1)
-        
+
         # Unshuffle to original order
         X_unshuffled = torch.gather(
             X_full, 
             dim=1, 
             index=ids_restore.unsqueeze(-1).expand(-1, -1, X_full.shape[2])
         )
-        
+
         # Decode
         decoder_output = self.decoder(X_unshuffled)
         # Handle case where decoder returns a tuple (output, attention_weights)
@@ -313,18 +292,18 @@ class ViTMaskedAutoEncoder(ViTAutoEncoder):
         else:
             X_decoded = decoder_output
         X_reconstructed = self.decoder_pred(X_decoded)  # [batch_size, seq_len, n_features]
-        
+
         # Reshape to [batch_size, n_channels, height, width]
         batch_size = X_reconstructed.shape[0]
         height = width = int(np.sqrt(X_reconstructed.shape[1]))  # Assuming square patches
         n_patches = height * width
-        
+
         # Get patch dimensions
         if isinstance(self.patch_size, tuple):
             patch_h, patch_w = self.patch_size
         else:
             patch_h = patch_w = self.patch_size
-            
+
         # Reshape to [batch_size, n_patches, patch_h, patch_w, n_channels]
         X_reconstructed = X_reconstructed.view(
             batch_size, 
@@ -333,7 +312,7 @@ class ViTMaskedAutoEncoder(ViTAutoEncoder):
             patch_w, 
             self.n_channels
         )
-        
+
         # Reshape to [batch_size, n_channels, height * patch_h, width * patch_w]
         X_reconstructed = X_reconstructed.permute(0, 4, 1, 2, 3).contiguous()
         X_reconstructed = X_reconstructed.view(
@@ -342,5 +321,5 @@ class ViTMaskedAutoEncoder(ViTAutoEncoder):
             height * patch_h,
             width * patch_w
         )
-        
+
         return X_reconstructed, mask
