@@ -24,7 +24,7 @@ def random_masking(
     Args:
         x (torch.Tensor): tensor with shape [batch, n_tokens, embedding_size].
         mask_ratio (float): ratio of tokens to mask.
-        rng (np.random.RandomState): random number generator.
+        rng (np.random.Generator): random number generator.
     """
     N, L, D = x.shape  # batch, length, dim
     len_keep = int(L * (1 - mask_ratio))
