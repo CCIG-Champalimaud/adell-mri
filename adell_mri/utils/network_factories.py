@@ -5,8 +5,6 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-from generative.networks.schedulers import DDPMScheduler
-
 from ..modules.classification.classification import TabularClassifier
 from ..modules.classification.classification.deconfounded_classification import (
     CategoricalConversion,
@@ -808,6 +806,15 @@ def get_generative_network(
     start_decay: int,
     diffusion_steps: int,
 ) -> DiffusionUNetPL:
+    try:
+        from generative.networks.schedulers import DDPMScheduler
+    except ImportError:
+        raise ImportError(
+            "Please install the generative package to diffusion models"
+            "(go to https://github.com/Project-MONAI/GenerativeModels for "
+            "instructions)"
+        )
+
     scheduler = DDPMScheduler(
         num_train_timesteps=diffusion_steps, **scheduler_config
     )
