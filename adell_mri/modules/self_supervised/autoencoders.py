@@ -213,13 +213,13 @@ class ViTAutoEncoder(torch.nn.Module):
         Initialize the encoder.
         """
         self.encoder = TransformerBlockStack(
-            number_of_blocks=self.encoder_args["num_layers"],
+            number_of_blocks=self.encoder_args["number_of_blocks"],
             input_dim_primary=self.n_features,
             attention_dim=self.n_features,
-            hidden_dim=self.encoder_args["mlp_dim"],
-            n_heads=self.encoder_args["num_heads"],
-            mlp_structure=[self.encoder_args["mlp_dim"]],
-            dropout_rate=self.encoder_args.get("dropout", 0.0),
+            hidden_dim=self.encoder_args["hidden_dim"],
+            n_heads=self.encoder_args["n_heads"],
+            mlp_structure=self.encoder_args["mlp_structure"],
+            dropout_rate=self.encoder_args.get("dropout_rate", 0.0),
         )
 
     def init_positional_embedding(self):
@@ -234,13 +234,13 @@ class ViTAutoEncoder(torch.nn.Module):
         Initialize the decoder.
         """
         self.decoder = TransformerBlockStack(
-            number_of_blocks=self.decoder_args["num_layers"],
+            number_of_blocks=self.decoder_args["number_of_blocks"],
             input_dim_primary=self.n_features,
             attention_dim=self.n_features,
-            hidden_dim=self.decoder_args["mlp_dim"],
-            n_heads=self.decoder_args["num_heads"],
-            mlp_structure=[self.decoder_args["mlp_dim"]],
-            dropout_rate=self.decoder_args.get("dropout", 0.0),
+            hidden_dim=self.decoder_args["hidden_dim"],
+            n_heads=self.decoder_args["n_heads"],
+            mlp_structure=self.decoder_args["mlp_structure"],
+            dropout_rate=self.decoder_args.get("dropout_rate", 0.0),
         )
 
     def init_decoder_pred(self):
