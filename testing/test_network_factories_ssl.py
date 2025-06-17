@@ -145,16 +145,16 @@ def minimal_network_config(ssl_method):
             "in_channels": 1,
             "input_dim_size": 768,
             "encoder_args": {
-                "embed_dim": 96,
-                "depth": 4,
-                "num_heads": 4,
-                "mlp_dim": 96 * 4,
+                "hidden_dim": 96,
+                "number_of_blocks": 4,
+                "n_heads": 4,
+                "mlp_structure": [96 * 4],
             },
             "decoder_args": {
-                "embed_dim": 48,
-                "depth": 2,
-                "num_heads": 4,
-                "mlp_dim": 48 * 4,
+                "hidden_dim": 48,
+                "number_of_blocks": 2,
+                "n_heads": 4,
+                "mlp_structure": [48 * 4],
             },
         }
     else:
@@ -403,7 +403,7 @@ def test_mae_network():
     mlp_dim = 384  # 384 is divisible by 3 (128 per head)
 
     # Create a minimal config for MAE that matches get_ssl_network expectations
-    config = {}
+    config = minimal_network_config(ssl_method)
 
     # Create the network with the correct parameters
     net = network_factories.get_ssl_network(
@@ -444,7 +444,7 @@ def test_mae_network():
         assert abs(actual_ratio - mask_ratio) < 0.1  # Allow 10% tolerance
 
     # Test training step
-    loss = net.training_step(dummy_input, 0)
+    loss = net.training_step({"image": dummy_input}, 0)
     assert isinstance(loss, torch.Tensor)
     assert loss.requires_grad  # Loss should be a differentiable scalar
 

@@ -11,18 +11,18 @@ def model_config():
         "in_channels": 3,
         "input_dim_size": 128,
         "encoder_args": {
-            "num_layers": 2,
-            "num_heads": 4,
+            "number_of_blocks": 2,
+            "n_heads": 4,
             "hidden_dim": 128,
-            "mlp_dim": 256,
-            "dropout": 0.1,
+            "mlp_structure": [256],
+            "dropout_rate": 0.1,
         },
         "decoder_args": {
-            "num_layers": 2,
-            "num_heads": 4,
+            "number_of_blocks": 2,
+            "n_heads": 4,
             "hidden_dim": 128,
-            "mlp_dim": 256,
-            "dropout": 0.1,
+            "mlp_structure": [256],
+            "dropout_rate": 0.1,
         },
     }
 
