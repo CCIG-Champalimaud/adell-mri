@@ -84,13 +84,17 @@ def parse_config_ssl(
     if "batch_size" not in network_config:
         network_config["batch_size"] = 1
 
-    if is_vit is False:
-        sd = network_config["backbone_args"]["spatial_dim"]
-    else:
-        sd = len(network_config["backbone_args"]["patch_size"])
+    backbone_key = (
+        "backbone_args" if "backbone_args" in network_config else "encoder_args"
+    )
 
     if is_vit is False:
-        network_config["backbone_args"]["adn_fn"] = get_adn_fn(
+        sd = network_config[backbone_key]["spatial_dim"]
+    else:
+        sd = len(network_config[backbone_key]["patch_size"])
+
+    if is_vit is False:
+        network_config[backbone_key]["adn_fn"] = get_adn_fn(
             sd,
             network_config["norm_fn"],
             network_config["act_fn"],
@@ -124,10 +128,10 @@ def parse_config_ssl(
         if k not in ["norm_fn", "act_fn"]
     }
     if is_vit is False:
-        n_c = network_config["backbone_args"]["in_channels"]
-        network_config["backbone_args"]["in_channels"] = n_keys * n_c
+        n_c = network_config[backbone_key]["in_channels"]
+        network_config[backbone_key]["in_channels"] = n_keys * n_c
     else:
-        network_config["backbone_args"]["in_channels"] = n_keys
+        network_config[backbone_key]["in_channels"] = n_keys
 
     return network_config, network_config_correct
 

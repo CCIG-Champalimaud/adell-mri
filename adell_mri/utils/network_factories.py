@@ -573,6 +573,7 @@ def get_ssl_network(
         "n_steps": max_steps_optim,
         "warmup_steps": warmup_steps,
         "ema": ema,
+        "batch_size": network_config_correct["batch_size"],
     }
 
     if ssl_method in ["simclr", "byol", "vicreg", "vicregl"]:
@@ -654,18 +655,8 @@ def get_ssl_network(
             "patch_size": encoder_args.get("patch_size", (16, 16)),
             "in_channels": encoder_args.get("in_channels", 1),
             "input_dim_size": encoder_args.get("embed_dim", 96),
-            "encoder_args": {
-                "embed_dim": encoder_args.get("embed_dim", 96),
-                "num_layers": encoder_args.get("num_layers", 4),
-                "num_heads": encoder_args.get("num_heads", 4),
-                "mlp_dim": encoder_args.get("mlp_dim", 96 * 4),
-            },
-            "decoder_args": {
-                "embed_dim": decoder_args.get("embed_dim", 96),
-                "num_layers": decoder_args.get("num_layers", 4),
-                "num_heads": decoder_args.get("num_heads", 4),
-                "mlp_dim": decoder_args.get("mlp_dim", 96 * 4),
-            },
+            "encoder_args": encoder_args,
+            "decoder_args": decoder_args,
             "mask_fraction": network_config_correct.get("mask_fraction", 0.75),
         }
         del common_params["ema"]

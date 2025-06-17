@@ -188,14 +188,19 @@ def main(arguments):
     }
 
     if args.ssl_method in ["ijepa", "dino", "ibot", "mae"]:
+        backbone_key = (
+            "backbone_args"
+            if "backbone_args" in network_config_correct
+            else "encoder_args"
+        )
         image_size = keep_first_not_none(args.scaled_crop_size, args.crop_size)
-        patch_size = network_config_correct["backbone_args"]["patch_size"]
+        patch_size = network_config_correct[backbone_key]["patch_size"]
         feature_map_size = [i // pi for i, pi in zip(image_size, patch_size)]
-        network_config_correct["backbone_args"]["image_size"] = image_size
+        network_config_correct[backbone_key]["image_size"] = image_size
         if args.ssl_method in ["ijepa", "ibot", "mae"]:
             network_config_correct["feature_map_dimensions"] = feature_map_size
 
-    transforms = SSLTransforms(transform_args).transforms(
+    transforms = SSLTransforms(**transform_args).transforms(
         get_augmentations_ssl(**augmentation_args)
     )
 
@@ -282,7 +287,7 @@ def main(arguments):
     else:
         n_workers = args.n_workers // devices
 
-    def train_loader_call(batch_size, shuffle=True):
+    def train_loader_call(batch_size: int, shuffle=True):
         return monai.data.ThreadDataLoader(
             train_dataset,
             batch_size=batch_size,

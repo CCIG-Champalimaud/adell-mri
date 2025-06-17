@@ -1397,6 +1397,7 @@ class ViTMaskedAutoEncoderPL(pl.LightningModule):
         dropout_rate: float = 0.0,
         mask_fraction: float = 0.75,
         learning_rate: float = 1e-3,
+        batch_size: int = 4,
         weight_decay: float = 1e-6,
         warmup_steps: int = 0,
         start_decay: int = 0,
@@ -1417,6 +1418,7 @@ class ViTMaskedAutoEncoderPL(pl.LightningModule):
             dropout_rate (float): Dropout rate. Defaults to 0.0.
             mask_fraction (float): Fraction of patches to mask. Defaults to 0.75.
             learning_rate (float): Learning rate. Defaults to 1e-3.
+            batch_size (int): Batch size. Defaults to 4.
             weight_decay (float): Weight decay. Defaults to 1e-6.
             warmup_steps (int): Number of warmup steps. Defaults to 0.
             start_decay (int): Number of steps before decay. Defaults to 0.
@@ -1442,6 +1444,7 @@ class ViTMaskedAutoEncoderPL(pl.LightningModule):
 
         # Training parameters
         self.image_key = image_key
+        self.batch_size = batch_size
         self.learning_rate = learning_rate
         self.weight_decay = weight_decay
         self.warmup_steps = warmup_steps
@@ -1449,38 +1452,6 @@ class ViTMaskedAutoEncoderPL(pl.LightningModule):
         self.n_steps = n_steps
         self.n_epochs = n_epochs
         self.start_decay = start_decay
-
-        # Setup metrics
-        self.setup_metrics()
-
-    def setup_metrics(self) -> None:
-        """Initialize metrics for training, validation, and testing."""
-        self.train_metrics = torchmetrics.MetricCollection(
-            {
-                "train_loss": torchmetrics.MeanMetric(),
-                "train_psnr": torchmetrics.image.PeakSignalNoiseRatio(
-                    data_range=1.0
-                ),
-            }
-        )
-
-        self.val_metrics = torchmetrics.MetricCollection(
-            {
-                "val_loss": torchmetrics.MeanMetric(),
-                "val_psnr": torchmetrics.image.PeakSignalNoiseRatio(
-                    data_range=1.0
-                ),
-            }
-        )
-
-        self.test_metrics = torchmetrics.MetricCollection(
-            {
-                "test_loss": torchmetrics.MeanMetric(),
-                "test_psnr": torchmetrics.image.PeakSignalNoiseRatio(
-                    data_range=1.0
-                ),
-            }
-        )
 
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """Forward pass through the model."""
@@ -1490,19 +1461,14 @@ class ViTMaskedAutoEncoderPL(pl.LightningModule):
         self, batch: torch.Tensor, batch_idx: int
     ) -> torch.Tensor:
         """Training step."""
-        x = batch if isinstance(batch, torch.Tensor) else batch[0]
+        x = batch[self.image_key]
         x_recon, mask = self(x)
 
         # Calculate reconstruction loss
         loss = self.criterion(x_recon, x)
 
-        # Calculate PSNR
-        mse = torch.nn.functional.mse_loss(x_recon, x, reduction="none")
-        psnr = -10 * torch.log10(mse).mean()
-
         # Log metrics
         self.log("train_loss", loss, on_step=True, on_epoch=True, prog_bar=True)
-        self.log("train_psnr", psnr, on_step=True, on_epoch=True, prog_bar=True)
 
         return loss
 
@@ -1510,35 +1476,25 @@ class ViTMaskedAutoEncoderPL(pl.LightningModule):
         self, batch: torch.Tensor, batch_idx: int
     ) -> torch.Tensor:
         """Validation step."""
-        x = batch if isinstance(batch, torch.Tensor) else batch[0]
+        x = batch[self.image_key]
         x_recon, _ = self(x)
 
         loss = self.criterion(x_recon, x)
 
-        # Calculate PSNR
-        mse = torch.nn.functional.mse_loss(x_recon, x, reduction="none")
-        psnr = -10 * torch.log10(mse).mean()
-
         # Log metrics
         self.log("val_loss", loss, on_step=False, on_epoch=True, prog_bar=True)
-        self.log("val_psnr", psnr, on_step=False, on_epoch=True, prog_bar=True)
 
         return loss
 
     def test_step(self, batch: torch.Tensor, batch_idx: int) -> torch.Tensor:
         """Test step."""
-        x = batch if isinstance(batch, torch.Tensor) else batch[0]
+        x = batch[self.image_key]
         x_recon, _ = self(x)
 
         loss = self.criterion(x_recon, x)
 
-        # Calculate PSNR
-        mse = torch.nn.functional.mse_loss(x_recon, x, reduction="none")
-        psnr = -10 * torch.log10(mse).mean()
-
         # Log metrics
         self.log("test_loss", loss, on_step=False, on_epoch=True, prog_bar=True)
-        self.log("test_psnr", psnr, on_step=False, on_epoch=True, prog_bar=True)
 
         return loss
 
@@ -1587,21 +1543,4 @@ class ViTMaskedAutoEncoderPL(pl.LightningModule):
             raise ValueError(
                 "training_dataloader_call must be provided for training"
             )
-        return self.training_dataloader_call()
-
-    def on_train_epoch_end(self) -> None:
-        """Log metrics at the end of each training epoch."""
-        self.log_dict(self.train_metrics.compute())
-        self.train_metrics.reset()
-
-    def on_validation_epoch_end(self) -> None:
-        """Log metrics at the end of each validation epoch."""
-        self.log_dict(self.val_metrics.compute())
-        self.val_metrics.reset()
-
-    def on_test_epoch_end(self) -> None:
-        """
-        Log metrics at the end of each test epoch.
-        """
-        self.log_dict(self.test_metrics.compute())
-        self.test_metrics.reset()
+        return self.training_dataloader_call(self.batch_size)
