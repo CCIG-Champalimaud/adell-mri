@@ -1,6 +1,7 @@
 name: Linting and unit tests
 
 on: 
+  workflow_dispatch:
   push:
     paths:
       - "testing/**"
