@@ -283,6 +283,7 @@ class ResNeXtBlock2d(torch.nn.Module):
             self.out_channels = self.in_channels
         self.adn_fn = adn_fn
         self.n_splits = n_splits
+        self.skip_activation = skip_activation
 
         self.init_layers()
 
@@ -310,7 +311,7 @@ class ResNeXtBlock2d(torch.nn.Module):
         # convolve residual connection to match possible difference in
         # output channels
         if self.in_channels != self.out_channels:
-            self.skip_op = torch.nn.Conv3d(
+            self.skip_op = torch.nn.Conv2d(
                 self.in_channels, self.out_channels, 1
             )
         else:
@@ -568,7 +569,7 @@ class ConvNeXtBlock3d(torch.nn.Module):
                 torch.nn.Conv3d(
                     in_channels,
                     out_channels,
-                    kernel_size=kernel_size,
+                    kernel_size=1,
                     padding="same",
                 ),
                 torch.nn.GELU(),
@@ -591,6 +592,7 @@ class ConvNeXtBlock3d(torch.nn.Module):
         x = input + x
         if self.out_layer is not None:
             x = self.out_layer(x)
+
         return x
 
 
@@ -611,6 +613,7 @@ class ConvNeXtBlockVTwo2d(torch.nn.Module):
         inter_channels: int = None,
         out_channels: int = None,
         adn_fn: torch.nn.Module = torch.nn.Identity,
+        skip_activation: bool = False,
     ):
         """
         Args:
@@ -620,8 +623,8 @@ class ConvNeXtBlockVTwo2d(torch.nn.Module):
                 to None.
             out_channels (int): number of output channels. Defaults to None.
             adn_fn (torch.nn.Module, optional): for compability purposes.
-            layer_scale_init_value (float, optional): init value for gamma (
-                scales non-residual term). Defaults to 1e-6.
+            skip_activation (bool, optional): skips activation during forward
+                pass (redundant; for consistency). Defaults to False.
         """
         super().__init__()
         self.in_channels = in_channels
@@ -687,6 +690,7 @@ class ConvNeXtBlockVTwo3d(torch.nn.Module):
         inter_channels: int,
         out_channels: int,
         adn_fn: torch.nn.Module = torch.nn.Identity,
+        skip_activation: bool = None,
     ):
         """
         Args:
@@ -697,8 +701,8 @@ class ConvNeXtBlockVTwo3d(torch.nn.Module):
             out_channels (int): number of output channels. Defaults to None.
             adn_fn (torch.nn.Module, optional): used only when the output
                 channels are different. Defaults to torch.nn.Identity.
-            layer_scale_init_value (float, optional): init value for gamma (
-                scales non-residual term). Defaults to 1e-6.
+            skip_activation (bool, optional): skips activation during forward
+                pass (redundant; for consistency). Defaults to None (False).
         """
         super().__init__()
         self.in_channels = in_channels
@@ -724,7 +728,7 @@ class ConvNeXtBlockVTwo3d(torch.nn.Module):
                 torch.nn.Conv3d(
                     in_channels,
                     out_channels,
-                    kernel_size=kernel_size,
+                    kernel_size=1,
                     padding="same",
                 ),
                 torch.nn.GELU(),
@@ -749,4 +753,5 @@ class ConvNeXtBlockVTwo3d(torch.nn.Module):
         x = input + x
         if self.out_layer is not None:
             x = self.out_layer(x)
+
         return x

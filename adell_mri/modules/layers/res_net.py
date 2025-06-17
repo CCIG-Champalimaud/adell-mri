@@ -7,6 +7,8 @@ from .batch_ensemble import BatchEnsembleWrapper
 from .res_blocks import (
     ConvNeXtBlock2d,
     ConvNeXtBlock3d,
+    ConvNeXtBlockVTwo2d,
+    ConvNeXtBlockVTwo3d,
     ResidualBlock2d,
     ResidualBlock3d,
     ResNeXtBlock2d,
@@ -105,6 +107,8 @@ class ResNetBackbone(torch.nn.Module):
                 self.res_op = ResNeXtBlock2d
             elif self.res_type == "convnext":
                 self.res_op = ConvNeXtBlock2d
+            elif self.res_type == "convnextv2":
+                self.res_op = ConvNeXtBlockVTwo2d
             elif self.res_type == "none":
                 self.res_op = self.conv_wrapper_2d
             self.conv_op = torch.nn.Conv2d
@@ -116,6 +120,8 @@ class ResNetBackbone(torch.nn.Module):
                 self.res_op = ResNeXtBlock3d
             elif self.res_type == "convnext":
                 self.res_op = ConvNeXtBlock3d
+            elif self.res_type == "convnextv2":
+                self.res_op = ConvNeXtBlockVTwo3d
             elif self.res_type == "none":
                 self.res_op = self.conv_wrapper_3d
             self.conv_op = torch.nn.Conv3d

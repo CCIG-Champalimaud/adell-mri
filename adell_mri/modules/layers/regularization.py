@@ -168,6 +168,9 @@ class GRN(torch.nn.Module):
         super().__init__()
         self.in_channels = in_channels
         self.reduce_dims = reduce_dims
+        self.spatial_dimensions = len(reduce_dims)
+
+        self.init_parameters()
 
     def init_parameters(self):
         """
@@ -179,7 +182,7 @@ class GRN(torch.nn.Module):
         self.beta = torch.nn.Parameter(torch.zeros(sh))
 
     def forward(self, X: torch.Tensor) -> torch.Tensor:
-        gx = torch.norm(X, p=2, dim=self.dims, keepdim=True)
+        gx = torch.norm(X, p=2, dim=self.reduce_dims, keepdim=True)
         nx = gx / (gx.mean(dim=-1, keepdim=True) + 1e-6)
         return self.gamma * (X * nx) + self.beta + X
 
@@ -215,3 +218,39 @@ class ChannelDropout(torch.nn.Module):
             dropout = dropout.float().to(X.device)
             X = X * dropout
         return X
+
+
+class LayerScale(torch.nn.Module):
+    """
+    Layer Scale layer. Adapted from [1].
+
+    [1] https://github.com/facebookresearch/dinov2/blob/main/dinov2/layers/layer_scale.py
+    """
+
+    def __init__(
+        self,
+        dim: int,
+        init_values: float | torch.Tensor = 1e-5,
+        inplace: bool = False,
+        device: torch.device | None = None,
+        dtype: torch.dtype | None = None,
+    ) -> None:
+        super().__init__()
+        self.inplace = inplace
+        self.init_values = init_values
+        self.gamma = torch.nn.Parameter(
+            torch.empty([1, dim], device=device, dtype=dtype)
+        )
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        torch.nn.init.constant_(self.gamma, self.init_values)
+
+    def unsqueze_to(self, x1: torch.Tensor, x2: torch.Tensor) -> torch.Tensor:
+        return x1.view(1, -1, *([1] * (x2.ndim - 2)))
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if self.inplace:
+            return x.mul_(self.unsqueze_to(self.gamma, x))
+        else:
+            return x * self.unsqueze_to(self.gamma, x)
