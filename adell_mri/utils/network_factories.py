@@ -573,7 +573,7 @@ def get_ssl_network(
         "n_steps": max_steps_optim,
         "warmup_steps": warmup_steps,
         "ema": ema,
-        "batch_size": network_config_correct["batch_size"],
+        "batch_size": network_config_correct.get("batch_size", 32),
     }
 
     if ssl_method in ["simclr", "byol", "vicreg", "vicregl"]:
