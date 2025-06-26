@@ -208,7 +208,7 @@ def get_augmentations_class(
     for a in augment:
         if a not in valid_arg_list:
             raise NotImplementedError(
-                "augment can only contain {}".format(valid_arg_list)
+                f"augment can only contain {valid_arg_list}"
             )
     augments = []
 
