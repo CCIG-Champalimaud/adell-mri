@@ -1752,7 +1752,9 @@ class DeconfoundedNetPL(DeconfoundedNetGeneric, ClassPLABC):
         )
         self.setup_metrics()
 
-    def loss_cat_confounder(self, pred: torch.Tensor, y: torch.Tensor):
+    def loss_cat_confounder(
+        self, pred: torch.Tensor, y: torch.Tensor
+    ) -> torch.Tensor:
         y = self.embedder(y)
         d = pred[0].device
         return (
@@ -1765,22 +1767,33 @@ class DeconfoundedNetPL(DeconfoundedNetGeneric, ClassPLABC):
             * self.conf_mult
         )
 
-    def loss_cont_confounder(self, pred: torch.Tensor, y: torch.Tensor):
+    def loss_cont_confounder(
+        self, pred: torch.Tensor, y: torch.Tensor
+    ) -> torch.Tensor:
         return F.mse_loss(pred, y.to(pred)) * self.conf_mult
 
-    def loss_features(self, features: torch.Tensor):
+    def correlation_loss(self, features: torch.Tensor) -> torch.Tensor:
+        conf_f = features[:, : self.n_features_deconfounder, None]
+        deconf_f = features[:, None, self.n_features_deconfounder :]
+        conf_f_norm = conf_f - conf_f.mean(0, keepdim=True)
+        deconf_f_norm = deconf_f - deconf_f.mean(0, keepdim=True)
+        n = (conf_f_norm * deconf_f_norm).sum(0)
+        d = torch.multiply(
+            # applying sqrt separately prevents overflows with low precision
+            conf_f_norm.square().sum(0).sqrt(),
+            deconf_f_norm.square().sum(0).sqrt(),
+        ).clamp(min=1e-8)
+        return torch.clamp(n / d, -1.0, 1.0).square().mean()
+
+    def cosine_loss(self, features: torch.Tensor) -> torch.Tensor:
+        conf_f = features[:, : self.n_features_deconfounder, None]
+        deconf_f = features[:, None, self.n_features_deconfounder :]
+        loss = F.cosine_similarity(conf_f, deconf_f)
+        return loss.mean()
+
+    def loss_features(self, features: torch.Tensor) -> torch.Tensor:
         if self.n_features_deconfounder > 0:
-            conf_f = features[:, : self.n_features_deconfounder, None]
-            deconf_f = features[:, None, self.n_features_deconfounder :]
-            conf_f_norm = conf_f - conf_f.mean(0, keepdim=True)
-            deconf_f_norm = deconf_f - deconf_f.mean(0, keepdim=True)
-            n = (conf_f_norm * deconf_f_norm).sum(0)
-            d = torch.multiply(
-                # applying sqrt separately prevents overflows with low precision
-                conf_f_norm.square().sum(0).sqrt(),
-                deconf_f_norm.square().sum(0).sqrt(),
-            ).clamp(min=1e-8)
-            return n.divide(d).clamp(-1.0, 1.0).square().mean()
+            return self.cosine_loss(features)
 
     def step(self, batch: dict[str, torch.Tensor], with_params: bool):
         x, y = batch[self.image_key], batch[self.label_key]
@@ -1824,7 +1837,9 @@ class DeconfoundedNetPL(DeconfoundedNetGeneric, ClassPLABC):
             if loss_val is not None:
                 self.log(f"{prefix}_{s}", loss_val, prog_bar=True)
 
-    def training_step(self, batch, batch_idx):
+    def training_step(
+        self, batch: dict[str, torch.Tensor], batch_idx: int
+    ) -> torch.Tensor:
         output = self.step(batch, with_params=True)
         losses, _ = output[:4], output[4:]
         losses = [
@@ -1834,7 +1849,9 @@ class DeconfoundedNetPL(DeconfoundedNetGeneric, ClassPLABC):
         self.log_losses(losses, "tr")
         return sum([loss_val for loss_val in losses if loss_val is not None])
 
-    def validation_step(self, batch, batch_idx):
+    def validation_step(
+        self, batch: dict[str, torch.Tensor], batch_idx: int
+    ) -> torch.Tensor:
         output = self.step(batch, with_params=False)
         losses, pred_y = output[:4], output[4:]
         losses = [
@@ -1851,7 +1868,9 @@ class DeconfoundedNetPL(DeconfoundedNetGeneric, ClassPLABC):
         )
         return sum([loss_val for loss_val in losses if loss_val is not None])
 
-    def test_step(self, batch, batch_idx):
+    def test_step(
+        self, batch: dict[str, torch.Tensor], batch_idx: int
+    ) -> torch.Tensor:
         output = self.step(batch, with_params=False)
         losses, pred_y = output[:4], output[4:]
         losses = [
@@ -1870,7 +1889,12 @@ class DeconfoundedNetPL(DeconfoundedNetGeneric, ClassPLABC):
         return sum([loss_val for loss_val in losses if loss_val is not None])
 
     def update_metrics(
-        self, prediction, y, metrics, log: bool = True, **kwargs
+        self,
+        prediction: torch.Tensor,
+        y: torch.Tensor,
+        metrics: dict[str, torch.nn.Module],
+        log: bool = True,
+        **kwargs,
     ):
         y = y.long()
         if self.n_classes == 2:
@@ -1882,7 +1906,7 @@ class DeconfoundedNetPL(DeconfoundedNetGeneric, ClassPLABC):
             if log is True:
                 self.log(k, metrics[k], **kwargs)
 
-    def configure_optimizers(self):
+    def configure_optimizers(self) -> dict:
         params_confounder = []
         params_classifier = []
         for n, p in self.named_parameters():
