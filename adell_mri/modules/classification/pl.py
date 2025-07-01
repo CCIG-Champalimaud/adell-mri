@@ -1793,7 +1793,7 @@ class DeconfoundedNetPL(DeconfoundedNetGeneric, ClassPLABC):
 
     def loss_features(self, features: torch.Tensor) -> torch.Tensor:
         if self.n_features_deconfounder > 0:
-            return self.cosine_loss(features)
+            return self.correlation_loss(features)
 
     def step(self, batch: dict[str, torch.Tensor], with_params: bool):
         x, y = batch[self.image_key], batch[self.label_key]
