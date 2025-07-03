@@ -9,14 +9,23 @@ import torch.nn.functional as F
 import torchmetrics
 import torchmetrics.classification as tmc
 
-from ...utils.optimizer_factory import get_optimizer
-from ..extract_lesion_candidates import extract_lesion_candidates
-from ..learning_rate import CosineAnnealingWithWarmupLR
-from .mimunet import MIMUNet
-from .picai_eval import evaluate
-from .unet import BrUNet, UNet
-from .unetpp import UNetPlusPlus
-from .unetr import UNETR, MonaiSWINUNet, MonaiUNETR, SWINUNet
+from adell_mri.utils.optimizer_factory import get_optimizer
+from adell_mri.modules.extract_lesion_candidates import (
+    extract_lesion_candidates,
+)
+from adell_mri.modules.learning_rate import (
+    CosineAnnealingWithWarmupLR,
+)
+from adell_mri.modules.segmentation.mimunet import MIMUNet
+from adell_mri.modules.segmentation.picai_eval import evaluate
+from adell_mri.modules.segmentation.unet import BrUNet, UNet
+from adell_mri.modules.segmentation.unetpp import UNetPlusPlus
+from adell_mri.modules.segmentation.unetr import (
+    UNETR,
+    MonaiSWINUNet,
+    MonaiUNETR,
+    SWINUNet,
+)
 
 
 def binary_iou_manual(

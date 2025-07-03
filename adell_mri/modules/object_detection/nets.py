@@ -1,13 +1,20 @@
 import numpy as np
 import torch
 
-from ...custom_types import List, Tuple
-from ..layers.adn_fn import ActDropNorm
-from ..layers.conv_next import ConvNeXtBackboneDetection
-from ..layers.multi_resolution import AtrousSpatialPyramidPooling3d
-from ..layers.res_net import ResNetBackbone
-from ..layers.self_attention import ConcurrentSqueezeAndExcite3d
-from .utils import maxpool_default, nms_nd, pyramid_default, resnet_default
+from adell_mri.custom_types import List, Tuple
+from adell_mri.modules.layers.adn_fn import ActDropNorm
+from adell_mri.modules.layers.conv_next import ConvNeXtBackboneDetection
+from adell_mri.modules.layers.multi_resolution import (
+    AtrousSpatialPyramidPooling3d,
+)
+from adell_mri.modules.layers.res_net import ResNetBackbone
+from adell_mri.modules.layers.self_attention import ConcurrentSqueezeAndExcite3d
+from adell_mri.modules.object_detection.utils import (
+    maxpool_default,
+    nms_nd,
+    pyramid_default,
+    resnet_default,
+)
 
 
 class YOLONet3d(torch.nn.Module):

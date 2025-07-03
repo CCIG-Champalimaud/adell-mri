@@ -10,9 +10,9 @@ from typing import Any, Iterator
 import numpy as np
 import yaml
 
-from ..custom_types import DatasetDict
-from ..utils.parser import parse_ids
-from .dataset_filters import (
+from adell_mri.custom_types import DatasetDict
+from adell_mri.utils.parser import parse_ids
+from adell_mri.utils.dataset_filters import (
     fill_conditional,
     fill_missing_with_value,
     filter_dictionary,

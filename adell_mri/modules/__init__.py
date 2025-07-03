@@ -1,4 +1,4 @@
-from . import (
+from adell_mri.modules import (
     activations,
     augmentations,
     causal_effects,

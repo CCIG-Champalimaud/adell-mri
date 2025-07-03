@@ -2,10 +2,10 @@ from typing import Any, Dict, List, Tuple
 
 import torch
 
-from ...utils.masking import get_masker
-from ..layers.conv_next import ConvNeXt
-from ..layers.res_net import ResNet
-from ..layers.vit import TransformerBlockStack, ViT
+from adell_mri.utils.masking import get_masker
+from adell_mri.modules.layers.conv_next import ConvNeXt
+from adell_mri.modules.layers.res_net import ResNet
+from adell_mri.modules.layers.vit import TransformerBlockStack, ViT
 
 TensorList = List[torch.Tensor]
 IJEPAOut = Tuple[torch.Tensor, TensorList]

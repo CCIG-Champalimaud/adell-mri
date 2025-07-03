@@ -7,17 +7,21 @@ import numpy as np
 import torch
 from tqdm import trange
 
-from ...entrypoints.assemble_args import Parser
-from ...modules.config_parsing import parse_config_ssl, parse_config_unet
-from ...modules.layers import ResNet
-from ...modules.segmentation.pl import evaluate, get_lesions, get_metric_dict
-from ...transform_factory.transforms import SegmentationTransforms
-from ...utils.dataset import Dataset
-from ...utils.inference import SegmentationInference, TensorListReduction
-from ...utils.monai_transforms import SlicesToFirst
-from ...utils.network_factories import get_segmentation_network
-from ...utils.parser import parse_ids
-from ...utils.utils import collate_last_slice, safe_collate
+from adell_mri.entrypoints.assemble_args import Parser
+from adell_mri.modules.config_parsing import parse_config_ssl, parse_config_unet
+from adell_mri.modules.layers import ResNet
+from adell_mri.modules.segmentation.pl import (
+    evaluate,
+    get_lesions,
+    get_metric_dict,
+)
+from adell_mri.transform_factory.transforms import SegmentationTransforms
+from adell_mri.utils.dataset import Dataset
+from adell_mri.utils.inference import SegmentationInference, TensorListReduction
+from adell_mri.utils.monai_transforms import SlicesToFirst
+from adell_mri.utils.network_factories import get_segmentation_network
+from adell_mri.utils.parser import parse_ids
+from adell_mri.utils.utils import collate_last_slice, safe_collate
 
 torch.backends.cudnn.benchmark = True
 

@@ -6,10 +6,10 @@ import torch
 import torch.nn.functional as F
 import torchmetrics
 
-from ..classification.pl import meta_tensors_to_tensors
-from ..learning_rate import CosineAnnealingWithWarmupLR
-from .map import mAP
-from .nets import CoarseDetector3d, YOLONet3d
+from adell_mri.modules.classification.pl import meta_tensors_to_tensors
+from adell_mri.modules.learning_rate import CosineAnnealingWithWarmupLR
+from adell_mri.modules.object_detection.map import mAP
+from adell_mri.modules.object_detection.nets import CoarseDetector3d, YOLONet3d
 
 
 def real_boxes_from_centres_sizes(

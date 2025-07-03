@@ -8,7 +8,7 @@ from typing import Tuple
 import torch
 import torch.nn.functional as F
 
-from .functional import unravel_index
+from adell_mri.modules.self_supervised.losses.functional import unravel_index
 
 
 def off_diagonal(x: torch.Tensor) -> torch.Tensor:

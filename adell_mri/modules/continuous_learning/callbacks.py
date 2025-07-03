@@ -3,7 +3,7 @@ from typing import List, Union
 import lightning.pytorch as pl
 from lightning.pytorch import Callback
 
-from .optim import EarlyStopper
+from adell_mri.modules.continuous_learning.optim import EarlyStopper
 
 
 class MultiPhaseTraining(Callback):

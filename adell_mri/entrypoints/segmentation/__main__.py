@@ -10,19 +10,19 @@ def main(arguments):
         print(f"\n\tSupported modes: {supported_modes}")
 
     elif arguments[0] == "train":
-        from .train import main
+        from adell_mri.entrypoints.segmentation.train import main
 
         main(arguments[1:])
     elif arguments[0] == "test":
-        from .test import main
+        from adell_mri.entrypoints.segmentation.test import main
 
         main(arguments[1:])
     elif arguments[0] == "predict":
-        from .predict import main
+        from adell_mri.entrypoints.segmentation.predict import main
 
         main(arguments[1:])
     elif arguments[0] == "test_from_predictions":
-        from .test_from_predictions import main
+        from adell_mri.entrypoints.segmentation.test_from_predictions import main
 
         main(arguments[1:])
     else:

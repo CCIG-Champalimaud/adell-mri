@@ -3,7 +3,7 @@ from copy import deepcopy
 import torch
 import torch.nn.functional as F
 
-from .functional import cos_dist
+from adell_mri.modules.self_supervised.losses.functional import cos_dist
 
 
 class KLDivergence(torch.nn.Module):

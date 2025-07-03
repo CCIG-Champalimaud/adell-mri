@@ -7,7 +7,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-from ..segmentation.unet import UNet, crop_to_size
+from adell_mri.modules.segmentation.unet import UNet, crop_to_size
 
 
 class UNetSemiSL(UNet):

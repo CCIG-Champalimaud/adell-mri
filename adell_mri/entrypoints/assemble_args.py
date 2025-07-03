@@ -2,7 +2,7 @@ from argparse import ArgumentParser
 from copy import deepcopy
 from typing import List
 
-from ..utils.optimizer_factory import OPTIMIZER_MATCH
+from adell_mri.utils.optimizer_factory import OPTIMIZER_MATCH
 
 argument_factory = {
     # dataset and data

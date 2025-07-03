@@ -2,8 +2,11 @@ from typing import OrderedDict
 
 import torch
 
-from ..activations import activation_factory
-from ..layers.regularization import LayerNormChannelsFirst, L2NormalizationLayer
+from adell_mri.modules.activations import activation_factory
+from adell_mri.modules.layers.regularization import (
+    LayerNormChannelsFirst,
+    L2NormalizationLayer,
+)
 
 norm_fn_dict = {
     "batch": {

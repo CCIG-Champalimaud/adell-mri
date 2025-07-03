@@ -4,7 +4,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-from ...custom_types import TensorDict, NDArrayOrTensor
+from adell_mri.custom_types import TensorDict, NDArrayOrTensor
 
 
 class FastResample(monai.transforms.Transform):

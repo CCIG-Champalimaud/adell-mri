@@ -6,7 +6,7 @@ import numpy as np
 import torch
 from skimage import measure
 
-from ...custom_types import Size2dOr3d, NDArrayOrTensor
+from adell_mri.custom_types import Size2dOr3d, NDArrayOrTensor
 
 
 class BBToAdjustedAnchors(monai.transforms.Transform):

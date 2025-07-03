@@ -8,9 +8,9 @@ import lightning.pytorch as pl
 import torch
 import torch.nn.functional as F
 
-from ..ae import AutoEncoder
-from ..losses import GaussianKLLoss
-from ..vae import VariationalAutoEncoder
+from adell_mri.modules.gan.ae import AutoEncoder
+from adell_mri.modules.gan.losses import GaussianKLLoss
+from adell_mri.modules.gan.vae import VariationalAutoEncoder
 
 
 class AutoEncoderPL(AutoEncoder, pl.LightningModule):

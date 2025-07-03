@@ -6,7 +6,7 @@ import einops
 import numpy as np
 import torch
 
-from ...custom_types import (
+from adell_mri.custom_types import (
     Callable,
     Dict,
     List,
@@ -15,9 +15,9 @@ from ...custom_types import (
     Tuple,
     Union,
 )
-from .adn_fn import get_adn_fn
-from .linear_blocks import MLP, MultiHeadSelfAttention
-from .regularization import ChannelDropout
+from adell_mri.modules.layers.adn_fn import get_adn_fn
+from adell_mri.modules.layers.linear_blocks import MLP, MultiHeadSelfAttention
+from adell_mri.modules.layers.regularization import ChannelDropout
 
 
 def move_axis(X: torch.Tensor, axis1: int, axis2: int) -> torch.Tensor:

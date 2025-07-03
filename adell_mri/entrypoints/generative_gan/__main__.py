@@ -10,7 +10,7 @@ def main(arguments):
         print(f"\n\tSupported modes: {supported_modes}")
 
     elif arguments[0] == "train_2d":
-        from .train_2d import main
+        from adell_mri.entrypoints.generative_gan.train_2d import main
 
         main(arguments[1:])
     else:

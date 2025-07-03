@@ -3,7 +3,7 @@ from typing import Tuple
 import torch
 from torch.distributions.multivariate_normal import MultivariateNormal
 
-from .utils import unsqueeze_to_target
+from adell_mri.modules.layers.utils import unsqueeze_to_target
 
 
 class GaussianProcessLayer(torch.nn.Module):

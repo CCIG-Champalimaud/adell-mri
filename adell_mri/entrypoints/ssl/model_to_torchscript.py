@@ -4,8 +4,8 @@ from copy import deepcopy
 import numpy as np
 import torch
 
-from ...modules.config_parsing import parse_config_ssl, parse_config_unet
-from ...utils.network_factories import get_ssl_network_no_pl
+from adell_mri.modules.config_parsing import parse_config_ssl, parse_config_unet
+from adell_mri.utils.network_factories import get_ssl_network_no_pl
 
 torch.backends.cudnn.benchmark = True
 
@@ -127,7 +127,7 @@ def main(arguments):
     ssl = get_ssl_network_no_pl(
         ssl_method=args.ssl_method,
         net_type=args.net_type,
-        network_config_correct=network_config_correct,
+        network_config=network_config_correct,
     )
 
     train_loader_call = None  # noqa

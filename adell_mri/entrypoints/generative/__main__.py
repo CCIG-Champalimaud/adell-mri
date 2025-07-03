@@ -10,11 +10,11 @@ def main(arguments):
         print(f"\n\tSupported modes: {supported_modes}")
 
     elif arguments[0] == "train":
-        from .train import main
+        from adell_mri.entrypoints.generative.train import main
 
         main(arguments[1:])
     elif arguments[0] == "generate":
-        from .generate import main
+        from adell_mri.entrypoints.generative.generate import main
 
         main(arguments[1:])
     else:

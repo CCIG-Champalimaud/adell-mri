@@ -2,9 +2,9 @@ from typing import OrderedDict
 
 import torch
 
-from ...custom_types import List, ModuleList, Tuple, Union
-from .batch_ensemble import BatchEnsembleWrapper
-from .res_blocks import (
+from adell_mri.custom_types import List, ModuleList, Tuple, Union
+from adell_mri.modules.layers.batch_ensemble import BatchEnsembleWrapper
+from adell_mri.modules.layers.res_blocks import (
     ConvNeXtBlock2d,
     ConvNeXtBlock3d,
     ConvNeXtBlockVTwo2d,
@@ -14,7 +14,10 @@ from .res_blocks import (
     ResNeXtBlock2d,
     ResNeXtBlock3d,
 )
-from .standard_blocks import ConvolutionalBlock2d, ConvolutionalBlock3d
+from adell_mri.modules.layers.standard_blocks import (
+    ConvolutionalBlock2d,
+    ConvolutionalBlock3d,
+)
 
 
 def resnet_to_encoding_ops(res_net: List[torch.nn.Module]) -> ModuleList:

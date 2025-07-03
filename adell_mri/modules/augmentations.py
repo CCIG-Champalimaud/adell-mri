@@ -3,7 +3,7 @@ from typing import Sequence
 import monai
 import numpy as np
 
-from ..custom_types import Dict, List, Tuple, Union
+from adell_mri.custom_types import Dict, List, Tuple, Union
 
 n_dim = 3
 

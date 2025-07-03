@@ -2,7 +2,7 @@ import einops
 import numpy as np
 import torch
 
-from .linear_blocks import MultiHeadSelfAttention
+from adell_mri.modules.layers.linear_blocks import MultiHeadSelfAttention
 
 
 class SpatialSqueezeAndExcite2d(torch.nn.Module):

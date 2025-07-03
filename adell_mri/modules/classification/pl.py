@@ -29,9 +29,9 @@ import torchmetrics
 import torchmetrics.classification as tmc
 from tqdm import tqdm
 
-from ..conformal_prediction import AdaptivePredictionSets
-from ..learning_rate import CosineAnnealingWithWarmupLR
-from .classification import (
+from adell_mri.modules.conformal_prediction import AdaptivePredictionSets
+from adell_mri.modules.learning_rate import CosineAnnealingWithWarmupLR
+from adell_mri.modules.classification.classification import (
     VGG,
     AveragingEnsemble,
     CatNet,
@@ -46,7 +46,7 @@ from .classification import (
     ViTClassifier,
     ordinal_prediction_to_class,
 )
-from .classification.deconfounded_classification import DeconfoundedNetGeneric
+from adell_mri.modules.classification.classification import DeconfoundedNetGeneric
 
 try:
     import monai

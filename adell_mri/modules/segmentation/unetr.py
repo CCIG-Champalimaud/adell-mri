@@ -4,10 +4,10 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-from ...custom_types import Size2dOr3d
-from ..layers.adn_fn import get_adn_fn
-from ..layers.vit import LinearEmbedding, SWINTransformerBlockStack, ViT
-from .unet import UNet
+from adell_mri.custom_types import Size2dOr3d
+from adell_mri.modules.layers.adn_fn import get_adn_fn
+from adell_mri.modules.layers.vit import LinearEmbedding, SWINTransformerBlockStack, ViT
+from adell_mri.modules.segmentation.unet import UNet
 
 
 class UNETR(UNet, torch.nn.Module):

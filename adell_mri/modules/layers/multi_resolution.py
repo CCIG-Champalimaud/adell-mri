@@ -3,12 +3,12 @@ from typing import List, Tuple, Union
 import torch
 import torch.nn.functional as F
 
-from .res_blocks import ResidualBlock2d, ResidualBlock3d
-from .standard_blocks import (
+from adell_mri.modules.layers.res_blocks import ResidualBlock2d, ResidualBlock3d
+from adell_mri.modules.layers.standard_blocks import (
     DepthWiseSeparableConvolution2d,
     DepthWiseSeparableConvolution3d,
 )
-from .utils import split_int_into_n
+from adell_mri.modules.layers.utils import split_int_into_n
 
 
 class FeaturePyramidNetworkBackbone(torch.nn.Module):

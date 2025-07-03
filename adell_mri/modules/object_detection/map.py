@@ -2,7 +2,7 @@ import numpy as np
 import torch
 import torchmetrics
 
-from .utils import calculate_iou, check_overlap
+from adell_mri.modules.object_detection.utils import calculate_iou, check_overlap
 
 
 class mAP(torchmetrics.metric.Metric):

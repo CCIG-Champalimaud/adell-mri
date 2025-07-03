@@ -2,7 +2,10 @@ from typing import List
 
 import torch
 
-from ...layers.standard_blocks import VGGConvolution3d, VGGDeconvolution3d
+from adell_mri.modules.layers.standard_blocks import (
+    VGGConvolution3d,
+    VGGDeconvolution3d,
+)
 
 
 class VGGAutoencoder(torch.nn.Module):

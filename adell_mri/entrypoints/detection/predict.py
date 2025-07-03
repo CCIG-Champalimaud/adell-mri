@@ -5,16 +5,16 @@ import monai
 import torch
 import yaml
 
-from ...entrypoints.assemble_args import Parser
-from ...modules.object_detection import YOLONet3d
-from ...transform_factory.transforms import DetectionTransforms
-from ...utils.dataset_filters import (
+from adell_mri.entrypoints.assemble_args import Parser
+from adell_mri.modules.object_detection import YOLONet3d
+from adell_mri.transform_factory.transforms import DetectionTransforms
+from adell_mri.utils.dataset_filters import (
     filter_dictionary_with_filters,
     filter_dictionary_with_presence,
 )
-from ...utils.network_factories import get_detection_network
-from ...utils.pl_utils import get_devices
-from ...utils.utils import load_anchors
+from adell_mri.utils.network_factories import get_detection_network
+from adell_mri.utils.pl_utils import get_devices
+from adell_mri.utils.utils import load_anchors
 
 sys.path.append(r"..")
 

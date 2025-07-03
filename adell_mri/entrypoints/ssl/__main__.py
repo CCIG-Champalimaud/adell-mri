@@ -15,19 +15,19 @@ def main(arguments):
         print(f"\n\tSupported modes: {supported_modes}")
 
     elif arguments[0] == "train_2d":
-        from .train_2d import main
+        from adell_mri.entrypoints.ssl.train_2d import main
 
         main(arguments[1:])
     elif arguments[0] == "train_3d":
-        from .train_3d import main
+        from adell_mri.entrypoints.ssl.train_3d import main
 
         main(arguments[1:])
     elif arguments[0] == "model_to_torchscript":
-        from .model_to_torchscript import main
+        from adell_mri.entrypoints.ssl.model_to_torchscript import main
 
         main(arguments[1:])
     elif arguments[0] == "predict_folder":
-        from .predict_folder import main
+        from adell_mri.entrypoints.ssl.predict_folder import main
 
         main(arguments[1:])
     else:

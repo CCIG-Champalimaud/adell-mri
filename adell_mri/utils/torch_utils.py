@@ -7,7 +7,7 @@ import numpy as np
 import torch
 from tqdm import tqdm
 
-from .utils import return_classes
+from adell_mri.utils.utils import return_classes
 
 
 def load_checkpoint_to_model(

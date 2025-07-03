@@ -1,17 +1,22 @@
+"""
+PyTorch Lightning network factories.
+
+This module contains factory functions for creating PyTorch Lightning
+modules for various types of networks, including classification, segmentation,
+self-supervised learning, and generative models.
+"""
+
 from typing import Any, Callable
 
 import os
 import numpy as np
 import torch
 import torch.nn.functional as F
+from lightning.pytorch import LightningModule
 
-from ..modules.classification.classification import TabularClassifier
-from ..modules.classification.classification.deconfounded_classification import (
-    CategoricalConversion,
-)
 
 # confounder-free classification
-from ..modules.classification.pl import (
+from adell_mri.modules.classification.pl import (
     ClassNetPL,
     DeconfoundedNetPL,
     FactorizedViTClassifierPL,
@@ -19,18 +24,18 @@ from ..modules.classification.pl import (
     UNetEncoderPL,
     ViTClassifierPL,
 )
-from ..modules.diffusion.embedder import Embedder
+from adell_mri.modules.diffusion.embedder import Embedder
 
 # gan
-from ..modules.gan.pl import GANPL
-from ..modules.layers.adn_fn import get_adn_fn
+from adell_mri.modules.gan.pl import GANPL
+from adell_mri.modules.layers.adn_fn import get_adn_fn
 
 # detection
-from ..modules.object_detection.losses import complete_iou_loss
-from ..modules.object_detection.pl import YOLONet3dPL
+from adell_mri.modules.object_detection.losses import complete_iou_loss
+from adell_mri.modules.object_detection.pl import YOLONet3dPL
 
 # segmentation
-from ..modules.segmentation.pl import (
+from adell_mri.modules.segmentation.pl import (
     UNETRPL,
     BrUNetPL,
     MonaiSWINUNetPL,
@@ -41,7 +46,7 @@ from ..modules.segmentation.pl import (
 )
 
 # self-supervised learning
-from ..modules.self_supervised.pl import (
+from adell_mri.modules.self_supervised.pl import (
     DINOPL,
     IJEPA,
     IJEPAPL,
@@ -54,14 +59,18 @@ from ..modules.self_supervised.pl import (
     iBOTPL,
     ViTMaskedAutoEncoderPL,
 )
-from ..modules.semi_supervised_segmentation.losses import LocalContrastiveLoss
+from adell_mri.modules.semi_supervised_segmentation.losses import LocalContrastiveLoss
 
 # semi-supervised segmentation
-from ..modules.semi_supervised_segmentation.pl import UNetContrastiveSemiSL
+from adell_mri.modules.semi_supervised_segmentation.pl import UNetContrastiveSemiSL
 
 # classification
-from ..utils.batch_preprocessing import BatchPreprocessing
-from ..utils.utils import (
+from adell_mri.modules.classification.classification import TabularClassifier
+from adell_mri.modules.classification.classification.deconfounded_classification import (
+    CategoricalConversion,
+)
+from adell_mri.utils.batch_preprocessing import BatchPreprocessing
+from adell_mri.utils.utils import (
     ExponentialMovingAverage,
     get_loss_param_dict,
     loss_factory,
@@ -88,7 +97,17 @@ ALLOWED_NET_TYPES = {
 }
 
 
-def compile_if_necessary(func):
+def compile_if_necessary(func: Callable) -> Callable:
+    """
+    Decorator to compile the output of a function if TORCH_COMPILE is set to
+    True.
+
+    Args:
+        func: a function outputing a :class:`torch.nn.Module`.
+
+    Returns:
+        The compiled :class:`torch.nn.Module`.
+    """
     def wrapper(*args, **kwargs):
         model = func(*args, **kwargs)
         if os.environ.get("TORCH_COMPILE", "False").lower() in ["true", "1"]:
@@ -118,7 +137,32 @@ def get_classification_network(
     label_smoothing=None,
     mixup_alpha=None,
     partial_mixup=None,
-) -> torch.nn.Module:
+) -> LightningModule:
+    """
+    Returns a classification network.
+
+    Args:
+        net_type (str): the type of network to use.
+        network_config (dict[str, Any]): the configuration of the network.
+        dropout_param (float): the dropout parameter.
+        seed (int): the seed for the random number generator.
+        n_classes (int): the number of classes.
+        keys (list[str]): the keys of the input data.
+        clinical_feature_keys (list[str]): the keys of the clinical features.
+        train_loader_call (Callable): the training data loader.
+        max_epochs (int): the maximum number of epochs.
+        warmup_steps (int): the number of warmup steps.
+        start_decay (int): the number of steps to start decaying the learning rate.
+        crop_size (int): the size of the crop.
+        clinical_feature_means (torch.Tensor): the means of the clinical features.
+        clinical_feature_stds (torch.Tensor): the standard deviations of the clinical features.
+        label_smoothing (float): the label smoothing parameter.
+        mixup_alpha (float): the mixup alpha parameter.
+        partial_mixup (float): the partial mixup parameter.
+
+    Returns:
+        A :class:`LightningModule` classification network.
+    """
     if net_type not in ALLOWED_NET_TYPES["classification"]:
         raise ValueError(
             f"net_type '{net_type}' not valid, has to be one of \
@@ -256,7 +300,33 @@ def get_deconfounded_classification_network(
     label_smoothing=None,
     mixup_alpha=None,
     partial_mixup=None,
-) -> torch.nn.Module:
+) -> LightningModule:
+    """
+    Returns a deconfounded classification network.
+
+    Args:
+        network_config (dict[str, Any]): the configuration of the network.
+        dropout_param (float): the dropout parameter.
+        seed (int): the seed for the random number generator.
+        n_classes (int): the number of classes.
+        keys (list[str]): the keys of the input data.
+        cat_confounder_key (list[str]): the keys of the categorical confounders.
+        cont_confounder_key (list[str]): the keys of the continuous confounders.
+        cat_vars (list[list[str]]): the categorical variables.
+        cont_vars (int): the number of continuous variables.
+        train_loader_call (Callable): the training data loader.
+        max_epochs (int): the maximum number of epochs.
+        warmup_steps (int): the number of warmup steps.
+        start_decay (int): the number of steps to start decaying the learning rate.
+        n_features_deconfounder (int): the number of features in the deconfounder.
+        exclude_surrogate_variables (bool): whether to exclude surrogate variables.
+        label_smoothing (float): the label smoothing parameter.
+        mixup_alpha (float): the mixup alpha parameter.
+        partial_mixup (float): the partial mixup parameter.
+
+    Returns:
+        A :class:`LightningModule` deconfounded classification network.
+    """
     if "act_fn" in network_config:
         act_fn = network_config["act_fn"]
         del network_config["act_fn"]
@@ -321,7 +391,7 @@ def get_detection_network(
     boxes_key: str,
     box_class_key: str,
     dev: str,
-) -> torch.nn.Module:
+) -> LightningModule:
     if "activation_fn" in network_config:
         act_fn = network_config["activation_fn"]
     else:
@@ -420,7 +490,52 @@ def get_segmentation_network(
     semi_supervised: bool = False,
     max_steps_optim: int = None,
     seed: int = 42,
-):
+) -> LightningModule:
+    """
+    Returns a segmentation network.
+
+    Args:
+        net_type (str): the type of network to use.
+        network_config (dict[str, Any]): the configuration of the network.
+        bottleneck_classification (bool): whether to use bottleneck
+            classification.
+        clinical_feature_keys (list[str]): the keys of the clinical features.
+        all_aux_keys (list[str]): the keys of the auxiliary features.
+        clinical_feature_params (dict[str, torch.Tensor]): the parameters of
+            the clinical features.
+        clinical_feature_key_net (str): the key of the clinical features in the
+            network.
+        aux_key_net (str): the key of the auxiliary features in the network.
+        max_epochs (int): the maximum number of epochs.
+        encoding_operations (list[torch.nn.Module]): the encoding operations.
+        picai_eval (bool): whether to use picai evaluation.
+        lr_encoder (float): the learning rate for the encoder.
+        encoder_checkpoint (str): the checkpoint of the encoder.
+        res_config_file (str | None): the configuration file for the residual
+            network.
+        deep_supervision (bool): whether to use deep supervision.
+        n_classes (int): the number of classes.
+        keys (list[str]): the keys of the input data.
+        optimizer_str (str, optional): the optimizer to use. Defaults to "sgd".
+        start_decay (float | int, optional): the start decay. Defaults to 1.0.
+        warmup_steps (float | int, optional): the warmup steps. Defaults to 0.0.
+        train_loader_call (Callable, optional): the training data loader.
+                Defaults to None.
+        random_crop_size (list[int], optional): the random crop size. Defaults
+            to None.
+        crop_size (list[int], optional): the crop size. Defaults to None.
+        pad_size (list[int], optional): the pad size. Defaults to None.
+        resize_size (list[int], optional): the resize size. Defaults to None.
+        semi_supervised (bool, optional): whether to use semi-supervised
+            learning. Defaults to False.
+        max_steps_optim (int, optional): the maximum number of steps for
+            optimization. Defaults to None.
+        seed (int, optional): the seed for the random number generator.
+            Defaults to 42.
+
+    Returns:
+        A :class:`LightningModule` segmentation network.
+    """
 
     if net_type not in ALLOWED_NET_TYPES["segmentation"]:
         raise ValueError(
@@ -563,9 +678,26 @@ def get_ssl_network(
     ssl_method: str,
     ema: torch.nn.Module,
     net_type: str,
-    network_config_correct: dict[str, Any],
+    network_config: dict[str, Any],
     stop_gradient: bool,
-):
+) -> LightningModule:
+    """
+    Returns a SSL network.
+
+    Args:
+        train_loader_call (Callable): the training data loader.
+        max_epochs (int): the maximum number of epochs.
+        max_steps_optim (int): the maximum number of steps for optimization.
+        warmup_steps (int): the number of warmup steps.
+        ssl_method (str): the SSL method to use.
+        ema (torch.nn.Module): the exponential moving average.
+        net_type (str): the type of network to use.
+        network_config (dict[str, Any]): the configuration of the network.
+        stop_gradient (bool): whether to stop gradient.
+
+    Returns:
+        A :class:`LightningModule` SSL network.
+    """
     # Common configuration for SSL methods
     common_params = {
         "training_dataloader_call": train_loader_call,
@@ -573,13 +705,13 @@ def get_ssl_network(
         "n_steps": max_steps_optim,
         "warmup_steps": warmup_steps,
         "ema": ema,
-        "batch_size": network_config_correct.get("batch_size", 32),
+        "batch_size": network_config.get("batch_size", 32),
     }
 
     if ssl_method in ["simclr", "byol", "vicreg", "vicregl"]:
         # These methods use the standard ResNet architecture
         config = {
-            "backbone_args": network_config_correct.get(
+            "backbone_args": network_config.get(
                 "backbone_args",
                 {
                     "spatial_dim": 2,
@@ -595,7 +727,7 @@ def get_ssl_network(
                     "res_type": "resnet",
                 },
             ),
-            "projection_head_args": network_config_correct.get(
+            "projection_head_args": network_config.get(
                 "projection_head_args",
                 {
                     "in_channels": 512,
@@ -606,7 +738,7 @@ def get_ssl_network(
             "prediction_head_args": (
                 None
                 if ssl_method == "simclr"
-                else network_config_correct.get(
+                else network_config.get(
                     "prediction_head_args",
                     {
                         "in_channels": 128,
@@ -622,7 +754,7 @@ def get_ssl_network(
 
     elif ssl_method == "ijepa":
         # IJEPA specific configuration
-        backbone_args: dict = network_config_correct.get("backbone_args", {})
+        backbone_args: dict = network_config.get("backbone_args", {})
         config = {
             "image_key": "image",
             "backbone_args": {
@@ -638,7 +770,7 @@ def get_ssl_network(
                     "norm_layer", torch.nn.LayerNorm
                 ),
             },
-            "feature_map_dimensions": network_config_correct.get(
+            "feature_map_dimensions": network_config.get(
                 "feature_map_dimensions", [14, 14]
             ),
             "stop_gradient": stop_gradient,
@@ -647,8 +779,8 @@ def get_ssl_network(
 
     elif ssl_method == "mae":
         # MAE specific configuration
-        encoder_args: dict = network_config_correct.get("encoder_args", {})
-        decoder_args: dict = network_config_correct.get("decoder_args", {})
+        encoder_args: dict = network_config.get("encoder_args", {})
+        decoder_args: dict = network_config.get("decoder_args", {})
         config = {
             "image_key": "image",
             "image_size": encoder_args.get("image_size", (224, 224)),
@@ -657,7 +789,7 @@ def get_ssl_network(
             "input_dim_size": encoder_args.get("embed_dim", 96),
             "encoder_args": encoder_args,
             "decoder_args": decoder_args,
-            "mask_fraction": network_config_correct.get("mask_fraction", 0.75),
+            "mask_fraction": network_config.get("mask_fraction", 0.75),
         }
         del common_params["ema"]
         ssl = ViTMaskedAutoEncoderPL(**{**common_params, **config})
@@ -725,7 +857,7 @@ def get_ssl_network(
     else:
         if ssl_method == "simclr":
             # simclr only uses a projection head, no prediction head
-            del network_config_correct["prediction_head_args"]
+            del network_config["prediction_head_args"]
         boilerplate = {
             "training_dataloader_call": train_loader_call,
             "aug_image_key_1": "augmented_image_1",
@@ -741,39 +873,50 @@ def get_ssl_network(
             "temperature": 0.1,
         }
         if net_type == "unet_encoder":
-            ssl = SelfSLUNetPL(**boilerplate, **network_config_correct)
+            ssl = SelfSLUNetPL(**boilerplate, **network_config)
         elif net_type == "convnext":
-            network_config_correct["backbone_args"] = {
-                k: network_config_correct["backbone_args"][k]
-                for k in network_config_correct["backbone_args"]
+            network_config["backbone_args"] = {
+                k: network_config["backbone_args"][k]
+                for k in network_config["backbone_args"]
                 if k not in ["res_type"]
             }
-            ssl = SelfSLConvNeXtPL(**boilerplate, **network_config_correct)
+            ssl = SelfSLConvNeXtPL(**boilerplate, **network_config)
         else:
-            ssl = SelfSLResNetPL(**boilerplate, **network_config_correct)
+            ssl = SelfSLResNetPL(**boilerplate, **network_config)
 
     return ssl
 
 
 @compile_if_necessary
 def get_ssl_network_no_pl(
-    ssl_method: str, net_type: str, network_config_correct: dict[str, Any]
-):
+    ssl_method: str, net_type: str, network_config: dict[str, Any]
+) -> torch.nn.Module:
+    """
+    Returns a SSL network.
+
+    Args:
+        ssl_method (str): the SSL method to use.
+        net_type (str): the type of network to use.
+        network_config (dict[str, Any]): the configuration of the network.
+
+    Returns:
+        A :class:`torch.nn.Module` SSL network.
+    """
     if ssl_method == "ijepa":
-        ssl = IJEPA(**network_config_correct)
+        ssl = IJEPA(**network_config)
 
     else:
         if net_type == "unet_encoder":
-            ssl = UNet(**network_config_correct)
+            ssl = UNet(**network_config)
         elif net_type == "convnext":
-            network_config_correct["backbone_args"] = {
-                k: network_config_correct["backbone_args"][k]
-                for k in network_config_correct["backbone_args"]
+            network_config["backbone_args"] = {
+                k: network_config["backbone_args"][k]
+                for k in network_config["backbone_args"]
                 if k not in ["res_type"]
             }
-            ssl = ConvNeXt(**network_config_correct)
+            ssl = ConvNeXt(**network_config)
         else:
-            ssl = ResNet(**network_config_correct)
+            ssl = ResNet(**network_config)
 
     return ssl
 
@@ -790,11 +933,29 @@ def get_generative_network(
     warmup_steps: int,
     start_decay: int,
     diffusion_steps: int,
-) -> torch.nn.Module:
+) -> LightningModule:
+    """
+    Returns a generative network.
+
+    Args:
+        network_config (dict[str, Any]): the configuration of the network.
+        scheduler_config (dict[str, Any]): the configuration of the scheduler.
+        categorical_specification (list[list[str] | int]): the categorical specification.
+        numerical_specification (int): the numerical specification.
+        uncondition_proba (float): the uncondition probability.
+        train_loader_call (Callable): the training data loader.
+        max_epochs (int): the maximum number of epochs.
+        warmup_steps (int): the number of warmup steps.
+        start_decay (int): the number of steps to start decay.
+        diffusion_steps (int): the number of diffusion steps.
+
+    Returns:
+        A :class:`LightningModule` generative network.
+    """
     try:
         from generative.networks.schedulers import DDPMScheduler
-        from ..modules.diffusion.inferer import DiffusionInfererSkipSteps
-        from ..modules.diffusion.pl import DiffusionUNetPL
+        from adell_mri.modules.diffusion.inferer import DiffusionInfererSkipSteps
+        from adell_mri.modules.diffusion.pl import DiffusionUNetPL
     except ImportError:
         raise ImportError(
             "Please install the generative package to diffusion models"
@@ -860,10 +1021,29 @@ def get_gan_network(
     max_epochs: int,
     steps_per_epoch: int,
     pct_start: int,
-) -> torch.nn.Module:
+) -> LightningModule:
+    """
+    Returns a GAN network.
+
+    Args:
+        network_config (dict[str, Any]): the configuration of the network.
+        generator_config (dict[str, Any]): the configuration of the generator.
+        discriminator_config (dict[str, Any]): the configuration of the discriminator.
+        training_dataloader_call (Callable): the training data loader.
+        input_image_key (str): the key corresponding to the input image.
+        categorical_specification (list[list[str] | int] | None): the categorical specification.
+        numerical_specification (int | None): the numerical specification.
+        numerical_moments (tuple[list[float], list[float]] | None): the numerical moments.
+        max_epochs (int): the maximum number of epochs.
+        steps_per_epoch (int): the number of steps per epoch.
+        pct_start (int): the percentage of steps for warm-up.
+
+    Returns:
+        A :class:`LightningModule` GAN network.
+    """
     try:
-        from ..modules.gan.discriminator import Discriminator
-        from ..modules.gan.generator import Generator
+        from adell_mri.modules.gan.discriminator import Discriminator
+        from adell_mri.modules.gan.generator import Generator
     except ImportError:
         raise ImportError(
             "Please install the generative package to use gan models"

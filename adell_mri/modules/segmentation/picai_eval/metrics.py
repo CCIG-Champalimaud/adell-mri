@@ -26,7 +26,7 @@ try:
 except ImportError:  # pragma: no cover
     pass
 
-from .data_utils import PathLike, load_metrics, save_metrics
+from adell_mri.modules.segmentation.picai_eval.data_utils import PathLike, load_metrics, save_metrics
 
 
 @dataclass

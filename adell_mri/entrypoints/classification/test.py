@@ -6,18 +6,21 @@ import numpy as np
 import torch
 from lightning.pytorch import Trainer
 
-from ...modules.classification.losses import OrdinalSigmoidalLoss
-from ...modules.classification.pl import AveragingEnsemblePL
-from ...modules.config_parsing import parse_config_cat, parse_config_unet
-from ...transform_factory.transforms import ClassificationTransforms
-from ...utils.bootstrap_metrics import bootstrap_metric
-from ...utils.dataset import Dataset
-from ...utils.network_factories import get_classification_network
-from ...utils.parser import get_params, merge_args, parse_ids
-from ...utils.pl_utils import get_devices
-from ...utils.torch_utils import get_generator_and_rng, load_checkpoint_to_model
-from ...utils.utils import safe_collate
-from ..assemble_args import Parser
+from adell_mri.modules.classification.losses import OrdinalSigmoidalLoss
+from adell_mri.modules.classification.pl import AveragingEnsemblePL
+from adell_mri.modules.config_parsing import parse_config_cat, parse_config_unet
+from adell_mri.transform_factory.transforms import ClassificationTransforms
+from adell_mri.utils.bootstrap_metrics import bootstrap_metric
+from adell_mri.utils.dataset import Dataset
+from adell_mri.utils.network_factories import get_classification_network
+from adell_mri.utils.parser import get_params, merge_args, parse_ids
+from adell_mri.utils.pl_utils import get_devices
+from adell_mri.utils.torch_utils import (
+    get_generator_and_rng,
+    load_checkpoint_to_model,
+)
+from adell_mri.utils.utils import safe_collate
+from adell_mri.entrypoints.assemble_args import Parser
 
 
 def main(arguments):

@@ -2,16 +2,16 @@ from typing import List, Tuple, Union
 
 import torch
 
-from .batch_ensemble import BatchEnsembleWrapper
-from .regularization import LayerNorm
-from .res_blocks import (
+from adell_mri.modules.layers.batch_ensemble import BatchEnsembleWrapper
+from adell_mri.modules.layers.regularization import LayerNorm
+from adell_mri.modules.layers.res_blocks import (
     ConvNeXtBlock2d,
     ConvNeXtBlock3d,
     ConvNeXtBlockVTwo2d,
     ConvNeXtBlockVTwo3d,
 )
-from .res_net import ProjectionHead
-from .utils import SequentialWithArgs
+from adell_mri.modules.layers.res_net import ProjectionHead
+from adell_mri.modules.layers.utils import SequentialWithArgs
 
 
 class ConvNeXtV2Block(torch.nn.Module):

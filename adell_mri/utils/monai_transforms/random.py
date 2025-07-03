@@ -5,7 +5,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-from .image_ops import Dropout
+from adell_mri.utils.monai_transforms.image_ops import Dropout
 
 
 class RandomAffined(monai.transforms.RandomizableTransform):

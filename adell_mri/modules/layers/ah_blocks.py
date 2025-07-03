@@ -1,6 +1,6 @@
 import torch
 
-from .standard_blocks import ConvolutionalBlock3d
+from adell_mri.modules.layers.standard_blocks import ConvolutionalBlock3d
 
 
 class Refine2d(torch.nn.Module):

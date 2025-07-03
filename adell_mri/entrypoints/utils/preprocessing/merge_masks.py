@@ -9,7 +9,7 @@ import numpy as np
 import SimpleITK as sitk
 from tqdm import tqdm
 
-from ....utils.sitk_utils import resample_image_to_target
+from adell_mri.utils.sitk_utils import resample_image_to_target
 
 desc = "Merges two masks keeping pixels which are non-zero in either mask (like\
     an OR operator)."

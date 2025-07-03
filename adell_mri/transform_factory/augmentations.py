@@ -4,13 +4,13 @@ import monai
 import monai.transforms
 import numpy as np
 
-from ..modules.augmentations import (
+from adell_mri.modules.augmentations import (
     AugmentationWorkhorsed,
     generic_augments,
     mri_specific_augments,
     spatial_augments,
 )
-from ..utils.monai_transforms import (
+from adell_mri.utils.monai_transforms import (
     ExposeTransformKeyMetad,
     RandRotateWithBoxesd,
 )

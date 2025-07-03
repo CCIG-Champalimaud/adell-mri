@@ -8,7 +8,7 @@ import numpy as np
 from sklearn.cluster import KMeans
 from tqdm import tqdm
 
-from ..custom_types import NDArrayOrTensor
+from adell_mri.custom_types import NDArrayOrTensor
 
 
 def anchors_from_nested_list(

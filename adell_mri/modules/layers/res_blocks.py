@@ -1,9 +1,9 @@
 import numpy as np
 import torch
 
-from ...custom_types import ModuleList
-from .regularization import GRN
-from .utils import crop_to_size, split_int_into_n
+from adell_mri.custom_types import ModuleList
+from adell_mri.modules.layers.regularization import GRN
+from adell_mri.modules.layers.utils import crop_to_size, split_int_into_n
 
 
 class ResidualBlock2d(torch.nn.Module):

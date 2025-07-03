@@ -2,7 +2,7 @@ import argparse
 
 import SimpleITK as sitk
 
-from ....utils.sitk_utils import crop_image, resample_image
+from adell_mri.utils.sitk_utils import crop_image, resample_image
 
 desc = "Resamples an image to a target spacing."
 

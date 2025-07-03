@@ -10,7 +10,7 @@ from lightning.pytorch.callbacks import Callback
 from lightning.pytorch.callbacks.model_checkpoint import ModelCheckpoint
 from PIL import Image
 
-from .utils import ExponentialMovingAverage
+from adell_mri.utils.utils import ExponentialMovingAverage
 
 
 def coerce_to_uint8(x: np.ndarray):

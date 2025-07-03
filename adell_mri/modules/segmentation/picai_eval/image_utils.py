@@ -22,7 +22,7 @@ try:
 except ImportError:  # pragma: no cover
     pass
 
-from .data_utils import PathLike
+from adell_mri.modules.segmentation.picai_eval.data_utils import PathLike
 
 
 def resize_image_with_crop_or_pad(image, img_size=(64, 64, 64), **kwargs):

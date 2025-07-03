@@ -2,9 +2,9 @@ from typing import Any
 
 import torch
 
-from ...utils.masking import get_masker
-from ..layers.linear_blocks import MLP
-from ..layers.vit import ViT
+from adell_mri.utils.masking import get_masker
+from adell_mri.modules.layers.linear_blocks import MLP
+from adell_mri.modules.layers.vit import ViT
 
 iBOTOut = torch.Tensor
 

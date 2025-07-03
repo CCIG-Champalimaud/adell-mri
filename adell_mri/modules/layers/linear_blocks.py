@@ -10,7 +10,7 @@ from typing import List
 import numpy as np
 import torch
 
-from ...custom_types import Size2dOr3d
+from adell_mri.custom_types import Size2dOr3d
 
 
 def get_relative_position_indices(window_size: Size2dOr3d) -> torch.Tensor:

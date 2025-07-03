@@ -3,7 +3,7 @@ import monai
 import SimpleITK as sitk
 import torch
 
-from ...custom_types import TensorDict
+from adell_mri.custom_types import TensorDict
 
 
 def normalize_along_slice(

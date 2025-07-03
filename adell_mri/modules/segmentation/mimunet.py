@@ -8,9 +8,9 @@ import einops
 import numpy as np
 import torch
 
-from ..layers.adn_fn import get_adn_fn
-from ..layers.res_blocks import ResidualBlock3d
-from .unet import crop_to_size
+from adell_mri.modules.layers.adn_fn import get_adn_fn
+from adell_mri.modules.layers.res_blocks import ResidualBlock3d
+from adell_mri.modules.segmentation.unet import crop_to_size
 
 
 def is_if_none(a: Any, b: Any) -> Any:

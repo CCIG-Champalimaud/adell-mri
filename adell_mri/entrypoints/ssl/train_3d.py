@@ -8,13 +8,13 @@ from lightning.pytorch.callbacks import RichProgressBar
 
 from adell_mri.utils.torch_utils import get_generator_and_rng
 
-from ...entrypoints.assemble_args import Parser
-from ...modules.config_parsing import parse_config_ssl, parse_config_unet
-from ...transform_factory import SSLTransforms, get_augmentations_ssl
-from ...utils.dataset import Dataset
-from ...utils.network_factories import get_ssl_network
-from ...utils.pl_utils import get_ckpt_callback, get_devices, get_logger
-from ...utils.utils import ExponentialMovingAverage, safe_collate
+from adell_mri.entrypoints.assemble_args import Parser
+from adell_mri.modules.config_parsing import parse_config_ssl, parse_config_unet
+from adell_mri.transform_factory import SSLTransforms, get_augmentations_ssl
+from adell_mri.utils.dataset import Dataset
+from adell_mri.utils.network_factories import get_ssl_network
+from adell_mri.utils.pl_utils import get_ckpt_callback, get_devices, get_logger
+from adell_mri.utils.utils import ExponentialMovingAverage, safe_collate
 
 torch.backends.cudnn.benchmark = True
 
@@ -262,7 +262,7 @@ def main(arguments):
         ssl_method=args.ssl_method,
         ema=ema,
         net_type=args.net_type,
-        network_config_correct=network_config_correct,
+        network_config=network_config_correct,
         stop_gradient=args.stop_gradient,
     )
 

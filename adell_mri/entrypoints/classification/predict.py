@@ -11,13 +11,13 @@ from tqdm import tqdm
 from adell_mri.entrypoints.assemble_args import Parser
 from adell_mri.utils.prediction_utils import get_ensemble_prediction
 
-from ...modules.classification.losses import OrdinalSigmoidalLoss
-from ...modules.config_parsing import parse_config_cat, parse_config_unet
-from ...transform_factory.transforms import ClassificationTransforms
-from ...utils.dataset import Dataset
-from ...utils.network_factories import get_classification_network
-from ...utils.parser import get_params, merge_args, parse_ids
-from ...utils.torch_utils import get_generator_and_rng
+from adell_mri.modules.classification.losses import OrdinalSigmoidalLoss
+from adell_mri.modules.config_parsing import parse_config_cat, parse_config_unet
+from adell_mri.transform_factory.transforms import ClassificationTransforms
+from adell_mri.utils.dataset import Dataset
+from adell_mri.utils.network_factories import get_classification_network
+from adell_mri.utils.parser import get_params, merge_args, parse_ids
+from adell_mri.utils.torch_utils import get_generator_and_rng
 
 
 def main(arguments):

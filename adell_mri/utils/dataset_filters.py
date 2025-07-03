@@ -6,7 +6,7 @@ import os
 from copy import deepcopy
 from typing import List
 
-from ..custom_types import DatasetDict
+from adell_mri.custom_types import DatasetDict
 
 
 def print_verbose(*args, verbose: bool = False, **kwargs):

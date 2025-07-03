@@ -1,13 +1,16 @@
 import torch
 
-from ..layers.adn_fn import ActDropNorm
-from ..layers.ah_blocks import (
+from adell_mri.modules.layers.adn_fn import ActDropNorm
+from adell_mri.modules.layers.ah_blocks import (
     AHNetDecoder3d,
     AnysotropicHybridInput,
     AnysotropicHybridResidual,
     Refine2d,
 )
-from ..layers.multi_resolution import GCN2d, PyramidSpatialPooling3d
+from adell_mri.modules.layers.multi_resolution import (
+    GCN2d,
+    PyramidSpatialPooling3d,
+)
 
 
 class AHNet(torch.nn.Module):

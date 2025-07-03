@@ -14,9 +14,9 @@ from generative.inferers import DiffusionInferer
 from generative.networks.nets import DiffusionModelUNet
 from generative.networks.schedulers import DDPMScheduler
 
-from ..classification.pl import meta_tensors_to_tensors
-from ..learning_rate import CosineAnnealingWithWarmupLR
-from .embedder import Embedder
+from adell_mri.modules.classification.pl import meta_tensors_to_tensors
+from adell_mri.modules.learning_rate import CosineAnnealingWithWarmupLR
+from adell_mri.modules.diffusion.embedder import Embedder
 
 
 class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):

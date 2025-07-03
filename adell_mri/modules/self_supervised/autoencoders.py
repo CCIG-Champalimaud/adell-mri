@@ -7,9 +7,9 @@ from typing import Any, Dict, List, Tuple
 import numpy as np
 import torch
 
-from ...custom_types import Size2dOr3d
-from ..layers.conv_next import ConvNeXtV2Backbone
-from ..layers.vit import LinearEmbedding, TransformerBlockStack
+from adell_mri.custom_types import Size2dOr3d
+from adell_mri.modules.layers.conv_next import ConvNeXtV2Backbone
+from adell_mri.modules.layers.vit import LinearEmbedding, TransformerBlockStack
 
 
 def random_masking(

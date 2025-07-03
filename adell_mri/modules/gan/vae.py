@@ -2,7 +2,7 @@ from typing import Callable
 
 import torch
 
-from .generator import Generator
+from adell_mri.modules.gan.generator import Generator
 
 
 class VariationalAutoEncoder(Generator):

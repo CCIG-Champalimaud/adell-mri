@@ -176,7 +176,7 @@ def test_simclr_network():
         ssl_method=ssl_method,
         ema=dummy_ema(),
         net_type="resnet",
-        network_config_correct=config,
+        network_config=config,
         stop_gradient=False,
     )
 
@@ -228,7 +228,7 @@ def test_byol_network():
         ssl_method=ssl_method,
         ema=dummy_ema(),
         net_type="resnet",
-        network_config_correct=config,
+        network_config=config,
         stop_gradient=False,
     )
 
@@ -271,7 +271,7 @@ def test_vicreg_network():
         ssl_method=ssl_method,
         ema=dummy_ema(),
         net_type="resnet",
-        network_config_correct=config,
+        network_config=config,
         stop_gradient=False,
     )
 
@@ -334,7 +334,7 @@ def test_vicregl_network():
         ssl_method=ssl_method,
         ema=dummy_ema(),
         net_type="resnet",
-        network_config_correct=config,
+        network_config=config,
         stop_gradient=False,
     )
 
@@ -414,7 +414,7 @@ def test_mae_network():
         ssl_method=ssl_method,
         ema=dummy_ema(),
         net_type="vit",
-        network_config_correct=config,
+        network_config=config,
         stop_gradient=False,
     )
 
@@ -494,7 +494,7 @@ def test_else_branch_net_types(net_type, config, ema):
         ssl_method="custom",
         ema=ema,
         net_type=net_type,
-        network_config_correct=config,
+        network_config=config,
         stop_gradient=False,
     )
     assert isinstance(net, torch.nn.Module)
@@ -523,6 +523,6 @@ def test_invalid_ssl_method_net_type_combinations(ssl_method, net_type):
             ssl_method=ssl_method,
             ema=None,
             net_type=net_type,
-            network_config_correct=net_config,
+            network_config=net_config,
             stop_gradient=False,
         )

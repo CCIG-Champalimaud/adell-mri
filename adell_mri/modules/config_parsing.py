@@ -1,9 +1,9 @@
 import yaml
 
-from ..modules.activations import activation_factory
-from ..modules.losses import CompoundLoss
-from ..utils.utils import loss_factory
-from .layers import get_adn_fn
+from adell_mri.modules.activations import activation_factory
+from adell_mri.modules.losses import CompoundLoss
+from adell_mri.utils.utils import loss_factory
+from adell_mri.modules.layers import get_adn_fn
 
 unet_args = [
     "spatial_dimensions",

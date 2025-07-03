@@ -12,22 +12,28 @@ from tqdm import tqdm
 from adell_mri.utils.logging import CSVLogger
 from adell_mri.utils.torch_utils import get_generator_and_rng
 
-from ...entrypoints.assemble_args import Parser
-from ...modules.config_parsing import parse_config_unet
-from ...modules.layers.adn_fn import get_adn_fn
-from ...modules.segmentation.pl import MIMUNetPL
-from ...transform_factory import SegmentationTransforms
-from ...transform_factory import get_augmentations_unet as get_augmentations
-from ...utils.dataset import Dataset
-from ...utils.monai_transforms import GetAllCropsd, RandomSlices, SlicesToFirst
-from ...utils.parser import parse_ids
-from ...utils.pl_utils import get_ckpt_callback, get_devices, get_logger
-from ...utils.samplers import PartiallyRandomSampler
-from ...utils.sitk_utils import (
+from adell_mri.entrypoints.assemble_args import Parser
+from adell_mri.modules.config_parsing import parse_config_unet
+from adell_mri.modules.layers.adn_fn import get_adn_fn
+from adell_mri.modules.segmentation.pl import MIMUNetPL
+from adell_mri.transform_factory import SegmentationTransforms
+from adell_mri.transform_factory import (
+    get_augmentations_unet as get_augmentations,
+)
+from adell_mri.utils.dataset import Dataset
+from adell_mri.utils.monai_transforms import (
+    GetAllCropsd,
+    RandomSlices,
+    SlicesToFirst,
+)
+from adell_mri.utils.parser import parse_ids
+from adell_mri.utils.pl_utils import get_ckpt_callback, get_devices, get_logger
+from adell_mri.utils.samplers import PartiallyRandomSampler
+from adell_mri.utils.sitk_utils import (
     get_spacing_quantile,
     spacing_values_from_dataset_json,
 )
-from ...utils.utils import (
+from adell_mri.utils.utils import (
     collate_last_slice,
     get_loss_param_dict,
     safe_collate,

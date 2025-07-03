@@ -12,10 +12,10 @@ import torch
 import torch.nn.functional as F
 import torch.optim
 
-from ...diffusion.embedder import Embedder
-from ..discriminator import Discriminator
-from ..generator import Generator
-from ..losses import (
+from adell_mri.modules.diffusion.embedder import Embedder
+from adell_mri.modules.gan.discriminator import Discriminator
+from adell_mri.modules.gan.generator import Generator
+from adell_mri.modules.gan.losses import (
     SemiSLAdversarialLoss,
     SemiSLRelativisticGANLoss,
     SemiSLWGANGPLoss,

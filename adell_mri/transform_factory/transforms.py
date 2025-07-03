@@ -6,7 +6,7 @@ import monai.transforms
 import numpy as np
 import torch
 
-from ..utils.monai_transforms import (
+from adell_mri.utils.monai_transforms import (
     AdjustSizesd,
     BBToAdjustedAnchorsd,
     CombineBinaryLabelsd,

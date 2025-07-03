@@ -4,9 +4,9 @@ import einops
 import torch
 import torch.nn.functional as F
 
-from ...layers.adn_fn import get_adn_fn
-from ...layers.linear_blocks import MLP
-from ...layers.vit import TransformerBlockStack
+from adell_mri.modules.layers.adn_fn import get_adn_fn
+from adell_mri.modules.layers.linear_blocks import MLP
+from adell_mri.modules.layers.vit import TransformerBlockStack
 
 
 class MILAttention(torch.nn.Module):

@@ -4,20 +4,24 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-from ...custom_types import ModuleList
-from ..layers.adn_fn import ActDropNorm, get_adn_fn, norm_fn_dict
-from ..layers.multi_resolution import (
+from adell_mri.custom_types import ModuleList
+from adell_mri.modules.layers.adn_fn import (
+    ActDropNorm,
+    get_adn_fn,
+    norm_fn_dict,
+)
+from adell_mri.modules.layers.multi_resolution import (
     AtrousSpatialPyramidPooling2d,
     AtrousSpatialPyramidPooling3d,
 )
-from ..layers.regularization import UOut
-from ..layers.res_blocks import ResidualBlock2d, ResidualBlock3d
-from ..layers.self_attention import (
+from adell_mri.modules.layers.regularization import UOut
+from adell_mri.modules.layers.res_blocks import ResidualBlock2d, ResidualBlock3d
+from adell_mri.modules.layers.self_attention import (
     ConcurrentSqueezeAndExcite2d,
     ConcurrentSqueezeAndExcite3d,
     SelfAttentionBlock,
 )
-from ..layers.utils import crop_to_size
+from adell_mri.modules.layers.utils import crop_to_size
 
 
 class UNet(torch.nn.Module):

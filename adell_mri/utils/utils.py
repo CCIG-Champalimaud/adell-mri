@@ -9,7 +9,7 @@ import SimpleITK as sitk
 import torch
 import torch.nn.functional as F
 
-from ..custom_types import (
+from adell_mri.custom_types import (
     DatasetDict,
     FloatOrTensor,
     SizeDict,
@@ -17,7 +17,7 @@ from ..custom_types import (
     TensorIterable,
     TensorList,
 )
-from ..modules.segmentation.losses import (
+from adell_mri.modules.segmentation.losses import (
     binary_cross_entropy,
     binary_focal_loss,
     binary_focal_tversky_loss,

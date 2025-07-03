@@ -3,8 +3,8 @@ from typing import Callable
 import numpy as np
 import torch
 
-from .res_blocks import ResidualBlock2d, ResidualBlock3d
-from .utils import unsqueeze_to_target
+from adell_mri.modules.layers.res_blocks import ResidualBlock2d, ResidualBlock3d
+from adell_mri.modules.layers.utils import unsqueeze_to_target
 
 
 class BatchEnsemble(torch.nn.Module):

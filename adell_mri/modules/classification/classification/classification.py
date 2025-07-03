@@ -4,13 +4,20 @@ from typing import Callable, List, Tuple
 import torch
 import torch.nn.functional as F
 
-from ....custom_types import TensorList
-from ...layers.adn_fn import ActDropNorm, get_adn_fn
-from ...layers.linear_blocks import MLP, SeqPool
-from ...layers.res_net import ProjectionHead, ResNet, ResNetBackbone
-from ...layers.standard_blocks import GlobalPooling, VGGConvolution3d
-from ...layers.vit import FactorizedViT, ViT
-from ...segmentation.unet import UNet
+from adell_mri.custom_types import TensorList
+from adell_mri.modules.layers.adn_fn import ActDropNorm, get_adn_fn
+from adell_mri.modules.layers.linear_blocks import MLP, SeqPool
+from adell_mri.modules.layers.res_net import (
+    ProjectionHead,
+    ResNet,
+    ResNetBackbone,
+)
+from adell_mri.modules.layers.standard_blocks import (
+    GlobalPooling,
+    VGGConvolution3d,
+)
+from adell_mri.modules.layers.vit import FactorizedViT, ViT
+from adell_mri.modules.segmentation.unet import UNet
 
 resnet_default = [(64, 128, 5, 2), (128, 256, 3, 5)]
 maxpool_default = [(2, 2, 2), (2, 2, 2)]

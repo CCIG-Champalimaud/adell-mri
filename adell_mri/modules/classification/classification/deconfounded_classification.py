@@ -2,10 +2,10 @@ from typing import List, Tuple
 
 import torch
 
-from ...layers.adn_fn import get_adn_fn
-from ...layers.linear_blocks import MLP
-from ...layers.standard_blocks import GlobalPooling
-from .classification import VGG, CatNet
+from adell_mri.modules.layers.adn_fn import get_adn_fn
+from adell_mri.modules.layers.linear_blocks import MLP
+from adell_mri.modules.layers.standard_blocks import GlobalPooling
+from adell_mri.modules.classification.classification import VGG, CatNet
 
 
 class DeconfoundedNet(VGG):

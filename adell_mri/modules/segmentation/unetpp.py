@@ -4,10 +4,10 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-from ...custom_types import ModuleList
-from ..layers.standard_blocks import DenseBlock
-from ..layers.utils import crop_to_size
-from .unet import UNet
+from adell_mri.custom_types import ModuleList
+from adell_mri.modules.layers.standard_blocks import DenseBlock
+from adell_mri.modules.layers.utils import crop_to_size
+from adell_mri.modules.segmentation.unet import UNet
 
 
 class UNetPlusPlus(UNet):

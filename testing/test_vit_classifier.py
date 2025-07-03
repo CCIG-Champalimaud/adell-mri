@@ -6,7 +6,7 @@ import pytest
 
 import torch
 import numpy as np
-from adell_mri.modules.classification import ViTClassifier
+from adell_mri.modules.classification.classification import ViTClassifier
 from adell_mri.modules.layers.adn_fn import get_adn_fn
 
 image_size = [32, 32, 32]

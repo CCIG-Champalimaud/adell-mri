@@ -10,7 +10,7 @@ def main(arguments):
         print(f"\n\tSupported modes: {supported_modes}")
 
     elif arguments[0] == "train":
-        from .train import main
+        from adell_mri.entrypoints.segmentation_from_2d_module.train import main
 
         main(arguments[1:])
     else:

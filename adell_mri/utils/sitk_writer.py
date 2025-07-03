@@ -7,7 +7,7 @@ import SimpleITK as sitk
 import torch
 from multiprocess import Process, Queue
 
-from .sitk_utils import copy_information_nd
+from adell_mri.utils.sitk_utils import copy_information_nd
 
 
 @dataclass

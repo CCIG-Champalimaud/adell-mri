@@ -2,8 +2,8 @@ from typing import Any, Dict, List, Tuple
 
 import torch
 
-from ..layers.linear_blocks import MLP
-from ..layers.vit import ViT
+from adell_mri.modules.layers.linear_blocks import MLP
+from adell_mri.modules.layers.vit import ViT
 
 TensorList = List[torch.Tensor]
 DINOOut = Tuple[torch.Tensor, TensorList]

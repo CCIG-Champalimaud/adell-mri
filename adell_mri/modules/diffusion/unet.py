@@ -3,8 +3,10 @@ import math
 import numpy as np
 import torch
 
-from ..layers.class_attention import EfficientConditioningAttentionBlock
-from ..segmentation.unet import UNet, crop_to_size
+from adell_mri.modules.layers.class_attention import (
+    EfficientConditioningAttentionBlock,
+)
+from adell_mri.modules.segmentation.unet import UNet, crop_to_size
 
 
 def get_timestep_embedding(

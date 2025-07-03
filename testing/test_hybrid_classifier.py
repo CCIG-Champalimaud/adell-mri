@@ -5,7 +5,7 @@ sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 import torch
 from adell_mri.modules.layers.conv_next import ConvNeXt
-from adell_mri.modules.classification import (
+from adell_mri.modules.classification.classification import (
     HybridClassifier,
     TabularClassifier,
 )

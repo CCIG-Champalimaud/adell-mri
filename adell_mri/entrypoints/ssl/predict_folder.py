@@ -7,7 +7,7 @@ import torch.nn.functional as F
 from pydicom import dcmread
 from tqdm import tqdm
 
-from ...entrypoints.assemble_args import Parser
+from adell_mri.entrypoints.assemble_args import Parser
 
 torch.set_num_threads(8)
 

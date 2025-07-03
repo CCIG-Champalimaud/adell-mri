@@ -7,16 +7,16 @@ import torch
 import torchmetrics
 
 from typing import Any
-from ...custom_types import Callable
-from ..layers.conv_next import ConvNeXt
-from ..layers.res_net import ResNet
-from ..learning_rate import CosineAnnealingWithWarmupLR
-from ..segmentation.unet import UNet
-from .dino import DINO
-from .ibot import iBOT
-from .jepa import IJEPA
-from .autoencoders import ViTMaskedAutoEncoder
-from .losses import (
+from adell_mri.custom_types import Callable
+from adell_mri.modules.layers.conv_next import ConvNeXt
+from adell_mri.modules.layers.res_net import ResNet
+from adell_mri.modules.learning_rate import CosineAnnealingWithWarmupLR
+from adell_mri.modules.segmentation.unet import UNet
+from adell_mri.modules.self_supervised.dino import DINO
+from adell_mri.modules.self_supervised.ibot import iBOT
+from adell_mri.modules.self_supervised.jepa import IJEPA
+from adell_mri.modules.self_supervised.autoencoders import ViTMaskedAutoEncoder
+from adell_mri.modules.self_supervised.losses import (
     BarlowTwinsLoss,
     DinoLoss,
     NTXentLoss,

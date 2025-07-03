@@ -5,7 +5,7 @@ sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 import pytest
 
 import torch
-from adell_mri.modules.classification import VGG
+from adell_mri.modules.classification.classification import VGG
 
 image_size = [32, 32, 32]
 in_channels = 3

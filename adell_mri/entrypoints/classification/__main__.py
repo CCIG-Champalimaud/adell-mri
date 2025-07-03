@@ -10,20 +10,20 @@ def main(arguments):
         print(f"\n\tSupported modes: {supported_modes}")
 
     elif arguments[0] == "train":
-        from .train import main
+        from adell_mri.entrypoints.classification.train import main
 
         main(arguments[1:])
     elif arguments[0] == "test":
-        from .test import main
+        from adell_mri.entrypoints.classification.test import main
 
         main(arguments[1:])
     elif arguments[0] == "predict":
-        from .predict import main
+        from adell_mri.entrypoints.classification.predict import main
 
         main(arguments[1:])
 
     elif arguments[0] == "model_to_torchscript":
-        from .model_to_torchscript import main
+        from adell_mri.entrypoints.classification.model_to_torchscript import main
 
         main(arguments[1:])
     else:

@@ -5,7 +5,7 @@ Implementation of the NTXent loss.
 import torch
 import torch.nn.functional as F
 
-from .functional import cos_sim
+from adell_mri.modules.self_supervised.losses.functional import cos_sim
 
 
 class NTXentLoss(torch.nn.Module):

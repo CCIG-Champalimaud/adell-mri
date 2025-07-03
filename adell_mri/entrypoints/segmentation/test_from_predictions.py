@@ -14,9 +14,12 @@ from PIL import Image, ImageDraw, ImageFont
 from scipy import ndimage
 from tqdm import tqdm
 
-from ...entrypoints.assemble_args import Parser
-from ...modules.segmentation.picai_eval.eval import Metrics, evaluate_case
-from ...utils.parser import parse_ids
+from adell_mri.entrypoints.assemble_args import Parser
+from adell_mri.modules.segmentation.picai_eval.eval import (
+    Metrics,
+    evaluate_case,
+)
+from adell_mri.utils.parser import parse_ids
 
 
 def get_lesion_candidates(

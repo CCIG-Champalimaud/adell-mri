@@ -7,9 +7,9 @@ from typing import Callable
 import numpy as np
 import torch
 
-from ...custom_types import TensorDict, TensorList
-from ..segmentation.pl import UNetBasePL, update_metrics
-from .unet import UNetSemiSL
+from adell_mri.custom_types import TensorDict, TensorList
+from adell_mri.modules.segmentation.pl import UNetBasePL, update_metrics
+from adell_mri.modules.semi_supervised_segmentation.unet import UNetSemiSL
 
 
 class UNetContrastiveSemiSL(UNetSemiSL, UNetBasePL):

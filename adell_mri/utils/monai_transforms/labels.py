@@ -4,7 +4,7 @@ import torch
 from skimage.morphology import convex_hull_image
 from sklearn.cluster import DBSCAN
 
-from ...custom_types import NDArrayOrTensorDict, TensorDict, NDArrayOrTensor
+from adell_mri.custom_types import NDArrayOrTensorDict, TensorDict, NDArrayOrTensor
 
 
 def convex_hull_iter(x: np.ndarray):

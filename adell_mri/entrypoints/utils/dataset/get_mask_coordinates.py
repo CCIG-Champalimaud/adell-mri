@@ -7,9 +7,9 @@ def main(arguments):
     import monai
     import torch
     from tqdm import tqdm
-    from ....transform_factory.transforms import ClassificationTransforms
-    from ....utils.dataset import Dataset
-    from ....entrypoints.assemble_args import Parser
+    from adell_mri.transform_factory.transforms import ClassificationTransforms
+    from adell_mri.utils.dataset import Dataset
+    from adell_mri.entrypoints.assemble_args import Parser
 
     parser = argparse.ArgumentParser(description=desc)
 

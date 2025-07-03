@@ -13,7 +13,7 @@ from lightning.pytorch import Trainer
 from lightning.pytorch.callbacks.model_checkpoint import ModelCheckpoint
 from lightning.pytorch.loggers import Logger
 
-from .pl_callbacks import ModelCheckpointWithMetadata
+from adell_mri.utils.pl_callbacks import ModelCheckpointWithMetadata
 
 
 class GPULock:

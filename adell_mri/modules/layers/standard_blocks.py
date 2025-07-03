@@ -3,8 +3,8 @@ from typing import List
 import torch
 import torch.nn.functional as F
 
-from ...custom_types import TensorList
-from .batch_ensemble import BatchEnsembleWrapper
+from adell_mri.custom_types import TensorList
+from adell_mri.modules.layers.batch_ensemble import BatchEnsembleWrapper
 
 
 class GlobalPooling(torch.nn.Module):
