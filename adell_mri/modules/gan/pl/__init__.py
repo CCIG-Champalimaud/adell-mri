@@ -1,2 +1,2 @@
-from adell_mri.modules.gan.ae import AutoEncoderPL, VariationalAutoEncoderPL
-from adell_mri.modules.gan.gan import GANPL, RelativisticGANPL
+from adell_mri.modules.gan.pl.ae import AutoEncoderPL, VariationalAutoEncoderPL
+from adell_mri.modules.gan.pl.gan import GANPL, RelativisticGANPL
