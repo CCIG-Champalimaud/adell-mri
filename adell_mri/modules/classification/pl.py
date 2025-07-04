@@ -46,7 +46,9 @@ from adell_mri.modules.classification.classification import (
     ViTClassifier,
     ordinal_prediction_to_class,
 )
-from adell_mri.modules.classification.classification import DeconfoundedNetGeneric
+from adell_mri.modules.classification.classification import (
+    DeconfoundedNetGeneric,
+)
 
 try:
     import monai

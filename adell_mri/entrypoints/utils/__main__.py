@@ -85,7 +85,8 @@ def main(arguments):
     elif arguments[0] in supported_modes:
         main = getattr(
             importlib.import_module(
-                supported_modes[arguments[0]], package="lib.entrypoints.utils"
+                supported_modes[arguments[0]],
+                package="adell_mri.entrypoints.utils",
             ),
             "main",
         )

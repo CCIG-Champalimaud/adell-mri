@@ -15,6 +15,7 @@ def filter_dicom_dict_on_presence(data_dict: dict, all_keys: list[str]) -> dict:
     Returns:
         dict: filtered dictionary.
     """
+
     def check_intersection(a, b):
         return len(set.intersection(set(a), set(b))) == len(set(b))
 

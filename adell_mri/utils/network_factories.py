@@ -59,10 +59,14 @@ from adell_mri.modules.self_supervised.pl import (
     iBOTPL,
     ViTMaskedAutoEncoderPL,
 )
-from adell_mri.modules.semi_supervised_segmentation.losses import LocalContrastiveLoss
+from adell_mri.modules.semi_supervised_segmentation.losses import (
+    LocalContrastiveLoss,
+)
 
 # semi-supervised segmentation
-from adell_mri.modules.semi_supervised_segmentation.pl import UNetContrastiveSemiSL
+from adell_mri.modules.semi_supervised_segmentation.pl import (
+    UNetContrastiveSemiSL,
+)
 
 # classification
 from adell_mri.modules.classification.classification import TabularClassifier
@@ -108,6 +112,7 @@ def compile_if_necessary(func: Callable) -> Callable:
     Returns:
         The compiled :class:`torch.nn.Module`.
     """
+
     def wrapper(*args, **kwargs):
         model = func(*args, **kwargs)
         if os.environ.get("TORCH_COMPILE", "False").lower() in ["true", "1"]:
@@ -542,6 +547,7 @@ def get_segmentation_network(
             f"net_type '{net_type}' not valid, has to be one of "
             f"{ALLOWED_NET_TYPES['segmentation']}"
         )
+
     def get_size(*size_list):
         for size in size_list:
             if size is not None:
@@ -954,7 +960,9 @@ def get_generative_network(
     """
     try:
         from generative.networks.schedulers import DDPMScheduler
-        from adell_mri.modules.diffusion.inferer import DiffusionInfererSkipSteps
+        from adell_mri.modules.diffusion.inferer import (
+            DiffusionInfererSkipSteps,
+        )
         from adell_mri.modules.diffusion.pl import DiffusionUNetPL
     except ImportError:
         raise ImportError(

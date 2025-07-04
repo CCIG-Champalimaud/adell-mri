@@ -38,7 +38,9 @@ def random_masking(
         noise, dim=1, stable=True
     )  # ascend: small is keep, large is remove
     ids_restore = torch.argsort(ids_shuffle, dim=1, stable=True)
-    ids_restore = ids_restore.to(x.device)  # Ensure it's on the same device as input
+    ids_restore = ids_restore.to(
+        x.device
+    )  # Ensure it's on the same device as input
 
     # keep the first subset
     ids_keep = ids_shuffle[:, :len_keep]
@@ -59,6 +61,7 @@ class ConvNeXtAutoEncoder(torch.nn.Module):
     """
     A ConvNeXt-based autoencoder.
     """
+
     def __init__(
         self,
         image_size: Size2dOr3d,
@@ -367,7 +370,9 @@ class ViTMaskedAutoEncoder(ViTAutoEncoder):
         )
 
         # Encode visible tokens
-        encoder_output = self.encoder(X_masked)  # [batch_size, num_visible, embed_dim]
+        encoder_output = self.encoder(
+            X_masked
+        )  # [batch_size, num_visible, embed_dim]
         # Handle case where encoder returns a tuple (output, attention_weights)
         if isinstance(encoder_output, tuple):
             X_encoded = encoder_output[0]
@@ -383,9 +388,9 @@ class ViTMaskedAutoEncoder(ViTAutoEncoder):
 
         # Unshuffle to original order
         X_unshuffled = torch.gather(
-            X_full, 
-            dim=1, 
-            index=ids_restore.unsqueeze(-1).expand(-1, -1, X_full.shape[2])
+            X_full,
+            dim=1,
+            index=ids_restore.unsqueeze(-1).expand(-1, -1, X_full.shape[2]),
         )
 
         X_unshuffled = X_unshuffled + self.positional_embedding
@@ -397,7 +402,9 @@ class ViTMaskedAutoEncoder(ViTAutoEncoder):
             X_decoded = decoder_output[0]
         else:
             X_decoded = decoder_output
-        X_reconstructed = self.decoder_pred(X_decoded)  # [batch_size, seq_len, n_features]
+        X_reconstructed = self.decoder_pred(
+            X_decoded
+        )  # [batch_size, seq_len, n_features]
 
         # Reshape to [batch_size, in_channels, height, width]
         batch_size = X_reconstructed.shape[0]

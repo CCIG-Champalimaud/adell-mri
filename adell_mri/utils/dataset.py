@@ -81,6 +81,7 @@ class Dataset:
         seed (int, optional): random seed. Defaults to 42.
         verbose (bool, optional): verbosity. Defaults to True.
     """
+
     path: str | list[str]
     rng: np.random.Generator = None
     seed: int = 42

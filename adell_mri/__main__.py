@@ -29,7 +29,9 @@ def main():
 
         main(arguments[1:])
     elif arguments[0] == "classification_deconfounder":
-        from adell_mri.entrypoints.classification_deconfounder.__main__ import main
+        from adell_mri.entrypoints.classification_deconfounder.__main__ import (
+            main,
+        )
 
         main(arguments[1:])
     elif arguments[0] == "classification_mil":
@@ -59,7 +61,9 @@ def main():
 
         main(arguments[1:])
     elif arguments[0] == "segmentation_from_2d_module":
-        from adell_mri.entrypoints.segmentation_from_2d_module.__main__ import main
+        from adell_mri.entrypoints.segmentation_from_2d_module.__main__ import (
+            main,
+        )
 
         main(arguments[1:])
 
