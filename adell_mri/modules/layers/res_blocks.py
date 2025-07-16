@@ -1,3 +1,7 @@
+"""
+Residual blocks.
+"""
+
 import numpy as np
 import torch
 
@@ -200,7 +204,8 @@ class ParallelOperationsAndSum(torch.nn.Module):
     def __init__(
         self, operation_list: ModuleList, crop_to_smallest: bool = False
     ) -> torch.nn.Module:
-        """Module that uses a set of other modules on the original input
+        """
+Module that uses a set of other modules on the original input
         and sums the output of this set of other modules as the output.
 
         Args:
@@ -217,7 +222,8 @@ class ParallelOperationsAndSum(torch.nn.Module):
         self.crop_to_smallest = crop_to_smallest
 
     def forward(self, X: torch.Tensor) -> torch.Tensor:
-        """Forward pass for this Module.
+        """
+Forward pass for this Module.
 
         Args:
             X (torch.Tensor): 5D tensor
@@ -421,7 +427,8 @@ class ResNeXtBlock3d(torch.nn.Module):
 
 
 class ConvNeXtBlock2d(torch.nn.Module):
-    """Two-dimensional ConvNeXt Block. Adapted from [1].
+    """
+Two-dimensional ConvNeXt Block. Adapted from [1].
 
     [1] https://github.com/facebookresearch/ConvNeXt
     """
@@ -507,7 +514,8 @@ class ConvNeXtBlock2d(torch.nn.Module):
 
 
 class ConvNeXtBlock3d(torch.nn.Module):
-    """Three-dimensional ConvNeXt Block. Adapted from [1].
+    """
+Three-dimensional ConvNeXt Block. Adapted from [1].
 
     [1] https://github.com/facebookresearch/ConvNeXt
     """
@@ -600,7 +608,8 @@ class ConvNeXtBlock3d(torch.nn.Module):
 
 
 class ConvNeXtBlockVTwo2d(torch.nn.Module):
-    """Two-dimensional ConvNeXtV2 Block. Adapted from [1] and [2].
+    """
+Two-dimensional ConvNeXtV2 Block. Adapted from [1] and [2].
 
     [1] https://github.com/facebookresearch/ConvNeXt
     [2] https://arxiv.org/pdf/2301.00808.pdf
@@ -677,7 +686,8 @@ class ConvNeXtBlockVTwo2d(torch.nn.Module):
 
 
 class ConvNeXtBlockVTwo3d(torch.nn.Module):
-    """Three-dimensional ConvNeXtV2 Block. Adapted from [1] and [2].
+    """
+Three-dimensional ConvNeXtV2 Block. Adapted from [1] and [2].
 
     [1] https://github.com/facebookresearch/ConvNeXt
     [2] https://arxiv.org/pdf/2301.00808.pdf

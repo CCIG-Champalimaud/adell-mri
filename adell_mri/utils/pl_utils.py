@@ -186,7 +186,8 @@ def get_step_information(
     n_images: int,
     batch_size: int,
 ) -> Tuple[int, int, int, int, int]:
-    """Gets step information (maximum number of steps, maximum number of
+    """
+    Gets step information (maximum number of steps, maximum number of
     optimizer steps, number of warmup steps how often validation checks are run
     and the validation check interval) from the maximum number of epochs, the
     number of steps per epochs, the number of warmup epochs, for how many batches
@@ -257,7 +258,8 @@ def get_ckpt_callback(
     n_best_ckpts: int = 1,
     metadata: dict = None,
 ) -> ModelCheckpoint:
-    """Gets a checkpoint callback for PyTorch Lightning. The format for
+    """
+Gets a checkpoint callback for PyTorch Lightning. The format for
     for the last and 2 best checkpoints, respectively is:
     1. "{name}_fold{fold}_last.ckpt"
     2. "{name}_fold{fold}_best_{epoch}_{monitor:.3f}.ckpt"
@@ -344,7 +346,8 @@ def get_logger(
     log_model: bool = False,
     logger_type: str = "wandb",
 ) -> Logger:
-    """Defines a Wandb/MLFlow logger for PyTorch Lightning. Each run is
+    """
+Defines a Wandb/MLFlow logger for PyTorch Lightning. Each run is
     configured as "{project_name}/{summary_name}_fold{fold}".
 
     Args:
@@ -412,7 +415,8 @@ def get_logger(
 def get_devices(
     device_str: str, strategy: str = "ddp_find_unused_parameters_true"
 ) -> Tuple[str, Union[List[int], int], str]:
-    """Takes a string with form "{device}:{device_ids}" where device_ids is a
+    """
+Takes a string with form "{device}:{device_ids}" where device_ids is a
     comma separated list of device IDs (i.e. cuda:0,1).
 
     Args:

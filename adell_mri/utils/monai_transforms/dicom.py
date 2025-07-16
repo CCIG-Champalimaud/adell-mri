@@ -24,7 +24,8 @@ class LoadIndividualDICOM(monai.transforms.Transform):
 
 
 class LoadIndividualDICOMd(monai.transforms.MapTransform):
-    """LoadIndividualDICOMd applies LoadIndividualDICOM transform to multiple keys.
+    """
+    LoadIndividualDICOMd applies LoadIndividualDICOM transform to multiple keys.
 
     LoadIndividualDICOMd takes a list of keys as input. For each key, it applies the
     LoadIndividualDICOM transform to the corresponding value in the input dictionary.

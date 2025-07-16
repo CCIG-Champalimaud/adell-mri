@@ -9,7 +9,8 @@ import torch
 
 
 def label_smoothing(y: torch.Tensor, smooth_factor: float) -> torch.Tensor:
-    """Smooths labels using a smoothing factor smoot_factor. Works only for
+    """
+    Smooths labels using a smoothing factor smoot_factor. Works only for
     binary labels.
 
     Args:
@@ -28,7 +29,8 @@ def mixup(
     mixup_alpha: float,
     g: np.random.Generator = None,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    """Applies mixup to a set of inputs and labels. The mixup factor M is
+    """
+Applies mixup to a set of inputs and labels. The mixup factor M is
     defined as M ~ Beta(mixup_alpha,mixup_alpha).
 
     Args:
@@ -66,7 +68,8 @@ def partial_mixup(
     mixup_fraction: float = 0.5,
     g: np.random.Generator = None,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    """Applies mixup to a fraction of the set of inputs and labels. The inputs
+    """
+Applies mixup to a fraction of the set of inputs and labels. The inputs
     undergoing mixup are randomly selected according to a Bernoulli
     distribution with p=mixup_fraction. The mixup  factor M is defined as
     M ~ Beta(mixup_alpha,mixup_alpha).

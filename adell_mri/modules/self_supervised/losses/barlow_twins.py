@@ -1,3 +1,7 @@
+"""
+Implements the Barlow Twins loss.
+"""
+
 import torch
 
 

@@ -11,7 +11,8 @@ def complete_iou_loss(
     b_center: torch.Tensor = None,
     ndim: int = 3,
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    """Calculates the complete IoU loss as proposed by Zheng et al. [1] for
+    """
+    Calculates the complete IoU loss as proposed by Zheng et al. [1] for
     any given number of spatial dimensions.
     Combines three components - the IoU loss, the minimization of the distance
     between centers and the minimization of the difference in aspect ratios.

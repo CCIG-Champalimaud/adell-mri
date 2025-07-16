@@ -439,7 +439,8 @@ class SlidingWindowSegmentation:
     def adjust_if_necessary(
         self, x1: int, x2: int, M: int, a: int
     ) -> Tuple[int, int]:
-        """Adjusts coordinate bounds x2 and x1 if x2 is larger than M. If that is
+        """
+        Adjusts coordinate bounds x2 and x1 if x2 is larger than M. If that is
         the case, x1 is adjusted to M-a and x2 is adjusted to M.
 
         Args:

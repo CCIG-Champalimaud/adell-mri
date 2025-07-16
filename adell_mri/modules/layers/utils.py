@@ -6,7 +6,8 @@ import torch
 
 
 def split_int_into_n(i: int, n: int) -> List[int]:
-    """Divides an integer i into n slots, where i is distributed as equally
+    """
+    Divides an integer i into n slots, where i is distributed as equally
     as possible across each slot.
 
     Args:
@@ -27,7 +28,8 @@ def split_int_into_n(i: int, n: int) -> List[int]:
 
 
 def crop_to_size(X: torch.Tensor, output_size: list) -> torch.Tensor:
-    """Crops a tensor to the size given by list. Assumes the first two
+    """
+Crops a tensor to the size given by list. Assumes the first two
     dimensions are the batch and channel dimensions.
 
     Args:

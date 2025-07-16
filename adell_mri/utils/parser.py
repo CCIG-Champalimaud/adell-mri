@@ -18,7 +18,8 @@ from omegaconf import OmegaConf
 
 
 def get_dvc_params(path: str = None) -> Dict[str, any]:
-    """Retrieves dvc parameters recursively. For example, if the path is
+    """
+    Retrieves dvc parameters recursively. For example, if the path is
     `training`, then the actual parameters are assumed to be in the `training`
     field of the dvc parameters.
 
@@ -48,7 +49,8 @@ def get_dvc_params(path: str = None) -> Dict[str, any]:
 
 
 def read_param_file(path: str) -> Dict[str, Any]:
-    """Reads parameters from a YAML file. If any ":" is present in path, then
+    """
+Reads parameters from a YAML file. If any ":" is present in path, then
     it returns the field after ":" from the YAML config file. For example, if
     the path is `config.yaml:training`, then the parameters are assumed to be
     in the `training` field of `config.yaml`. This works recursively.
@@ -72,7 +74,8 @@ def read_param_file(path: str) -> Dict[str, Any]:
 
 
 def get_params(path: str) -> Dict[str, Any]:
-    """Wrapper around `get_dvc_params` and `read_param_file`. If the first
+    """
+Wrapper around `get_dvc_params` and `read_param_file`. If the first
     element of `path.split(":")` is `"dvc"`, then `get_dvc_params` is called
     for the rest of `path`. Otherwise, `read_param_file` is used.
 
@@ -99,7 +102,8 @@ def merge_args(
     param_dict: Dict[str, Any],
     sys_arg: List[str] = None,
 ) -> argparse.Namespace:
-    """Replaces the key-value pairs in a given argparse.Namespace `args` by
+    """
+Replaces the key-value pairs in a given argparse.Namespace `args` by
     the values in param_dict if they are not defined in sys_arg. In essence,
     the priority is: default arguments < param_dict < command line arguments.
     This function works in place but also returns `args`.

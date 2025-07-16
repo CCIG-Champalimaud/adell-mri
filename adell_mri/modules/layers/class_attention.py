@@ -1,3 +1,7 @@
+"""
+Implements class attention.
+"""
+
 import math
 from typing import Union
 

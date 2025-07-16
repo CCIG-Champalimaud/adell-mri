@@ -33,7 +33,8 @@ class YOLONet3d(torch.nn.Module):
             s, norm_fn=torch.nn.BatchNorm3d
         ),
     ):
-        """Implementation of a YOLO network for object detection in 3d.
+        """
+        Implementation of a YOLO network for object detection in 3d.
 
         Args:
             in_channels (int, optional): number of input channels. Defaults to
@@ -188,7 +189,8 @@ class YOLONet3d(torch.nn.Module):
         nms: bool = False,
         correction_factor: torch.Tensor = None,
     ) -> torch.Tensor:
-        """Converts the predictions from a single prediction from forward into
+        """
+Converts the predictions from a single prediction from forward into
         bounding boxes. The format of these boxes is
         (uc_x,uc_y,uc_z,lc_x,lc_y,lc_z), where uc and lc refer to upper and
         lower corners, respectively.
@@ -273,7 +275,8 @@ class YOLONet3d(torch.nn.Module):
         correction_factor: torch.Tensor = None,
         to_dict: bool = False,
     ) -> List[torch.Tensor]:
-        """Generalises recover_boxes to a batch.
+        """
+Generalises recover_boxes to a batch.
 
         Args:
             bb_center_pred (torch.Tensor): center offset predictions.
@@ -332,7 +335,8 @@ class CoarseDetector3d(torch.nn.Module):
             s, norm_fn=torch.nn.BatchNorm3d
         ),
     ):
-        """Implementation of a YOLO network for object detection in 3d.
+        """
+Implementation of a YOLO network for object detection in 3d.
 
         Args:
             in_channels (int, optional): number of input channels. Defaults to

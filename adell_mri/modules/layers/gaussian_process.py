@@ -1,3 +1,7 @@
+"""
+Implements Gaussian process layer.
+"""
+
 from typing import Tuple
 
 import torch
@@ -7,7 +11,8 @@ from adell_mri.modules.layers.utils import unsqueeze_to_target
 
 
 class GaussianProcessLayer(torch.nn.Module):
-    """Gaussian process layer as implemented in [1]. The model is first trained
+    """
+    Gaussian process layer as implemented in [1]. The model is first trained
     and only `self.weights` is updated. `self.W` and `self.b` are randomly sampled
     parameters for random Fourier features (this is generally used to map the
     input feature space to a lower dimension space, making the GP more

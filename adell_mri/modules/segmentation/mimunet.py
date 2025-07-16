@@ -14,12 +14,34 @@ from adell_mri.modules.segmentation.unet import crop_to_size
 
 
 def is_if_none(a: Any, b: Any) -> Any:
+    """
+    Returns the first argument if it is not None, otherwise returns the second
+    argument.
+    
+    Args:
+        a (Any): first argument.
+        b (Any): second argument.
+    
+    Returns:
+        Any: first argument if it is not None, otherwise second argument.
+    """
     if a is None:
         return b
     return a
 
 
 def zeros_like(X: torch.Tensor, shape: List[int]):
+    """
+    Returns a tensor of zeros with the same device as `X` and the given shape.
+    
+    Args:
+        X (torch.Tensor): tensor to use for device.
+        shape (List[int]): shape of the tensor to return.
+    
+    Returns:
+        torch.Tensor: tensor of zeros with the same device as `X` and the 
+            given shape.
+    """
     X_shape = X.shape
     for i in range(len(shape)):
         shape[i] = shape[i] if shape[i] != -1 else X_shape[i]
@@ -216,7 +238,9 @@ class MIMUNet(torch.nn.Module):
             return self.v_module_3d(X)
 
     def init_link_ops(self):
-        """Initializes linking (skip) operations."""
+        """
+        Initializes linking (skip) operations.
+        """
         if self.link_type == "identity":
             self.link_ops = torch.nn.ModuleList(
                 [torch.nn.Identity() for _ in self.depth[:-1]]
@@ -239,7 +263,8 @@ class MIMUNet(torch.nn.Module):
             )
 
     def init_decoder(self):
-        """Initializes the decoder operations."""
+        """
+Initializes the decoder operations."""
         self.decoding_operations = torch.nn.ModuleList([])
         depths = self.depth[-2::-1]
         padding = self.padding[-2::-1]
@@ -256,7 +281,8 @@ class MIMUNet(torch.nn.Module):
                 self.deep_supervision_ops.append(self.get_ds_final_layer(d))
 
     def init_upscale_ops(self):
-        """Initializes upscaling operations."""
+        """
+Initializes upscaling operations."""
         depths_a = self.depth[:0:-1]
         depths_b = self.depth[-2::-1]
         self.strides = [2 for _ in self.depth]
@@ -283,7 +309,8 @@ class MIMUNet(torch.nn.Module):
         self.upscale_ops = torch.nn.ModuleList(upscale_ops)
 
     def get_final_layer(self, d: int) -> torch.nn.Module:
-        """Returns the final layer.
+        """
+Returns the final layer.
 
         Args:
             d (int): depth.
@@ -310,7 +337,8 @@ class MIMUNet(torch.nn.Module):
             )
 
     def get_ds_final_layer(self, d: int) -> torch.nn.Module:
-        """Returns the final layer for deep supervision.
+        """
+Returns the final layer for deep supervision.
 
         Args:
             d (int): depth.
@@ -334,12 +362,14 @@ class MIMUNet(torch.nn.Module):
             )
 
     def init_final_layer(self):
-        """Initializes the classification layer (simple linear layer)."""
+        """
+Initializes the classification layer (simple linear layer)."""
         o = self.depth[0]
         self.final_layer = self.get_final_layer(o)
 
     def forward(self, X: torch.Tensor) -> torch.Tensor:
-        """Forward pass for this class.
+        """
+Forward pass for this class.
 
         Args:
             X (torch.Tensor)

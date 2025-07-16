@@ -68,7 +68,8 @@ class VGGAutoencoder(torch.nn.Module):
         self,
         X: torch.Tensor,
     ) -> torch.Tensor:
-        """Forward method for features only.
+        """
+        Forward method for features only.
 
         Args:
             X (torch.Tensor): input tensor
@@ -85,7 +86,8 @@ class VGGAutoencoder(torch.nn.Module):
         X: torch.Tensor,
         return_features: bool = False,
     ) -> torch.Tensor:
-        """Forward method.
+        """
+Forward method.
 
         Args:
             X (torch.Tensor): input tensor

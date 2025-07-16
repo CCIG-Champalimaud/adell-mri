@@ -33,7 +33,8 @@ def log_image(
     caption: list[str] = None,
     rgb: bool = False,
 ):
-    """Logs images to the PyTorch Lightning logger.
+    """
+    Logs images to the PyTorch Lightning logger.
 
     This callback takes a batch of images, slices them along the provided
     slice dimension, converts them to uint8, creates PIL images, and logs

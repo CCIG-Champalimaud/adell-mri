@@ -1,3 +1,7 @@
+"""
+Standard U-Net++ implementation.
+"""
+
 from typing import Dict, List
 
 import numpy as np

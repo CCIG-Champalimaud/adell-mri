@@ -176,7 +176,8 @@ class ClassPLABC(pl.LightningModule, ABC):
         self.calibrated = False
 
     def calculate_loss(self, prediction, y, with_params=False):
-        """Calculates loss between prediction and ground truth.
+        """
+        Calculates loss between prediction and ground truth.
 
         Args:
             prediction (torch.Tensor): Model predictions
@@ -202,7 +203,8 @@ class ClassPLABC(pl.LightningModule, ABC):
         return loss.mean()
 
     def on_before_batch_transfer(self, batch, dataloader_idx):
-        """Converts any MetaTensors to regular tensors before batch transfer.
+        """
+Converts any MetaTensors to regular tensors before batch transfer.
 
         Args:
             batch: Input batch
@@ -214,7 +216,8 @@ class ClassPLABC(pl.LightningModule, ABC):
         return meta_tensors_to_tensors(batch)
 
     def training_step(self, batch, batch_idx):
-        """Performs a single training step.
+        """
+Performs a single training step.
 
         Args:
             batch: Input batch containing images and labels
@@ -236,7 +239,8 @@ class ClassPLABC(pl.LightningModule, ABC):
         return loss
 
     def validation_step(self, batch, batch_idx):
-        """Performs a single validation step.
+        """
+Performs a single validation step.
 
         Args:
             batch: Input batch containing images and labels

@@ -84,7 +84,8 @@ def fill_conditional(
 def filter_dictionary_with_presence(
     D: DatasetDict, filters: List[str], verbose: bool = False
 ) -> DatasetDict:
-    """Filters a dictionary based on whether a nested dictionary has the keys
+    """
+    Filters a dictionary based on whether a nested dictionary has the keys
     specified in filters.
 
     Args:
@@ -112,7 +113,8 @@ def filter_dictionary_with_presence(
 def filter_dictionary_with_existence(
     D: DatasetDict, filters: List[str], verbose: bool = False
 ) -> DatasetDict:
-    """Filters a dictionary based on whether files with a given key exist.
+    """
+Filters a dictionary based on whether files with a given key exist.
 
     Args:
         D (DatasetDict): dataset dictionary.
@@ -144,7 +146,8 @@ def filter_dictionary_with_possible_labels(
     label_key: str,
     verbose: bool = False,
 ) -> DatasetDict:
-    """Filters a dictionary by checking whether the possible_labels are
+    """
+Filters a dictionary by checking whether the possible_labels are
     included in DatasetDict[patient_id][label_key].
 
     Args:
@@ -181,7 +184,8 @@ def filter_dictionary_with_filters(
     filter_is_optional: bool = False,
     verbose: bool = True,
 ) -> DatasetDict:
-    """Filters a dataset dictionary with custom filters:
+    """
+Filters a dataset dictionary with custom filters:
     * If "key=value": tests if field key is equal/contains value
     * If "key>value": tests if field key is larger than value
     * If "key<value": tests if field key is smaller than value

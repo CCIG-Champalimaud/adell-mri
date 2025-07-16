@@ -5,7 +5,8 @@ import torch
 
 
 class ElasticWeightConsolidation(torch.nn.Module):
-    """Stores model parameters to calculate a elastic weight consolidation
+    """
+    Stores model parameters to calculate a elastic weight consolidation
     term (the p-norm of the difference between the model parameters at the
     current and first epoch/step). This mostly works to reduce a messy
     implementation with other modules. In essence, to use this EWC module

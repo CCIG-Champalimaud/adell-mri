@@ -12,7 +12,8 @@ class mAP(torchmetrics.metric.Metric):
     def __init__(
         self, ndim=3, score_threshold=0.5, iou_threshold=0.5, n_classes=2
     ):
-        """Mean average precision implementation for any number of dimensions.
+        """
+        Mean average precision implementation for any number of dimensions.
 
         Args:
             ndim (int, optional): number of dimensions. Defaults to 3.

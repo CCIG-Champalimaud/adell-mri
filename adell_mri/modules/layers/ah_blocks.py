@@ -1,9 +1,18 @@
+"""
+Blocks for AHNet.
+"""
+
 import torch
 
 from adell_mri.modules.layers.standard_blocks import ConvolutionalBlock3d
 
 
 class Refine2d(torch.nn.Module):
+    """
+    Refinement module from the AHNet paper [1]. Essentially a residual module.
+
+    [1] https://arxiv.org/pdf/1711.08580.pdf
+    """
     def __init__(
         self,
         in_channels: int,
@@ -11,11 +20,7 @@ class Refine2d(torch.nn.Module):
         adn_fn: torch.nn.Module = torch.nn.Identity,
         adn_args: dict = {},
     ):
-        """Refinement module from the AHNet paper [1]. Essentially a residual
-        module.
-
-        [1] https://arxiv.org/pdf/1711.08580.pdf
-
+        """
         Args:
             in_channels (int): number of input channels.
             kernel_size (int): number of output channels.
@@ -33,7 +38,9 @@ class Refine2d(torch.nn.Module):
         self.init_layers()
 
     def init_layers(self):
-        """Initializes layers."""
+        """
+        Initializes layers.
+        """
         self.op = torch.nn.Sequential(
             torch.nn.Conv2d(
                 self.in_channels,
@@ -52,7 +59,8 @@ class Refine2d(torch.nn.Module):
         )
 
     def forward(self, X: torch.Tensor) -> torch.Tensor:
-        """Forward pass for this Module.
+        """
+Forward pass for this Module.
 
         Args:
             X (torch.Tensor)
@@ -64,19 +72,21 @@ class Refine2d(torch.nn.Module):
 
 
 class AHNetDecoderUnit3d(torch.nn.Module):
+    """
+    3D AHNet decoder unit from the AHNet paper [1]. Combines multiple,
+    branching and consecutive convolutions. Each unit is composed of a
+    residual-like operation followed by a concatenation with the original
+    input.
+
+    [1] https://arxiv.org/pdf/1711.08580.pdf
+    """
     def __init__(
         self,
         in_channels: int,
         adn_fn: torch.nn.Module = torch.nn.Identity,
         adn_args: dict = {},
     ):
-        """3D AHNet decoder unit from the AHNet paper [1]. Combines multiple,
-        branching and consecutive convolutions. Each unit is composed of a
-        residual-like operation followed by a concatenation with the original
-        input.
-
-        [1] https://arxiv.org/pdf/1711.08580.pdf
-
+        """
         Args:
             in_channels (int): number of input channels.
             adn_fn (torch.nn.Module, optional): module applied after
@@ -119,16 +129,17 @@ class AHNetDecoderUnit3d(torch.nn.Module):
 
 
 class AHNetDecoder3d(torch.nn.Module):
+    """
+    Three consecutive AHNetDecoderUnit3d. Can be modified to include more but 
+    it is hard to know what concrete improvements this may lead to.
+    """
     def __init__(
         self,
         in_channels: int,
         adn_fn: torch.nn.Module = torch.nn.Identity,
         adn_args: dict = {"norm_fn": torch.nn.BatchNorm3d},
     ):
-        """Three consecutive AHNetDecoderUnit3d. Can be modified to include
-        more but it is hard to know what concrete improvements this may lead
-        to.
-
+        """
         Args:
             in_channels (int): number of input channels.
             adn_fn (torch.nn.Module, optional): module applied after
@@ -144,7 +155,8 @@ class AHNetDecoder3d(torch.nn.Module):
         self.init_layers()
 
     def init_layers(self):
-        """Initializes layers."""
+        """
+Initializes layers."""
         self.op = torch.nn.Sequential(
             AHNetDecoderUnit3d(self.in_channels, self.adn_fn, self.adn_args),
             torch.nn.Conv3d(self.in_channels * 2, self.in_channels, 1),
@@ -155,7 +167,8 @@ class AHNetDecoder3d(torch.nn.Module):
         )
 
     def forward(self, X: torch.Tensor) -> torch.Tensor:
-        """Forward pass for this class.
+        """
+Forward pass for this class.
 
         Args:
             X (torch.Tensor)
@@ -167,6 +180,12 @@ class AHNetDecoder3d(torch.nn.Module):
 
 
 class AnysotropicHybridResidual(torch.nn.Module):
+    """
+    A 2D residual block that can be converted to a 3D residual block by
+    increasing the number of spatial dimensions in the filters. Here I also
+    transfer the parameters from `adn_fn`, particularly those belonging to
+    activation/batch normalization layers.
+    """
     def __init__(
         self,
         spatial_dim: int,
@@ -175,11 +194,7 @@ class AnysotropicHybridResidual(torch.nn.Module):
         adn_fn: torch.nn.Module = torch.nn.Identity,
         adn_args: dict = {},
     ):
-        """A 2D residual block that can be converted to a 3D residual block by
-        increasing the number of spatial dimensions in the filters. Here I also
-        transfer the parameters from `adn_fn`, particularly those belonging to
-        activation/batch normalization layers.
-
+        """
         Args:
             spatial_dim (int): number of spatial dimensions.
             in_channels (int): number of input channels.
@@ -202,12 +217,14 @@ class AnysotropicHybridResidual(torch.nn.Module):
             self.convert_to_3d()
 
     def init_layers(self):
-        """Initialize layers."""
+        """
+Initialize layers."""
         self.op = self.get_op_2d()
         self.op_ds = self.get_downsample_op_2d()
 
     def get_op_2d(self):
-        """Creates the 2D operation."""
+        """
+Creates the 2D operation."""
         adn_args = self.adn_args.copy()
         adn_args["norm_fn"] = torch.nn.BatchNorm2d
         return torch.nn.Sequential(
@@ -225,7 +242,8 @@ class AnysotropicHybridResidual(torch.nn.Module):
         )
 
     def get_op_3d(self):
-        """Creates the 3D operation."""
+        """
+Creates the 3D operation."""
         adn_args = self.adn_args.copy()
         adn_args["norm_fn"] = torch.nn.BatchNorm3d
         K = [self.kernel_size for _ in range(3)]
@@ -242,11 +260,13 @@ class AnysotropicHybridResidual(torch.nn.Module):
         )
 
     def get_downsample_op_2d(self):
-        """Creates the downsampling 2D operation."""
+        """
+Creates the downsampling 2D operation."""
         return torch.nn.Conv2d(self.in_channels, self.in_channels, 2, stride=2)
 
     def get_downsample_op_3d(self):
-        """Creates the downsampling 3D operation."""
+        """
+Creates the downsampling 3D operation."""
         return torch.nn.Sequential(
             torch.nn.Conv3d(
                 self.in_channels, self.in_channels, [2, 2, 1], stride=[2, 2, 1]
@@ -255,7 +275,8 @@ class AnysotropicHybridResidual(torch.nn.Module):
         )
 
     def forward(self, X: torch.Tensor) -> torch.Tensor:
-        """Forward pass for this class.
+        """
+Forward pass for this class.
 
         Args:
             X (torch.Tensor)
@@ -268,7 +289,8 @@ class AnysotropicHybridResidual(torch.nn.Module):
         return out
 
     def convert_to_3d(self) -> None:
-        """Converts the layer from 2D to 3D, handling all of the necessary
+        """
+Converts the layer from 2D to 3D, handling all of the necessary
         weight transfers between layers.
         """
         if self.spatial_dim == 3:
@@ -294,7 +316,8 @@ class AnysotropicHybridResidual(torch.nn.Module):
             self.spatial_dim = 3
 
     def convert_to_2d(self) -> None:
-        """Converts the layer from 3D to 2D, handling all of the necessary
+        """
+Converts the layer from 3D to 2D, handling all of the necessary
         weight transfers between layers.
         """
         if self.spatial_dim == 2:
@@ -319,6 +342,14 @@ class AnysotropicHybridResidual(torch.nn.Module):
 
 
 class AnysotropicHybridInput(torch.nn.Module):
+    """
+    A 2D residual block that can be converted to a 3D residual block by
+    increasing the number of spatial dimensions in the filters. Used as the
+    input layer for AHNet. Here I also transfer the parameters from
+    `adn_fn`, particularly those belonging to activation/batch
+    normalization layers. Unlike `AnysotropicHybridResidual`, this cannot
+    be converted from 3D to 2D.
+    """
     def __init__(
         self,
         spatial_dim: int,
@@ -328,13 +359,7 @@ class AnysotropicHybridInput(torch.nn.Module):
         adn_fn: torch.nn.Module = torch.nn.Identity,
         adn_args: dict = {},
     ):
-        """A 2D residual block that can be converted to a 3D residual block by
-        increasing the number of spatial dimensions in the filters. Used as the
-        input layer for AHNet. Here I also transfer the parameters from
-        `adn_fn`, particularly those belonging to activation/batch
-        normalization layers. Unlike `AnysotropicHybridResidual`, this cannot
-        be converted from 3D to 2D.
-
+        """
         Args:
             spatial_dim (int): number of spatial dimensions.
             in_channels (int): number of input channels.
@@ -358,7 +383,8 @@ class AnysotropicHybridInput(torch.nn.Module):
             self.convert_to_3d()
 
     def init_layers(self):
-        """Initializes layers."""
+        """
+Initializes layers."""
         self.p = int(self.kernel_size // 2)
         self.op = torch.nn.Sequential(
             torch.nn.Conv2d(
@@ -372,7 +398,8 @@ class AnysotropicHybridInput(torch.nn.Module):
         )
 
     def forward(self, X: torch.Tensor) -> torch.Tensor:
-        """Forward pass for this class.
+        """
+Forward pass for this class.
 
         Args:
             X (torch.Tensor)
@@ -383,7 +410,8 @@ class AnysotropicHybridInput(torch.nn.Module):
         return self.op(X)
 
     def convert_to_3d(self) -> None:
-        """Converts the layer from 2D to 3D, handling all of the necessary
+        """
+Converts the layer from 2D to 3D, handling all of the necessary
         weight transfers between layers.
         """
         if self.spatial_dim == 3:

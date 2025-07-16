@@ -41,7 +41,9 @@ class BBToAdjustedAnchors(monai.transforms.Transform):
         self.setup_long_anchors()
 
     def setup_long_anchors(self):
-        """Sets anchors up."""
+        """
+        Sets anchors up.
+        """
         image_sh = np.array(self.input_sh)
         self.rel_sh = image_sh / self.output_sh
 
@@ -68,7 +70,8 @@ class BBToAdjustedAnchors(monai.transforms.Transform):
         classes: Iterable,
         shape: np.ndarray = None,
     ) -> np.ndarray:
-        """Converts a set of bounding box vertices into their anchor
+        """
+Converts a set of bounding box vertices into their anchor
         representation.
 
         Args:
@@ -158,7 +161,8 @@ class BBToAdjustedAnchors(monai.transforms.Transform):
     def adjusted_anchors_to_bb_vertices(
         self, anchor_map: np.ndarray
     ) -> tuple[np.ndarray, np.ndarray]:
-        """Converts an anchor map into the input anchors.
+        """
+Converts an anchor map into the input anchors.
 
         Args:
             anchor_map (np.ndarray): anchor map as produced by __call__.

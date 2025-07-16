@@ -9,7 +9,8 @@ from adell_mri.modules.layers.batch_ensemble import BatchEnsembleWrapper
 
 class GlobalPooling(torch.nn.Module):
     def __init__(self, mode: str = "max"):
-        """Wrapper for average and maximum pooling
+        """
+        Wrapper for average and maximum pooling
 
         Args:
             mode (str, optional): pooling mode. Can be one of "average" or
@@ -45,7 +46,8 @@ class DepthWiseSeparableConvolution2d(torch.nn.Module):
         padding: int = 1,
         adn_fn: torch.nn.Module = torch.nn.Identity,
     ):
-        """Depthwise separable convolution [1] for 2d inputs. Very lightweight
+        """
+Depthwise separable convolution [1] for 2d inputs. Very lightweight
         version of a standard convolutional operation with a relatively small
         drop in performance.
 
@@ -97,7 +99,8 @@ class DepthWiseSeparableConvolution3d(torch.nn.Module):
         padding: int = 1,
         adn_fn: torch.nn.Module = torch.nn.Identity,
     ):
-        """Depthwise separable convolution [1] for 3d inputs. Very lightweight
+        """
+Depthwise separable convolution [1] for 3d inputs. Very lightweight
         version of a standard convolutional operation with a relatively small
         drop in performance.
 
@@ -151,7 +154,8 @@ class ConvolutionalBlock2d(torch.nn.Module):
         stride: int = 1,
         padding: str = "valid",
     ):
-        """Assembles a set of blocks containing convolutions followed by
+        """
+Assembles a set of blocks containing convolutions followed by
         adn_fn operations. Used to quickly build convolutional neural
         networks.
 
@@ -180,7 +184,8 @@ class ConvolutionalBlock2d(torch.nn.Module):
         self.initialize_layers()
 
     def initialize_layers(self):
-        """Initialize the layers for this Module."""
+        """
+Initialize the layers for this Module."""
         self.mod_list = torch.nn.ModuleList()
         for i, o, k in zip(
             self.in_channels, self.out_channels, self.kernel_size
@@ -195,7 +200,8 @@ class ConvolutionalBlock2d(torch.nn.Module):
         self.op = torch.nn.Sequential(*self.mod_list)
 
     def forward(self, X: torch.Tensor) -> torch.Tensor:
-        """Forward pass for this Module.
+        """
+Forward pass for this Module.
 
         Args:
             X (torch.Tensor)
@@ -217,7 +223,8 @@ class ConvolutionalBlock3d(torch.nn.Module):
         stride: int = 1,
         padding: str = "valid",
     ):
-        """Assembles a set of blocks containing convolutions followed by
+        """
+Assembles a set of blocks containing convolutions followed by
         adn_fn operations. Used to quickly build convolutional neural
         networks.
 
@@ -246,7 +253,8 @@ class ConvolutionalBlock3d(torch.nn.Module):
         self.initialize_layers()
 
     def initialize_layers(self):
-        """Initialize the layers for this Module."""
+        """
+Initialize the layers for this Module."""
         self.mod_list = torch.nn.ModuleList()
         for i, o, k in zip(
             self.in_channels, self.out_channels, self.kernel_size
@@ -261,7 +269,8 @@ class ConvolutionalBlock3d(torch.nn.Module):
         self.op = torch.nn.Sequential(*self.mod_list)
 
     def forward(self, X: torch.Tensor) -> torch.Tensor:
-        """Forward pass for this Module.
+        """
+Forward pass for this Module.
 
         Args:
             X (torch.Tensor)
@@ -282,7 +291,8 @@ class DenseBlock(torch.nn.Module):
         structure_skip: List[int] = None,
         return_all: bool = False,
     ):
-        """Implementation of dense block with the possibility of including
+        """
+Implementation of dense block with the possibility of including
         skip connections for architectures such as U-Net++.
 
         Args:

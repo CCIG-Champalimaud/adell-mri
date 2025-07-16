@@ -43,7 +43,9 @@ def create_model(model_config):
 
 # Tests
 def test_forward_pass(create_model, model_config):
-    """Test the forward pass of ViTMaskedAutoEncoder."""
+    """
+    Test the forward pass of ViTMaskedAutoEncoder.
+    """
     model = create_model()
     batch_size = 2
 
@@ -68,7 +70,9 @@ def test_forward_pass(create_model, model_config):
     assert torch.all((mask == 0) | (mask == 1))
 
 def test_mask_fraction(create_model, model_config):
-    """Test that the mask fraction is approximately correct."""
+    """
+    Test that the mask fraction is approximately correct.
+    """
     mask_fraction = 0.4
     model = create_model(mask_fraction=mask_fraction)
 
@@ -87,7 +91,8 @@ def test_mask_fraction(create_model, model_config):
         f"Expected mask fraction {mask_fraction}, got {actual_mask_fraction}"
 
 def test_deterministic_masking(create_model, model_config):
-    """Test that masking is deterministic with the same seed."""
+    """
+Test that masking is deterministic with the same seed."""
     seed = 42
     model1 = create_model(seed=seed)
     model2 = create_model(seed=seed)

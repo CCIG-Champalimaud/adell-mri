@@ -107,41 +107,51 @@ class Metrics:
 
     # aggregates
     def calc_auroc(self, subject_list: Optional[List[str]] = None) -> float:
-        """Calculate case-level Area Under the Receiver Operating Characteristic curve (AUROC)"""
+        """
+        Calculate case-level Area Under the Receiver Operating Characteristic curve (AUROC)
+        """
         return self.calculate_ROC(subject_list=subject_list)["AUROC"]
 
     @property
     def auroc(self) -> float:
-        """Calculate case-level Area Under the Receiver Operating Characteristic curve (AUROC)"""
+        """
+        Calculate case-level Area Under the Receiver Operating Characteristic curve (AUROC)
+        """
         return self.calc_auroc()
 
     def calc_AP(self, subject_list: Optional[List[str]] = None) -> float:
-        """Calculate Average Precision"""
+        """
+Calculate Average Precision"""
         return self.calculate_precision_recall(subject_list=subject_list)["AP"]
 
     @property
     def AP(self) -> float:
-        """Calculate Average Precision"""
+        """
+Calculate Average Precision"""
         return self.calc_AP()
 
     @property
     def num_cases(self) -> int:
-        """Calculate the number of cases"""
+        """
+Calculate the number of cases"""
         return len(self.subject_list)
 
     @property
     def num_lesions(self) -> int:
-        """Calculate the number of ground truth lesions"""
+        """
+Calculate the number of ground truth lesions"""
         return sum([is_lesion for is_lesion, *_ in self.lesion_results_flat])
 
     @property
     def score(self):
-        """Calculate the ranking score, as used in the PI-CAI 22 Grand Challenge"""
+        """
+Calculate the ranking score, as used in the PI-CAI 22 Grand Challenge"""
         return (self.auroc + self.AP) / 2
 
     # lesion-level results
     def get_lesion_results_flat(self, subject_list: Optional[List[str]] = None):
-        """Flatten the per-case lesion evaluation results into a single list"""
+        """
+Flatten the per-case lesion evaluation results into a single list"""
         if subject_list is None:
             subject_list = self.subject_list
 
@@ -155,13 +165,15 @@ class Metrics:
 
     @property
     def lesion_results_flat(self) -> List[Tuple[int, float, float]]:
-        """Flatten the per-case y_list"""
+        """
+Flatten the per-case y_list"""
         return self.get_lesion_results_flat()
 
     def get_lesion_weight_flat(
         self, subject_list: Optional[List[str]] = None
     ) -> List[float]:
-        """Retrieve lesion-wise sample weights (for a given subset of cases)"""
+        """
+Retrieve lesion-wise sample weights (for a given subset of cases)"""
         if subject_list is None:
             subject_list = self.subject_list
 
@@ -174,32 +186,38 @@ class Metrics:
 
     @property
     def lesion_weight_flat(self) -> List[float]:
-        """Retrieve lesion-wise sample weights (for a given subset of cases)"""
+        """
+Retrieve lesion-wise sample weights (for a given subset of cases)"""
         return self.get_lesion_weight_flat()
 
     @property
     def precision(self) -> "npt.NDArray[np.float64]":
-        """Calculate lesion-level precision at each threshold"""
+        """
+Calculate lesion-level precision at each threshold"""
         return self.calculate_precision_recall()["precision"]
 
     @property
     def recall(self) -> "npt.NDArray[np.float64]":
-        """Calculate lesion-level recall at each threshold"""
+        """
+Calculate lesion-level recall at each threshold"""
         return self.calculate_precision_recall()["recall"]
 
     @property
     def lesion_TP(self) -> "npt.NDArray[np.float64]":
-        """Calculate number of true positive lesion detections at each threshold"""
+        """
+Calculate number of true positive lesion detections at each threshold"""
         return self.calculate_counts()["TP"]
 
     @property
     def lesion_FP(self) -> "npt.NDArray[np.float64]":
-        """Calculate number of false positive lesion detections at each threshold"""
+        """
+Calculate number of false positive lesion detections at each threshold"""
         return self.calculate_counts()["FP"]
 
     @property
     def lesion_TPR(self) -> "npt.NDArray[np.float64]":
-        """Calculate lesion-level true positive rate (sensitivity) at each threshold"""
+        """
+Calculate lesion-level true positive rate (sensitivity) at each threshold"""
         if self.num_lesions > 0:
             return self.lesion_TP / self.num_lesions
         else:
@@ -207,30 +225,35 @@ class Metrics:
 
     @property
     def lesion_FPR(self) -> "npt.NDArray[np.float64]":
-        """Calculate lesion-level false positive rate (number of false positives per case) at each threshold"""
+        """
+Calculate lesion-level false positive rate (number of false positives per case) at each threshold"""
         return self.lesion_FP / self.num_cases
 
     # case-level results
     def calc_case_TPR(
         self, subject_list: Optional[List[str]] = None
     ) -> "npt.NDArray[np.float64]":
-        """Calculate case-level true positive rate (sensitivity) at each threshold"""
+        """
+Calculate case-level true positive rate (sensitivity) at each threshold"""
         return self.calculate_ROC(subject_list=subject_list)["TPR"]
 
     @property
     def case_TPR(self) -> "npt.NDArray[np.float64]":
-        """Calculate case-level true positive rate (sensitivity) at each threshold"""
+        """
+Calculate case-level true positive rate (sensitivity) at each threshold"""
         return self.calc_case_TPR()
 
     def calc_case_FPR(
         self, subject_list: Optional[List[str]] = None
     ) -> "npt.NDArray[np.float64]":
-        """Calculate case-level false positive rate (1 - specificity) at each threshold"""
+        """
+Calculate case-level false positive rate (1 - specificity) at each threshold"""
         return self.calculate_ROC(subject_list=subject_list)["FPR"]
 
     @property
     def case_FPR(self) -> "npt.NDArray[np.float64]":
-        """Calculate case-level false positive rate (1 - specificity) at each threshold"""
+        """
+Calculate case-level false positive rate (1 - specificity) at each threshold"""
         return self.calc_case_FPR()
 
     # supporting functions
@@ -426,7 +449,8 @@ class Metrics:
         }
 
     def load_metrics(self, file_path: PathLike):
-        """Read metrics from disk"""
+        """
+Read metrics from disk"""
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"Metrics not found at {file_path}!")
 
@@ -436,7 +460,8 @@ class Metrics:
         return metrics
 
     def load(self, path: PathLike):
-        """Load metrics from file"""
+        """
+Load metrics from file"""
         metrics = self.load_metrics(path)
 
         # parse metrics
@@ -469,14 +494,16 @@ class Metrics:
 
 
 def read_label(path: PathLike) -> "npt.NDArray[np.int32]":
-    """Read label, given a filepath"""
+    """
+Read label, given a filepath"""
     # read label and ensure correct dtype
     lbl: "npt.NDArray[np.int32]" = np.array(read_image(path), dtype=np.int32)
     return lbl
 
 
 def read_image(path: PathLike):
-    """Read image, given a filepath"""
+    """
+Read image, given a filepath"""
     if isinstance(path, Path):
         path = path.as_posix()
     else:
@@ -499,7 +526,8 @@ def read_image(path: PathLike):
 def calculate_dsc(
     y_det: "npt.NDArray[np.float32]", y_true: "npt.NDArray[np.int32]"
 ) -> float:
-    """Calculate Dice similarity coefficient (DSC) for N-D Arrays"""
+    """
+Calculate Dice similarity coefficient (DSC) for N-D Arrays"""
     epsilon = 1e-8
     dsc_num = np.sum(y_det[y_true == 1]) * 2.0
     dsc_denom = np.sum(y_det) + np.sum(y_true)
@@ -509,7 +537,8 @@ def calculate_dsc(
 def parse_detection_map(
     y_det: "npt.NDArray[np.float32]",
 ) -> "Tuple[Dict[int, float], npt.NDArray[np.int32]]":
-    """Extract confidence scores per lesion candidate"""
+    """
+Extract confidence scores per lesion candidate"""
     # label all non-connected components in the detection map
     blobs_index, num_blobs = ndimage.label(y_det, structure=label_structure)
 
@@ -533,7 +562,8 @@ def parse_detection_map(
 def calculate_iou(
     y_det: "npt.NDArray[np.float32]", y_true: "npt.NDArray[np.int32]"
 ) -> float:
-    """Calculate Intersection over Union (IoU) for N-D Arrays"""
+    """
+Calculate Intersection over Union (IoU) for N-D Arrays"""
     epsilon = 1e-8
     iou_num = np.sum(y_det[y_true == 1])
     iou_denom = np.sum(y_det) + np.sum(y_true) - iou_num
@@ -541,7 +571,8 @@ def calculate_iou(
 
 
 def read_prediction(path: PathLike) -> "npt.NDArray[np.float32]":
-    """Read prediction, given a filepath"""
+    """
+Read prediction, given a filepath"""
     # read prediction and ensure correct dtype
     pred: "npt.NDArray[np.float32]" = np.array(
         read_image(path), dtype=np.float32

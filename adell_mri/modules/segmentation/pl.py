@@ -1,3 +1,7 @@
+"""
+PyTorch Lightning wrapper for UNet modules.
+"""
+
 import gc
 from abc import ABC
 from typing import Callable, Dict, List, Tuple
@@ -31,6 +35,17 @@ from adell_mri.modules.segmentation.unetr import (
 def binary_iou_manual(
     pred: torch.Tensor, truth: torch.Tensor
 ) -> Tuple[torch.Tensor, torch.Tensor]:
+    """
+    Calculates the intersection over union (IoU) for binary segmentation.
+    Useful for debugging.
+
+    Args:
+        pred (torch.Tensor): predicted segmentation.
+        truth (torch.Tensor): ground truth segmentation.
+
+    Returns:
+        Tuple[torch.Tensor, torch.Tensor]: intersection and union.
+    """
     binary_pred = pred > 0.5
     intersection = torch.logical_and(binary_pred, truth == 1)
     intersection = intersection.sum()
@@ -39,6 +54,17 @@ def binary_iou_manual(
 
 
 def split(x: torch.Tensor, n_splits: int, dim: int) -> torch.Tensor:
+    """
+    Splits a tensor into `n_splits` along the given dimension.
+
+    Args:
+        x (torch.Tensor): tensor to split.
+        n_splits (int): number of splits.
+        dim (int): dimension along which to split.
+
+    Returns:
+        torch.Tensor: split tensor.
+    """
     size = int(x.shape[dim] // n_splits)
     return torch.split(x, size, dim)
 
@@ -48,7 +74,8 @@ def get_lesions(
     threshold: float | str = 0.1,
     extract_lesions: bool = False,
 ) -> np.ndarray:
-    """Wrapper for getting lesions using extract_lesion_candidates.
+    """
+    Wrapper for getting lesions using extract_lesion_candidates.
 
     Args:
         x (torch.Tensor): input tensor with segmentation probabilities.
@@ -75,7 +102,8 @@ def update_metrics(
     y_class: torch.Tensor,
     **kwargs,
 ) -> None:
-    """Wraper function to update metrics.
+    """
+    Wraper function to update metrics.
 
     Args:
         cls (pl.LightningModule): a wraper function.
@@ -120,6 +148,21 @@ def get_metric_dict(
     prefix: str = "",
     dev: str = None,
 ) -> Dict[str, torchmetrics.Metric]:
+    """
+    Returns a dictionary of metrics.
+
+    Args:
+        nc (int): number of classes.
+        bottleneck_classification (bool): whether to use bottleneck
+            classification.
+        metric_keys (List[str], optional): list of metric keys to include.
+            Defaults to None.
+        prefix (str, optional): prefix for metric names. Defaults to "".
+        dev (str, optional): device to move metrics to. Defaults to None.
+
+    Returns:
+        Dict[str, torchmetrics.Metric]: dictionary of metrics.
+    """
     metric_dict = torch.nn.ModuleDict({})
     if nc == 2:
         md = {
@@ -620,7 +663,8 @@ class UNetBasePL(pl.LightningModule, ABC):
 
 
 class UNetPL(UNet, UNetBasePL):
-    """Standard U-Net [1] implementation for Pytorch Lightning.
+    """
+    Standard U-Net [1] implementation for Pytorch Lightning.
 
     [1] https://www.nature.com/articles/s41592-018-0261-2
     """
@@ -708,7 +752,8 @@ class UNetPL(UNet, UNetBasePL):
 
 
 class UNETRPL(UNETR, UNetBasePL):
-    """Standard UNETR implementation for Pytorch Lightning."""
+    """
+Standard UNETR implementation for Pytorch Lightning."""
 
     def __init__(
         self,
@@ -791,7 +836,8 @@ class UNETRPL(UNETR, UNetBasePL):
 
 
 class SWINUNetPL(SWINUNet, UNetBasePL):
-    """Standard SWIN-UNet implementation for Pytorch Lightning."""
+    """
+Standard SWIN-UNet implementation for Pytorch Lightning."""
 
     def __init__(
         self,
@@ -875,7 +921,8 @@ class SWINUNetPL(SWINUNet, UNetBasePL):
 
 
 class MonaiSWINUNetPL(MonaiSWINUNet, UNetBasePL):
-    """MONAI SWIN-UNet for Pytorch Lightning."""
+    """
+MONAI SWIN-UNet for Pytorch Lightning."""
 
     def __init__(
         self,
@@ -959,7 +1006,8 @@ class MonaiSWINUNetPL(MonaiSWINUNet, UNetBasePL):
 
 
 class MonaiUNETRPL(MonaiUNETR, UNetBasePL):
-    """MONAI UNETR for Pytorch Lightning."""
+    """
+MONAI UNETR for Pytorch Lightning."""
 
     def __init__(
         self,
@@ -1063,7 +1111,8 @@ class UNetPlusPlusPL(UNetPlusPlus, UNetBasePL):
         *args,
         **kwargs,
     ) -> torch.nn.Module:
-        """Standard U-Net++ [1] implementation for Pytorch Lightning.
+        """
+Standard U-Net++ [1] implementation for Pytorch Lightning.
 
         Args:
             image_key (str): key corresponding to the input from the train
@@ -1257,7 +1306,8 @@ class BrUNetPL(BrUNet, UNetBasePL):
         *args,
         **kwargs,
     ) -> torch.nn.Module:
-        """Standard U-Net [1] implementation for Pytorch Lightning.
+        """
+Standard U-Net [1] implementation for Pytorch Lightning.
 
         Args:
             image_keys (str): list of keys corresponding to the inputs from

@@ -33,6 +33,18 @@ class DinoLoss(torch.nn.Module):
         teacher_score_method: str = "center",
         sk_iterations: int = 3,
     ):
+        """
+        Args:
+            temperatures (float | tuple[float, float]): temperature for the
+                student and teacher networks.
+            n_features (int): number of features.
+            center_m (float, optional): momentum for center update. Defaults to
+                0.9.
+            teacher_score_method (str, optional): method for teacher score
+                calculation. Defaults to "center".
+            sk_iterations (int, optional): number of iterations for Sinkhorn-
+                Knopp centering. Defaults to 3.
+        """
         super().__init__()
         self.temperatures = temperatures
         self.n_features = n_features
@@ -55,11 +67,18 @@ class DinoLoss(torch.nn.Module):
         self.async_batch_center = None
 
     @property
-    def world_size(self):
+    def world_size(self) -> int:
+        """
+        Returns:
+            int: world size.
+        """
         return dist.get_world_size() if dist.is_initialized() else 1
 
     @torch.no_grad()
-    def apply_center_update(self):
+    def apply_center_update(self) -> None:
+        """
+        Applies center update.
+        """
         if self.updated is False:
             world_size = self.world_size
 
@@ -76,11 +95,23 @@ class DinoLoss(torch.nn.Module):
             self.updated = True
 
     @torch.no_grad()
-    def update_centers(self, x: torch.Tensor):
+    def update_centers(self, x: torch.Tensor) -> None:
+        """
+        Updates centers.
+
+        Args:
+            x (torch.Tensor): input tensor.
+        """
         self.reduce_center_update(x)
 
     @torch.no_grad()
-    def reduce_center_update(self, x: torch.Tensor):
+    def reduce_center_update(self, x: torch.Tensor) -> None:
+        """
+        Reduces center update.
+
+        Args:
+            x (torch.Tensor): input tensor.
+        """
         self.updated = False
         if len(x.shape) > 2:
             x = x.flatten(end_dim=-2)
@@ -91,18 +122,45 @@ class DinoLoss(torch.nn.Module):
                 self.async_batch_center, async_op=True
             )
 
-    def get_scores_teacher(self, x: torch.Tensor):
+    def get_scores_teacher(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Gets scores teacher.
+
+        Args:
+            x (torch.Tensor): input tensor.
+
+        Returns:
+            torch.Tensor: scores teacher.
+        """
         if self.teacher_score_method == "center":
             self.apply_center_update()
             return torch.softmax(x - self.centers / self.t2, dim=-1)
         elif self.teacher_score_method == "sk":
             return self.sinkhorn_knopp_teacher(x)
 
-    def get_log_scores_student(self, x: torch.Tensor):
+    def get_log_scores_student(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Gets log scores student.
+
+        Args:
+            x (torch.Tensor): input tensor.
+
+        Returns:
+            torch.Tensor: log scores student.
+        """
         return torch.log_softmax(x / self.t1, dim=-1)
 
     @torch.no_grad()
-    def sinkhorn_knopp_teacher(self, x: torch.Tensor):
+    def sinkhorn_knopp_teacher(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Sinkhorn-Knopp teacher.
+
+        Args:
+            x (torch.Tensor): input tensor.
+
+        Returns:
+            torch.Tensor: sinkhorn-knopp teacher.
+        """
         x = x.float()
         # .t() because Q is K-by-B for consistency with notations with paper
         x = x.flatten(end_dim=-2)
@@ -131,7 +189,17 @@ class DinoLoss(torch.nn.Module):
         Q *= B  # the columns must sum to 1 so that Q is an assignment
         return Q.t()
 
-    def forward(self, a: torch.Tensor, b: torch.Tensor):
+    def forward(self, a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
+        """
+        Forward pass.
+
+        Args:
+            a (torch.Tensor): input tensor.
+            b (torch.Tensor): input tensor.
+
+        Returns:
+            torch.Tensor: loss.
+        """
         loss = (
             torch.sum(
                 torch.multiply(

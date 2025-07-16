@@ -7,7 +7,8 @@ from adell_mri.modules.continuous_learning.optim import EarlyStopper
 
 
 class MultiPhaseTraining(Callback):
-    """Implements a learning rate routine that allows multiple learning rates
+    """
+Implements a learning rate routine that allows multiple learning rates
     to be specified over parameter groups. It also has an adaptive check for
     learning rate changes (if no improvement after `patience` epochs, the
     current phase is terminated). Works as a callback for PyTorch Lightning.
@@ -53,7 +54,8 @@ class MultiPhaseTraining(Callback):
         self.checker = EarlyStopper(self.patience, self.min_delta)
 
     def assertions(self):
-        """Convienice set of assertions called during initialization."""
+        """
+        Convienice set of assertions called during initialization."""
         assert len(self.learning_rates) == len(
             self.n_epochs
         ), "len(learning_rates) should be the same as len(n_epochs)"
@@ -67,7 +69,8 @@ class MultiPhaseTraining(Callback):
     def on_validation_epoch_end(
         self, trainer: pl.Trainer, pl_module: pl.LightningModule
     ):
-        """Updates the learning rate for the trainer.
+        """
+Updates the learning rate for the trainer.
 
         Args:
             trainer (pl.Trainer): a PyTorch Lightning trainer.

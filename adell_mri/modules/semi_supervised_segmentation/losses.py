@@ -26,7 +26,8 @@ def swap(xs: Sequence, a: int, b: int) -> None:
 def derangement(
     n: int, rng: np.random.Generator = None, seed: int = 42
 ) -> list[int]:
-    """Generate a derangement of n elements.
+    """
+    Generate a derangement of n elements.
 
     A derangement is a permutation of the elements 0..n-1 such that no element
     appears in its original position.

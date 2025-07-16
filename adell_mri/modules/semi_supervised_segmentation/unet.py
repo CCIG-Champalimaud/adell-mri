@@ -49,7 +49,8 @@ class UNetSemiSL(UNet):
         return_features=False,
         return_bottleneck=False,
     ) -> torch.Tensor:
-        """Forward pass for this class.
+        """
+        Forward pass for this class.
 
         Args:
             X (torch.Tensor)
@@ -137,7 +138,8 @@ class UNetSemiSL(UNet):
         X_feature_conditioning: torch.Tensor = None,
         apply_linear_transformation: bool = False,
     ) -> torch.Tensor:
-        """Forward pass for this class.
+        """
+Forward pass for this class.
 
         Args:
             X (torch.Tensor)

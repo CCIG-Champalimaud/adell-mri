@@ -46,7 +46,8 @@ def einops_rescale(X: torch.Tensor, scale: int = 1) -> torch.Tensor:
 
 
 def cyclic_shift_batch(X: torch.Tensor, shift: List[int]):
-    """Applies what the authors from SWIN call a "cyclic shift".
+    """
+    Applies what the authors from SWIN call a "cyclic shift".
 
     Args:
         X (:torch.Tensors): input tensor.
@@ -166,7 +167,8 @@ def image_mask_to_attention_mask(
 def generate_mask(
     image_size: Size2dOr3d, window_size: Size2dOr3d, shift_size: Size2dOr3d
 ) -> torch.Tensor:
-    """Masks the attention in a self-attention module in shifted inputs. A
+    """
+Masks the attention in a self-attention module in shifted inputs. A
     generalization of the mask generation in [1] for 2 and 3 dimensions.
 
     [1] https://github.com/microsoft/Swin-Transformer/blob/main/models/swin_transformer.py
@@ -336,7 +338,8 @@ class SliceLinearEmbedding(torch.nn.Module):
             )
 
     def init_linear_layers_if_necessary(self):
-        """Initialises a linear layers to convert to and from out_dim. This
+        """
+Initialises a linear layers to convert to and from out_dim. This
         allows for the linear embedding to have a different output without
         affecting the size of everything else in the image before and after
         the linear embedding.
@@ -355,7 +358,8 @@ class SliceLinearEmbedding(torch.nn.Module):
             self.true_n_features = self.embedding_size
 
     def forward(self, X):
-        """Forward pass.
+        """
+Forward pass.
 
         Args:
             X (torch.Tensor): a tensor with shape
@@ -384,7 +388,8 @@ class SliceLinearEmbedding(torch.nn.Module):
 
 
 class LinearEmbedding(torch.nn.Module):
-    """Linearly embeds images as described in the vision transformer paper
+    """
+Linearly embeds images as described in the vision transformer paper
     [1]. Essentially, it rearranges a given image of size [b,c,h,w] with a
     given patch size [p1,p2] such that the output is
     [b,c*(h//p1)*(w//p2),p1*p2]. This class also features the operations
@@ -497,7 +502,8 @@ class LinearEmbedding(torch.nn.Module):
         return self.out_dim if self.out_dim else self.n_features
 
     def init_conv_if_necessary(self):
-        """Initializes a convolutional if embed_method == "convolutional" """
+        """
+Initializes a convolutional if embed_method == "convolutional" """
         if self.embed_method == "convolutional":
             if self.n_dims == 2:
                 self.conv = torch.nn.Conv2d(
@@ -515,7 +521,8 @@ class LinearEmbedding(torch.nn.Module):
                 )
 
     def init_linear_layers_if_necessary(self):
-        """Initialises a linear layers to convert to and from out_dim. This
+        """
+Initialises a linear layers to convert to and from out_dim. This
         allows for the linear embedding to have a different output without
         affecting the size of everything else in the image before and after
         the linear embedding.
@@ -531,13 +538,15 @@ class LinearEmbedding(torch.nn.Module):
             self.map_to_in = torch.nn.Linear(self.out_dim, self.n_features)
 
     def init_dropout(self):
-        """Initialises the dropout operation that is applied after adding the
+        """
+Initialises the dropout operation that is applied after adding the
         positional embeddings to the sequence embeddings.
         """
         self.drop_op = torch.nn.Dropout(self.dropout_rate)
 
     def calculate_parameters(self):
-        """Calculates a few handy parameters for the linear embedding."""
+        """
+Calculates a few handy parameters for the linear embedding."""
         self.n_dims = len(self.image_size)
         if self.window_size is None:
             self.n_patches_split = [
@@ -565,21 +574,24 @@ class LinearEmbedding(torch.nn.Module):
         self.n_features = int(np.prod(self.patch_size) * extra_features)
 
     def initialize_classification_token(self):
-        """Initializes the classification token."""
+        """
+Initializes the classification token."""
         if self.use_class_token is True:
             self.class_token = torch.nn.Parameter(
                 torch.zeros([1, 1, self.true_n_features])
             )
 
     def initialize_registers(self):
-        """Initializes the transformer registers."""
+        """
+Initializes the transformer registers."""
         if self.n_registers > 0:
             self.registers = torch.nn.Parameter(
                 torch.zeros([1, self.n_registers, self.true_n_features])
             )
 
     def initialize_positional_embeddings(self):
-        """Initilizes the positional embedding with a truncated normal
+        """
+Initilizes the positional embedding with a truncated normal
         distribution.
         """
         if self.use_pos_embed is True:
@@ -655,7 +667,8 @@ class LinearEmbedding(torch.nn.Module):
         return lh, rh, einop_dict
 
     def get_einop_params(self):
-        """Defines all necessary einops constants. This reduces the amount of
+        """
+Defines all necessary einops constants. This reduces the amount of
         inference that einops.rearrange has to do internally and ensurest that
         this operation is a bit easier to inspect.
         """
@@ -737,7 +750,8 @@ class LinearEmbedding(torch.nn.Module):
         return einop_dict_l, einops_inv_str
 
     def rearrange(self, X: torch.Tensor) -> torch.Tensor:
-        """Applies einops.rearrange given the parameters inferred in
+        """
+Applies einops.rearrange given the parameters inferred in
         self.get_einop_params.
 
         Args:
@@ -754,7 +768,8 @@ class LinearEmbedding(torch.nn.Module):
         return X
 
     def rearrange_inverse_basic(self, X: torch.Tensor) -> torch.Tensor:
-        """Reverses the self.rearrange operation using the parameters inferred
+        """
+Reverses the self.rearrange operation using the parameters inferred
         in self.get_einop_params.
 
         Args:
@@ -773,7 +788,8 @@ class LinearEmbedding(torch.nn.Module):
         return X
 
     def rearrange_inverse(self, X: torch.Tensor, **kwargs) -> torch.Tensor:
-        """Reverses the self.rearrange operation using the parameters inferred
+        """
+Reverses the self.rearrange operation using the parameters inferred
         in self.get_einop_params.
 
         Args:
@@ -829,7 +845,8 @@ class LinearEmbedding(torch.nn.Module):
     def forward(
         self, X: torch.Tensor, no_pos_embed: bool = False
     ) -> torch.Tensor:
-        """Forward pass.
+        """
+Forward pass.
 
         Args:
             X (torch.Tensor): a tensor with shape
@@ -934,17 +951,20 @@ class TransformerBlock(torch.nn.Module):
         self.init_mlp()
 
     def init_drop_ops(self):
-        """Initializes the dropout operations."""
+        """
+Initializes the dropout operations."""
         self.drop_op_1 = torch.nn.Dropout(self.dropout_rate)
         self.drop_op_2 = torch.nn.Dropout(self.dropout_rate)
 
     def init_layer_norm_ops(self):
-        """Initializes the MLP in the last step of the transformer."""
+        """
+Initializes the MLP in the last step of the transformer."""
         self.norm_op_1 = torch.nn.LayerNorm(self.input_dim_primary)
         self.norm_op_2 = torch.nn.LayerNorm(self.input_dim_primary)
 
     def init_mlp(self):
-        """Initializes the MLP in the last step of the transformer."""
+        """
+Initializes the MLP in the last step of the transformer."""
         if isinstance(self.mlp_structure, list):
             struc = max(self.mlp_structure)
         else:
@@ -961,7 +981,8 @@ class TransformerBlock(torch.nn.Module):
         mask: torch.Tensor = None,
         return_attention: bool = False,
     ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
-        """Forward pass.
+        """
+Forward pass.
 
         Args:
             X (torch.Tensor): tensor of shape [...,self.input_dim_primary]
@@ -982,7 +1003,8 @@ class TransformerBlock(torch.nn.Module):
 
 
 class SWINTransformerBlock(torch.nn.Module):
-    """Shifted window transformer module."""
+    """
+Shifted window transformer module."""
 
     def __init__(
         self,
@@ -1121,7 +1143,8 @@ class SWINTransformerBlock(torch.nn.Module):
         )
 
     def init_drop_ops(self):
-        """Initializes the dropout operations."""
+        """
+Initializes the dropout operations."""
         self.drop_op_1 = torch.nn.Dropout(self.dropout_rate)
         self.drop_op_2 = torch.nn.Dropout(self.dropout_rate)
 
@@ -1137,7 +1160,8 @@ class SWINTransformerBlock(torch.nn.Module):
         return attention
 
     def roll(self, X: torch.Tensor, shifts: List[int]):
-        """Rolls a tensor along the last dimensions.
+        """
+Rolls a tensor along the last dimensions.
 
         Args:
             X (torch.Tensor): tensor to roll.
@@ -1152,7 +1176,8 @@ class SWINTransformerBlock(torch.nn.Module):
     def forward(
         self, X: torch.Tensor, scale: int = None
     ) -> Tuple[torch.Tensor, TensorList]:
-        """Forward pass, based on MONAI implementation [1].
+        """
+Forward pass, based on MONAI implementation [1].
 
         [1] https://docs.monai.io/en/stable/_modules/monai/networks/nets/swin_unetr.html
 
@@ -1203,7 +1228,8 @@ class SWINTransformerBlock(torch.nn.Module):
     def forward_old(
         self, X: torch.Tensor, scale: int = None
     ) -> Tuple[torch.Tensor, TensorList]:
-        """Forward pass.
+        """
+Forward pass.
 
         Args:
             X (torch.Tensor): tensor of shape
@@ -1231,7 +1257,8 @@ class SWINTransformerBlock(torch.nn.Module):
 
 
 class TransformerBlockStack(torch.nn.Module):
-    """Convenience function that stacks a series of transformer blocks."""
+    """
+Convenience function that stacks a series of transformer blocks."""
 
     def __init__(
         self,
@@ -1281,7 +1308,8 @@ class TransformerBlockStack(torch.nn.Module):
     def check_mlp_structure(
         self, x: Union[List[List[int]], List[int]]
     ) -> List[List[int]]:
-        """Checks and corrects the MLP structure to see that everything is
+        """
+Checks and corrects the MLP structure to see that everything is
         as expected.
 
         Args:
@@ -1301,7 +1329,8 @@ class TransformerBlockStack(torch.nn.Module):
     def convert_to_list_if_necessary(
         self, x: Union[List[int], int]
     ) -> List[int]:
-        """Checks and corrects inputs if necessary.
+        """
+Checks and corrects inputs if necessary.
 
         Args:
             x (Union[List[int],int]): integer or list of integers
@@ -1317,7 +1346,8 @@ class TransformerBlockStack(torch.nn.Module):
         return x
 
     def check_if_consistent(self, x: Sequence):
-        """Checks that the size of x is self.number_of_blocks
+        """
+Checks that the size of x is self.number_of_blocks
 
         Args:
             x (_type_): _description_
@@ -1325,7 +1355,8 @@ class TransformerBlockStack(torch.nn.Module):
         assert len(x) == self.number_of_blocks
 
     def init_transformer_blocks(self):
-        """Initialises the transformer blocks."""
+        """
+Initialises the transformer blocks."""
         input_dim_primary = self.convert_to_list_if_necessary(
             self.input_dim_primary
         )
@@ -1363,7 +1394,8 @@ class TransformerBlockStack(torch.nn.Module):
         Tuple[torch.Tensor, TensorList],
         Tuple[torch.Tensor, TensorList, TensorList],
     ]:
-        """Forward pass.
+        """
+Forward pass.
 
         Args:
             X (torch.Tensor): tensor of shape [...,self.input_dim_primary]
@@ -1404,7 +1436,8 @@ class TransformerBlockStack(torch.nn.Module):
 
 
 class SWINTransformerBlockStack(torch.nn.Module):
-    """Shifted window transformer stack module."""
+    """
+Shifted window transformer stack module."""
 
     def __init__(
         self,
@@ -1480,7 +1513,8 @@ class SWINTransformerBlockStack(torch.nn.Module):
     def convert_mlp_structure(
         self, x: Union[List[List[int]], List[int], float]
     ) -> List[List[int]]:
-        """Checks and corrects list structure to see that everything is
+        """
+Checks and corrects list structure to see that everything is
         as expected.
 
         Args:
@@ -1500,7 +1534,8 @@ class SWINTransformerBlockStack(torch.nn.Module):
     def convert_to_list_if_necessary(
         self, x: Union[List[int], int]
     ) -> List[int]:
-        """Checks and corrects inputs if necessary.
+        """
+Checks and corrects inputs if necessary.
 
         Args:
             x (Union[List[int],int]): integer or list of integers
@@ -1514,7 +1549,8 @@ class SWINTransformerBlockStack(torch.nn.Module):
             return self.check_if_consistent(x)
 
     def check_if_consistent(self, x: Sequence):
-        """Checks that the size of x is self.number_of_blocks
+        """
+Checks that the size of x is self.number_of_blocks
 
         Args:
             x (Sequence): _description_
@@ -1561,7 +1597,8 @@ class SWINTransformerBlockStack(torch.nn.Module):
     def forward(
         self, X: torch.Tensor, scale: int = 1
     ) -> Tuple[torch.Tensor, TensorList]:
-        """Forward pass.
+        """
+Forward pass.
 
         Args:
             X (torch.Tensor): tensor of shape
@@ -1580,7 +1617,8 @@ class SWINTransformerBlockStack(torch.nn.Module):
 
 
 class ViT(torch.nn.Module):
-    """Vision transformer module. Put more simply, it is the
+    """
+Vision transformer module. Put more simply, it is the
     concatenation of a LinearEmbedding and a TransformberBlockStack [1]. This
     model includes the possibility of PatchErasing regularization [2].
 
@@ -1732,7 +1770,8 @@ class ViT(torch.nn.Module):
     def forward(
         self, X: torch.Tensor, return_at: Union[str, List[int]] = "end"
     ) -> Tuple[torch.Tensor, TensorList]:
-        """Forward pass.
+        """
+Forward pass.
 
         Args:
             X (torch.Tensor): tensor of shape
@@ -1764,7 +1803,8 @@ class ViT(torch.nn.Module):
 
 
 class FactorizedViT(torch.nn.Module):
-    """Factorized vision transformer module. Put more simply, it is the
+    """
+Factorized vision transformer module. Put more simply, it is the
     concatenation of a SliceLinearEmbedding and two TransformberBlockStack [1]
     (corresponding to within and between slice interactions). This model
     includes the possibility of PatchErasing regularization [2].
@@ -1913,7 +1953,8 @@ class FactorizedViT(torch.nn.Module):
             )
 
     def forward(self, X: torch.Tensor) -> Tuple[torch.Tensor, TensorList]:
-        """Forward pass.
+        """
+Forward pass.
 
         Args:
             X (torch.Tensor): tensor of shape

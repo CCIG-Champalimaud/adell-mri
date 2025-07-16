@@ -1,3 +1,7 @@
+"""
+Regularization layers.
+"""
+
 from typing import Tuple
 
 import torch
@@ -32,7 +36,8 @@ class UOut(torch.nn.Module):
         self.beta = beta
 
     def forward(self, X: torch.Tensor) -> torch.Tensor:
-        """Forward pass for this Module.
+        """
+Forward pass for this Module.
 
         Args:
             X (torch.Tensor): Tensor
@@ -54,7 +59,8 @@ class UOut(torch.nn.Module):
 
 class LayerNorm(torch.nn.Module):
     # from: https://github.com/facebookresearch/VICRegL/blob/main/convnext.py
-    r"""LayerNorm that supports two data formats: channels_last (default) or
+    r"""
+LayerNorm that supports two data formats: channels_last (default) or
     channels_first. The ordering of the dimensions in the inputs. channels_last
     corresponds to inputs with shape (batch_size, height, width, channels) while
     channels_first corresponds to inputs with shape (batch_size, channels, height,
@@ -88,7 +94,8 @@ class LayerNorm(torch.nn.Module):
 
 class LayerNormChannelsFirst(torch.nn.Module):
     # adapted from: https://github.com/facebookresearch/VICRegL/blob/main/convnext.py
-    r"""LayerNorm that supports channels_first."""
+    r"""
+LayerNorm that supports channels_first."""
 
     def __init__(self, normalized_shape, eps=1e-6):
         super().__init__()
@@ -189,7 +196,8 @@ class GRN(torch.nn.Module):
 
 class ChannelDropout(torch.nn.Module):
     def __init__(self, dropout_prob: float, channel_axis: int = 1):
-        """Drops out random channels rather than random cells in the Tensor.
+        """
+Drops out random channels rather than random cells in the Tensor.
 
         Args:
             dropout_prob (float): probability of dropout.

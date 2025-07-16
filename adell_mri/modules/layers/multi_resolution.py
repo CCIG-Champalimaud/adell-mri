@@ -1,3 +1,7 @@
+"""
+Multi-resolution feature pyramid network.
+"""
+
 from typing import List, Tuple, Union
 
 import torch
@@ -22,7 +26,8 @@ class FeaturePyramidNetworkBackbone(torch.nn.Module):
         ] = None,
         adn_fn: torch.nn.Module = torch.nn.Identity,
     ):
-        """Feature pyramid network. Aggregates the intermediate features from a
+        """
+Feature pyramid network. Aggregates the intermediate features from a
         given backbone with `backbone.forward(X,return_intermediate=Trues)`.
 
         Args:
@@ -104,7 +109,8 @@ class GCN2d(torch.nn.Module):
         adn_fn: torch.nn.Module = torch.nn.Identity,
         adn_args: dict = {},
     ):
-        """Global convolution network module. First introduced in [1]. Useful
+        """
+Global convolution network module. First introduced in [1]. Useful
         with very large kernel sizes to get information from very distant
         pixels. In essence, a n*n convolution is decomposed into two separate
         branches, where one is two convolutions (1*n->n*1) and the other is
@@ -132,7 +138,8 @@ class GCN2d(torch.nn.Module):
         self.init_layers()
 
     def init_layers(self):
-        """Initializes layers."""
+        """
+Initializes layers."""
         self.op1 = torch.nn.Sequential(
             torch.nn.Conv2d(
                 self.in_channels,
@@ -178,7 +185,8 @@ class SpatialPyramidPooling2d(torch.nn.Module):
         filter_sizes: List[int],
         adn_fn: torch.nn.Module = torch.nn.Identity,
     ):
-        """Spatial pyramid pooling for 2d inputs. Applies a set of differently
+        """
+Spatial pyramid pooling for 2d inputs. Applies a set of differently
         sized filters to an input and then concatenates the output of each
         filter.
 
@@ -236,7 +244,8 @@ class SpatialPyramidPooling3d(torch.nn.Module):
         filter_sizes: List[int],
         adn_fn: torch.nn.Module = torch.nn.Identity,
     ):
-        """Spatial pyramid pooling for 3d inputs. Applies a set of differently
+        """
+Spatial pyramid pooling for 3d inputs. Applies a set of differently
         sized filters to an input and then concatenates the output of each
         filter.
 
@@ -295,7 +304,8 @@ class AtrousSpatialPyramidPooling2d(torch.nn.Module):
         rates: List[int],
         adn_fn: torch.nn.Module = torch.nn.Identity,
     ):
-        """Atrous spatial pyramid pooling for 2d inputs. Applies a set of
+        """
+Atrous spatial pyramid pooling for 2d inputs. Applies a set of
         differently sized dilated filters to an input and then concatenates
         the output of each  filter. Similar to SpatialPyramidPooling2d but
         much less computationally demanding.
@@ -354,7 +364,8 @@ class AtrousSpatialPyramidPooling3d(torch.nn.Module):
         rates: List[int],
         adn_fn: torch.nn.Module = torch.nn.Identity,
     ):
-        """Atrous spatial pyramid pooling for 3d inputs. Applies a set of
+        """
+Atrous spatial pyramid pooling for 3d inputs. Applies a set of
         differently sized dilated filters to an input and then concatenates
         the output of each  filter. Similar to SpatialPyramidPooling3d but
         much less computationally demanding.
@@ -413,7 +424,8 @@ class ReceptiveFieldBlock2d(torch.nn.Module):
         rates: List[int],
         adn_fn: torch.nn.Module = torch.nn.Identity,
     ):
-        """Receptive field block for 2d inputs [1]. A mid ground between a
+        """
+Receptive field block for 2d inputs [1]. A mid ground between a
         residual operator and AtrousSpatialPyramidPooling2d - a series of
         dilated convolutions is applied to the input, the output of these
         dilated convolutions is concatenated and added to the input.
@@ -483,7 +495,8 @@ class ReceptiveFieldBlock3d(torch.nn.Module):
         rates: List[int],
         adn_fn: torch.nn.Module = torch.nn.Identity,
     ):
-        """Receptive field block for 3d inputs [1]. A mid ground between a
+        """
+Receptive field block for 3d inputs [1]. A mid ground between a
         residual operator and AtrousSpatialPyramidPooling3d - a series of
         dilated convolutions is applied to the input, the output of these
         dilated convolutions is concatenated and added to the input.
@@ -551,7 +564,8 @@ class ReceptiveFieldBlock3d(torch.nn.Module):
 
 class PyramidSpatialPooling3d(torch.nn.Module):
     def __init__(self, in_channels: int, levels: List[float]):
-        """Pyramidal spatial pooling layer. In this operation, the image is
+        """
+Pyramidal spatial pooling layer. In this operation, the image is
         first downsample at different levels and convolutions are applied to
         the downsampled image, retrieving features at different resoltuions [1].
         Quite similar to other, more recent developments encompassing atrous

@@ -1,3 +1,7 @@
+"""
+ResNet backbone and ResNet backbone.
+"""
+
 from typing import OrderedDict
 
 import torch
@@ -21,7 +25,8 @@ from adell_mri.modules.layers.standard_blocks import (
 
 
 def resnet_to_encoding_ops(res_net: List[torch.nn.Module]) -> ModuleList:
-    """Convenience function generating UNet encoder from ResNet.
+    """
+Convenience function generating UNet encoder from ResNet.
 
     Args:
         res_net (torch.nn.Module): a list of ResNet objects.

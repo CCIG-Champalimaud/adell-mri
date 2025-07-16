@@ -377,7 +377,8 @@ def safe_collate_crops(X: list[list[TensorIterable]]) -> list[TensorIterable]:
 
 
 def load_anchors(path: str) -> np.ndarray:
-    """Loads anchor boxes from a CSV file.
+    """
+    Loads anchor boxes from a CSV file.
 
     Args:
         path (str): Path to the CSV file containing anchor boxes.

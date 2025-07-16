@@ -1,3 +1,7 @@
+"""
+Implements iBOT.
+"""
+
 from typing import Any
 
 import torch

@@ -336,7 +336,8 @@ class NormalizedActivation(torch.nn.Module):
         U: int = 1.2,
     ):
         super().__init__()
-        """Normalized activations from Peiwen et al. [1]. The idea is quite 
+        """
+        Normalized activations from Peiwen et al. [1]. The idea is quite 
         clever - given observations that, while layer outputs may be 
         normalised, gradients are not, the authors normalise the activation
         functions in such a way that approximates normalised gradients. In 

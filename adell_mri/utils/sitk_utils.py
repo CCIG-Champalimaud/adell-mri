@@ -120,7 +120,8 @@ def resample_image(
     out_size: List[int] = None,
     is_label: bool = False,
 ) -> sitk.Image:
-    """Resamples a SimpleITK image to a specified output spacing and size.
+    """
+    Resamples a SimpleITK image to a specified output spacing and size.
 
     Args:
       sitk_image: The SimpleITK image to resample.

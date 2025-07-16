@@ -1,3 +1,7 @@
+"""
+Batch ensemble layer.
+"""
+
 from typing import Callable
 
 import numpy as np
@@ -8,6 +12,13 @@ from adell_mri.modules.layers.utils import unsqueeze_to_target
 
 
 class BatchEnsemble(torch.nn.Module):
+    """
+    Batch ensemble layer. Instantiates a linear/convolutional layer (depending 
+    on spatial_dim) and, given a forward pass, scales the channels before and 
+    after the application of the linear/convolutional layer. Details in [1].
+
+    [1] https://arxiv.org/abs/2002.06715
+    """
     def __init__(
         self,
         spatial_dim: int,
@@ -18,13 +29,7 @@ class BatchEnsemble(torch.nn.Module):
         op_kwargs: dict = None,
         res_blocks: bool = False,
     ):
-        """Batch ensemble layer. Instantiates a linear/convolutional layer
-        (depending on spatial_dim) and, given a forward pass, scales the
-        channels before and after the application of the linear/convolutional
-        layer. Details in [1].
-
-        [1] https://arxiv.org/abs/2002.06715
-
+        """
         Args:
             spatial_dim (int): number of spatial dimensions (has to be 0, 1, 2
                 or 3).
@@ -142,6 +147,12 @@ class BatchEnsemble(torch.nn.Module):
 
 
 class BatchEnsembleWrapper(torch.nn.Module):
+    """
+    Batch ensemble layer. Wraps a generic module and applies batch
+    ensemble accordingly. Details in [1].
+
+    [1] https://arxiv.org/abs/2002.06715
+    """
     def __init__(
         self,
         mod: torch.nn.Module,
@@ -150,11 +161,7 @@ class BatchEnsembleWrapper(torch.nn.Module):
         out_channels: int,
         adn_fn: Callable = torch.nn.Identity,
     ):
-        """Batch ensemble layer. Wraps a generic module and applies batch
-        ensemble accordingly. Details in [1].
-
-        [1] https://arxiv.org/abs/2002.06715
-
+        """
         Args:
             mod (torch.nn.Module): Torch module.
             n (int): size of the ensemble.

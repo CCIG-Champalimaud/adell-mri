@@ -25,7 +25,8 @@ def normalize(x: np.ndarray | torch.Tensor) -> np.ndarray | torch.Tensor:
 
 
 def crop_to_square(x: np.ndarray) -> np.ndarray:
-    """Crops the input array x to a square shape.
+    """
+    Crops the input array x to a square shape.
 
     Finds the minimum size in the array shape, calculates padding needed on
     each side to make it square, pads and crops to return a square array.

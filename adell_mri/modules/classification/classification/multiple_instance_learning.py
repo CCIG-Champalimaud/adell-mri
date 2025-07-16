@@ -10,7 +10,8 @@ from adell_mri.modules.layers.vit import TransformerBlockStack
 
 
 class MILAttention(torch.nn.Module):
-    """Attention module for multiple instance learning [1]. The attention is
+    """
+    Attention module for multiple instance learning [1]. The attention is
     calculated as the softmax of the sigmoid-gated hyperbolic tangent of the
     input, i.e.
         $A = \mathrm{softmax}(\mathrm{tanh}(A * V) * \mathrm{sigmoid}(A * U))$
@@ -239,7 +240,8 @@ class MultipleInstanceClassifier(torch.nn.Module):
     def forward(
         self, X: torch.Tensor, return_attention: bool = False
     ) -> torch.Tensor:
-        """Forward pass.
+        """
+Forward pass.
 
         Args:
             X (torch.Tensor): input tensor.
@@ -392,7 +394,8 @@ class TransformableTransformer(torch.nn.Module):
             )
 
     def iter_over_dim(self, X: torch.Tensor) -> torch.Tensor:
-        """Iterates a tensor along the dim specified in the constructor.
+        """
+Iterates a tensor along the dim specified in the constructor.
 
         Args:
             X (torch.Tensor): a tensor with shape [b,c,h,w,d].
@@ -437,7 +440,8 @@ class TransformableTransformer(torch.nn.Module):
     def forward(
         self, X: torch.Tensor, return_attention: bool = False
     ) -> torch.Tensor:
-        """Forward pass.
+        """
+Forward pass.
 
         Args:
             X (torch.Tensor): input tensor.

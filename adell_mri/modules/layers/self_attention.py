@@ -1,3 +1,7 @@
+"""
+Spatial self-attention modules.
+"""
+
 import einops
 import numpy as np
 import torch
@@ -7,7 +11,8 @@ from adell_mri.modules.layers.linear_blocks import MultiHeadSelfAttention
 
 class SpatialSqueezeAndExcite2d(torch.nn.Module):
     def __init__(self, input_channels: int):
-        """Spatial squeeze and excite layer [1] for 2d inputs. Basically a
+        """
+        Spatial squeeze and excite layer [1] for 2d inputs. Basically a
         modular attention mechanism.
 
         [1] https://arxiv.org/abs/1803.02579
@@ -34,7 +39,8 @@ class SpatialSqueezeAndExcite2d(torch.nn.Module):
 
 class SpatialSqueezeAndExcite3d(torch.nn.Module):
     def __init__(self, input_channels: int):
-        """Spatial squeeze and excite layer [1] for 3d inputs. Basically a
+        """
+        Spatial squeeze and excite layer [1] for 3d inputs. Basically a
         modular attention mechanism.
 
         [1] https://arxiv.org/abs/1803.02579
@@ -61,7 +67,8 @@ class SpatialSqueezeAndExcite3d(torch.nn.Module):
 
 class ChannelSqueezeAndExcite(torch.nn.Module):
     def __init__(self, input_channels: int):
-        """Channel squeeze and excite. A self-attention mechanism at the
+        """
+        Channel squeeze and excite. A self-attention mechanism at the
         channel level.
 
         Args:
@@ -94,7 +101,8 @@ class ChannelSqueezeAndExcite(torch.nn.Module):
 
 class ConcurrentSqueezeAndExcite2d(torch.nn.Module):
     def __init__(self, input_channels: int):
-        """Concurrent squeeze and excite for 2d inputs. Combines channel and
+        """
+        Concurrent squeeze and excite for 2d inputs. Combines channel and
         spatial squeeze and excite by adding the output of both.
 
         Args:
@@ -118,7 +126,8 @@ class ConcurrentSqueezeAndExcite2d(torch.nn.Module):
 
 class ConcurrentSqueezeAndExcite3d(torch.nn.Module):
     def __init__(self, input_channels: int):
-        """Concurrent squeeze and excite for 3d inputs. Combines channel and
+        """
+        Concurrent squeeze and excite for 3d inputs. Combines channel and
         spatial squeeze and excite by adding the output of both.
 
         Args:

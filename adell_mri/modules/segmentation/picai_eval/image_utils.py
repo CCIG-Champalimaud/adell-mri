@@ -61,7 +61,9 @@ def resize_image_with_crop_or_pad(image, img_size=(64, 64, 64), **kwargs):
 
 
 def read_image(path: PathLike):
-    """Read image, given a filepath"""
+    """
+    Read image, given a filepath.
+    """
     if isinstance(path, Path):
         path = path.as_posix()
     else:
@@ -82,7 +84,8 @@ def read_image(path: PathLike):
 
 
 def read_prediction(path: PathLike) -> "npt.NDArray[np.float32]":
-    """Read prediction, given a filepath"""
+    """
+Read prediction, given a filepath"""
     # read prediction and ensure correct dtype
     pred: "npt.NDArray[np.float32]" = np.array(
         read_image(path), dtype=np.float32
@@ -91,7 +94,8 @@ def read_prediction(path: PathLike) -> "npt.NDArray[np.float32]":
 
 
 def read_label(path: PathLike) -> "npt.NDArray[np.int32]":
-    """Read label, given a filepath"""
+    """
+Read label, given a filepath"""
     # read label and ensure correct dtype
     lbl: "npt.NDArray[np.int32]" = np.array(read_image(path), dtype=np.int32)
     return lbl

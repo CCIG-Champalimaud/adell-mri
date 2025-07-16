@@ -398,7 +398,8 @@ class DbscanAssistedSegmentSelection(monai.transforms.MapTransform):
 
 
 class CropFromMaskd(monai.transforms.MapTransform):
-    """Crops the input image(s) from a binary mask.
+    """
+    Crops the input image(s) from a binary mask.
 
     Finds the extremes of the positive class in the binary mask along each
     dimension. Uses these to crop the image(s) to the smallest box containing

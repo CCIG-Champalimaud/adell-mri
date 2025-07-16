@@ -121,7 +121,8 @@ class LoadIndividualDICOM(monai.transforms.Transform):
 
 
 class LoadIndividualDICOMd(monai.transforms.MapTransform):
-    """LoadIndividualDICOMd applies LoadIndividualDICOM transform to multiple keys.
+    """
+    LoadIndividualDICOMd applies LoadIndividualDICOM transform to multiple keys.
 
     LoadIndividualDICOMd takes a list of keys as input. For each key, it applies the
     LoadIndividualDICOM transform to the corresponding value in the input dictionary.
@@ -602,7 +603,8 @@ class BBToAdjustedAnchors(monai.transforms.Transform):
         classes: Iterable,
         shape: np.ndarray = None,
     ) -> np.ndarray:
-        """Converts a set of bounding box vertices into their anchor
+        """
+Converts a set of bounding box vertices into their anchor
         representation.
 
         Args:
@@ -692,7 +694,8 @@ class BBToAdjustedAnchors(monai.transforms.Transform):
     def adjusted_anchors_to_bb_vertices(
         self, anchor_map: np.ndarray
     ) -> tuple[np.ndarray, np.ndarray]:
-        """Converts an anchor map into the input anchors.
+        """
+Converts an anchor map into the input anchors.
 
         Args:
             anchor_map (np.ndarray): anchor map as produced by __call__.
@@ -2824,7 +2827,8 @@ class DbscanAssistedSegmentSelection(monai.transforms.MapTransform):
 
 
 class CropFromMaskd(monai.transforms.MapTransform):
-    """Crops the input image(s) from a binary mask.
+    """
+Crops the input image(s) from a binary mask.
 
     Finds the extremes of the positive class in the binary mask along each
     dimension. Uses these to crop the image(s) to the smallest box containing

@@ -1,3 +1,7 @@
+"""
+Segmentation losses for binary and multiclass classification cases.
+"""
+
 from typing import Any, Union
 
 import torch

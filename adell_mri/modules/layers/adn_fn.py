@@ -1,3 +1,7 @@
+"""
+Activation, dropout and normalisation builder.
+"""
+
 from typing import OrderedDict
 
 import torch
@@ -37,27 +41,14 @@ norm_fn_dict = {
 }
 
 
-def get_adn_fn(spatial_dim, norm_fn="batch", act_fn="swish", dropout_param=0.1):
-    if norm_fn not in norm_fn_dict:
-        raise NotImplementedError(
-            "norm_fn must be one of {}".format(norm_fn_dict.keys())
-        )
-    norm_fn = norm_fn_dict[norm_fn][spatial_dim]
-    if isinstance(act_fn, str):
-        if act_fn not in activation_factory:
-            raise NotImplementedError(
-                "act_fn must be function or one of {}".format(
-                    activation_factory.keys()
-                )
-            )
-        act_fn = activation_factory[act_fn]
 
-    return ActDropNormBuilder(
-        norm_fn=norm_fn, act_fn=act_fn, dropout_param=dropout_param
-    )
 
 
 class ActDropNorm(torch.nn.Module):
+    """
+    Convenience function to combine activation, dropout and normalisation. 
+    Similar to ADN in MONAI.
+    """
     def __init__(
         self,
         in_channels: int = None,
@@ -68,9 +59,7 @@ class ActDropNorm(torch.nn.Module):
         dropout_param: float = 0.0,
         inplace: bool = False,
     ):
-        """Convenience function to combine activation, dropout and
-        normalisation. Similar to ADN in MONAI.
-
+        """
         Args:
             in_channels (int, optional): number of input channels. Defaults to
                 None.
@@ -104,7 +93,9 @@ class ActDropNorm(torch.nn.Module):
         self.init_layers()
 
     def init_layers(self):
-        """Initiates the necessary layers."""
+        """
+        Initiates the necessary layers.
+        """
         if self.act_fn is None:
             self.act_fn = torch.nn.Identity
         if self.norm_fn is None:
@@ -138,7 +129,8 @@ class ActDropNorm(torch.nn.Module):
         return self.norm_fn(self.in_channels)
 
     def forward(self, X: torch.Tensor) -> torch.Tensor:
-        """Forward function.
+        """
+Forward function.
 
         Args:
             X (torch.Tensor)
@@ -150,6 +142,9 @@ class ActDropNorm(torch.nn.Module):
 
 
 class ActDropNormBuilder:
+    """
+    Builder for ActDropNorm modules.
+    """
     def __init__(
         self,
         ordering: str = "NDA",
@@ -158,6 +153,19 @@ class ActDropNormBuilder:
         dropout_fn: torch.nn.Module = torch.nn.Dropout,
         dropout_param: float = 0.0,
     ):
+        """
+        Args:
+            ordering (str, optional): ordering of the N(ormalization),
+                D(ropout) and A(ctivation) operations. Defaults to 'NDA'.
+            norm_fn (torch.nn.Module, optional): torch module used for
+                normalization. Defaults to torch.nn.BatchNorm2d.
+            act_fn (torch.nn.Module, optional): activation function. Defaults
+                to torch.nn.PReLU.
+            dropout_fn (torch.nn.Module, optional): Function used for dropout.
+                Defaults to torch.nn.Dropout.
+            dropout_param (float, optional): parameter for dropout. Defaults
+                to 0.
+        """
         super().__init__()
         self.ordering = ordering
         self.norm_fn = norm_fn
@@ -180,3 +188,25 @@ class ActDropNormBuilder:
             dropout_fn=self.dropout_fn,
             dropout_param=self.dropout_param,
         )
+
+def get_adn_fn(spatial_dim: int, norm_fn: str = "batch", act_fn: str = "swish", dropout_param: float = 0.1) -> ActDropNormBuilder:
+    """
+    Returns a function that builds an ActDropNorm module.
+    """
+    if norm_fn not in norm_fn_dict:
+        raise NotImplementedError(
+            "norm_fn must be one of {}".format(norm_fn_dict.keys())
+        )
+    norm_fn = norm_fn_dict[norm_fn][spatial_dim]
+    if isinstance(act_fn, str):
+        if act_fn not in activation_factory:
+            raise NotImplementedError(
+                "act_fn must be function or one of {}".format(
+                    activation_factory.keys()
+                )
+            )
+        act_fn = activation_factory[act_fn]
+
+    return ActDropNormBuilder(
+        norm_fn=norm_fn, act_fn=act_fn, dropout_param=dropout_param
+    )

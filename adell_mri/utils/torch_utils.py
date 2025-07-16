@@ -66,7 +66,8 @@ def get_class_weights(
     possible_labels: List[Any],
     label_groups: List[List[Any]] = None,
 ) -> List[float]:
-    """Computes class weights for imbalanced datasets.
+    """
+    Computes class weights for imbalanced datasets.
 
     Supports class weights passed directly, computed adaptively from class
     frequencies, or computed from label groups.
@@ -118,7 +119,8 @@ def conditional_parameter_freezing(
     do_not_freeze_regex: List[str] = None,
     state_dict: Dict[str, torch.Tensor] = None,
 ):
-    """Freezes (or not) parameters according to a list of regex and loads an
+    """
+Freezes (or not) parameters according to a list of regex and loads an
     optional state dict if frozen keys match dictionary.
 
     Args:
@@ -167,7 +169,8 @@ def set_classification_layer_bias(
     network: torch.nn.Module,
     class_substr: str = "classification",
 ):
-    """Sets the classification layer bias according to class prevalence in the
+    """
+Sets the classification layer bias according to class prevalence in the
     binary classification setting.
 
     Args:

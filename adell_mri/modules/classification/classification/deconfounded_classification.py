@@ -91,7 +91,8 @@ class DeconfoundedNet(VGG):
         Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]
         | torch.Tensor
     ):
-        """Forward method.
+        """
+        Forward method.
 
         Args:
             X (torch.Tensor): input tensor
@@ -293,7 +294,8 @@ class DeconfoundedNetGeneric(torch.nn.Module):
         Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]
         | torch.Tensor
     ):
-        """Forward method.
+        """
+Forward method.
 
         Args:
             X (torch.Tensor): input tensor

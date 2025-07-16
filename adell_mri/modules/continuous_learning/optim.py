@@ -14,7 +14,8 @@ def create_param_groups(
     kwargs_groups: List[Dict[str, Union[str, int, float, bool]]] = None,
     include_leftovers: bool = True,
 ) -> ParamGroupDict:
-    """Given a model `model` and a set of groups of variable names `var_groups`
+    """
+    Given a model `model` and a set of groups of variable names `var_groups`
     or substrings creates a torch.optim.Optimizer compatible list of
     dictionaries.
 
@@ -70,7 +71,8 @@ def create_param_groups(
 
 
 class EarlyStopper:
-    """Early stopping of training if the validation loss does not improve
+    """
+Early stopping of training if the validation loss does not improve
     after `patience` epochs.
 
     Based on https://stackoverflow.com/a/73704579

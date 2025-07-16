@@ -32,7 +32,8 @@ def keep_first_not_none(*args):
 
 
 def force_cudnn_initialization():
-    """Convenience function to initialise CuDNN (and avoid the lazy loading
+    """
+    Convenience function to initialise CuDNN (and avoid the lazy loading
     from PyTorch).
     """
     s = 16

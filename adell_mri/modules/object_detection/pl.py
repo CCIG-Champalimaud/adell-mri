@@ -58,7 +58,8 @@ class YOLONet3dPL(YOLONet3d, pl.LightningModule):
         *args,
         **kwargs,
     ) -> torch.nn.Module:
-        """YOLO-like network implementation for Pytorch Lightning.
+        """
+        YOLO-like network implementation for Pytorch Lightning.
 
         Args:
             image_key (str): key corresponding to the key from the train
@@ -442,7 +443,8 @@ class CoarseDetector3dPL(CoarseDetector3d, pl.LightningModule):
         *args,
         **kwargs,
     ) -> torch.nn.Module:
-        """YOLO-like network implementation for Pytorch Lightning.
+        """
+YOLO-like network implementation for Pytorch Lightning.
 
         Args:
             image_key (str): key corresponding to the key from the train

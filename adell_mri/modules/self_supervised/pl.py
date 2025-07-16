@@ -1,3 +1,7 @@
+"""
+Implements Lightning-based training utilities.
+"""
+
 import warnings
 from abc import ABC
 
@@ -145,7 +149,8 @@ class BarlowTwinsPL(ResNet, pl.LightningModule):
 
 
 class SelfSLBasePL(pl.LightningModule, ABC):
-    """Abstract method for non-contrastive PL modules. Features some very
+    """
+    Abstract method for non-contrastive PL modules. Features some very
     basic but helpful functions which I use consistently when training
     non-contrastive self-supervised models.
     """
@@ -1454,13 +1459,15 @@ class ViTMaskedAutoEncoderPL(pl.LightningModule):
         self.start_decay = start_decay
 
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        """Forward pass through the model."""
+        """
+Forward pass through the model."""
         return self.model(x)
 
     def training_step(
         self, batch: torch.Tensor, batch_idx: int
     ) -> torch.Tensor:
-        """Training step."""
+        """
+Training step."""
         x = batch[self.image_key]
         x_recon, mask = self(x)
 
@@ -1475,7 +1482,8 @@ class ViTMaskedAutoEncoderPL(pl.LightningModule):
     def validation_step(
         self, batch: torch.Tensor, batch_idx: int
     ) -> torch.Tensor:
-        """Validation step."""
+        """
+Validation step."""
         x = batch[self.image_key]
         x_recon, _ = self(x)
 
@@ -1487,7 +1495,8 @@ class ViTMaskedAutoEncoderPL(pl.LightningModule):
         return loss
 
     def test_step(self, batch: torch.Tensor, batch_idx: int) -> torch.Tensor:
-        """Test step."""
+        """
+Test step."""
         x = batch[self.image_key]
         x_recon, _ = self(x)
 
@@ -1499,7 +1508,8 @@ class ViTMaskedAutoEncoderPL(pl.LightningModule):
         return loss
 
     def configure_optimizers(self) -> torch.optim.Optimizer | dict:
-        """Configure optimizers and learning rate schedulers."""
+        """
+Configure optimizers and learning rate schedulers."""
         if self.n_steps:
             n = self.n_steps
             interval = "step"
@@ -1538,7 +1548,8 @@ class ViTMaskedAutoEncoderPL(pl.LightningModule):
         return optimizer
 
     def train_dataloader(self) -> torch.utils.data.DataLoader:
-        """Get training dataloader."""
+        """
+Get training dataloader."""
         if self.training_dataloader_call is None:
             raise ValueError(
                 "training_dataloader_call must be provided for training"

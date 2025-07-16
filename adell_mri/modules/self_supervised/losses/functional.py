@@ -1,3 +1,7 @@
+"""
+Implements functional versions of common self-supervised loss functions.
+"""
+
 from typing import Tuple
 
 import torch

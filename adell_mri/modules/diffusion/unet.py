@@ -83,7 +83,8 @@ class DiffusionUNet(UNet):
         )
 
     def get_final_layer(self, d: int) -> torch.nn.Module:
-        """Returns the final layer.
+        """
+        Returns the final layer.
 
         Args:
             d (int): depth.
@@ -103,7 +104,8 @@ class DiffusionUNet(UNet):
     def forward(
         self, X: torch.Tensor, t: torch.Tensor, cls: torch.Tensor = None
     ) -> torch.Tensor:
-        """Forward pass for this class.
+        """
+Forward pass for this class.
 
         Args:
             X (torch.Tensor)

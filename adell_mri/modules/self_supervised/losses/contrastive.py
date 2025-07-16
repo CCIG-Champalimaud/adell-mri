@@ -1,3 +1,7 @@
+"""
+Implements contrastive losses (KL divergence, contrastive distance loss, )
+"""
+
 from copy import deepcopy
 
 import torch

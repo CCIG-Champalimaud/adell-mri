@@ -46,14 +46,18 @@ def sample_data():
 
 
 def test_model_initialization(model_config):
-    """Test that the model initializes correctly."""
+    """
+    Test that the model initializes correctly.
+    """
     model = ViTMaskedAutoEncoderPL(**model_config)
     assert model is not None
     assert isinstance(model.criterion, torch.nn.MSELoss)
 
 
 def test_forward_pass(model_config, sample_data):
-    """Test the forward pass produces expected output shapes."""
+    """
+    Test the forward pass produces expected output shapes.
+    """
     model = ViTMaskedAutoEncoderPL(**model_config)
     x = sample_data
     x_recon, mask = model(x["image"])
@@ -67,7 +71,8 @@ def test_forward_pass(model_config, sample_data):
 
 
 def test_training_step(model_config, sample_data):
-    """Test that a training step runs without errors."""
+    """
+Test that a training step runs without errors."""
     model = ViTMaskedAutoEncoderPL(**model_config)
     batch = sample_data  # Mimic how batch comes from dataloader
     loss = model.training_step(batch, batch_idx=0)
@@ -76,7 +81,9 @@ def test_training_step(model_config, sample_data):
 
 
 def test_validation_step(model_config, sample_data):
-    """Test that a validation step runs without errors."""
+    """
+    Test that a validation step runs without errors.
+    """
     model = ViTMaskedAutoEncoderPL(**model_config)
     batch = sample_data  # Mimic how batch comes from dataloader
     loss = model.validation_step(batch, batch_idx=0)
@@ -85,7 +92,8 @@ def test_validation_step(model_config, sample_data):
 
 
 def test_test_step(model_config, sample_data):
-    """Test that a test step runs without errors."""
+    """
+Test that a test step runs without errors."""
     model = ViTMaskedAutoEncoderPL(**model_config)
     batch = sample_data  # Mimic how batch comes from dataloader
     loss = model.test_step(batch, batch_idx=0)
@@ -94,7 +102,8 @@ def test_test_step(model_config, sample_data):
 
 
 def test_optimizer_configuration(model_config):
-    """Test that the optimizer is configured correctly."""
+    """
+Test that the optimizer is configured correctly."""
     model = ViTMaskedAutoEncoderPL(**model_config)
     optim_conf = model.configure_optimizers()
 
@@ -123,7 +132,8 @@ def test_optimizer_configuration(model_config):
 
 
 def test_metrics(model_config, sample_data):
-    """Test that metrics are properly updated and logged."""
+    """
+Test that metrics are properly updated and logged."""
     model = ViTMaskedAutoEncoderPL(**model_config)
     batch = sample_data
 

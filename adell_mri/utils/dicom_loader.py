@@ -16,7 +16,8 @@ DICOMDatasetType = Sequence[Dict[str, Sequence[Dict[str, str]]]]
 def filter_orientations(
     dicom_dictionary: DICOMDatasetType, keep_bad: bool = True
 ) -> DICOMDatasetType:
-    """Filters out DCM files with bad orientations (i.e. those which have
+    """
+    Filters out DCM files with bad orientations (i.e. those which have
     a "orientation" key whose last three elements are close to [0,0,-1]).
 
     Args:
@@ -193,7 +194,8 @@ class SliceSampler(torch.utils.data.Sampler):
                 self.N += 1
 
     def __iter__(self) -> int:
-        """Returns indices for DICOMDataset such that only one sample for each
+        """
+Returns indices for DICOMDataset such that only one sample for each
         study is returned. Additionally, if `shuffle==True`, the elements are
         shuffled before iterating over the DICOM dataset list. The DICOM
         dataset can also be iterated n_iterations times (this can be helpful
@@ -233,7 +235,8 @@ class SliceSampler(torch.utils.data.Sampler):
             yield idx
 
     def __len__(self) -> int:
-        """Length of the dataset (number of studies). The number of individual
+        """
+Length of the dataset (number of studies). The number of individual
         dcm files can also be accessed with `self.i`.
 
         Returns:

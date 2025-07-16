@@ -31,7 +31,8 @@ def float_to_epochs(v: float, max_epochs: int) -> int:
 
 
 class _enable_get_lr_call:
-    """Context manager to enable _get_lr_called_within_step.
+    """
+    Context manager to enable _get_lr_called_within_step.
 
     This is used within the step() method to determine if _get_lr() was called
     during the step execution.
@@ -49,7 +50,8 @@ class _enable_get_lr_call:
 
 
 class PolynomialLRDecay(_LRScheduler):
-    """Polynomial learning rate decay until step reach to max_decay_step
+    """
+Polynomial learning rate decay until step reach to max_decay_step
 
     Args:
         optimizer (Optimizer): Wrapped optimizer.
@@ -102,7 +104,8 @@ class PolynomialLRDecay(_LRScheduler):
 
 
 class CosineAnnealingWithWarmupLR(_LRScheduler):
-    """Implements cosine annealing with warmup learning rate scheduler.
+    """
+Implements cosine annealing with warmup learning rate scheduler.
 
     Initializes the scheduler, sets up cosine annealing and linear/exponential
     warmup. Calculates learning rates at each step based on the current step,
@@ -210,7 +213,8 @@ def poly_lr_decay(
     end_lr: float = 0.0,
     power: float = 1.0,
 ):
-    """Polynomial LR decay.
+    """
+Polynomial LR decay.
 
     Args:
         optimizer (torch.optim.Optimizer): torch optimizer.

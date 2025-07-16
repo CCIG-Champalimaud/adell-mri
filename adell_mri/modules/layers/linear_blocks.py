@@ -14,7 +14,8 @@ from adell_mri.custom_types import Size2dOr3d
 
 
 def get_relative_position_indices(window_size: Size2dOr3d) -> torch.Tensor:
-    """Relative position indices generalized to n dimensions. The original
+    """
+    Relative position indices generalized to n dimensions. The original
     version is in [1].
 
     [1] https://github.com/microsoft/Swin-Transformer/blob/main/models/swin_transformer.py
@@ -50,7 +51,9 @@ def get_relative_position_indices(window_size: Size2dOr3d) -> torch.Tensor:
 
 
 class MLP(torch.nn.Module):
-    """Standard multilayer perceptron."""
+    """
+    Standard multilayer perceptron.
+    """
 
     def __init__(
         self,
@@ -79,7 +82,8 @@ class MLP(torch.nn.Module):
         self.init_layers()
 
     def init_layers(self):
-        """Initialises layers."""
+        """
+Initialises layers."""
         curr_in = self.input_dim
         ops = torch.nn.ModuleList([])
         if len(self.structure) > 0:
@@ -97,7 +101,8 @@ class MLP(torch.nn.Module):
         self.op = torch.nn.Sequential(*ops)
 
     def forward(self, X: torch.Tensor) -> torch.Tensor:
-        """Forward pass. Expects the input to have two or more dimensions.
+        """
+Forward pass. Expects the input to have two or more dimensions.
 
         Args:
             X (torch.Tensor): tensor with shape [...,self.input_dim]
@@ -109,7 +114,8 @@ class MLP(torch.nn.Module):
 
 
 class Attention(torch.nn.Module):
-    """Attention module [1].
+    """
+    Attention module [1].
 
     [1] https://arxiv.org/abs/2207.09238
     """
@@ -138,7 +144,8 @@ class Attention(torch.nn.Module):
         self.init_layers()
 
     def init_layers(self):
-        """Initialises layers."""
+        """
+Initialises layers."""
         self.q = MLP(self.input_dim_primary, self.attention_dim)
         self.k = MLP(self.input_dim_context, self.attention_dim)
         self.v = MLP(self.input_dim_context, self.output_dim)
@@ -146,7 +153,8 @@ class Attention(torch.nn.Module):
         self.reg_const = torch.sqrt(torch.as_tensor(self.attention_dim))
 
     def forward(self, X_primary: torch.Tensor, X_context: torch.Tensor):
-        """Forward pass. Expects the input to have two or more dimensions.
+        """
+Forward pass. Expects the input to have two or more dimensions.
 
         Args:
             X_primary (torch.Tensor): tensor with shape
@@ -178,7 +186,8 @@ class SeqPool(torch.nn.Module):
 
 
 class SelfAttention(torch.nn.Module):
-    """Self-attention module. Same as the attention module but the primary and
+    """
+    Self-attention module. Same as the attention module but the primary and
     context sequences are the same [1].
 
     [1] https://arxiv.org/abs/2207.09238
@@ -199,7 +208,8 @@ class SelfAttention(torch.nn.Module):
         self.init_layers()
 
     def init_layers(self):
-        """Initialises layers."""
+        """
+Initialises layers."""
         self.qkv_dim = self.attention_dim * 2 + self.output_dim
         self.qkv = torch.nn.Linear(self.input_dim, self.qkv_dim, bias=False)
         self.q_idx = torch.arange(self.attention_dim).long()
@@ -211,7 +221,8 @@ class SelfAttention(torch.nn.Module):
         self.reg_const = torch.sqrt(torch.as_tensor(self.attention_dim))
 
     def forward(self, X: torch.Tensor) -> torch.Tensor:
-        """Forward pass. Expects the input to have two or more dimensions.
+        """
+Forward pass. Expects the input to have two or more dimensions.
 
         Args:
             X_primary (torch.Tensor): tensor with shape
@@ -233,7 +244,8 @@ class SelfAttention(torch.nn.Module):
 
 
 class MultiHeadSelfAttention(torch.nn.Module):
-    """Module composed of several self-attention modules which calculate
+    """
+    Module composed of several self-attention modules which calculate
     a set of self-attention outputs, concatenates them, and applies a
     linear operation (matrix mul and addition of bias) on the output [1].
     This implementation is greatly inspired by the SWIN implementation [2].
@@ -290,7 +302,8 @@ class MultiHeadSelfAttention(torch.nn.Module):
         self.init_weights()
 
     def init_layers(self):
-        """Initialises all attention heads as a single set of Linear models,
+        """
+        Initialises all attention heads as a single set of Linear models,
         makes computation more efficient and is equivalent to initialising
         multiple attention heads.
         """
@@ -328,18 +341,21 @@ class MultiHeadSelfAttention(torch.nn.Module):
             )
 
     def init_output_layer(self):
-        """Initialises the last (linear) output layer."""
+        """
+Initialises the last (linear) output layer."""
         self.output_layer = torch.nn.Linear(self.hidden_dim, self.output_dim)
 
     def init_weights(self):
-        """Initialize weights with Xavier uniform (got this from the original
+        """
+Initialize weights with Xavier uniform (got this from the original
         transformer code and from the Annotated Transformer).
         """
         torch.nn.init.xavier_uniform_(self.qkv.weight)
         torch.nn.init.xavier_uniform_(self.output_layer.weight)
 
     def forward(self, X: torch.Tensor, mask=None) -> torch.Tensor:
-        """Forward pass. Expects the input to have two or more dimensions.
+        """
+Forward pass. Expects the input to have two or more dimensions.
 
         Args:
             X (torch.Tensor): tensor with shape

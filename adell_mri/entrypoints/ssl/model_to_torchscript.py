@@ -18,7 +18,8 @@ def unpack_shape(X):
 
 
 def force_cudnn_initialization():
-    """Convenience function to initialise CuDNN (and avoid the lazy loading
+    """
+    Convenience function to initialise CuDNN (and avoid the lazy loading
     from PyTorch).
     """
     s = 16

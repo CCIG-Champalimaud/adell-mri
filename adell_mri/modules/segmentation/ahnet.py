@@ -1,3 +1,8 @@
+"""
+Implements the AHNet (anysotropic hybrid network), which is capable of learning
+segmentation features in 2D and then learn how to use in 3D images.
+"""
+
 import torch
 
 from adell_mri.modules.layers.adn_fn import ActDropNorm
@@ -64,14 +69,18 @@ class AHNet(torch.nn.Module):
         self.init_layers_3d()
 
     def convert_to_3d(self):
-        """Converts the relevant operations to 3D."""
+        """
+        Converts the relevant operations to 3D.
+        """
         self.res_layer_1.convert_to_3d()
         for op in self.res_layers:
             op.convert_to_3d()
         self.spatial_dim = 3
 
     def init_layers_2d(self):
-        """Initializes the 2D layers."""
+        """
+        Initializes the 2D layers.
+        """
         n_out = self.out_channels
         self.res_layer_1 = AnysotropicHybridInput(
             2,
@@ -121,7 +130,8 @@ class AHNet(torch.nn.Module):
             )
 
     def forward_2d(self, X: torch.Tensor) -> torch.Tensor:
-        """Forward pass for this class for 2D images.
+        """
+Forward pass for this class for 2D images.
 
         Args:
             X (torch.Tensor)
@@ -149,7 +159,8 @@ class AHNet(torch.nn.Module):
         return prediction
 
     def init_layers_3d(self):
-        """Initializes the 3D layers."""
+        """
+Initializes the 3D layers."""
         n_out = self.out_channels
         adn_args = self.adn_args.copy()
         adn_args["norm_fn"] = torch.nn.BatchNorm3d
@@ -187,7 +198,8 @@ class AHNet(torch.nn.Module):
             )
 
     def forward_3d(self, X: torch.Tensor) -> torch.Tensor:
-        """Forward pass for this class for 3D images.
+        """
+Forward pass for this class for 3D images.
 
         Args:
             X (torch.Tensor)
@@ -215,7 +227,8 @@ class AHNet(torch.nn.Module):
         return prediction
 
     def forward(self, X: torch.Tensor) -> torch.Tensor:
-        """Forward pass for this class. Uses `self.spatial_dim` to decide
+        """
+Forward pass for this class. Uses `self.spatial_dim` to decide
         between 2D and 3D operations.
 
         Args:

@@ -1,3 +1,7 @@
+"""
+Implements I-JEPA.
+"""
+
 from typing import Any, Dict, List, Tuple
 
 import torch

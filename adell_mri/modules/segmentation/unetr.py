@@ -1,3 +1,7 @@
+"""
+Standard UNETR implementation.
+"""
+
 from typing import Callable, Dict, List, Union
 
 import numpy as np
@@ -15,7 +19,13 @@ from adell_mri.modules.segmentation.unet import UNet
 
 
 class UNETR(UNet, torch.nn.Module):
+    """
+    UNETR module. Implementation as close as possible to that presented
+    in the original paper [1] and integrated with other UNet-like
+    architectures in this library.
 
+    [1] https://arxiv.org/abs/2103.10504
+    """
     def __init__(
         self,
         # parametrize linear embedding and transformer
@@ -53,12 +63,7 @@ class UNETR(UNet, torch.nn.Module):
         deep_supervision: bool = False,
         encoder_only: bool = False,
     ):
-        """UNETR module. Implementation as close as possible to that presented
-        in the original paper [1] and integrated with other UNet-like
-        architectures in this library.
-
-        [1] https://arxiv.org/abs/2103.10504
-
+        """
         Args:
             image_size (Size2dOr3d): size of the input image.
             patch_size (Size2dOr3d): size of the patches.
@@ -223,7 +228,8 @@ class UNETR(UNet, torch.nn.Module):
         ), "len(depth) must be the same as len(kernel_sizes)"
 
     def init_vit(self):
-        """Initialises ViT and infers the number of channels at
+        """
+        Initialises ViT and infers the number of channels at
         (intermediary) output reconstruction.
         """
         self.vit = ViT(
@@ -301,7 +307,8 @@ class UNETR(UNet, torch.nn.Module):
         return torch.nn.Sequential(*out)
 
     def init_reconstruction_ops(self):
-        """Initialises the operations that will reconstruct the ViT outputs
+        """
+Initialises the operations that will reconstruct the ViT outputs
         to be U-Net compliant.
         """
         self.reconstructed_dim = [
@@ -330,7 +337,8 @@ class UNETR(UNet, torch.nn.Module):
         return_bottleneck=False,
         return_logits=False,
     ) -> torch.Tensor:
-        """Forward pass for this class.
+        """
+Forward pass for this class.
 
         Args:
             X (torch.Tensor)
@@ -608,7 +616,8 @@ class MonaiUNETR(UNet, torch.nn.Module):
         return_bottleneck=False,
         return_logits=False,
     ) -> torch.Tensor:
-        """Forward pass for this class.
+        """
+Forward pass for this class.
 
         Args:
             X (torch.Tensor)
@@ -853,7 +862,8 @@ class SWINUNet(UNet):
         self.final_layer = self.get_final_layer(o)
 
     def init_swin_blocks(self):
-        """Initialises SWin and infers the number of channels at
+        """
+Initialises SWin and infers the number of channels at
         (intermediary) output reconstruction.
         """
         self.in_channels_rec = []
@@ -905,7 +915,8 @@ class SWINUNet(UNet):
         )
 
     def init_reconstruction_ops(self):
-        """Initialises the operations that will resize the SWin outputs
+        """
+Initialises the operations that will resize the SWin outputs
         to be U-Net compliant.
         """
         layer_norm = get_adn_fn(self.spatial_dimensions, "layer", None, 0.0)
@@ -935,7 +946,8 @@ class SWINUNet(UNet):
         return_bottleneck=False,
         return_logits=False,
     ) -> torch.Tensor:
-        """Forward pass for this class.
+        """
+Forward pass for this class.
 
         Args:
             X (torch.Tensor)
@@ -1215,7 +1227,8 @@ class MonaiSWINUNet(UNet):
         return_bottleneck=False,
         return_logits=False,
     ) -> torch.Tensor:
-        """Forward pass for this class.
+        """
+Forward pass for this class.
 
         Args:
             X (torch.Tensor)
