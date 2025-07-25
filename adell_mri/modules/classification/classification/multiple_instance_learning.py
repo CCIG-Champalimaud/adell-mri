@@ -14,7 +14,7 @@ class MILAttention(torch.nn.Module):
     Attention module for multiple instance learning [1]. The attention is
     calculated as the softmax of the sigmoid-gated hyperbolic tangent of the
     input, i.e.
-        $A = \mathrm{softmax}(\mathrm{tanh}(A * V) * \mathrm{sigmoid}(A * U))$
+        $A = \mathrm{softmax}(W(\mathrm{tanh}(V(A)) * \mathrm{sigmoid}(U(A))))$
 
     [1] https://arxiv.org/pdf/1802.04712.pdf
     """
