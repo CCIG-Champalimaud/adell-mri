@@ -5,6 +5,7 @@ from copy import deepcopy
 import monai
 import numpy as np
 import torch
+from tqdm import tqdm
 from lightning.pytorch import Trainer
 from lightning.pytorch.callbacks import RichProgressBar
 
@@ -123,10 +124,21 @@ def main(arguments):
         data_dict = filter_dicom_dict_on_presence(data_dict, all_keys)
         if args.max_slices is not None:
             data_dict = filter_dicom_dict_by_size(data_dict, args.max_slices)
-        for k in data_dict:
-            for kk in data_dict[k]:
+        for k in tqdm(data_dict, desc="Filtering dataset on file existence"):
+            for kk in list(data_dict[k].keys()):
+                exists = [False for _ in range(len(data_dict[k][kk]))]
                 for i in range(len(data_dict[k][kk])):
+                    exists[i] = os.path.exists(data_dict[k][kk][i]["image"])
                     data_dict[k][kk][i]["pid"] = k
+                data_dict[k][kk] = [
+                    data_dict[k][kk][i] for i in range(len(data_dict[k][kk])) if exists[i]
+                ]
+                if len(data_dict[k][kk]) == 0:
+                    del data_dict[k][kk]
+                    print(f"Removed {kk} for {k}")
+                    continue
+                elif len(exists) != len(data_dict[k][kk]):
+                    print(f"Removed {len(exists) - len(data_dict[k][kk])} entries for {k}, {kk}")
 
     if len(data_dict) == 0:
         print("No data in dataset JSON")
