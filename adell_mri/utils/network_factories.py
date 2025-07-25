@@ -12,6 +12,7 @@ import os
 import numpy as np
 import torch
 import torch.nn.functional as F
+from functools import wraps
 from lightning.pytorch import LightningModule
 
 
@@ -112,7 +113,7 @@ def compile_if_necessary(func: Callable) -> Callable:
     Returns:
         The compiled :class:`torch.nn.Module`.
     """
-
+    @wraps(func)
     def wrapper(*args, **kwargs):
         model = func(*args, **kwargs)
         if os.environ.get("TORCH_COMPILE", "False").lower() in ["true", "1"]:
