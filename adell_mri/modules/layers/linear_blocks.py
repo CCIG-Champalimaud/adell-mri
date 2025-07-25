@@ -83,7 +83,8 @@ class MLP(torch.nn.Module):
 
     def init_layers(self):
         """
-Initialises layers."""
+        Initialises layers.
+        """
         curr_in = self.input_dim
         ops = torch.nn.ModuleList([])
         if len(self.structure) > 0:
@@ -102,7 +103,7 @@ Initialises layers."""
 
     def forward(self, X: torch.Tensor) -> torch.Tensor:
         """
-Forward pass. Expects the input to have two or more dimensions.
+        Forward pass. Expects the input to have two or more dimensions.
 
         Args:
             X (torch.Tensor): tensor with shape [...,self.input_dim]
