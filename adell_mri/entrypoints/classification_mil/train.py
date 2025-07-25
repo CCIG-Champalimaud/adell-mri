@@ -205,7 +205,6 @@ def main(arguments):
         "augment": args.augment,
         "t2_keys": t2_keys,
         "image_keys": keys,
-        "flip_axis": None,
     } | (eval(args.augment_args) if args.augment_args is not None else {})
 
     final_transforms = [
