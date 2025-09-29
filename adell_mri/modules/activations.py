@@ -326,6 +326,12 @@ activation_gradient_factory = {
 }
 
 
+def get_activation(activation: str | torch.nn.Module, *args, **kwargs):
+    if isinstance(activation, str):
+        return activation_factory[activation](*args, **kwargs)
+    return activation
+
+
 class NormalizedActivation(torch.nn.Module):
     def __init__(
         self,
@@ -337,38 +343,38 @@ class NormalizedActivation(torch.nn.Module):
     ):
         super().__init__()
         """
-        Normalized activations from Peiwen et al. [1]. The idea is quite 
-        clever - given observations that, while layer outputs may be 
+        Normalized activations from Peiwen et al. [1]. The idea is quite
+        clever - given observations that, while layer outputs may be
         normalised, gradients are not, the authors normalise the activation
-        functions in such a way that approximates normalised gradients. In 
-        short, the  following correction is applied to the normalisation 
-        function $a$ to the input $X$. The corrected output, $a'$, is given by 
+        functions in such a way that approximates normalised gradients. In
+        short, the  following correction is applied to the normalisation
+        function $a$ to the input $X$. The corrected output, $a'$, is given by
         the following expression:
-        
+
         $a' = (\lambda + f(\alpha)) * (a(X) - \mu)$,
 
-        where $\lambda$ is a normalization factor (see [1] for details), $f$ 
-        is a bounded function to adjust $\lambda$ with learnable parameter 
+        where $\lambda$ is a normalization factor (see [1] for details), $f$
+        is a bounded function to adjust $\lambda$ with learnable parameter
         $\alpha$, and $\mu$ is the (exponential) average of the activation.
-        
-        Some parameters and their proper hyperparameter optimization are 
-        unclear - L and U are used as relative lower and upper bounds, 
-        respectively, for the exponential momentum update. Further 
-        clarifications are necessary, but everything else is as close as 
+
+        Some parameters and their proper hyperparameter optimization are
+        unclear - L and U are used as relative lower and upper bounds,
+        respectively, for the exponential momentum update. Further
+        clarifications are necessary, but everything else is as close as
         possible to the original paper.
 
         [1] https://arxiv.org/abs/2208.13315
 
         Args:
-            act_str (str): string corresponding to the activation function. 
-                must be one of ['elu', 'hard_shrink', 'hard_tanh', 
+            act_str (str): string corresponding to the activation function.
+                must be one of ['elu', 'hard_shrink', 'hard_tanh',
                 'leaky_relu', 'logsigmoid', 'prelu', 'relu', 'relu6', 'selu',
-                'celu', 'sigmoid', 'softplus', 'soft_shrink', 'softsign', 
+                'celu', 'sigmoid', 'softplus', 'soft_shrink', 'softsign',
                 'tanh', 'tanh_shrink', 'swish'].
-            f (Callable, 0.3 * F.tanh(x)): bounded function to adjust 
-                $\lambda$. Defaults to 0.3 * F.tanh(x), as in the original 
+            f (Callable, 0.3 * F.tanh(x)): bounded function to adjust
+                $\lambda$. Defaults to 0.3 * F.tanh(x), as in the original
                 paper.
-            momentum (float, 0.9): momentum to update $\mu$, $\rho$ and 
+            momentum (float, 0.9): momentum to update $\mu$, $\rho$ and
                 $\rho'$. Defaults to 0.9.
             L (float, 0.9): relative lower bound for $rho$ and $rho'$ updates.
                 Defaults to 0.9.
@@ -376,7 +382,7 @@ class NormalizedActivation(torch.nn.Module):
                 Defaults to 1.1.
 
         Raises:
-            NotImplementedError: raises an error when act_str is not in the 
+            NotImplementedError: raises an error when act_str is not in the
                 list above.
         """
         self.act_str = act_str.lower()
