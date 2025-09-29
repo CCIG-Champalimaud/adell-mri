@@ -3,6 +3,7 @@ Activation, dropout and normalisation builder.
 """
 
 from typing import OrderedDict
+from functools import partial
 
 import torch
 
@@ -23,6 +24,11 @@ norm_fn_dict = {
         2: torch.nn.InstanceNorm2d,
         3: torch.nn.InstanceNorm3d,
     },
+    "instance_affine": {
+        1: partial(torch.nn.InstanceNorm1d, affine=True),
+        2: partial(torch.nn.InstanceNorm2d, affine=True),
+        3: partial(torch.nn.InstanceNorm3d, affine=True),
+    },
     "layer": {
         1: torch.nn.LayerNorm,
         2: LayerNormChannelsFirst,
@@ -41,14 +47,12 @@ norm_fn_dict = {
 }
 
 
-
-
-
 class ActDropNorm(torch.nn.Module):
     """
-    Convenience function to combine activation, dropout and normalisation. 
+    Convenience function to combine activation, dropout and normalisation.
     Similar to ADN in MONAI.
     """
+
     def __init__(
         self,
         in_channels: int = None,
@@ -103,18 +107,17 @@ class ActDropNorm(torch.nn.Module):
         if self.dropout_fn is None:
             self.dropout_fn = torch.nn.Identity
 
-        op_dict = {
+        self.op_dict = {
             "A": self.get_act_fn,
             "D": self.get_dropout_fn,
             "N": self.get_norm_fn,
         }
 
-        op_list = {}
+        self.op_list = OrderedDict()
         for k in self.ordering:
-            op_list[self.name_dict[k]] = op_dict[k]()
-        op_list = OrderedDict(op_list)
+            self.op_list[self.name_dict[k]] = self.op_dict[k]()
 
-        self.op = torch.nn.Sequential(op_list)
+        self.op = torch.nn.Sequential(self.op_list)
 
     def get_act_fn(self):
         try:
@@ -130,7 +133,7 @@ class ActDropNorm(torch.nn.Module):
 
     def forward(self, X: torch.Tensor) -> torch.Tensor:
         """
-Forward function.
+        Forward function.
 
         Args:
             X (torch.Tensor)
@@ -138,13 +141,16 @@ Forward function.
         Returns:
             torch.Tensor
         """
-        return self.op(X)
+        for op in self.op_list.values():
+            X = op(X)
+        return X
 
 
 class ActDropNormBuilder:
     """
     Builder for ActDropNorm modules.
     """
+
     def __init__(
         self,
         ordering: str = "NDA",
@@ -189,7 +195,13 @@ class ActDropNormBuilder:
             dropout_param=self.dropout_param,
         )
 
-def get_adn_fn(spatial_dim: int, norm_fn: str = "batch", act_fn: str = "swish", dropout_param: float = 0.1) -> ActDropNormBuilder:
+
+def get_adn_fn(
+    spatial_dim: int,
+    norm_fn: str = "batch",
+    act_fn: str = "swish",
+    dropout_param: float = 0.1,
+) -> ActDropNormBuilder:
     """
     Returns a function that builds an ActDropNorm module.
     """
