@@ -6,7 +6,6 @@ from typing import Any
 
 import lightning.pytorch as pl
 import torch
-import torch.nn.functional as F
 
 from adell_mri.modules.gan.ae import AutoEncoder
 from adell_mri.modules.gan.losses import GaussianKLLoss
