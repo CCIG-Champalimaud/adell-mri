@@ -1250,22 +1250,17 @@ class GANPL(pl.LightningModule):
             optimizers.extend([opt_gen_cycle, opt_disc_cycle])
 
         schedulers = []
-        if all(
-            [
-                hasattr(self, k)
-                for k in ["epochs", "steps_per_epoch", "pct_start"]
-            ]
-        ):
-            if self.epochs is not None and self.steps_per_epoch is not None:
-                for opt in optimizers:
-                    sch = torch.optim.lr_scheduler.OneCycleLR(
-                        opt,
-                        max_lr=self.learning_rate,
-                        steps_per_epoch=self.steps_per_epoch,
-                        epochs=self.epochs,
-                        pct_start=self.pct_start,
-                    )
-                    schedulers.append({"scheduler": sch, "interval": "step"})
+
+        if self.epochs is not None and self.steps_per_epoch is not None:
+            for opt in optimizers:
+                sch = torch.optim.lr_scheduler.OneCycleLR(
+                    opt,
+                    max_lr=self.learning_rate,
+                    steps_per_epoch=self.steps_per_epoch,
+                    epochs=self.epochs,
+                    pct_start=self.pct_start,
+                )
+                schedulers.append({"scheduler": sch, "interval": "step"})
 
         return optimizers, schedulers
 
