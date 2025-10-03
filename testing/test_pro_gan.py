@@ -33,8 +33,17 @@ def get_discriminator_params():
 
 def test_progressivegan(get_stylegan_params):
     params = get_stylegan_params
+    input_tensor = torch.randn(2, 1, 2, 2)
+    out_shape = [2, 1, 32, 32]
     pro_gan = ProgressiveGenerator(**params)
-    pro_gan(torch.randn(2, 1, 2, 2))
+    out = pro_gan(input_tensor)
+    assert list(out.shape) == out_shape
+    out = pro_gan(input_tensor, level=1)
+    assert list(out.shape) == [*out_shape[:2], *[x // 2 for x in out_shape[2:]]]
+    out = pro_gan(input_tensor, level=1, prog_level=0, alpha=0.5)
+    assert list(out.shape) == out_shape
+    out = pro_gan(input_tensor, level=2, prog_level=1, alpha=0.5)
+    assert list(out.shape) == [*out_shape[:2], *[x // 2 for x in out_shape[2:]]]
 
 
 def test_discriminator(get_discriminator_params):
@@ -43,4 +52,5 @@ def test_discriminator(get_discriminator_params):
     discriminator = ProgressiveDiscriminator(**params)
     discriminator(input_tensor, level=0)
     discriminator(input_tensor, level=1)
-    discriminator(input_tensor, level=1, progressive_level=0, alpha=0.5)
+    discriminator(input_tensor, level=1, prog_level=0, alpha=0.5)
+    discriminator(input_tensor, level=2, prog_level=1, alpha=0.5)

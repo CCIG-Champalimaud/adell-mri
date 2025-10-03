@@ -81,7 +81,7 @@ class ProgressiveGANBlock(torch.nn.Module):
             in_channels=conv1_in_channels,
             out_channels=self.out_channels,
             kernel_size=self.kernel_sizes[0],
-            padding=self.kernel_sizes[0] // 2,
+            padding="same",
             padding_mode="reflect",
         )
         self.normalization1 = self.norm_op(self.out_channels)
@@ -89,7 +89,7 @@ class ProgressiveGANBlock(torch.nn.Module):
             in_channels=self.out_channels,
             out_channels=self.out_channels,
             kernel_size=self.kernel_sizes[1],
-            padding=self.kernel_sizes[0] // 2,
+            padding="same",
             padding_mode="reflect",
         )
         self.normalization2 = self.norm_op(self.out_channels)
@@ -155,32 +155,37 @@ class ProgressiveGenerator(torch.nn.Module):
         self.depths = depths
         self.n_dim = n_dim
 
+        self.n_levels = len(depths)
+
         self.blocks = torch.nn.ModuleList()
+        self.output_blocks = torch.nn.ModuleList()
 
         in_channels = input_channels
         for i, depth in enumerate(depths):
-            block = {
+            block_kwargs = {
                 "in_channels": in_channels,
                 "out_channels": depth,
                 "kernel_sizes": 3 if i > 0 else (4, 3),
                 "activation": ("leaky_relu", {"negative_slope": 0.2}),
             }
             if i == 0:
-                block["upsample"] = "nearest"
-                block["upsample_factor"] = 4
+                block_kwargs["upsample"] = "nearest"
+                block_kwargs["upsample_factor"] = 4
             else:
-                block["upsample"] = "conv"
-                block["upsample_factor"] = 2
+                block_kwargs["upsample"] = "conv"
+                block_kwargs["upsample_factor"] = 2
 
-            self.blocks.append(self.block(**block))
+            self.blocks.append(self.block(**block_kwargs))
             in_channels = depth
 
-        self.output_block = self.block(
-            in_channels=depths[-1],
-            out_channels=output_channels,
-            kernel_sizes=3,
-            activation=("leaky_relu", {"negative_slope": 0.2}),
-        )
+            output_block = self.block(
+                in_channels=depth,
+                out_channels=output_channels,
+                kernel_sizes=1,
+                activation=torch.nn.Identity(),
+                upsample=None,
+            )
+            self.output_blocks.append(output_block)
 
     def block(
         self, *args, **kwargs
@@ -190,10 +195,33 @@ class ProgressiveGenerator(torch.nn.Module):
         else:
             return ProgressiveGANBlock3d(*args, **kwargs)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        for block in self.blocks:
-            x = block(x)
-        x = self.output_block(x)
+    def forward(
+        self,
+        x: torch.Tensor,
+        alpha: float = 1.0,
+        level: int = 0,
+        prog_level: int | None = None,
+    ) -> torch.Tensor:
+        pseudo_level = self.n_levels - level - 1
+        if alpha < 0 or alpha > 1:
+            raise ValueError("Alpha must be between 0 and 1.")
+        if level >= self.n_levels:
+            raise ValueError("Level must be less than the number of levels.")
+        if (prog_level is not None) and (alpha < 1.0):
+            pseudo_prog_level = self.n_levels - prog_level - 1
+            if prog_level + 1 != level:
+                raise ValueError("prog_level must be one less than level.")
+            for block in self.blocks[:pseudo_prog_level]:
+                x = block(x)
+            progressive_x = self.blocks[pseudo_prog_level](x)
+            progressive_x = self.output_blocks[pseudo_prog_level](progressive_x)
+            x = F.interpolate(x, scale_factor=2, mode="nearest")
+            x = self.output_blocks[pseudo_level](x)
+            x = alpha * x + (1 - alpha) * progressive_x
+        else:
+            for block in self.blocks[: (pseudo_level + 1)]:
+                x = block(x)
+            x = self.output_blocks[pseudo_level](x)
         return x
 
 
@@ -222,6 +250,8 @@ class ProgressiveDiscriminator(torch.nn.Module):
         self.input_channels = input_channels
         self.output_channels = output_channels
         self.depths = depths
+
+        self.n_levels = len(depths)
 
         # we instantiate all blocks to avoid initialising/allocating modules
         # half-way through training
@@ -273,17 +303,17 @@ class ProgressiveDiscriminator(torch.nn.Module):
         x: torch.Tensor,
         alpha: float = 1.0,
         level: int = 0,
-        progressive_level: int | None = None,
+        prog_level: int | None = None,
     ) -> torch.Tensor:
         if alpha < 0 or alpha > 1:
             raise ValueError("Alpha must be between 0 and 1.")
-        if (progressive_level is not None) and (alpha < 1.0):
-            if progressive_level + 1 != level:
-                raise ValueError(
-                    "progressive_level must be one less than level."
-                )
-            progressive_x = self.input_blocks[progressive_level](x)
-            progressive_x = self.blocks[progressive_level](progressive_x)
+        if level >= self.n_levels:
+            raise ValueError("Level must be less than the number of levels.")
+        if (prog_level is not None) and (alpha < 1.0):
+            if prog_level + 1 != level:
+                raise ValueError("prog_level must be one less than level.")
+            progressive_x = self.input_blocks[prog_level](x)
+            progressive_x = self.blocks[prog_level](progressive_x)
             x = F.interpolate(x, scale_factor=0.5, mode="nearest")
             x = self.input_blocks[level](x)
             x = alpha * x + (1 - alpha) * progressive_x
