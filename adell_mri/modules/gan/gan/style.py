@@ -25,6 +25,7 @@ class ProgressiveGANBlock(torch.nn.Module):
         upsample_factor: int = 2,
         downsample: str | None = None,
         downsample_factor: int = 2,
+        minibatch_std: bool = False,
     ):
         super().__init__()
         self.in_channels = in_channels
@@ -35,6 +36,7 @@ class ProgressiveGANBlock(torch.nn.Module):
         self.upsample_factor = upsample_factor
         self.downsample = downsample
         self.downsample_factor = downsample_factor
+        self.minibatch_std = minibatch_std
 
         if isinstance(self.kernel_sizes, int):
             self.kernel_sizes = (self.kernel_sizes, self.kernel_sizes)
@@ -78,7 +80,7 @@ class ProgressiveGANBlock(torch.nn.Module):
                 raise ValueError(f"Unknown downsample mode: {self.downsample}")
 
         self.conv1 = self.conv_op(
-            in_channels=conv1_in_channels,
+            in_channels=conv1_in_channels + self.minibatch_std,
             out_channels=self.out_channels,
             kernel_size=self.kernel_sizes[0],
             padding="same",
@@ -99,6 +101,10 @@ class ProgressiveGANBlock(torch.nn.Module):
     ) -> torch.Tensor:
         if self.upsample:
             x = self.upsample_op(x)
+        if self.minibatch_std:
+            mb_std = x.std(dim=1, keepdim=True)
+            mb_std = x * torch.ones_like(x[:, 0:1])
+            x = torch.cat([x, mb_std], dim=1)
         x = self.conv1(x)
         x = self.normalization1(x)
         x = self.activation(x)
@@ -243,6 +249,7 @@ class ProgressiveDiscriminator(torch.nn.Module):
         output_channels: int,
         depths: list[int],
         mlp_dropout: float = 0.0,
+        minibatch_std: bool = False,
     ):
         super().__init__()
 
@@ -250,6 +257,8 @@ class ProgressiveDiscriminator(torch.nn.Module):
         self.input_channels = input_channels
         self.output_channels = output_channels
         self.depths = depths
+        self.mlp_dropout = mlp_dropout
+        self.minibatch_std = minibatch_std
 
         self.n_levels = len(depths)
 
@@ -266,6 +275,7 @@ class ProgressiveDiscriminator(torch.nn.Module):
                 kernel_sizes=1,
                 activation=("leaky_relu", {"negative_slope": 0.2}),
                 downsample=None,
+                minibatch_std=self.minibatch_std and is_last,
             )
             intermediate_block = self.block(
                 in_channels=depths[i],

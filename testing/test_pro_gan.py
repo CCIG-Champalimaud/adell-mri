@@ -46,10 +46,20 @@ def test_progressivegan(get_stylegan_params):
     assert list(out.shape) == [*out_shape[:2], *[x // 2 for x in out_shape[2:]]]
 
 
-def test_discriminator(get_discriminator_params):
+def test_discriminator_regular(get_discriminator_params):
     params = get_discriminator_params
     input_tensor = torch.randn(2, 1, 32, 32)
     discriminator = ProgressiveDiscriminator(**params)
+    discriminator(input_tensor, level=0)
+    discriminator(input_tensor, level=1)
+    discriminator(input_tensor, level=1, prog_level=0, alpha=0.5)
+    discriminator(input_tensor, level=2, prog_level=1, alpha=0.5)
+
+
+def test_discriminator_minibatch_std(get_discriminator_params):
+    params = get_discriminator_params
+    input_tensor = torch.randn(2, 1, 32, 32)
+    discriminator = ProgressiveDiscriminator(**params, minibatch_std=True)
     discriminator(input_tensor, level=0)
     discriminator(input_tensor, level=1)
     discriminator(input_tensor, level=1, prog_level=0, alpha=0.5)
