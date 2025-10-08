@@ -32,6 +32,7 @@ dependencies = [
     "cycler>=0.12.1",
     "kiwisolver>=1.4.7",
     "pre-commit>=4.3.0",
+    "wandb>=0.22.2",
 ]
 requires-python = ">=3.11,<3.13"
 
