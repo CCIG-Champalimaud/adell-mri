@@ -37,13 +37,13 @@ class UOut(torch.nn.Module):
 
     def forward(self, X: torch.Tensor) -> torch.Tensor:
         """
-Forward pass for this Module.
+        Forward pass for this Module.
 
-        Args:
-            X (torch.Tensor): Tensor
+            Args:
+                X (torch.Tensor): Tensor
 
-        Returns:
-            torch.Tensor: Tensor
+            Returns:
+                torch.Tensor: Tensor
         """
         if self.training is True:
             sh = list(X.shape)
@@ -60,7 +60,7 @@ Forward pass for this Module.
 class LayerNorm(torch.nn.Module):
     # from: https://github.com/facebookresearch/VICRegL/blob/main/convnext.py
     r"""
-LayerNorm that supports two data formats: channels_last (default) or
+    LayerNorm that supports two data formats: channels_last (default) or
     channels_first. The ordering of the dimensions in the inputs. channels_last
     corresponds to inputs with shape (batch_size, height, width, channels) while
     channels_first corresponds to inputs with shape (batch_size, channels, height,
@@ -95,7 +95,7 @@ LayerNorm that supports two data formats: channels_last (default) or
 class LayerNormChannelsFirst(torch.nn.Module):
     # adapted from: https://github.com/facebookresearch/VICRegL/blob/main/convnext.py
     r"""
-LayerNorm that supports channels_first."""
+    LayerNorm that supports channels_first."""
 
     def __init__(self, normalized_shape, eps=1e-6):
         super().__init__()
@@ -151,6 +151,39 @@ class L2NormalizationLayer(torch.nn.Module):
         return F.normalize(x, p=2, dim=self.dim, eps=self.eps)
 
 
+class LRN(torch.nn.Module):
+    """
+    Local response normalization suggested in the ProGAN paper [1].
+
+    Essentially implements:
+
+    X / sqrt(sum(X ^ 2, 1) / N + eps),
+
+    where N is the number of input features and eps is a small constant to
+    avoid divisions by zero.
+
+    [1] https://arxiv.org/pdf/1710.10196
+    """
+
+    def __init__(self, in_channels: int, eps: float = 1e-8):
+        """
+        Args:
+            in_channels (int): not used. Left for compatibility reasons.
+            eps (float, optional). Small constant to avoid zero divisions.
+                Defaults to 1e-8.
+        """
+        super().__init__()
+        self.eps = eps
+
+    def forward(self, X: torch.Tensor) -> torch.Tensor:
+        """
+        Forward pass for LRN.
+        """
+        return X / X.square().sum(1, keepdim=True).sqrt().divide(
+            X.shape[1]
+        ).add(self.eps)
+
+
 class GRN(torch.nn.Module):
     """
     Global response normalization suggested in the ConvNeXtV2 paper [1]. For a
@@ -197,7 +230,7 @@ class GRN(torch.nn.Module):
 class ChannelDropout(torch.nn.Module):
     def __init__(self, dropout_prob: float, channel_axis: int = 1):
         """
-Drops out random channels rather than random cells in the Tensor.
+        Drops out random channels rather than random cells in the Tensor.
 
         Args:
             dropout_prob (float): probability of dropout.

@@ -11,6 +11,7 @@ from adell_mri.modules.activations import activation_factory
 from adell_mri.modules.layers.regularization import (
     LayerNormChannelsFirst,
     L2NormalizationLayer,
+    LRN,
 )
 
 norm_fn_dict = {
@@ -33,6 +34,11 @@ norm_fn_dict = {
         1: torch.nn.LayerNorm,
         2: LayerNormChannelsFirst,
         3: LayerNormChannelsFirst,
+    },
+    "lrn": {
+        1: LRN,
+        2: LRN,
+        3: LRN,
     },
     "identity": {
         1: torch.nn.Identity,
