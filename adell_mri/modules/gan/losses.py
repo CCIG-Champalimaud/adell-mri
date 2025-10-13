@@ -107,6 +107,8 @@ def compute_gradient_penalty(
 def compute_gradient_penalty_r1(
     real_samples: torch.Tensor,
     discriminator: torch.nn.Module,
+    *args,
+    **kwargs,
 ) -> torch.Tensor:
     """
     Calculates the gradient penalty loss for WGAN GP. This minimises the average
@@ -123,8 +125,11 @@ def compute_gradient_penalty_r1(
     """
     if discriminator.training is False:
         return 0.0
+    real_samples = real_samples.detach()
     real_samples.requires_grad_()
-    d_predictions = apply_discriminator(real_samples, discriminator)
+    d_predictions = apply_discriminator(
+        real_samples, discriminator, *args, **kwargs
+    )
     gradients = torch.autograd.grad(
         outputs=d_predictions,
         inputs=real_samples,
