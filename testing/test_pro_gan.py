@@ -14,7 +14,7 @@ def get_stylegan_params():
             "n_dim": 2,
             "input_channels": 1,
             "output_channels": 1,
-            "depths": [32, 16, 8],
+            "depths": [32, 16, 8, 4],
         }
     )
 
@@ -34,7 +34,7 @@ def get_discriminator_params():
 def test_progressivegan(get_stylegan_params):
     params = get_stylegan_params
     input_tensor = torch.randn(2, 1, 2, 2)
-    out_shape = [2, 1, 32, 32]
+    out_shape = [2, 1, 64, 64]
     pro_gan = ProgressiveGenerator(**params)
     out = pro_gan(input_tensor)
     assert list(out.shape) == out_shape
