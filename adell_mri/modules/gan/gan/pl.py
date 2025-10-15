@@ -39,6 +39,10 @@ def compute_minibatch_diversity(images: torch.Tensor) -> torch.Tensor:
     return images.std(0).mean()
 
 
+def compute_drift(predictions: torch.Tensor) -> torch.Tensor:
+    return predictions.square().mean()
+
+
 class ProGANPL(pl.LightningModule):
     def __init__(
         self,
@@ -56,6 +60,7 @@ class ProGANPL(pl.LightningModule):
         gradient_penalty_every: int = 1,
         discriminator_step_every: int = 1,
         minibatch_diversity_lambda: float = 0.0,
+        drift_lambda: float = 0.001,
     ):
         super().__init__()
         self.generator = generator
@@ -72,6 +77,7 @@ class ProGANPL(pl.LightningModule):
         self.gradient_penalty_every = gradient_penalty_every
         self.discriminator_step_every = discriminator_step_every
         self.minibatch_diversity_lambda = minibatch_diversity_lambda
+        self.drift_lambda = drift_lambda
 
         assert self.generator.n_levels == self.discriminator.n_levels
         self.n_levels = self.generator.n_levels
@@ -223,6 +229,10 @@ class ProGANPL(pl.LightningModule):
             )
             d_loss += self.gradient_penalty_lambda * gp * self.scaling_gp
             self.log("gradient_penalty", gp, prog_bar=True)
+        if self.drift_lambda > 0:
+            drift = compute_drift(scores[b:])
+            d_loss += self.drift_lambda * drift
+            self.log("drift", drift, prog_bar=True)
         return d_loss
 
     def training_step(self, batch, batch_idx) -> torch.Tensor:
