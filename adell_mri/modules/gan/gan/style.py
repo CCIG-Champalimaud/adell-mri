@@ -8,10 +8,11 @@ import torch.nn.functional as F
 from math import sqrt, prod
 from typing import Any
 from functools import partial
+from torch.nn.utils import parametrize
 from adell_mri.modules.activations import get_activation
 from adell_mri.modules.layers.linear_blocks import MLP
 from adell_mri.modules.layers.adn_fn import get_adn_fn
-from torch.nn.utils import parametrize
+from adell_mri.modules.layers.regularization import LRN
 
 
 class EqualizedLR(torch.nn.Module):
@@ -302,6 +303,8 @@ class ProgressiveGenerator(torch.nn.Module):
             )
             self.output_blocks.append(output_block)
 
+        self.lrn = LRN(in_channels=None)
+
     def block(
         self, *args, **kwargs
     ) -> ProgressiveGeneratorBlock2d | ProgressiveGeneratorBlock3d:
@@ -336,6 +339,7 @@ class ProgressiveGenerator(torch.nn.Module):
             pseudo_prog_level = self.n_levels - prog_level
             for block in self.blocks[:pseudo_prog_level]:
                 x = block(x)
+                x = self.lrn(x)
             progressive_x = self.blocks[pseudo_prog_level](x)
             progressive_x = self.output_blocks[pseudo_prog_level](progressive_x)
             x = F.interpolate(x, scale_factor=2, mode="nearest")
@@ -344,6 +348,7 @@ class ProgressiveGenerator(torch.nn.Module):
         else:
             for block in self.blocks[: (pseudo_level + 1)]:
                 x = block(x)
+                x = self.lrn(x)
             x = self.output_blocks[pseudo_level](x)
         return x
 
