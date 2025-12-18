@@ -10,7 +10,7 @@ def ordinal_sigmoidal_loss(
     pred: torch.Tensor,
     target: torch.Tensor,
     n_classes: int,
-    weight: torch.Tensor = None,
+    weight: torch.Tensor | None = None,
 ):
     """
     Computes the ordinal sigmoidal loss between predictions and targets.
@@ -25,7 +25,9 @@ def ordinal_sigmoidal_loss(
         torch.Tensor: The computed ordinal sigmoidal loss.
     """
 
-    def label_to_ordinal(label, n_classes, ignore_0=True):
+    def label_to_ordinal(
+        label: torch.Tensor, n_classes: int, ignore_0: bool = True
+    ):
         """
         Converts class labels to ordinal encoding.
 
@@ -81,10 +83,16 @@ class OrdinalSigmoidalLoss(torch.nn.Module):
             weight (torch.Tensor): A tensor of weights for each class.
             n_classes (int): The number of classes in the classification task.
         """
+        super().__init__()
         self.n_classes = n_classes
-        self.weight = torch.as_tensor(weight)
+        if weight is not None:
+            self.weight = torch.as_tensor(weight)
+        else:
+            self.weight = None
 
-    def __call__(self, pred, target):
+    def __call__(
+        self, pred: torch.Tensor, target: torch.Tensor
+    ) -> torch.Tensor:
         """
         Compute the ordinal sigmoidal loss.
 
