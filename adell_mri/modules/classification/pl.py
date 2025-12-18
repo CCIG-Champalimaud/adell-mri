@@ -204,7 +204,7 @@ class ClassPLABC(pl.LightningModule, ABC):
 
     def on_before_batch_transfer(self, batch, dataloader_idx):
         """
-Converts any MetaTensors to regular tensors before batch transfer.
+        Converts any MetaTensors to regular tensors before batch transfer.
 
         Args:
             batch: Input batch
@@ -217,7 +217,7 @@ Converts any MetaTensors to regular tensors before batch transfer.
 
     def training_step(self, batch, batch_idx):
         """
-Performs a single training step.
+                Performs a single training step.
 
         Args:
             batch: Input batch containing images and labels
@@ -240,7 +240,7 @@ Performs a single training step.
 
     def validation_step(self, batch, batch_idx):
         """
-Performs a single validation step.
+                Performs a single validation step.
 
         Args:
             batch: Input batch containing images and labels
@@ -648,6 +648,7 @@ class ClassNetPL(ClassPLABC):
         """
         if self.net_type == "ord":
             prediction = ordinal_prediction_to_class(prediction)
+            prediction = F.one_hot(prediction, self.n_classes).float()
         elif self.n_classes > 2:
             prediction = torch.softmax(prediction, 1)
         else:
