@@ -89,9 +89,7 @@ class OrdinalSigmoidalLoss(torch.nn.Module):
         else:
             self.weight = None
 
-    def __call__(
-        self, pred: torch.Tensor, target: torch.Tensor
-    ) -> torch.Tensor:
+    def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         """
         Compute the ordinal sigmoidal loss.
 
