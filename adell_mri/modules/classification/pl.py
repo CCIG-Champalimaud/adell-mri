@@ -83,6 +83,38 @@ def f1(prediction: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
         return 0
 
 
+def get_ordinal_metric_dict(
+    metric_keys: list[str] = None,
+    prefix: str = "",
+) -> dict[str, torchmetrics.Metric]:
+    """
+    Constructs an ordinal metric dictionary.
+
+    Args:
+        metric_keys (list[str], optional): keys corresponding to metrics.
+            Should be one of ["Rec","Spe","Pr","F1","AUC"]. Defaults to
+            None (all keys).
+        prefix (str, optional): which prefix should be added to the metric
+            key on the output dict. Defaults to "".
+
+    Returns:
+        dict[str,torchmetrics.Metric]: dictionary containing the metrics
+            specified in metric_keys.
+    """
+    metric_dict = torch.nn.ModuleDict({})
+    md = {
+        "Pearson": lambda: torchmetrics.PearsonCorrCoef(),
+        "Spearman": lambda: torchmetrics.SpearmanCorrCoef(),
+        "MSE": lambda: torchmetrics.MeanSquaredError(),
+    }
+    if metric_keys is None:
+        metric_keys = list(md.keys())
+    for k in metric_keys:
+        if k in md:
+            metric_dict[prefix + k] = md[k]()
+    return metric_dict
+
+
 def get_metric_dict(
     nc: int,
     metric_keys: list[str] = None,
@@ -636,6 +668,14 @@ class ClassNetPL(ClassPLABC):
         self.forward = self.network.forward
         self.n_classes = self.network.n_classes
 
+    def setup_metrics(self):
+        if self.net_type == "ord":
+            self.train_metrics = get_ordinal_metric_dict(prefix="")
+            self.val_metrics = get_ordinal_metric_dict(prefix="V_")
+            self.test_metrics = get_ordinal_metric_dict(prefix="T_")
+        else:
+            super().setup_metrics()
+
     def update_metrics(self, prediction, y, metrics, log=True):
         """
         Update the metrics for the given batch.
@@ -647,8 +687,9 @@ class ClassNetPL(ClassPLABC):
             log (bool, optional): Whether to log the metrics. Defaults to True.
         """
         if self.net_type == "ord":
-            prediction = ordinal_prediction_to_class(prediction)
-            prediction = F.one_hot(prediction, self.n_classes).float()
+            prediction = torch.sigmoid(prediction)
+            prediction = ordinal_prediction_to_class(prediction).float()
+            y = y.float()
         elif self.n_classes > 2:
             prediction = torch.softmax(prediction, 1)
         else:
