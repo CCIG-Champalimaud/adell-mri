@@ -132,7 +132,7 @@ class VGGBackbone(torch.nn.Module):
         batch_idx: int = None,
     ) -> torch.Tensor:
         """
-Forward method.
+        Forward pass.
 
         Args:
             X (torch.Tensor): input tensor
@@ -224,7 +224,7 @@ class VGG(torch.nn.Module):
         self, X: torch.Tensor, batch_idx: int = None
     ) -> torch.Tensor:
         """
-Forward method for features only.
+        Forward method for features only.
 
         Args:
             X (torch.Tensor): input tensor
@@ -243,7 +243,7 @@ Forward method for features only.
         batch_idx: int = None,
     ) -> torch.Tensor:
         """
-Forward method.
+        Forward pass.
 
         Args:
             X (torch.Tensor): input tensor
@@ -389,7 +389,7 @@ class CatNet(torch.nn.Module):
         self, X: torch.Tensor, *args, **kwargs
     ) -> torch.Tensor:
         """
-Forward method for features.
+        Forward method for features.
 
         Args:
             X (torch.Tensor): input tensor
@@ -404,7 +404,7 @@ Forward method for features.
         self, X: torch.Tensor, return_features: bool = False, *args, **kwargs
     ) -> torch.Tensor:
         """
-Forward method.
+        Forward method.
 
         Args:
             X (torch.Tensor): input tensor
@@ -448,7 +448,7 @@ class OrdNet(CatNet):
 
     def forward_features(self, X: torch.Tensor) -> torch.Tensor:
         """
-Forward method for features.
+        Forward method for features.
 
         Args:
             X (torch.Tensor): input tensor
@@ -462,7 +462,7 @@ Forward method for features.
         self, X: torch.Tensor, return_features: bool = False
     ) -> torch.Tensor:
         """
-Forward method.
+        Forward method.
 
         Args:
             X (torch.Tensor): input tensor
@@ -648,7 +648,7 @@ class UNetEncoder(UNet):
 
     def forward_features(self, X: torch.Tensor) -> torch.Tensor:
         """
-Forward pass for features.
+        Forward pass for features.
 
         Args:
             X (torch.Tensor): input tensor
@@ -662,7 +662,7 @@ Forward pass for features.
         self, X: torch.Tensor, return_features: bool = False
     ) -> torch.Tensor:
         """
-Forward pass for this class.
+        Forward pass for this class.
 
         Args:
             X (torch.Tensor): input tensor
@@ -688,10 +688,6 @@ Forward pass for this class.
 
 
 class ViTClassifier(ViT):
-    """
-    Implementation of the vision transformer (ViT) as a classifier.
-    """
-
     """
     Implementation of the vision transformer (ViT) as a classifier.
     """
@@ -735,7 +731,7 @@ class ViTClassifier(ViT):
 
     def forward_features(self, X: torch.Tensor) -> torch.Tensor:
         """
-Forward pass.
+        Forward pass for features.
 
         Args:
             X (torch.Tensor): tensor of shape
@@ -750,7 +746,7 @@ Forward pass.
         self, X: torch.Tensor, return_features: bool = False
     ) -> torch.Tensor:
         """
-Forward pass.
+        Forward pass.
 
         Args:
             X (torch.Tensor): tensor of shape
@@ -835,7 +831,7 @@ class FactorizedViTClassifier(FactorizedViT):
 
     def forward_features(self, X: torch.Tensor) -> torch.Tensor:
         """
-Forward pass for features.
+        Forward pass for features.
 
         Args:
             X (torch.Tensor): tensor of shape
@@ -850,7 +846,7 @@ Forward pass for features.
         self, X: torch.Tensor, return_features: bool = False
     ) -> torch.Tensor:
         """
-Forward pass.
+        Forward pass.
 
         Args:
             X (torch.Tensor): tensor of shape
@@ -911,7 +907,7 @@ class MONAIViTClassifier(torch.nn.Module):
 
     def forward(self, X: torch.Tensor) -> Tuple[torch.Tensor, TensorList]:
         """
-Forward pass.
+        Forward pass.
 
         Args:
             X (torch.Tensor): tensor of shape
@@ -925,7 +921,7 @@ Forward pass.
 
 class TabularClassifier(torch.nn.Module):
     """
-Simple DL tabular classifier."""
+    Simple DL tabular classifier."""
 
     def __init__(
         self,
