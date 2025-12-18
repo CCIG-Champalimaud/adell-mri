@@ -62,9 +62,7 @@ def ordinal_prediction_to_class(x: torch.Tensor) -> torch.Tensor:
         torch.Tensor: categorical prediction.
     """
     x_thresholded = F.threshold(x, 0.5, 1)
-    output = x_thresholded.argmax(dim=1)
-    # consider 0 only when no class class reaches the threshold
-    output[x_thresholded.sum(dim=1) > 0] = 0
+    output = x_thresholded.sum(dim=1)
     return output
 
 
@@ -436,13 +434,22 @@ class OrdNet(CatNet):
 
     def init_classification_layer(self):
         self.gp = GlobalPooling()
-        self.classification_layer = torch.nn.Sequential(
-            torch.nn.Linear(self.last_size, self.last_size),
-            torch.nn.ReLU(),
-            torch.nn.Linear(self.last_size, 1),
+        self.classification_layer = MLP(
+            self.last_size,
+            1,
+            self.classification_structure,
+            adn_fn=get_adn_fn(1, "batch", "gelu"),
         )
+        # remove bias from last layer
+        self.classification_layer.op[-1].bias.data.zero_()
+        self.classification_layer.op[-1].bias.data.requires_grad = False
+
+        # initialize bias as described in the CORAL paper
         self.bias = torch.nn.parameter.Parameter(
-            torch.zeros([1, self.n_classes - 1])
+            torch.arange(self.n_classes - 1, 0, -1)
+            .float()
+            .divide(self.n_classes - 1),
+            requires_grad=True,
         )
         self.last_act = torch.nn.Sigmoid()
 
@@ -476,7 +483,7 @@ class OrdNet(CatNet):
         if return_features is True:
             return features
         p_general = self.classification_layer(features)
-        p_ordinal = self.last_act(p_general + self.bias)
+        p_ordinal = p_general + self.bias
         return p_ordinal
 
 
