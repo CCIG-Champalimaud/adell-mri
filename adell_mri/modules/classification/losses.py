@@ -49,14 +49,13 @@ def ordinal_sigmoidal_loss(
             output = output[:, 1:]
         return output
 
-    weight = torch.as_tensor(weight).type_as(pred)
-
     target_ordinal = label_to_ordinal(target, n_classes)
     loss = F.binary_cross_entropy_with_logits(
         pred, target_ordinal.float(), reduction="none"
     )
     loss = loss.flatten(start_dim=1).sum(1)
     if weight is not None:
+        weight = torch.as_tensor(weight).type_as(pred)
         weight_sample = weight[target]
         loss = loss * weight_sample
 
