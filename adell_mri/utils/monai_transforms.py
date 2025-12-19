@@ -604,7 +604,7 @@ class BBToAdjustedAnchors(monai.transforms.Transform):
         shape: np.ndarray = None,
     ) -> np.ndarray:
         """
-Converts a set of bounding box vertices into their anchor
+        Converts a set of bounding box vertices into their anchor
         representation.
 
         Args:
@@ -695,7 +695,7 @@ Converts a set of bounding box vertices into their anchor
         self, anchor_map: np.ndarray
     ) -> tuple[np.ndarray, np.ndarray]:
         """
-Converts an anchor map into the input anchors.
+        Converts an anchor map into the input anchors.
 
         Args:
             anchor_map (np.ndarray): anchor map as produced by __call__.
@@ -1041,7 +1041,8 @@ class RandomAffined(monai.transforms.RandomizableTransform):
         prob: float = 0.1,
         rotate_range: tuple[int, int, int] | tuple[int, int] = [0, 0, 0],
         shear_range: tuple[int, int, int] | tuple[int, int] = [0, 0, 0],
-        translate_range: tuple[int, int, int] | tuple[int, int] = [
+        translate_range: tuple[int, int, int]
+        | tuple[int, int] = [
             0,
             0,
             0,
@@ -2828,7 +2829,7 @@ class DbscanAssistedSegmentSelection(monai.transforms.MapTransform):
 
 class CropFromMaskd(monai.transforms.MapTransform):
     """
-Crops the input image(s) from a binary mask.
+    Crops the input image(s) from a binary mask.
 
     Finds the extremes of the positive class in the binary mask along each
     dimension. Uses these to crop the image(s) to the smallest box containing
