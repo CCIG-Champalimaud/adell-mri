@@ -267,7 +267,7 @@ class ClassPLABC(pl.LightningModule, ABC):
 
         loss = self.calculate_loss(prediction, y, with_params=True)
 
-        self.log("train_loss", loss, sync_dist=True)
+        self.log("train_loss", loss, sync_dist=True, prog_bar=True)
         return loss
 
     def validation_step(self, batch, batch_idx):
@@ -455,27 +455,50 @@ class ClassPLABC(pl.LightningModule, ABC):
             dict: A dictionary containing the optimizer, learning rate scheduler,
                 and the name of the metric to monitor for early stopping.
         """
+        no_decay_params = []
+        decay_params = []
+        for n, p in self.named_parameters():
+            if not p.requires_grad:
+                continue
+            if "ordinal_bias" in n or "ordinal_bias" in n:
+                no_decay_params.append(p)
+            else:
+                decay_params.append(p)
+
         if isinstance(self.weight_decay, (list, tuple)):
-            # decouples body and head weight decay
+            # decouples body and head weight decay (but still respects no_decay)
             wd_body, wd_head = self.weight_decay
-            params_head = [
-                p for (n, p) in self.named_parameters() if "classification" in n
-            ]
-            params_body = [
-                p
-                for (n, p) in self.named_parameters()
-                if "classification" not in n
-            ]
+            head_decay = []
+            body_decay = []
+            for n, p in self.named_parameters():
+                if not p.requires_grad:
+                    continue
+                if p in no_decay_params:
+                    continue
+                if "classification" in n:
+                    head_decay.append(p)
+                else:
+                    body_decay.append(p)
             parameters = [
-                {"params": params_head, "weight_decay": wd_body},
-                {"params": params_body, "weight_decay": wd_head},
+                {"params": no_decay_params, "weight_decay": 0.0},
+                {"params": head_decay, "weight_decay": wd_head},
+                {"params": body_decay, "weight_decay": wd_body},
             ]
-            wd = wd_body
+            base_wd = 0.0
         else:
-            parameters = self.parameters()
-            wd = self.weight_decay
+            wd = float(self.weight_decay)
+            parameters = [
+                {"params": no_decay_params, "weight_decay": 0.0},
+                {"params": decay_params, "weight_decay": wd},
+            ]
+            base_wd = 0.0
+        if self.net_type == "ord":
+            for params in parameters:
+                if params["weight_decay"] == 0.0:
+                    params["lr"] = self.learning_rate * 10
+
         optimizer = torch.optim.AdamW(
-            parameters, lr=self.learning_rate, weight_decay=wd
+            parameters, lr=self.learning_rate, weight_decay=base_wd
         )
         lr_schedulers = CosineAnnealingWithWarmupLR(
             optimizer,
