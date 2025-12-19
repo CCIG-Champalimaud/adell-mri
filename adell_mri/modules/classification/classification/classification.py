@@ -61,9 +61,7 @@ def ordinal_prediction_to_class(x: torch.Tensor) -> torch.Tensor:
     Returns:
         torch.Tensor: categorical prediction.
     """
-    x_thresholded = F.threshold(x, 0.5, 1)
-    output = x_thresholded.sum(dim=1)
-    return output
+    return (x > 0.5).sum(dim=1)
 
 
 class VGGBackbone(torch.nn.Module):
@@ -445,11 +443,12 @@ class OrdNet(CatNet):
         self.classification_layer.op[-1].bias.data.requires_grad = False
 
         # initialize bias as described in the CORAL paper
-        self.bias = torch.nn.parameter.Parameter(
-            torch.arange(self.n_classes - 1, 0, -1)
-            .float()
-            .divide(self.n_classes - 1),
+        self.ordinal_bias = torch.nn.parameter.Parameter(
+            torch.arange(self.n_classes - 1, 0, -1).float(),
             requires_grad=True,
+        )
+        self.ordinal_bias_scale = torch.nn.parameter.Parameter(
+            torch.tensor(1 / (self.n_classes - 1)), requires_grad=True
         )
         self.last_act = torch.nn.Sigmoid()
 
@@ -482,8 +481,10 @@ class OrdNet(CatNet):
         features = self.gp(self.feature_extraction(X))
         if return_features is True:
             return features
-        p_general = self.classification_layer(features)
-        p_ordinal = p_general + self.bias
+        p_general = self.classification_layer(features).repeat(
+            1, self.n_classes - 1
+        )
+        p_ordinal = p_general + self.ordinal_bias * self.ordinal_bias_scale
         return p_ordinal
 
 
