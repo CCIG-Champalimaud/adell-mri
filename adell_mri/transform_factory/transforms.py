@@ -505,7 +505,7 @@ class ClassificationTransforms(TransformMixin):
             transforms.append(
                 LabelOperatord(
                     [self.label_key],
-                    self.possible_labels,
+                    possible_labels=self.possible_labels,
                     mode=self.label_mode,
                     positive_labels=self.positive_labels,
                     label_groups=self.label_groups,
