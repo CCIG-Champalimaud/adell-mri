@@ -421,7 +421,7 @@ def main(arguments):
             )
         elif args.net_type == "ord":
             network_config["loss_fn"] = OrdinalSigmoidalLoss(
-                class_weights, n_classes
+                n_classes, class_weights
             )
         else:
             network_config["loss_fn"] = torch.nn.CrossEntropyLoss(class_weights)

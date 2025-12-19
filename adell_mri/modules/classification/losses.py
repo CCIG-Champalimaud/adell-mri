@@ -50,10 +50,10 @@ def ordinal_sigmoidal_loss(
         return output
 
     target_ordinal = label_to_ordinal(target, n_classes)
-    loss = F.binary_cross_entropy_with_logits(
-        pred, target_ordinal.float(), reduction="none"
-    )
-    loss = loss.flatten(start_dim=1).sum(1)
+    log_sigmoid = F.logsigmoid(pred)
+    term1 = log_sigmoid * target_ordinal
+    term2 = (log_sigmoid - pred) * (1 - target_ordinal)
+    loss = -(term1 + term2).flatten(start_dim=1).sum(1)
     if weight is not None:
         weight = torch.as_tensor(weight).type_as(pred)
         weight_sample = weight[target]
@@ -74,7 +74,7 @@ class OrdinalSigmoidalLoss(torch.nn.Module):
         n_classes (int): The number of classes in the classification task.
     """
 
-    def __init__(self, weight: torch.Tensor, n_classes: int):
+    def __init__(self, n_classes: int, weight: torch.Tensor | None = None):
         """
         Initialize the OrdinalSigmoidalLoss module.
 
