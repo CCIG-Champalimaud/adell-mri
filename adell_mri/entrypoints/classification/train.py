@@ -12,12 +12,13 @@ from lightning.pytorch.callbacks import (
 )
 from sklearn.model_selection import StratifiedKFold, train_test_split
 
+from adell_mri.entrypoints.assemble_args import Parser
 from adell_mri.modules.classification.losses import OrdinalSigmoidalLoss
 from adell_mri.modules.config_parsing import parse_config_cat, parse_config_unet
-from adell_mri.transform_factory.transforms import ClassificationTransforms
 from adell_mri.transform_factory import (
     get_augmentations_class as get_augmentations,
 )
+from adell_mri.transform_factory.transforms import ClassificationTransforms
 from adell_mri.utils.dataset import Dataset
 from adell_mri.utils.logging import CSVLogger
 from adell_mri.utils.network_factories import get_classification_network
@@ -28,6 +29,7 @@ from adell_mri.utils.pl_utils import (
     get_devices,
     get_logger,
 )
+from adell_mri.utils.python_logging import get_python_logger
 from adell_mri.utils.torch_utils import (
     conditional_parameter_freezing,
     get_class_weights,
@@ -36,8 +38,6 @@ from adell_mri.utils.torch_utils import (
     set_classification_layer_bias,
 )
 from adell_mri.utils.utils import safe_collate
-from adell_mri.entrypoints.assemble_args import Parser
-from adell_mri.utils.python_logging import get_python_logger
 
 
 def main(arguments):
@@ -517,7 +517,7 @@ def main(arguments):
             )
             callbacks.append(swa_callback)
 
-        logger = get_logger(
+        pl_logger = get_logger(
             summary_name=args.summary_name,
             summary_dir=args.summary_dir,
             project_name=args.project_name,
@@ -541,7 +541,7 @@ def main(arguments):
         trainer = Trainer(
             accelerator=accelerator,
             devices=devices,
-            logger=logger,
+            logger=pl_logger,
             callbacks=callbacks,
             precision=args.precision,
             max_epochs=args.max_epochs,
