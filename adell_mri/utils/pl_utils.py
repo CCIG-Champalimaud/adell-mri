@@ -1,6 +1,6 @@
 """
 Functions that return correctly configured callbacks and objects for PyTorch
-Lightning. 
+Lightning.
 """
 
 import atexit
@@ -259,31 +259,31 @@ def get_ckpt_callback(
     metadata: dict = None,
 ) -> ModelCheckpoint:
     """
-Gets a checkpoint callback for PyTorch Lightning. The format for
-    for the last and 2 best checkpoints, respectively is:
-    1. "{name}_fold{fold}_last.ckpt"
-    2. "{name}_fold{fold}_best_{epoch}_{monitor:.3f}.ckpt"
+    Gets a checkpoint callback for PyTorch Lightning. The format for
+        for the last and 2 best checkpoints, respectively is:
+        1. "{name}_fold{fold}_last.ckpt"
+        2. "{name}_fold{fold}_best_{epoch}_{monitor:.3f}.ckpt"
 
-    Args:
-        checkpoint_dir (str): directory where checkpoints will be stored.
-        checkpoint_name (str): root name for checkpoint.
-        max_epochs (int): maximum number of training epochs (used to check if
-            training has finished when resume_from_last==True).
-        max_steps (int, optional): maximum number of training steps (used to
-            check if training has finished when resume_from_last==True).
-            Defaults to None.
-        resume_from_last (bool, optional): whether training should be resumed in
-            case a checkpoint is detected. Defaults to True.
-        val_fold (int, optional): ID for the validation fold. Defaults to None.
-        monitor (str, optional): metric which should be monitored when defining
-            the best checkpoints. Defaults to "val_loss".
-        n_best_ckpts (int, optional): number of best performing models to be
-            saved. Defaults to 1.
-        metadata (dict, optional): metadata to store with checkpoint. Defaults
-            to None.
+        Args:
+            checkpoint_dir (str): directory where checkpoints will be stored.
+            checkpoint_name (str): root name for checkpoint.
+            max_epochs (int): maximum number of training epochs (used to check if
+                training has finished when resume_from_last==True).
+            max_steps (int, optional): maximum number of training steps (used to
+                check if training has finished when resume_from_last==True).
+                Defaults to None.
+            resume_from_last (bool, optional): whether training should be resumed in
+                case a checkpoint is detected. Defaults to True.
+            val_fold (int, optional): ID for the validation fold. Defaults to None.
+            monitor (str, optional): metric which should be monitored when defining
+                the best checkpoints. Defaults to "val_loss".
+            n_best_ckpts (int, optional): number of best performing models to be
+                saved. Defaults to 1.
+            metadata (dict, optional): metadata to store with checkpoint. Defaults
+                to None.
 
-    Returns:
-        ModelCheckpoint: PyTorch Lightning checkpoint callback.
+        Returns:
+            ModelCheckpoint: PyTorch Lightning checkpoint callback.
     """
     ckpt_path = None
     ckpt_callback = None
@@ -347,29 +347,29 @@ def get_logger(
     logger_type: str = "wandb",
 ) -> Logger:
     """
-Defines a Wandb/MLFlow logger for PyTorch Lightning. Each run is
-    configured as "{project_name}/{summary_name}_fold{fold}".
+    Defines a Wandb/MLFlow logger for PyTorch Lightning. Each run is
+        configured as "{project_name}/{summary_name}_fold{fold}".
 
-    Args:
-        summary_name (str): name of the run.
-        summary_dir (str): directory where summaries are stored (not used if
-            in MLFlow logging if tracking_uri is specified).
-        project_name (str): name of the project for WandB and experiment for
-            MLFlow.
-        tracking_uri (str, optional): tracking URI for MLFlow logger. Required
-            for any logging. Defaults to None.
-        resume (str): how the metric registry in Wandb should be resumed.
-            Details in https://docs.wandb.ai/guides/track/advanced/resuming.
-        fold (int, optional): ID for the validation fold. Defaults to None.
-        tags (dict[str, Any], optional): tags which will be stored as a part
-            of MLFlow logging.
-        log_model (bool, optional): logs models with loggers as artefacts.
-            Defaults to False.
-        logger_type (str, optional): type of logger. Defaults to wandb (can be
-            one of ['wandb', 'mlflow'])
+        Args:
+            summary_name (str): name of the run.
+            summary_dir (str): directory where summaries are stored (not used if
+                in MLFlow logging if tracking_uri is specified).
+            project_name (str): name of the project for WandB and experiment for
+                MLFlow.
+            tracking_uri (str, optional): tracking URI for MLFlow logger. Required
+                for any logging. Defaults to None.
+            resume (str): how the metric registry in Wandb should be resumed.
+                Details in https://docs.wandb.ai/guides/track/advanced/resuming.
+            fold (int, optional): ID for the validation fold. Defaults to None.
+            tags (dict[str, Any], optional): tags which will be stored as a part
+                of MLFlow logging.
+            log_model (bool, optional): logs models with loggers as artefacts.
+                Defaults to False.
+            logger_type (str, optional): type of logger. Defaults to wandb (can be
+                one of ['wandb', 'mlflow'])
 
-    Returns:
-        Logger:
+        Returns:
+            Logger:
     """
     logger = None
     if (summary_name is not None) and (project_name is not None):
@@ -391,7 +391,7 @@ Defines a Wandb/MLFlow logger for PyTorch Lightning. Each run is
                 project=project_name,
                 name=run_name,
                 version=run_name,
-                reinit=True,
+                reinit="finish_previous",
                 resume=wandb_resume,
                 log_model=log_model,
                 dir=summary_dir,
@@ -416,20 +416,20 @@ def get_devices(
     device_str: str, strategy: str = "ddp_find_unused_parameters_true"
 ) -> Tuple[str, Union[List[int], int], str]:
     """
-Takes a string with form "{device}:{device_ids}" where device_ids is a
-    comma separated list of device IDs (i.e. cuda:0,1).
+    Takes a string with form "{device}:{device_ids}" where device_ids is a
+        comma separated list of device IDs (i.e. cuda:0,1).
 
-    Args:
-        device_str (str): device string. Can be "cpu" or "cuda" if no
-            parallelization is necessary or "cuda:0,1" if training is to be
-            distributed across GPUs 0 and 1, for instance.
-        strategy (str): parallelization strategy. Defaults to "ddp".
+        Args:
+            device_str (str): device string. Can be "cpu" or "cuda" if no
+                parallelization is necessary or "cuda:0,1" if training is to be
+                distributed across GPUs 0 and 1, for instance.
+            strategy (str): parallelization strategy. Defaults to "ddp".
 
-    Returns:
-        Tuple[str,Union[List[int],int],str]: a tuple containing the accelerator
-            ("cpu" or "gpu") the devices (None or a list of devices as
-            specified after the ":" in the device_str) and the parallelization
-            strategy ("auto" if len(devices) > 0, None otherwise)
+        Returns:
+            Tuple[str,Union[List[int],int],str]: a tuple containing the accelerator
+                ("cpu" or "gpu") the devices (None or a list of devices as
+                specified after the ":" in the device_str) and the parallelization
+                strategy ("auto" if len(devices) > 0, None otherwise)
     """
     strategy_out = "auto"
     if ":" in device_str:
