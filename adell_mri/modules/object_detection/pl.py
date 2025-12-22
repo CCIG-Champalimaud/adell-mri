@@ -444,30 +444,30 @@ class CoarseDetector3dPL(CoarseDetector3d, pl.LightningModule):
         **kwargs,
     ) -> torch.nn.Module:
         """
-YOLO-like network implementation for Pytorch Lightning.
+        YOLO-like network implementation for Pytorch Lightning.
 
-        Args:
-            image_key (str): key corresponding to the key from the train
-            dataloader.
-            label_key (str): key corresponding to the label key from the train
-            dataloader.
-            learning_rate (float, optional): learning rate. Defaults to 0.001.
-            batch_size (int, optional): batch size. Defaults to 4.
-            weight_decay (float, optional): weight decay for optimizer. Defaults
-            to 0.005.
-            training_dataloader_call (Callable, optional): call for the
-            training dataloader. Defaults to None.
-            object_loss_fn (Callable, optional): function to calculate the
-            objectness loss. Defaults to F.binary_class_entropy.
-            positive_weight (float, optional): weight for positive object
-            prediction. Defaults to 1.0.
-            object_loss_params (dict, optional): object loss parameters.
-            Defaults to {}.
-            args: arguments for CoarseDetector3d class.
-            kwargs: keyword arguments for CoarseDetector3d class.
+                Args:
+                    image_key (str): key corresponding to the key from the train
+                    dataloader.
+                    label_key (str): key corresponding to the label key from the train
+                    dataloader.
+                    learning_rate (float, optional): learning rate. Defaults to 0.001.
+                    batch_size (int, optional): batch size. Defaults to 4.
+                    weight_decay (float, optional): weight decay for optimizer. Defaults
+                    to 0.005.
+                    training_dataloader_call (Callable, optional): call for the
+                    training dataloader. Defaults to None.
+                    object_loss_fn (Callable, optional): function to calculate the
+                    objectness loss. Defaults to F.binary_class_entropy.
+                    positive_weight (float, optional): weight for positive object
+                    prediction. Defaults to 1.0.
+                    object_loss_params (dict, optional): object loss parameters.
+                    Defaults to {}.
+                    args: arguments for CoarseDetector3d class.
+                    kwargs: keyword arguments for CoarseDetector3d class.
 
-        Returns:
-            pl.LightningModule: a CoarseDetector3d module.
+                Returns:
+                    pl.LightningModule: a CoarseDetector3d module.
         """
 
         super().__init__(*args, **kwargs)
@@ -603,7 +603,7 @@ YOLO-like network implementation for Pytorch Lightning.
             amsgrad=True,
         )
         lr_schedulers = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer, patience=10, min_lr=1e-6, factor=0.3, verbose=True
+            optimizer, patience=10, min_lr=1e-6, factor=0.3
         )
 
         return {

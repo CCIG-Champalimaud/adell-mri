@@ -19,6 +19,9 @@ from adell_mri.utils.network_factories import (
     get_deconfounded_classification_network,
 )
 from adell_mri.utils.parser import get_params, merge_args, parse_ids
+from adell_mri.utils.python_logging import get_logger
+
+logger = get_logger(__name__)
 
 
 def main(arguments):
@@ -67,7 +70,7 @@ def main(arguments):
 
     g, rng = get_generator_and_rng(args.seed)
 
-    data_dict = Dataset(args.dataset_json, rng=rng, verbose=True)
+    data_dict = Dataset(args.dataset_json, rng=rng)
     presence_keys = args.image_keys
     if args.mask_key is not None:
         presence_keys.append(args.mask_key)
@@ -187,7 +190,7 @@ def main(arguments):
         else:
             checkpoint_list = args.checkpoints
         for checkpoint in checkpoint_list:
-            print(f"Predicting for {checkpoint}")
+            logger.info(f"Predicting for {checkpoint}")
             network = get_deconfounded_classification_network(
                 network_config=network_config,
                 dropout_param=0,

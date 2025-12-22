@@ -211,13 +211,10 @@ def main(arguments):
         args.random_crop_size = [round(x) for x in args.random_crop_size]
     label_mode = "binary" if n_classes == 2 else "cat"
 
-    data_dict = Dataset(args.dataset_json, seed=args.seed, verbose=True)
+    data_dict = Dataset(args.dataset_json, seed=args.seed)
     if args.semi_supervised is True:
         data_dict_ssl = Dataset(
-            args.dataset_json,
-            dataset_name="semi-SL",
-            seed=args.seed,
-            verbose=True,
+            args.dataset_json, dataset_name="semi-SL", seed=args.seed
         )
         data_dict_ssl.filter_dictionary(
             filters_presence=args.image_keys,

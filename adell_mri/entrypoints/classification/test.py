@@ -21,6 +21,9 @@ from adell_mri.utils.torch_utils import (
 )
 from adell_mri.utils.utils import safe_collate
 from adell_mri.entrypoints.assemble_args import Parser
+from adell_mri.utils.python_logging import get_logger
+
+logger = get_logger(__name__)
 
 
 def main(arguments):
@@ -80,7 +83,7 @@ def main(arguments):
     else:
         clinical_feature_keys = args.clinical_feature_keys
 
-    data_dict = Dataset(args.dataset_json, rng=rng, verbose=True)
+    data_dict = Dataset(args.dataset_json, rng=rng)
 
     presence_keys = args.image_keys + [args.label_keys] + clinical_feature_keys
     if args.mask_key is not None:
@@ -153,7 +156,7 @@ def main(arguments):
 
     all_pids = [k for k in data_dict]
 
-    print("Setting up transforms...")
+    logger.info("Setting up transforms...")
     label_mode = "binary" if n_classes == 2 and label_groups is None else "cat"
     transform_arguments = {
         "keys": keys,
@@ -185,13 +188,13 @@ def main(arguments):
         test_ids = all_test_ids[iteration]
         test_list = [data_dict[pid] for pid in test_ids if pid in data_dict]
 
-        print("Testing fold", iteration)
+        logger.info("Testing fold", iteration)
         for u, c in zip(
             *np.unique(
                 [x[args.label_keys] for x in test_list], return_counts=True
             )
         ):
-            print(f"\tCases({u}) = {c}")
+            logger.info(f"\tCases({u}) = {c}")
 
         test_dataset = monai.data.CacheDataset(
             test_list,
@@ -220,7 +223,7 @@ def main(arguments):
             collate_fn=safe_collate,
         )
 
-        print("Setting up testing...")
+        logger.info("Setting up testing...")
         if args.net_type == "unet":
             act_fn = network_config["activation_fn"]
         else:
@@ -287,7 +290,7 @@ def main(arguments):
                         k, checkpoint, iteration, idx, value
                     )
                     output_file.write(x + "\n")
-                    print(x)
+                    logger.info(x)
                     # bootstrap AUC estimate
                 if "T_AUC" not in network.test_metrics:
                     continue
@@ -301,17 +304,17 @@ def main(arguments):
                         "T_AUC_mean", checkpoint, iteration, idx, m
                     )
                     output_file.write(x + "\n")
-                    print(x)
+                    logger.info(x)
                     x = "{},{},{},{},{}".format(
                         "T_AUC_lower", checkpoint, iteration, idx, u
                     )
                     output_file.write(x + "\n")
-                    print(x)
+                    logger.info(x)
                     x = "{},{},{},{},{}".format(
                         "T_AUC_upper", checkpoint, iteration, idx, low
                     )
                     output_file.write(x + "\n")
-                    print(x)
+                    logger.info(x)
 
         else:
             ensemble_network = AveragingEnsemblePL(
@@ -338,7 +341,7 @@ def main(arguments):
                     k, "ensemble", iteration, idx, value
                 )
                 output_file.write(x + "\n")
-                print(x)
+                logger.info(x)
             # bootstrap AUC estimate
             if "T_AUC" not in ensemble_network.test_metrics:
                 continue
@@ -352,14 +355,14 @@ def main(arguments):
                     "T_AUC_mean", "ensemble", iteration, idx, m
                 )
                 output_file.write(x + "\n")
-                print(x)
+                logger.info(x)
                 x = "{},{},{},{},{}".format(
                     "T_AUC_lower", "ensemble", iteration, idx, u
                 )
                 output_file.write(x + "\n")
-                print(x)
+                logger.info(x)
                 x = "{},{},{},{},{}".format(
                     "T_AUC_upper", "ensemble", iteration, idx, l
                 )
                 output_file.write(x + "\n")
-                print(x)
+                logger.info(x)

@@ -10,6 +10,10 @@ import monai
 import numpy as np
 import torch
 
+from adell_mri.utils.python_logging import get_logger
+
+logger = get_logger(__name__)
+
 DICOMDatasetType = Sequence[Dict[str, Sequence[Dict[str, str]]]]
 
 
@@ -150,7 +154,6 @@ class SliceSampler(torch.utils.data.Sampler):
         n_samples: int = None,
         shuffle: bool = True,
         seed: int = 42,
-        verbose: bool = False,
     ):
         """
         Args:
@@ -163,14 +166,12 @@ class SliceSampler(torch.utils.data.Sampler):
             shuffle (bool, optional): whether the indices should be shuffled
                 before each epoch. Defaults to True.
             seed (int, optional): random seed. Defaults to 42.
-            verbose (bool, optional): minimal verbosity. Defaults to False.
         """
         self.dicom_dataset = dicom_dataset
         self.n_iterations = n_iterations
         self.n_samples = n_samples
         self.shuffle = shuffle
         self.seed = seed
-        self.verbose = verbose
 
         self.keys_to_indices()
         self.rng = np.random.default_rng(self.seed)
@@ -195,7 +196,7 @@ class SliceSampler(torch.utils.data.Sampler):
 
     def __iter__(self) -> int:
         """
-Returns indices for DICOMDataset such that only one sample for each
+        Returns indices for DICOMDataset such that only one sample for each
         study is returned. Additionally, if `shuffle==True`, the elements are
         shuffled before iterating over the DICOM dataset list. The DICOM
         dataset can also be iterated n_iterations times (this can be helpful
@@ -205,8 +206,7 @@ Returns indices for DICOMDataset such that only one sample for each
         Yields:
             int: an index used for the __getitem__ method in DICOMDataset.
         """
-        if self.verbose is True:
-            print("Starting iteration")
+        logger.debug("Starting iteration")
 
         corr_idx = []
         for _ in range(self.n_iterations):
@@ -236,7 +236,7 @@ Returns indices for DICOMDataset such that only one sample for each
 
     def __len__(self) -> int:
         """
-Length of the dataset (number of studies). The number of individual
+        Length of the dataset (number of studies). The number of individual
         dcm files can also be accessed with `self.i`.
 
         Returns:

@@ -74,7 +74,7 @@ def main(arguments):
 
     accelerator, devices, strategy = get_devices(args.dev)
 
-    data_dict = Dataset(args.dataset_json, rng=rng, verbose=True)
+    data_dict = Dataset(args.dataset_json, rng=rng)
 
     if args.excluded_ids is not None:
         data_dict.subsample_dataset(excluded_key_list=args.excluded_ids)

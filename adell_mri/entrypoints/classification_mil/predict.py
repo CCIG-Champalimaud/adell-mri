@@ -72,7 +72,7 @@ def main(arguments):
 
     g, rng = get_generator_and_rng(args.seed)
 
-    data_dict = Dataset(args.dataset_json, rng=rng, verbose=True)
+    data_dict = Dataset(args.dataset_json, rng=rng)
     if args.prediction_ids:
         all_prediction_pids = parse_ids(args.prediction_ids)
     else:

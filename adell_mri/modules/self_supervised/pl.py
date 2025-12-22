@@ -12,6 +12,7 @@ import torchmetrics
 
 from typing import Any
 from adell_mri.custom_types import Callable
+from adell_mri.utils.python_logging import get_logger
 from adell_mri.modules.layers.conv_next import ConvNeXt
 from adell_mri.modules.layers.res_net import ResNet
 from adell_mri.modules.learning_rate import CosineAnnealingWithWarmupLR
@@ -29,6 +30,8 @@ from adell_mri.modules.self_supervised.losses import (
     byol_loss,
     simsiam_loss,
 )
+
+logger = get_logger(__name__)
 
 
 class BarlowTwinsPL(ResNet, pl.LightningModule):
@@ -263,10 +266,10 @@ class SelfSLBasePL(pl.LightningModule, ABC):
             self.test_metrics["T" + k] = metric_dict[k]()
 
     def on_train_start(self):
-        print("Training with the following hyperparameters:")
+        logger.info("Training with the following hyperparameters:")
         parameter_dict = {}
         for k, v in self.hparams.items():
-            print(f"\t{k}: {v}")
+            logger.info("%s: %s", k, v)
             if isinstance(v, (list, tuple, torch.Tensor, np.ndarray)):
                 if len(v) > 1:
                     for i in range(len(v)):
@@ -1460,14 +1463,14 @@ class ViTMaskedAutoEncoderPL(pl.LightningModule):
 
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """
-Forward pass through the model."""
+        Forward pass through the model."""
         return self.model(x)
 
     def training_step(
         self, batch: torch.Tensor, batch_idx: int
     ) -> torch.Tensor:
         """
-Training step."""
+        Training step."""
         x = batch[self.image_key]
         x_recon, mask = self(x)
 
@@ -1483,7 +1486,7 @@ Training step."""
         self, batch: torch.Tensor, batch_idx: int
     ) -> torch.Tensor:
         """
-Validation step."""
+        Validation step."""
         x = batch[self.image_key]
         x_recon, _ = self(x)
 
@@ -1496,7 +1499,7 @@ Validation step."""
 
     def test_step(self, batch: torch.Tensor, batch_idx: int) -> torch.Tensor:
         """
-Test step."""
+        Test step."""
         x = batch[self.image_key]
         x_recon, _ = self(x)
 
@@ -1509,7 +1512,7 @@ Test step."""
 
     def configure_optimizers(self) -> torch.optim.Optimizer | dict:
         """
-Configure optimizers and learning rate schedulers."""
+        Configure optimizers and learning rate schedulers."""
         if self.n_steps:
             n = self.n_steps
             interval = "step"
@@ -1549,7 +1552,7 @@ Configure optimizers and learning rate schedulers."""
 
     def train_dataloader(self) -> torch.utils.data.DataLoader:
         """
-Get training dataloader."""
+        Get training dataloader."""
         if self.training_dataloader_call is None:
             raise ValueError(
                 "training_dataloader_call must be provided for training"

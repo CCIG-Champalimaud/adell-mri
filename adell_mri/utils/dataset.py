@@ -12,12 +12,14 @@ import yaml
 
 from adell_mri.custom_types import DatasetDict
 from adell_mri.utils.parser import parse_ids
+from adell_mri.utils.python_logging import get_logger
 from adell_mri.utils.dataset_filters import (
     fill_conditional,
     fill_missing_with_value,
     filter_dictionary,
-    print_verbose,
 )
+
+logger = get_logger(__name__)
 
 
 def subsample_dataset(
@@ -79,13 +81,11 @@ class Dataset:
         path (str | list[str]): path to the dataset file or list of paths.
         rng (np.random.Generator, optional): random number generator. Defaults to None.
         seed (int, optional): random seed. Defaults to 42.
-        verbose (bool, optional): verbosity. Defaults to True.
     """
 
     path: str | list[str]
     rng: np.random.Generator = None
     seed: int = 42
-    verbose: bool = True
     dataset_name: str = "dataset"
 
     def __post_init__(self):
@@ -127,9 +127,7 @@ class Dataset:
             filters (list[str] | None): list of filters to apply.
         """
         if filters is not None:
-            self.dataset = fill_conditional(
-                self.dataset, filters, verbose=self.verbose
-            )
+            self.dataset = fill_conditional(self.dataset, filters)
 
     def fill_missing_with_value(self, filters: list[str] | None):
         """
@@ -140,9 +138,7 @@ class Dataset:
             filters (list[str] | None): list of filters to apply.
         """
         if filters is not None:
-            self.dataset = fill_missing_with_value(
-                self.dataset, filters, verbose=self.verbose
-            )
+            self.dataset = fill_missing_with_value(self.dataset, filters)
 
     def filter_dictionary(
         self,
@@ -188,7 +184,6 @@ class Dataset:
             label_key=label_key,
             filters=filters,
             filter_is_optional=filter_is_optional,
-            verbose=self.verbose,
         )
 
     def to_datalist(self, key_list: list[str] = None):
@@ -237,47 +232,41 @@ class Dataset:
         n_start = len(self.dataset)
         if key_list is not None:
             key_list = parse_ids(key_list, "list")
-            self.print_verbose(
-                f"Selecting {len(key_list)} keys from {self.dataset_name}"
+            logger.info(
+                "Selecting %s keys from %s", len(key_list), self.dataset_name
             )
-            self.print_verbose(f"\tBefore: {n_start} samples")
+            logger.info("Before: %s samples", n_start)
             self.dataset = {
                 k: self.dataset[k] for k in self.dataset if k in key_list
             }
         elif excluded_key_list is not None:
             excluded_key_list = parse_ids(excluded_key_list, "list")
-            self.print_verbose(
-                f"Excluding {len(excluded_key_list)} keys from {self.dataset_name}"
+            logger.info(
+                "Excluding %s keys from %s",
+                len(excluded_key_list),
+                self.dataset_name,
             )
-            self.print_verbose(f"\tBefore: {n_start} samples")
+            logger.info("Before: %s samples", n_start)
             self.dataset = {
                 k: self.dataset[k]
                 for k in self.dataset
                 if k not in excluded_key_list
             }
         elif subsample_size is not None:
-            self.print_verbose(
-                f"Reducing dataset to {subsample_size} samples from {self.dataset_name}"
+            logger.info(
+                "Reducing dataset to %s samples from %s",
+                subsample_size,
+                self.dataset_name,
             )
-            self.print_verbose(f"\tBefore: {n_start} samples")
+            logger.info("Before: %s samples", n_start)
             self.dataset = subsample_dataset(
                 self.dataset,
                 subsample_size=subsample_size,
                 rng=self.rng,
                 strata_key=strata_key,
             )
-        self.print_verbose(f"\tAfter: {len(self)} samples")
-        self.print_verbose(f"\tDifference: {n_start - len(self)} samples")
-
-    def print_verbose(self, *args, **kwargs):
-        """
-        Prints a message if verbose is True.
-
-        Args:
-            *args: arguments to pass to print.
-            **kwargs: keyword arguments to pass to print.
-        """
-        print_verbose(*args, **kwargs, verbose=self.verbose)
+        logger.info("After: %s samples", len(self))
+        logger.info("Difference: %s samples", n_start - len(self))
 
     def apply_filters(self, **filter_dict: dict[str, Any]):
         """

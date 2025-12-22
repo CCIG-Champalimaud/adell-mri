@@ -128,7 +128,7 @@ def main(arguments):
     if args.resize_size is not None:
         args.resize_size = [round(x) for x in args.resize_size]
 
-    data_dict = Dataset(args.dataset_json, "r", verbose=True)
+    data_dict = Dataset(args.dataset_json, "r")
     data_dict.filter_dictionary(
         filters_presence=args.image_keys,
         possible_labels=None,

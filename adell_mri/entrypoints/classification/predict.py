@@ -18,6 +18,9 @@ from adell_mri.utils.dataset import Dataset
 from adell_mri.utils.network_factories import get_classification_network
 from adell_mri.utils.parser import get_params, merge_args, parse_ids
 from adell_mri.utils.torch_utils import get_generator_and_rng
+from adell_mri.utils.python_logging import get_logger
+
+logger = get_logger(__name__)
 
 
 def main(arguments):
@@ -68,7 +71,7 @@ def main(arguments):
     else:
         clinical_feature_keys = args.clinical_feature_keys
 
-    data_dict = Dataset(args.dataset_json, rng=rng, verbose=True)
+    data_dict = Dataset(args.dataset_json, rng=rng)
     presence_keys = args.image_keys + clinical_feature_keys
     if args.mask_key is not None:
         presence_keys.append(args.mask_key)
@@ -177,7 +180,7 @@ def main(arguments):
         else:
             checkpoint_list = args.checkpoints
         for checkpoint in checkpoint_list:
-            print(f"Predicting for {checkpoint}")
+            logger.info("Predicting for %s", checkpoint)
             network = get_classification_network(
                 net_type=args.net_type,
                 network_config=network_config,

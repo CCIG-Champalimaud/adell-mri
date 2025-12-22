@@ -39,6 +39,9 @@ from adell_mri.utils.torch_utils import (
 )
 from adell_mri.utils.utils import safe_collate
 from adell_mri.entrypoints.assemble_args import Parser
+from adell_mri.utils.python_logging import get_logger
+
+logger = get_logger(__name__)
 
 
 def main(arguments):
@@ -225,7 +228,7 @@ def main(arguments):
 
     all_pids = [k for k in data_dict]
 
-    print("Setting up transforms...")
+    logger.info("Setting up transforms...")
     label_mode = "binary" if n_classes == 2 and label_groups is None else "cat"
     transform_arguments = {
         "keys": keys,
@@ -275,10 +278,10 @@ def main(arguments):
             train_idxs = [i for i, x in enumerate(all_pids) if x not in val_ids]
             val_idxs = [i for i, x in enumerate(all_pids) if x in val_ids]
             if len(train_idxs) == 0:
-                print("No train samples in fold {}".format(fold_idx))
+                logger.info("No train samples in fold %s", fold_idx)
                 continue
             if len(val_idxs) == 0:
-                print("No val samples in fold {}".format(fold_idx))
+                logger.info("No val samples in fold %s", fold_idx)
                 continue
             else:
                 N = len(
@@ -288,10 +291,11 @@ def main(arguments):
                         if all_pids[i] not in excluded_ids_from_training_data
                     ]
                 )
-                print(
-                    "Fold {}: {} train samples; {} val samples".format(
-                        fold_idx, N, len(val_idxs)
-                    )
+                logger.info(
+                    "Fold %s: %s train samples; %s val samples",
+                    fold_idx,
+                    N,
+                    len(val_idxs),
                 )
             folds.append([train_idxs, val_idxs])
         args.n_folds = len(folds)
@@ -328,10 +332,10 @@ def main(arguments):
         train_val_list = [data_dict[pid] for pid in train_val_pids]
         val_list = [data_dict[pid] for pid in val_pids]
 
-        print("Current fold={}".format(val_fold))
-        print("\tTrain set size={}".format(len(train_idxs)))
-        print("\tTrain validation set size={}".format(len(train_val_pids)))
-        print("\tValidation set size={}".format(len(val_idxs)))
+        logger.info("Current fold=%s", val_fold)
+        logger.info("Train set size=%s", len(train_idxs))
+        logger.info("Train validation set size=%s", len(train_val_pids))
+        logger.info("Validation set size=%s", len(val_idxs))
 
         ckpt_callback, ckpt_path, status = get_ckpt_callback(
             checkpoint_dir=args.checkpoint_dir,
@@ -376,7 +380,7 @@ def main(arguments):
             classes.append(P)
         U, C = np.unique(classes, return_counts=True)
         for u, c in zip(U, C):
-            print("Number of {} cases: {}".format(u, c))
+            logger.info("Number of %s cases: %s", u, c)
         if args.weighted_sampling is True:
             weights = {k: 0 for k in args.possible_labels}
             for c in classes:
@@ -414,7 +418,7 @@ def main(arguments):
                 dtype=torch.float32,
             )
 
-        print("Initializing loss with class_weights: {}".format(class_weights))
+        logger.info("Initializing loss with class_weights: %s", class_weights)
         if n_classes == 2:
             network_config["loss_fn"] = torch.nn.BCEWithLogitsLoss(
                 class_weights
@@ -431,8 +435,10 @@ def main(arguments):
         real_bs = bs * n_devices
         if len(train_dataset) < real_bs:
             new_bs = len(train_dataset) // n_devices
-            print(
-                f"Batch size changed from {bs} to {new_bs} (dataset too small)"
+            logger.info(
+                "Batch size changed from %s to %s (dataset too small)",
+                bs,
+                new_bs,
             )
             bs = new_bs
             real_bs = bs * n_devices
@@ -563,7 +569,7 @@ def main(arguments):
         )
 
         # assessing performance on validation set
-        print("Validating...")
+        logger.info("Validating...")
 
         ckpt_list = ["last", "best"] if ckpt is True else ["last"]
         for ckpt_key in ckpt_list:
@@ -595,7 +601,7 @@ def main(arguments):
                     "n_val": len(val_pids),
                 }
                 csv_logger.log(x)
-                print(x)
+                logger.info(x)
 
         csv_logger.write()
 

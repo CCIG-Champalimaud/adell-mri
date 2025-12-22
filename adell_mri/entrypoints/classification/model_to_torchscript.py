@@ -6,8 +6,10 @@ import torch
 
 from adell_mri.modules.config_parsing import parse_config_cat, parse_config_unet
 from adell_mri.utils.network_factories import get_classification_network
+from adell_mri.utils.python_logging import get_logger
 
 sys.path.append(r"..")
+logger = get_logger(__name__)
 
 
 def main(arguments):
@@ -122,7 +124,7 @@ def main(arguments):
     )["state_dict"]
     state_dict = {k: state_dict[k] for k in state_dict if "loss_fn" not in k}
     inc = network.load_state_dict(state_dict)
-    print(inc)
+    logger.info("Inc: %s", inc)
     network.eval()
 
     # example = torch.rand(1, argsin_channels, *args.input_shape).to(args.dev)

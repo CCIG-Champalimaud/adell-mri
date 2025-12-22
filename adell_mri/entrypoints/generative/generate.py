@@ -180,7 +180,7 @@ def main(arguments):
         print("Setting up transforms...")
         transforms = GenerationTransforms(transform_args).transforms()
         transforms.set_random_state(args.seed)
-        data_dict = Dataset(args.dataset_json, rng=rng, verbose=True)
+        data_dict = Dataset(args.dataset_json, rng=rng)
         data_dict.dataset = {
             k: {**v, "key": k} for k, v in data_dict.dataset.items()
         }
