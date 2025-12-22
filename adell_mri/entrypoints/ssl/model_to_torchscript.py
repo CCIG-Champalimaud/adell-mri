@@ -6,6 +6,7 @@ import torch
 
 from adell_mri.modules.config_parsing import parse_config_ssl, parse_config_unet
 from adell_mri.utils.network_factories import get_ssl_network_no_pl
+from adell_mri.utils.python_logging import get_logger
 
 torch.backends.cudnn.benchmark = True
 
@@ -148,22 +149,25 @@ def main(arguments):
     }
     state_dict = {k: state_dict[k] for k in state_dict if "predictor" not in k}
     inc = ssl.load_state_dict(state_dict, strict=False)
-    print(f"\t{inc}")
+    logger = get_logger(__name__)
+    logger.info("%s", inc)
     ssl.eval()
 
-    print(
-        "Number of parameters:",
+    logger.info(
+        "Number of parameters: %s",
         sum([np.prod(x.shape) for x in ssl.parameters()]),
     )
 
-    print(f"Using function: ssl.{args.forward_method_name}")
+    logger.info("Using function: ssl.%s", args.forward_method_name)
     ssl.forward = eval(f"ssl.{args.forward_method_name}")
     example = torch.rand(1, *args.input_shape).to(args.dev)
-    print(f"For input shape: {example.shape}")
-    print(f"Expected output shape: {unpack_shape(ssl(example))}")
+    logger.info("For input shape: %s", example.shape)
+    logger.info("Expected output shape: %s", unpack_shape(ssl(example)))
     traced_ssl = torch.jit.trace(ssl, example_inputs=example)
 
-    print("Testing traced module...")
-    print(f"Traced module output shape: {unpack_shape(traced_ssl(example))}")
+    logger.info("Testing traced module...")
+    logger.info(
+        "Traced module output shape: %s", unpack_shape(traced_ssl(example))
+    )
 
     traced_ssl.save(args.output_model_path)

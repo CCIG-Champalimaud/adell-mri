@@ -1,5 +1,5 @@
 """
-Diffusion classes to train diffusion models. 
+Diffusion classes to train diffusion models.
 
 Based on:
     https://github.com/tcapelle/Diffusion-Models-pytorch/blob/main/ddpm.py
@@ -14,6 +14,10 @@ from typing import List, Tuple, Union
 
 import torch
 from tqdm.auto import tqdm
+
+from adell_mri.utils.python_logging import get_logger
+
+logger = get_logger(__name__)
 
 
 def cosine_beta_schedule(
@@ -352,7 +356,7 @@ class Diffusion:
         self.beta = self.beta.to(x.device)
         self.alpha_bar = self.alpha_bar.to(x.device)
         model.eval()
-        print("Generating...")
+        logger.info("Generating...")
         final_t = self.noise_steps if start_from is None else start_from
         t_range = reversed(range(0, final_t))
         if self.track_progress is True:

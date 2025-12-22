@@ -7,11 +7,13 @@ import SimpleITK as sitk
 from tqdm import tqdm
 
 from adell_mri.utils.sitk_utils import resample_image
+from adell_mri.utils.python_logging import get_logger
 
 desc = "Prints size of labels in a folder containing segmentation masks."
 
 
 def main(arguments):
+    logger = get_logger(__name__)
     parser = argparse.ArgumentParser(description=desc)
 
     parser.add_argument(
@@ -48,4 +50,4 @@ def main(arguments):
             un, co = np.unique(image, return_counts=True)
             for u, c in zip(un, co):
                 if u > 0:
-                    print("{},{},{},{}".format(path, u, c, c / image.size))
+                    logger.info("%s,%s,%s,%s", path, u, c, c / image.size)

@@ -32,7 +32,7 @@ def filter_orientations(
     Returns:
         DICOMDatasetType: a filtered DICOM dataset.
     """
-    print("Filtering out bad orientations")
+    logger.info("Filtering out bad orientations")
     new_dicom_dictionary = {}
     for k in dicom_dictionary:
         new_dicom_dictionary[k] = {}
@@ -117,7 +117,7 @@ class DICOMDataset(torch.utils.data.Dataset):
             real_index = index
         data_i = self.dicom_dataset[real_index[0]][real_index[1]][real_index[2]]
         if isinstance(data_i, str):
-            print(real_index, data_i)
+            logger.debug("Real index: %s, data_i: %s", real_index, data_i)
         if self.transform is not None:
             d = monai.transforms.apply_transform(self.transform, data_i)
             return d

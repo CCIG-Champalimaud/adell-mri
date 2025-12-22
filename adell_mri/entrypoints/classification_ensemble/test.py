@@ -26,9 +26,11 @@ from adell_mri.utils.parser import get_params, merge_args, parse_ids
 from adell_mri.utils.pl_utils import get_devices
 from adell_mri.utils.torch_utils import load_checkpoint_to_model
 from adell_mri.utils.utils import safe_collate
+from adell_mri.utils.python_logging import get_logger
 
 
 def main(arguments):
+    logger = get_logger(__name__)
     parser = Parser()
 
     parser.add_argument_by_key(
@@ -85,12 +87,12 @@ def main(arguments):
 
     if args.excluded_ids is not None:
         args.excluded_ids = parse_ids(args.excluded_ids, output_format="list")
-        print("Removing IDs specified in --excluded_ids")
+        logger.info("Removing IDs specified in --excluded_ids")
         prev_len = len(data_dict)
         data_dict = {
             k: data_dict[k] for k in data_dict if k not in args.excluded_ids
         }
-        print("\tRemoved {} IDs".format(prev_len - len(data_dict)))
+        logger.info("Removed %s IDs", prev_len - len(data_dict))
     data_dict = filter_dictionary_with_possible_labels(
         data_dict, args.possible_labels, args.label_keys
     )
@@ -166,7 +168,7 @@ def main(arguments):
 
     all_pids = [k for k in data_dict]  # noqa
 
-    print("Setting up transforms...")
+    logger.info("Setting up transforms...")
     label_mode = "binary" if n_classes == 2 and label_groups is None else "cat"
     transform_arguments = {
         "keys": keys,
@@ -191,13 +193,13 @@ def main(arguments):
         test_ids = all_test_ids[iteration]
         test_list = [data_dict[pid] for pid in test_ids if pid in data_dict]
 
-        print("Testing fold", iteration)
+        logger.info("Testing fold %d", iteration)
         for u, c in zip(
             *np.unique(
                 [x[args.label_keys] for x in test_list], return_counts=True
             )
         ):
-            print(f"\tCases({u}) = {c}")
+            logger.info("Cases(%s) = %s", u, c)
 
         test_dataset = monai.data.Dataset(test_list, transforms_testing)
 
@@ -221,7 +223,7 @@ def main(arguments):
             collate_fn=safe_collate,
         )
 
-        print("Setting up testing...")
+        logger.info("Setting up testing...")
         batch_preprocessing = None  # noqa
 
         if args.one_to_one is True:

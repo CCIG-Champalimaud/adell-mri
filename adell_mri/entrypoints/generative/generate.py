@@ -20,6 +20,7 @@ from adell_mri.utils.torch_utils import (
 from adell_mri.utils.utils import safe_collate
 from adell_mri.entrypoints.assemble_args import Parser
 from adell_mri.entrypoints.generative.train import return_first_not_none
+from adell_mri.utils.python_logging import get_logger
 
 
 def fetch_specifications(state_dict: dict[str, Any]):
@@ -49,6 +50,7 @@ def fetch_specifications(state_dict: dict[str, Any]):
 
 
 def main(arguments):
+    logger = get_logger(__name__)
     parser = Parser()
 
     parser.add_argument_by_key(
@@ -171,13 +173,13 @@ def main(arguments):
     elif args.precision == "16":
         inference_dtype = torch.float16
     else:
-        print("Invalid precision. Using 32-bit precision.")
+        logger.info("Invalid precision. Using 32-bit precision.")
         inference_dtype = torch.float32
     network = network.eval()
     network = torch.compile(network)
     network = network.to(dtype=inference_dtype)
     if args.dataset_json is not None:
-        print("Setting up transforms...")
+        logger.info("Setting up transforms...")
         transforms = GenerationTransforms(transform_args).transforms()
         transforms.set_random_state(args.seed)
         data_dict = Dataset(args.dataset_json, rng=rng)
@@ -188,12 +190,12 @@ def main(arguments):
             args.excluded_ids = parse_ids(
                 args.excluded_ids, output_format="list"
             )
-            print("Removing IDs specified in --excluded_ids")
+            logger.info("Removing IDs specified in --excluded_ids")
             prev_len = len(data_dict)
             data_dict = {
                 k: data_dict[k] for k in data_dict if k not in args.excluded_ids
             }
-            print("\tRemoved {} IDs".format(prev_len - len(data_dict)))
+            logger.info("Removed %s IDs", prev_len - len(data_dict))
         data_dict.filter_dictionary(
             filters_presence=presence_keys,
             filters=args.filter_on_keys,
@@ -211,9 +213,9 @@ def main(arguments):
 
         pred_list = data_dict.to_datalist(args.prediction_ids)
 
-        print("\tPrediction set size={}".format(len(pred_list)))
+        logger.info("Prediction set size=%s", len(pred_list))
 
-        print(f"Number of cases: {len(pred_list)}")
+        logger.info("Number of cases: %s", len(pred_list))
 
         dataset = monai.data.CacheDataset(
             pred_list,
@@ -296,7 +298,7 @@ def main(arguments):
         size = return_first_not_none(args.crop_size, args.pad_size)
         size = [int(i) for i in size]
         Path(args.output_path).mkdir(exist_ok=True, parents=True)
-        print(f"Generating {args.n_samples_gen} samples")
+        logger.info("Generating %s samples", args.n_samples_gen)
         cat_condition = [cat_condition[k] for k in args.cat_condition_keys]
         num_condition = [num_condition[k] for k in args.num_condition_keys]
         num_condition = torch.as_tensor(

@@ -2,6 +2,10 @@
 Functions to handle DICOM datasets.
 """
 
+from adell_mri.utils.python_logging import get_logger
+
+logger = get_logger(__name__)
+
 
 def filter_dicom_dict_on_presence(data_dict: dict, all_keys: list[str]) -> dict:
     """
@@ -41,7 +45,7 @@ def filter_dicom_dict_by_size(data_dict: dict, max_size: int) -> dict:
     Returns:
         dict: filtered dictionary.
     """
-    print("Filtering by size (max={})".format(max_size))
+    logger.info("Filtering by size (max=%s)", max_size)
     output_dict = {}
     removed_series = 0
     for k in data_dict:
@@ -52,5 +56,5 @@ def filter_dicom_dict_by_size(data_dict: dict, max_size: int) -> dict:
                 output_dict[k][kk] = data_dict[k][kk]
             else:
                 removed_series += 1
-    print("Removed={}".format(removed_series))
+    logger.info("Removed=%s", removed_series)
     return output_dict

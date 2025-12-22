@@ -29,6 +29,7 @@ from adell_mri.utils.monai_transforms import (
 from adell_mri.utils.network_factories import get_segmentation_network
 from adell_mri.utils.parser import parse_ids
 from adell_mri.utils.pl_utils import get_ckpt_callback, get_devices, get_logger
+from adell_mri.utils.python_logging import get_logger as get_python_logger
 from adell_mri.utils.samplers import PartiallyRandomSampler
 from adell_mri.utils.sitk_utils import (
     get_spacing_quantile,
@@ -64,6 +65,7 @@ def inter_size(a, b):
 
 
 def main(arguments):
+    logger = get_python_logger(__name__)
     parser = Parser()
 
     parser.add_argument_by_key(
@@ -270,10 +272,10 @@ def main(arguments):
             train_idxs = [i for i, x in enumerate(all_pids) if x not in val_ids]
             val_idxs = [i for i, x in enumerate(all_pids) if x in val_ids]
             if len(train_idxs) == 0:
-                print("No train samples in fold {}".format(fold_idx))
+                logger.info("No train samples in fold %s", fold_idx)
                 continue
             if len(val_idxs) == 0:
-                print("No val samples in fold {}".format(fold_idx))
+                logger.info("No val samples in fold %s", fold_idx)
                 continue
             folds.append([train_idxs, val_idxs])
         args.n_folds = len(folds)
@@ -281,8 +283,8 @@ def main(arguments):
 
     csv_logger = CSVLogger(args.metric_path, not args.resume_from_last)
     for val_fold in range(args.n_folds):
-        print("=" * 80)
-        print("Starting fold={}".format(val_fold))
+        logger.info("=" * 80)
+        logger.info("Starting fold=%s", val_fold)
 
         train_idxs, val_idxs = next(fold_generator)
         if args.use_val_as_train_val is False:
@@ -290,7 +292,7 @@ def main(arguments):
                 train_idxs, test_size=0.15
             )
         else:
-            print("Using validation as training validation")
+            logger.info("Using validation as training validation")
             train_val_idxs = val_idxs
         train_pids = [all_pids[i] for i in train_idxs]
         train_val_pids = [all_pids[i] for i in train_val_idxs]
@@ -431,8 +433,8 @@ def main(arguments):
         if args.checkpoint is not None:
             if len(args.checkpoint) >= (val_fold + 1):
                 ckpt_path = args.checkpoint[val_fold]
-                print(
-                    "Resuming training from checkpoint in {}".format(ckpt_path)
+                logger.info(
+                    "Resuming training from checkpoint in %s", ckpt_path
                 )
 
         transforms_train.set_random_state(args.seed)
@@ -561,7 +563,7 @@ def main(arguments):
                 device=dev,
             )
             network_config["loss_fn"].replace_item("weight", w)
-        print("Loss specification:", network_config["loss_fn"])
+        logger.info("Loss specification: %s", network_config["loss_fn"])
 
         network_config["loss_fn"].loss_fns_and_kwargs = [
             (
@@ -802,7 +804,7 @@ def main(arguments):
 
         trainer.fit(unet, train_loader, train_val_loader, ckpt_path=ckpt_path)
 
-        print("Validating...")
+        logger.info("Validating...")
         ckpt_list = ["last", "best"] if ckpt is True else ["last"]
         for ckpt_key in ckpt_list:
             test_metrics = trainer.test(
@@ -825,7 +827,7 @@ def main(arguments):
                         "n_val": len(val_pids),
                     }
                     csv_logger.log(x)
-                    print(x)
+                    logger.info("%s", x)
                 else:
                     for i, v in enumerate(out):
                         x = {
@@ -838,10 +840,10 @@ def main(arguments):
                             "n_val": len(val_pids),
                         }
                         csv_logger.log(x)
-                        print(x)
+                        logger.info("%s", x)
 
         csv_logger.write()
-        print("=" * 80)
+        logger.info("=" * 80)
 
         # just for safety
         del trainer

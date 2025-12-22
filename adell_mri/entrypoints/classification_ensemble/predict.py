@@ -8,6 +8,7 @@ import torch
 from tqdm import tqdm
 
 from adell_mri.entrypoints.assemble_args import Parser
+from adell_mri.utils.python_logging import get_logger
 from adell_mri.modules.classification.pl import GenericEnsemblePL
 from adell_mri.modules.config_parsing import (
     parse_config_cat,
@@ -23,6 +24,9 @@ from adell_mri.utils.dataset_filters import (
 from adell_mri.utils.network_factories import get_classification_network
 from adell_mri.utils.parser import get_params, merge_args, parse_ids
 from adell_mri.utils.torch_utils import load_checkpoint_to_model
+
+
+logger = get_logger(__name__)
 
 
 def main(arguments):
@@ -73,12 +77,12 @@ def main(arguments):
 
     if args.excluded_ids is not None:
         args.excluded_ids = parse_ids(args.excluded_ids, output_format="list")
-        print("Removing IDs specified in --excluded_ids")
+        logger.info("Removing IDs specified in --excluded_ids")
         prev_len = len(data_dict)
         data_dict = {
             k: data_dict[k] for k in data_dict if k not in args.excluded_ids
         }
-        print("\tRemoved {} IDs".format(prev_len - len(data_dict)))
+        logger.info("Removed %s IDs", prev_len - len(data_dict))
     if len(args.filter_on_keys) > 0:
         data_dict = filter_dictionary_with_filters(
             data_dict, args.filter_on_keys
@@ -139,7 +143,7 @@ def main(arguments):
 
     # all_pids = [k for k in data_dict]
 
-    print("Setting up transforms...")
+    logger.info("Setting up transforms...")
     label_mode = "binary" if args.n_classes == 2 else "cat"
     transform_arguments = {
         "keys": keys,

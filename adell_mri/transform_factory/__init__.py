@@ -11,3 +11,15 @@ from adell_mri.transform_factory.transforms import (
     SegmentationTransforms,
     SSLTransforms,
 )
+
+__all__ = [
+    "get_augmentations_class",
+    "get_augmentations_detection",
+    "get_augmentations_ssl",
+    "get_augmentations_unet",
+    "ClassificationTransforms",
+    "DetectionTransforms",
+    "GenerationTransforms",
+    "SegmentationTransforms",
+    "SSLTransforms",
+]

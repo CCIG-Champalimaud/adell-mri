@@ -8,6 +8,8 @@ import numpy as np
 import SimpleITK as sitk
 from tqdm import tqdm
 
+from adell_mri.utils.python_logging import get_logger
+
 desc = "Script with very specific utility - given a set of MRI sequences and a \
     set of masks, determine which sequence is the most likely to have been used \
     as a  template for the mask. Assumes that the size/spacing of the mask \
@@ -15,6 +17,7 @@ desc = "Script with very specific utility - given a set of MRI sequences and a \
 
 
 def main(arguments):
+    logger = get_logger(__name__)
     parser = argparse.ArgumentParser(description=desc)
 
     parser.add_argument(
@@ -101,4 +104,4 @@ def main(arguments):
             has_non_zero[match] = [mask_has_nonzero]
 
     for k in matches:
-        print(k, len(matches[k]), np.sum(has_non_zero[k]))
+        logger.info("%s %s %s", k, len(matches[k]), np.sum(has_non_zero[k]))

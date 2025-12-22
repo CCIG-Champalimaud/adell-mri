@@ -8,6 +8,10 @@ from skimage.io import imsave
 from skimage.transform import resize
 from tqdm import tqdm
 
+from adell_mri.utils.python_logging import get_logger
+
+logger = get_logger(__name__)
+
 desc = "Generates a panel of random DICOM images in a folder"
 
 
@@ -86,14 +90,14 @@ def main(arguments):
         all_dcm_paths.append(path)
 
     for output_path in args.output_path:
-        print(f"Making and saving {output_path}")
+        logger.info("Making and saving %s", output_path)
         path_subset = np.random.choice(all_dcm_paths, size=n, replace=False)
 
         all_dcm = [[] for _ in range(w)]
         for i, path in enumerate(path_subset):
             dcm = normalize(dcmread(path).pixel_array)
             if len(dcm.shape) == 3:
-                print(dcm.shape)
+                logger.debug("DCM shape: %s", dcm.shape)
                 dcm = dcm[0]
             dcm = crop_to_square(dcm)
             all_dcm[i // w].append(

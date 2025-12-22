@@ -15,6 +15,7 @@ from adell_mri.utils.dataset_filters import (
 from adell_mri.utils.network_factories import get_detection_network
 from adell_mri.utils.pl_utils import get_devices
 from adell_mri.utils.utils import load_anchors
+from adell_mri.utils.python_logging import get_logger
 
 sys.path.append(r"..")
 
@@ -22,6 +23,7 @@ torch.backends.cudnn.benchmark = True
 
 
 def main(arguments):
+    logger = get_logger(__name__)
     parser = Parser()
 
     parser.add_argument_by_key(
@@ -91,7 +93,7 @@ def main(arguments):
     )(torch.ones([1, 1, *crop_size]))
     output_size = output_example[0].shape[2:]
 
-    print("Setting up transforms...")
+    logger.info("Setting up transforms...")
     transform_arguments = {
         "keys": keys,
         "adc_keys": adc_keys,
@@ -105,8 +107,6 @@ def main(arguments):
         "mask_mode": None,
         "t2_keys": None,
         "anchor_array": anchor_array,
-        "pad_size": pad_size,
-        "crop_size": crop_size,
         "output_size": output_size,
         "iou_threshold": args.iou_threshold,
         "predict": False,
@@ -118,7 +118,7 @@ def main(arguments):
         path_list, monai.transforms.Compose(transforms_predict)
     )
 
-    print("Setting up training...")
+    logger.info("Setting up training...")
     yolo = get_detection_network(
         net_type=args.net_type,
         network_config=network_config,
@@ -137,7 +137,7 @@ def main(arguments):
     yolo.load_from_checkpoint(args.checkpoint)
     yolo.eval()
 
-    print("Predicting...")
+    logger.info("Predicting...")
     with torch.no_grad():
         for instance in predict_dataset:
             instance = instance.unsqueeze(0)

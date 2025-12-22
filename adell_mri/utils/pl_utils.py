@@ -14,6 +14,9 @@ from lightning.pytorch.callbacks.model_checkpoint import ModelCheckpoint
 from lightning.pytorch.loggers import Logger
 
 from adell_mri.utils.pl_callbacks import ModelCheckpointWithMetadata
+from adell_mri.utils.python_logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class GPULock:
@@ -114,7 +117,7 @@ class GPULock:
         """
         Unlocks all locked GPUs.
         """
-        print(f"Unlocking GPUs {self.locked_gpus}")
+        logger.info("Unlocking GPUs %s", self.locked_gpus)
         locked_gpus = self.get_locked_gpus()
         for locked_gpu in locked_gpus:
             self.unlock(locked_gpu)
@@ -132,7 +135,9 @@ def delete_checkpoints(trainer: Trainer) -> None:
         if os.path.exists(path):
             os.remove(path)
         elif verbose is True:
-            print(f"Warning: {path} does not exist and has not been deleted")
+            logger.debug(
+                "Warning: %s does not exist and has not been deleted", path
+            )
 
     if hasattr(trainer, "checkpoint_callbacks"):
         for ckpt_callback in trainer.checkpoint_callbacks:
@@ -325,12 +330,14 @@ def get_ckpt_callback(
                 key = "epoch"
             ckpt_value = torch.load(ckpt_path, weights_only=False)[key]
             if ckpt_value >= (value - 1):
-                print("Training has finished for this fold, skipping")
+                logger.info("Training has finished for this fold, skipping")
                 status = "finished"
             else:
-                print(
-                    f"Resuming training from checkpoint in {ckpt_path}"
-                    "({key}={ckpt_value})"
+                logger.info(
+                    "Resuming training from checkpoint in %s (%s=%s)",
+                    ckpt_path,
+                    key,
+                    ckpt_value,
                 )
     return ckpt_callback, ckpt_path, status
 

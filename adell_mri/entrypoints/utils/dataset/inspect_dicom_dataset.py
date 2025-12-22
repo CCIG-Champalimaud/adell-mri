@@ -1,5 +1,7 @@
 import numpy as np
 
+from adell_mri.utils.python_logging import get_logger
+
 desc = "Prints entries with nan/infinite in DICOM dataset"
 
 
@@ -19,6 +21,7 @@ def main(arguments):
     from pydicom import dcmread
     from tqdm import tqdm
 
+    logger = get_logger(__name__)
     parser = argparse.ArgumentParser(description=desc)
 
     parser.add_argument(
@@ -38,6 +41,6 @@ def main(arguments):
                 p = calculate_parameters(image)
 
                 if p["nan count"] > 0:
-                    print(image_path, p, "nan")
+                    logger.info("%s %s %s", image_path, p, "nan")
                 if p["inf count"] > 0:
-                    print(image_path, p, "inf")
+                    logger.info("%s %s %s", image_path, p, "inf")

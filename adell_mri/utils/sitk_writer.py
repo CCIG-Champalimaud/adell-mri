@@ -8,6 +8,9 @@ import torch
 from multiprocess import Process, Queue
 
 from adell_mri.utils.sitk_utils import copy_information_nd
+from adell_mri.utils.python_logging import get_logger
+
+logger = get_logger(__name__)
 
 
 @dataclass
@@ -52,9 +55,10 @@ class SitkWriter:
                 image = copy_information_nd(image, source_image)
                 # checks for differences in size
                 if isinstance(image, str):
-                    print(
-                        f"error for image {path} and source_image"
-                        "{source_image_original}",
+                    logger.error(
+                        "error for image %s and source_image %s: %s",
+                        path,
+                        source_image_original,
                         image,
                     )
                     return

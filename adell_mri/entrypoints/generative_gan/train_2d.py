@@ -15,6 +15,7 @@ from adell_mri.utils.network_factories import get_gan_network
 from adell_mri.utils.parser import get_params, merge_args
 from adell_mri.utils.pl_callbacks import LogImageFromGAN
 from adell_mri.utils.pl_utils import get_ckpt_callback, get_devices, get_logger
+from adell_mri.utils.python_logging import get_logger as get_python_logger
 from adell_mri.utils.torch_utils import (
     get_generator_and_rng,
     load_checkpoint_to_model,
@@ -54,6 +55,7 @@ def return_first_not_none(*size_list):
 
 
 def main(arguments):
+    logger = get_python_logger(__name__)
     parser = Parser()
 
     parser.add_argument_by_key(
@@ -145,7 +147,7 @@ def main(arguments):
                 data_dict[k][kk][i]["pid"] = k
 
     if len(data_dict) == 0:
-        print("No data in dataset JSON")
+        logger.error("No data in dataset JSON")
         exit()
 
     if args.subsample_size is not None:
@@ -187,7 +189,7 @@ def main(arguments):
     ]
     train_pids = list(train_pids.keys())
 
-    print(f"Training set size: {len(train_list)}")
+    logger.info("Training set size: %s", len(train_list))
 
     transforms = monai.transforms.Compose(transforms)
     transforms.set_random_state(args.seed)
@@ -272,7 +274,7 @@ def main(arguments):
         callbacks.append(ckpt_callback)
     ckpt = ckpt_callback is not None
     if status == "finished":
-        print("Training has finished")
+        logger.info("Training has finished")
         exit()
 
     logger = get_logger(
@@ -326,7 +328,7 @@ def main(arguments):
 
     trainer.fit(model, val_dataloaders=val_loader, ckpt_path=ckpt_path)
 
-    print("Validating...")
+    logger.info("Validating...")
     test_metrics = trainer.test(model, val_loader)[0]
     for k in test_metrics:
         out = test_metrics[k]

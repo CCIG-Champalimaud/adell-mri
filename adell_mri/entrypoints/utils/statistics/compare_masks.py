@@ -8,6 +8,7 @@ import SimpleITK as sitk
 from tqdm import tqdm
 
 from adell_mri.utils.sitk_utils import resample_image_to_target
+from adell_mri.utils.python_logging import get_logger
 
 desc = "Calculates IoU of masks in two separate folders corresponding to the \
     same strcture and with the same identifier."
@@ -29,6 +30,7 @@ def iou(a, b):
 
 
 def main(arguments):
+    logger = get_logger(__name__)
     parser = argparse.ArgumentParser(description=desc)
 
     parser.add_argument(
@@ -84,8 +86,8 @@ def main(arguments):
                 v = iou(image_1, image_2)
                 iou_list.append(v)
 
-    print(
-        "Quantiles (0%,25%,50%,75%,100%):",
+    logger.info(
+        "Quantiles (0%%,25%%,50%%,75%%,100%%): %s",
         np.quantile(iou_list, [0, 0.25, 0.5, 0.75, 1]),
     )
-    print("Mean:", np.mean(iou_list))
+    logger.info("Mean: %s", np.mean(iou_list))

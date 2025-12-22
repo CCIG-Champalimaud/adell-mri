@@ -1,11 +1,13 @@
 import argparse
 
 import torch
+from adell_mri.utils.python_logging import get_logger
 
 desc = "Tests a jit-traced model with an input of a given shape"
 
 
 def main(arguments):
+    logger = get_logger(__name__)
     parser = argparse.ArgumentParser(description=desc)
 
     parser.add_argument(
@@ -23,14 +25,14 @@ def main(arguments):
     parser.add_argument("--dev", default="cuda", help="Device for test")
     args = parser.parse_args(arguments)
 
-    print("Loading TorchScript model")
+    logger.info("Loading TorchScript model")
     model = torch.jit.load(args.model_path)
-    print(
-        "Defining example with shape {} on device {}".format(
-            [1] + args.input_shape, args.dev
-        )
+    logger.info(
+        "Defining example with shape %s on device %s",
+        [1] + args.input_shape,
+        args.dev,
     )
     example = torch.rand(1, *args.input_shape).to(args.dev)
-    print("Running example")
+    logger.info("Running example")
     out = model(example)
-    print("Output shape = {}".format(list(out.shape)))
+    logger.info("Output shape = %s", list(out.shape))

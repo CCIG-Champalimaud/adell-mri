@@ -18,6 +18,7 @@ from adell_mri.utils.pl_callbacks import (
     LogImageFromDiffusionProcess,
 )
 from adell_mri.utils.pl_utils import get_ckpt_callback, get_devices, get_logger
+from adell_mri.utils.python_logging import get_logger as get_python_logger
 from adell_mri.utils.torch_utils import (
     conditional_parameter_freezing,
     get_generator_and_rng,
@@ -44,6 +45,7 @@ def return_first_not_none(*size_list):
 
 
 def main(arguments):
+    logger = get_python_logger(__name__)
     parser = Parser()
 
     parser.add_argument_by_key(
@@ -162,7 +164,7 @@ def main(arguments):
 
     all_pids = [k for k in data_dict]
 
-    print("Setting up transforms...")
+    logger.info("Setting up transforms...")
     transform_arguments = {
         "keys": keys,
         "target_spacing": args.target_spacing,
@@ -186,7 +188,7 @@ def main(arguments):
 
     train_list = [data_dict[pid] for pid in all_pids]
 
-    print("\tTrain set size={}".format(len(train_list)))
+    logger.info("Train set size=%s", len(train_list))
 
     ckpt_callback, ckpt_path, status = get_ckpt_callback(
         checkpoint_dir=args.checkpoint_dir,
@@ -207,7 +209,7 @@ def main(arguments):
     if status == "finished":
         exit()
 
-    print(f"Number of cases: {len(train_list)}")
+    logger.info("Number of cases: %s", len(train_list))
 
     # PL needs a little hint to detect GPUs.
     torch.ones([1]).to("cuda" if "cuda" in args.dev else "cpu")
@@ -232,7 +234,11 @@ def main(arguments):
     real_bs = bs * n_devices
     if len(train_dataset) < real_bs:
         new_bs = len(train_dataset) // n_devices
-        print(f"Batch size changed from {bs} to {new_bs} (dataset too small)")
+        logger.info(
+            "Batch size changed from %s to %s (dataset too small)",
+            bs,
+            new_bs,
+        )
         bs = new_bs
         real_bs = bs * n_devices
 
@@ -338,7 +344,7 @@ def main(arguments):
     trainer.fit(network, train_loader, train_loader, ckpt_path=ckpt_path)
 
     # assessing performance on validation set
-    print("Validating...")
+    logger.info("Validating...")
 
     if ckpt is True:
         ckpt_list = ["last", "best"]

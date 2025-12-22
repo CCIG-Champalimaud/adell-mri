@@ -20,6 +20,7 @@ from adell_mri.modules.segmentation.picai_eval.eval import (
     evaluate_case,
 )
 from adell_mri.utils.parser import parse_ids
+from adell_mri.utils.python_logging import get_logger
 
 
 def get_lesion_candidates(
@@ -547,6 +548,7 @@ class CalculateMetrics:
 
 
 def main(arguments):
+    logger = get_logger(__name__)
     parser = Parser(
         description="Calculates segmentation metrics from predictions and \
             ground truths."
@@ -696,7 +698,7 @@ def main(arguments):
     ground_truth_dict = file_list_to_dict(
         all_ground_truth_paths, args.identifier_pattern
     )
-    print(f"Found ground truths: {len(all_ground_truth_paths)}")
+    logger.info("Found ground truths: %s", len(all_ground_truth_paths))
 
     all_prediction_paths = []
     for pattern in args.prediction_patterns:
@@ -706,7 +708,7 @@ def main(arguments):
     prediction_dict = file_list_to_dict(
         all_prediction_paths, args.identifier_pattern
     )
-    print(f"Found predictions: {len(all_prediction_paths)}")
+    logger.info("Found predictions: %s", len(all_prediction_paths))
 
     if args.generate_examples:
         all_image_paths = []
@@ -715,7 +717,7 @@ def main(arguments):
                 [str(x) for x in Path(args.image_path).glob(pattern)]
             )
         image_dict = file_list_to_dict(all_image_paths, args.identifier_pattern)
-        print(f"Found example images: {len(image_dict)}")
+        logger.info("Found example images: %s", len(image_dict))
     else:
         image_dict = {}
 
@@ -741,7 +743,7 @@ def main(arguments):
                     "example": image_dict.get(key, None),
                 }
 
-    print(f"Found matches: {len(merged_dict)}")
+    logger.info("Found matches: %s", len(merged_dict))
 
     if args.reduction_mode in ["mean", "sum", "max"]:
         reduction_mode = args.reduction_mode
@@ -763,7 +765,7 @@ def main(arguments):
 
     for key in merged_dict:
         if key is None:
-            print(key)
+            logger.debug("Found None key: %s", key)
     input_list = [
         (
             key,
@@ -790,7 +792,7 @@ def main(arguments):
                 example, os.path.join(args.example_path, key + ".png")
             )
     if args.generate_examples:
-        print("Writing examples...")
+        logger.info("Writing examples...")
         image_writer.close()
 
     lesion_results = {
@@ -827,4 +829,4 @@ def main(arguments):
         with open(args.output_json, "w") as o:
             json.dump(metric_dict, o, indent=2)
     else:
-        pprint.pprint(metric_dict)
+        logger.info("Metrics: %s", metric_dict)

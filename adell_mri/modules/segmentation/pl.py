@@ -14,6 +14,7 @@ import torchmetrics
 import torchmetrics.classification as tmc
 
 from adell_mri.utils.optimizer_factory import get_optimizer
+from adell_mri.utils.python_logging import get_logger
 from adell_mri.modules.extract_lesion_candidates import (
     extract_lesion_candidates,
 )
@@ -30,6 +31,8 @@ from adell_mri.modules.segmentation.unetr import (
     MonaiUNETR,
     SWINUNet,
 )
+
+logger = get_logger(__name__)
 
 
 def binary_iou_manual(
@@ -224,12 +227,14 @@ class UNetBasePL(pl.LightningModule, ABC):
 
     def check_loss(self, x, y, pred, loss):
         if self.raise_nan_loss is True and torch.isnan(loss) is True:
-            print("Nan loss detected! ({})".format(loss.detach()))
+            logger.debug("Nan loss detected! (%s)", loss.detach())
             for i, sx in enumerate(x):
-                print("\t0", [sx.detach().max(), sx.detach().min()])
-            print("\tOutput:", [pred.detach().max(), pred.detach().min()])
-            print("\tTruth:", [y.min(), y.max()])
-            print("\tModel parameters:")
+                logger.debug("0 %s", [sx.detach().max(), sx.detach().min()])
+            logger.debug(
+                "Output: %s", [pred.detach().max(), pred.detach().min()]
+            )
+            logger.debug("Truth: %s", [y.min(), y.max()])
+            logger.debug("Model parameters:")
             for n, p in self.named_parameters():
                 pn = p.norm()
                 if (
@@ -237,7 +242,7 @@ class UNetBasePL(pl.LightningModule, ABC):
                     or (torch.isinf(pn) is True)
                     or True
                 ):
-                    print("\t\tparameter norm({})={}".format(n, pn))
+                    logger.debug("parameter norm(%s)=%s", n, pn)
             for n, p in self.named_parameters():
                 if p.grad is not None:
                     pg = p.grad.mean()
@@ -246,7 +251,7 @@ class UNetBasePL(pl.LightningModule, ABC):
                         or (torch.isinf(pg) is True)
                         or True
                     ):
-                        print("\t\taverage grad({})={}".format(n, pg))
+                        logger.debug("average grad(%s)=%s", n, pg)
             raise RuntimeError("nan found in loss (see above for details)")
 
     def crop_if_necessary(
@@ -753,7 +758,7 @@ class UNetPL(UNet, UNetBasePL):
 
 class UNETRPL(UNETR, UNetBasePL):
     """
-Standard UNETR implementation for Pytorch Lightning."""
+    Standard UNETR implementation for Pytorch Lightning."""
 
     def __init__(
         self,
@@ -837,7 +842,7 @@ Standard UNETR implementation for Pytorch Lightning."""
 
 class SWINUNetPL(SWINUNet, UNetBasePL):
     """
-Standard SWIN-UNet implementation for Pytorch Lightning."""
+    Standard SWIN-UNet implementation for Pytorch Lightning."""
 
     def __init__(
         self,
@@ -922,7 +927,7 @@ Standard SWIN-UNet implementation for Pytorch Lightning."""
 
 class MonaiSWINUNetPL(MonaiSWINUNet, UNetBasePL):
     """
-MONAI SWIN-UNet for Pytorch Lightning."""
+    MONAI SWIN-UNet for Pytorch Lightning."""
 
     def __init__(
         self,
@@ -1007,7 +1012,7 @@ MONAI SWIN-UNet for Pytorch Lightning."""
 
 class MonaiUNETRPL(MonaiUNETR, UNetBasePL):
     """
-MONAI UNETR for Pytorch Lightning."""
+    MONAI UNETR for Pytorch Lightning."""
 
     def __init__(
         self,
@@ -1112,7 +1117,7 @@ class UNetPlusPlusPL(UNetPlusPlus, UNetBasePL):
         **kwargs,
     ) -> torch.nn.Module:
         """
-Standard U-Net++ [1] implementation for Pytorch Lightning.
+        Standard U-Net++ [1] implementation for Pytorch Lightning.
 
         Args:
             image_key (str): key corresponding to the input from the train
@@ -1307,7 +1312,7 @@ class BrUNetPL(BrUNet, UNetBasePL):
         **kwargs,
     ) -> torch.nn.Module:
         """
-Standard U-Net [1] implementation for Pytorch Lightning.
+        Standard U-Net [1] implementation for Pytorch Lightning.
 
         Args:
             image_keys (str): list of keys corresponding to the inputs from

@@ -9,6 +9,7 @@ from lightning.pytorch.callbacks import EarlyStopping, RichProgressBar
 from sklearn.model_selection import StratifiedKFold, train_test_split
 
 from adell_mri.utils.logging import CSVLogger
+from adell_mri.utils.python_logging import get_logger as get_python_logger
 
 from adell_mri.entrypoints.assemble_args import Parser
 from adell_mri.modules.classification.pl import GenericEnsemblePL
@@ -39,6 +40,8 @@ from adell_mri.utils.torch_utils import (
     set_classification_layer_bias,
 )
 from adell_mri.utils.utils import safe_collate
+
+python_logger = get_python_logger(__name__)
 
 
 def main(arguments):
@@ -130,8 +133,6 @@ def main(arguments):
     n_devices = len(devices) if isinstance(devices, list) else devices
     n_devices = 1 if isinstance(devices, str) else n_devices
 
-    output_file = open(args.metric_path, "w")
-
     data_dict = Dataset(args.dataset_json, rng=rng)
 
     if args.clinical_feature_keys is None:
@@ -221,7 +222,7 @@ def main(arguments):
 
     all_pids = [k for k in data_dict]
 
-    print("Setting up transforms...")
+    python_logger.info("Setting up transforms...")
     label_mode = "binary" if n_classes == 2 and label_groups is None else "cat"
     transform_arguments = {
         "keys": keys,
@@ -270,10 +271,10 @@ def main(arguments):
             train_idxs = [i for i, x in enumerate(all_pids) if x not in val_ids]
             val_idxs = [i for i, x in enumerate(all_pids) if x in val_ids]
             if len(train_idxs) == 0:
-                print("No train samples in fold {}".format(fold_idx))
+                python_logger.warning("No train samples in fold %s", fold_idx)
                 continue
             if len(val_idxs) == 0:
-                print("No val samples in fold {}".format(fold_idx))
+                python_logger.warning("No val samples in fold %s", fold_idx)
                 continue
             else:
                 N = len(
@@ -283,7 +284,7 @@ def main(arguments):
                         if all_pids[i] not in excluded_ids_from_training_data
                     ]
                 )
-                print(
+                python_logger.info(
                     "Fold {}: {} train samples; {} val samples".format(
                         fold_idx, N, len(val_idxs)
                     )
@@ -323,10 +324,10 @@ def main(arguments):
         train_val_list = [data_dict[pid] for pid in train_val_pids]
         val_list = [data_dict[pid] for pid in val_pids]
 
-        print("Current fold={}".format(val_fold))
-        print("\tTrain set size={}".format(len(train_idxs)))
-        print("\tTrain validation set size={}".format(len(train_val_pids)))
-        print("\tValidation set size={}".format(len(val_idxs)))
+        python_logger.info("Current fold=%s", val_fold)
+        python_logger.info("Train set size=%s", len(train_idxs))
+        python_logger.info("Train validation set size=%s", len(train_val_pids))
+        python_logger.info("Validation set size=%s", len(val_idxs))
 
         if len(clinical_feature_keys) > 0:
             clinical_feature_values = [
@@ -381,7 +382,7 @@ def main(arguments):
             classes.append(P)
         U, C = np.unique(classes, return_counts=True)
         for u, c in zip(U, C):
-            print("Number of {} cases: {}".format(u, c))
+            python_logger.info("Number of %s cases: %s", u, c)
         if args.weighted_sampling is True:
             weights = {k: 0 for k in args.possible_labels}
             for c in classes:
@@ -419,7 +420,9 @@ def main(arguments):
                 dtype=torch.float32,
             )
 
-        print("Initializing loss with class_weights: {}".format(class_weights))
+        python_logger.info(
+            "Initializing loss with class_weights: %s", class_weights
+        )
         if n_classes == 2:
             ensemble_config["loss_fn"] = torch.nn.BCEWithLogitsLoss(
                 class_weights
@@ -438,8 +441,10 @@ def main(arguments):
         real_bs = bs * n_devices
         if len(train_dataset) < real_bs:
             new_bs = len(train_dataset) // n_devices
-            print(
-                f"Batch size changed from {bs} to {new_bs} (dataset too small)"
+            python_logger.info(
+                "Batch size changed from %s to %s (dataset too small)",
+                bs,
+                new_bs,
             )
             bs = new_bs
             real_bs = bs * n_devices
@@ -597,7 +602,7 @@ def main(arguments):
         )
 
         # assessing performance on validation set
-        print("Validating...")
+        python_logger.info("Validating...")
 
         ckpt_list = ["last", "best"] if ckpt is True else ["last"]
         for ckpt_key in ckpt_list:
@@ -629,7 +634,7 @@ def main(arguments):
                     "n_val": len(val_pids),
                 }
                 csv_logger.log(x)
-                print(x)
+                python_logger.debug(str(x))
 
         if args.delete_checkpoints is True:
             delete_checkpoints(trainer)

@@ -10,6 +10,7 @@ from lightning.pytorch.callbacks import RichProgressBar
 from sklearn.model_selection import KFold, train_test_split
 
 from adell_mri.utils.torch_utils import get_generator_and_rng
+from adell_mri.utils.python_logging import get_logger as get_python_logger
 
 from adell_mri.entrypoints.assemble_args import Parser
 from adell_mri.modules.object_detection import YOLONet3d
@@ -31,6 +32,7 @@ torch.backends.cudnn.benchmark = True
 
 
 def main(arguments):
+    logger = get_python_logger(__name__)
     parser = Parser()
 
     parser.add_argument_by_key(
@@ -203,10 +205,9 @@ def main(arguments):
         else:
             anchor_array = load_anchors(args.anchor_csv)
         if args.min_anchor_area is not None:
-            print(
-                "Filtering anchor area (minimum area: {})".format(
-                    args.min_anchor_area
-                )
+            logger.info(
+                "Filtering anchor area (minimum area: %s)",
+                args.min_anchor_area,
             )
             anchor_array = anchor_array[
                 np.prod(anchor_array, 1) > args.min_anchor_area
@@ -276,7 +277,7 @@ def main(arguments):
             persistent_workers=args.n_workers > 0,
         )
 
-        print("Setting up training...")
+        logger.info("Setting up training...")
         yolo = get_detection_network(
             net_type=args.net_type,
             network_config=network_config,
@@ -339,7 +340,7 @@ def main(arguments):
         trainer.fit(yolo, train_loader, train_val_loader, ckpt_path=ckpt_path)
 
         # assessing performance on validation set
-        print("Validating...")
+        logger.info("Validating...")
 
         trainer.test(yolo, validation_loader)
         for k in yolo.test_metrics:
@@ -348,6 +349,6 @@ def main(arguments):
                 value = float(out.detach().numpy())
             except Exception:
                 value = float(out)
-            print("{},{},{},{}".format(k, val_fold, 0, value))
+            logger.info("{},{},{},{}".format(k, val_fold, 0, value))
 
         torch.cuda.empty_cache()

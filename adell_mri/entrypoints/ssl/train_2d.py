@@ -10,6 +10,7 @@ from lightning.pytorch import Trainer
 from lightning.pytorch.callbacks import RichProgressBar
 
 from adell_mri.utils.torch_utils import get_generator_and_rng
+from adell_mri.utils.python_logging import get_logger as get_python_logger
 
 from adell_mri.entrypoints.assemble_args import Parser
 from adell_mri.modules.config_parsing import parse_config_ssl, parse_config_unet
@@ -46,6 +47,7 @@ def force_cudnn_initialization():
 
 
 def main(arguments):
+    logger = get_python_logger(__name__)
     parser = Parser()
 
     parser.add_argument_by_key(
@@ -131,17 +133,24 @@ def main(arguments):
                     exists[i] = os.path.exists(data_dict[k][kk][i]["image"])
                     data_dict[k][kk][i]["pid"] = k
                 data_dict[k][kk] = [
-                    data_dict[k][kk][i] for i in range(len(data_dict[k][kk])) if exists[i]
+                    data_dict[k][kk][i]
+                    for i in range(len(data_dict[k][kk]))
+                    if exists[i]
                 ]
                 if len(data_dict[k][kk]) == 0:
                     del data_dict[k][kk]
-                    print(f"Removed {kk} for {k}")
+                    logger.info("Removed %s for %s", kk, k)
                     continue
                 elif len(exists) != len(data_dict[k][kk]):
-                    print(f"Removed {len(exists) - len(data_dict[k][kk])} entries for {k}, {kk}")
+                    logger.info(
+                        "Removed %s entries for %s, %s",
+                        len(exists) - len(data_dict[k][kk]),
+                        k,
+                        kk,
+                    )
 
     if len(data_dict) == 0:
-        print("No data in dataset JSON")
+        logger.error("No data in dataset JSON")
         exit()
 
     if args.subsample_size is not None:
@@ -228,7 +237,7 @@ def main(arguments):
     ]
     train_pids = list(train_pids.keys())
 
-    print(f"Training set size: {len(train_list)}")
+    logger.info("Training set size: %s", len(train_list))
 
     transforms.set_random_state(args.seed)
     if args.jpeg_dataset is True:
@@ -341,7 +350,7 @@ def main(arguments):
             args.checkpoint, map_location=args.dev, weights_only=False
         )["state_dict"]
         inc = ssl.load_state_dict(state_dict)
-        print(inc)
+        logger.debug("%s", inc)
 
     callbacks = [RichProgressBar()]
 
@@ -363,7 +372,7 @@ def main(arguments):
         callbacks.append(ckpt_callback)
     ckpt = ckpt_callback is not None
     if status == "finished":
-        print("Training has finished")
+        logger.info("Training has finished")
         exit()
 
     logger = get_logger(
@@ -407,7 +416,7 @@ def main(arguments):
 
     trainer.fit(ssl, val_dataloaders=val_loader, ckpt_path=ckpt_path)
 
-    print("Validating...")
+    logger.info("Validating...")
     test_metrics = trainer.test(ssl, val_loader)[0]
     for k in test_metrics:
         out = test_metrics[k]

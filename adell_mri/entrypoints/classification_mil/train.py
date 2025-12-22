@@ -12,6 +12,7 @@ from lightning.pytorch.callbacks import (
 from sklearn.model_selection import StratifiedKFold, train_test_split
 
 from adell_mri.utils.logging import CSVLogger
+from adell_mri.utils.python_logging import get_logger as get_python_logger
 
 from adell_mri.entrypoints.assemble_args import Parser
 from adell_mri.modules.classification.pl import (
@@ -44,6 +45,7 @@ from adell_mri.utils.utils import safe_collate
 
 
 def main(arguments):
+    logger = get_python_logger(__name__)
     parser = Parser()
 
     parser.add_argument_by_key(
@@ -127,8 +129,6 @@ def main(arguments):
     else:
         is_auto = False
 
-    output_file = open(args.metric_path, "w")
-
     data_dict = Dataset(args.dataset_json, rng=rng)
 
     if args.excluded_ids_from_training_data is not None:
@@ -184,7 +184,7 @@ def main(arguments):
     if "batch_size" not in network_config:
         network_config["batch_size"] = 1
 
-    print("Setting up transforms...")
+    logger.info("Setting up transforms...")
     label_mode = "binary" if n_classes == 2 and label_groups is None else "cat"
     transform_arguments = {
         "keys": keys,
@@ -240,10 +240,10 @@ def main(arguments):
             train_idxs = [i for i, x in enumerate(all_pids) if x not in val_ids]
             val_idxs = [i for i, x in enumerate(all_pids) if x in val_ids]
             if len(train_idxs) == 0:
-                print("No train samples in fold {}".format(fold_idx))
+                logger.warning("No train samples in fold %s" % fold_idx)
                 continue
             if len(val_idxs) == 0:
-                print("No val samples in fold {}".format(fold_idx))
+                logger.warning("No val samples in fold %s" % fold_idx)
                 continue
             else:
                 N = len(
@@ -253,10 +253,11 @@ def main(arguments):
                         if all_pids[i] not in excluded_ids_from_training_data
                     ]
                 )
-                print(
-                    "Fold {}: {} train samples; {} val samples".format(
-                        fold_idx, N, len(val_idxs)
-                    )
+                logger.info(
+                    "Fold %s: %s train samples; %s val samples",
+                    fold_idx,
+                    N,
+                    len(val_idxs),
                 )
             folds.append([train_idxs, val_idxs])
         args.n_folds = len(folds)
@@ -311,7 +312,7 @@ def main(arguments):
             classes.append(P)
         U, C = np.unique(classes, return_counts=True)
         for u, c in zip(U, C):
-            print("Number of {} cases: {}".format(u, c))
+            logger.info("Number of %s cases: %s", u, c)
         if args.weighted_sampling is True:
             weights = {k: 0 for k in args.possible_labels}
             for c in classes:
@@ -368,7 +369,7 @@ def main(arguments):
                         dtype=torch.float32,
                     )
 
-        print("Initializing loss with class_weights: {}".format(class_weights))
+        logger.info("Initializing loss with class_weights: %s", class_weights)
         if n_classes == 2:
             network_config["loss_fn"] = torch.nn.BCEWithLogitsLoss(
                 class_weights
@@ -415,7 +416,7 @@ def main(arguments):
             collate_fn=safe_collate,
         )
 
-        print("Loading data...")
+        logger.info("Loading data...")
         batch_preprocessing = BatchPreprocessing(
             args.label_smoothing,
             args.mixup_alpha,
@@ -440,16 +441,14 @@ def main(arguments):
         network_config["module"].eval()
         network_config["module"] = torch.jit.freeze(network_config["module"])
         if "module_out_dim" not in network_config:
-            print("2D module output size not specified, inferring...")
+            logger.info("2D module output size not specified, inferring...")
             input_example = torch.rand(
                 1, 1, *[int(x) for x in args.crop_size][:2]
             ).to(args.dev.split(":")[0])
             output = network_config["module"](input_example)
             network_config["module_out_dim"] = int(output.shape[1])
-            print(
-                "2D module output size={}".format(
-                    network_config["module_out_dim"]
-                )
+            logger.info(
+                "2D module output size=%s", network_config["module_out_dim"]
             )
 
         # instantiate callbacks and loggers
@@ -543,7 +542,7 @@ def main(arguments):
         )
 
         # assessing performance on validation set
-        print("Validating...")
+        logger.info("Validating...")
 
         ckpt_list = ["last", "best"] if ckpt is True else ["last"]
         for ckpt_key in ckpt_list:
@@ -567,7 +566,7 @@ def main(arguments):
                         "n_val": len(val_pids),
                     }
                     csv_logger.log(x)
-                    print(x)
+                    logger.info(x)
                 else:
                     for i, v in enumerate(out):
                         x = {
@@ -580,7 +579,7 @@ def main(arguments):
                             "n_val": len(val_pids),
                         }
                         csv_logger.log(x)
-                        print(x)
+                        logger.info(x)
             trainer.test_loop._results.clear()
 
         del network

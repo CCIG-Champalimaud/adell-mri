@@ -8,6 +8,9 @@ import torch
 from tqdm import tqdm
 
 from adell_mri.utils.utils import return_classes
+from adell_mri.utils.python_logging import get_logger
+
+logger = get_logger(__name__)
 
 
 def load_checkpoint_to_model(
@@ -38,7 +41,7 @@ def load_checkpoint_to_model(
     if checkpoint is None:
         return
     elif isinstance(checkpoint, str):
-        print(f"Loading checkpoint from {checkpoint}")
+        logger.info("Loading checkpoint from %s", checkpoint)
         sd = torch.load(checkpoint, weights_only=False)
     else:
         sd = checkpoint
@@ -55,7 +58,7 @@ def load_checkpoint_to_model(
             "Dictionary contains more keys than it should:"
             + str(output.unexpected_keys)
         )
-    print(f"\tMissing keys: {output.missing_keys}")
+    logger.debug("Missing keys: %s", output.missing_keys)
 
 
 def get_class_weights(
@@ -120,7 +123,7 @@ def conditional_parameter_freezing(
     state_dict: Dict[str, torch.Tensor] = None,
 ):
     """
-Freezes (or not) parameters according to a list of regex and loads an
+    Freezes (or not) parameters according to a list of regex and loads an
     optional state dict if frozen keys match dictionary.
 
     Args:
@@ -170,7 +173,7 @@ def set_classification_layer_bias(
     class_substr: str = "classification",
 ):
     """
-Sets the classification layer bias according to class prevalence in the
+    Sets the classification layer bias according to class prevalence in the
     binary classification setting.
 
     Args:

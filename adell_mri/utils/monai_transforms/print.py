@@ -1,4 +1,7 @@
 import monai
+from adell_mri.utils.python_logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class PrintShaped(monai.transforms.InvertibleTransform):
@@ -13,7 +16,7 @@ class PrintShaped(monai.transforms.InvertibleTransform):
     def __call__(self, X):
         for k in X:
             try:
-                print(self.prefix, k, X[k].shape)
+                logger.debug("%s %s %s", self.prefix, k, X[k].shape)
             except Exception:
                 pass
         return X
@@ -34,7 +37,7 @@ class PrintSumd(monai.transforms.InvertibleTransform):
     def __call__(self, X):
         for k in X:
             try:
-                print(self.prefix, k, X[k].sum())
+                logger.debug("%s %s %s", self.prefix, k, X[k].sum())
             except Exception:
                 pass
         return X
@@ -60,7 +63,9 @@ class PrintRanged(monai.transforms.InvertibleTransform):
             keys = X.keys()
         for k in keys:
             try:
-                print(self.prefix, k, X[k].min(), X[k].max())
+                logger.debug(
+                    "%s %s %s %s", self.prefix, k, X[k].min(), X[k].max()
+                )
             except Exception:
                 pass
         return X
@@ -80,7 +85,7 @@ class PrintTyped(monai.transforms.InvertibleTransform):
 
     def __call__(self, X):
         for k in X:
-            print(self.prefix, k, type(X[k]))
+            logger.debug("%s %s %s", self.prefix, k, type(X[k]))
         return X
 
     def inverse(self, X):
@@ -100,9 +105,9 @@ class Printd(monai.transforms.InvertibleTransform):
         for k in X:
             if self.keys is not None:
                 if k in self.keys:
-                    print(self.prefix, k, X[k])
+                    logger.info("%s %s %s", self.prefix, k, X[k])
             else:
-                print(self.prefix, k, X[k])
+                logger.info("%s %s %s", self.prefix, k, X[k])
         return X
 
     def inverse(self, X):

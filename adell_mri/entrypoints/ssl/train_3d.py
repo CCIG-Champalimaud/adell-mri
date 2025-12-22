@@ -7,6 +7,7 @@ from lightning.pytorch import Trainer
 from lightning.pytorch.callbacks import RichProgressBar
 
 from adell_mri.utils.torch_utils import get_generator_and_rng
+from adell_mri.utils.python_logging import get_logger as get_python_logger
 
 from adell_mri.entrypoints.assemble_args import Parser
 from adell_mri.modules.config_parsing import parse_config_ssl, parse_config_unet
@@ -39,6 +40,7 @@ def force_cudnn_initialization():
 
 
 def main(arguments):
+    logger = get_python_logger(__name__)
     parser = Parser()
 
     parser.add_argument_by_key(
@@ -110,7 +112,7 @@ def main(arguments):
     data_dict.apply_filters(**vars(args), presence_keys=all_keys)
 
     if len(data_dict) == 0:
-        print("No data in dataset JSON")
+        logger.error("No data in dataset JSON")
         exit()
 
     for k in data_dict:
@@ -181,7 +183,7 @@ def main(arguments):
         get_augmentations_ssl(**augmentation_args)
     )
 
-    print(f"Training set size: {len(data_dict)}")
+    logger.info("Training set size: %s", len(data_dict))
 
     train_pids = list(data_dict.keys())
     train_list = [value for pid, value in data_dict.items()]
@@ -283,7 +285,7 @@ def main(arguments):
             args.checkpoint, map_location=args.dev, weights_only=False
         )["state_dict"]
         inc = ssl.load_state_dict(state_dict)
-        print(inc)
+        logger.debug("State dict loading result: %s", inc)
 
     callbacks = [RichProgressBar()]
 
@@ -305,7 +307,7 @@ def main(arguments):
         callbacks.append(ckpt_callback)
     ckpt = ckpt_callback is not None
     if status == "finished":
-        print("Training has finished")
+        logger.info("Training has finished")
         exit()
 
     logger = get_logger(
@@ -349,7 +351,7 @@ def main(arguments):
 
     trainer.fit(ssl, val_dataloaders=val_loader, ckpt_path=ckpt_path)
 
-    print("Validating...")
+    logger.info("Validating...")
     test_metrics = trainer.test(ssl, val_loader)[0]
     for k in test_metrics:
         out = test_metrics[k]

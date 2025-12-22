@@ -20,10 +20,12 @@ from sklearn.cluster import DBSCAN
 
 from adell_mri.custom_types import (
     NDArrayOrTensor,
-    NDArrayOrTensorDict,
     Size2dOr3d,
     TensorDict,
 )
+from adell_mri.utils.python_logging import get_logger
+
+logger = get_logger(__name__)
 
 
 def normalize_along_slice(
@@ -227,7 +229,7 @@ class PrintShaped(monai.transforms.InvertibleTransform):
         """
         for k in X:
             try:
-                print(self.prefix, k, X[k].shape)
+                logger.debug("%s %s %s", self.prefix, k, X[k].shape)
             except Exception:
                 pass
         return X
@@ -266,7 +268,7 @@ class PrintSumd(monai.transforms.InvertibleTransform):
         """
         for k in X:
             try:
-                print(self.prefix, k, X[k].sum())
+                logger.debug("%s %s %s", self.prefix, k, X[k].sum())
             except Exception:
                 pass
         return X
@@ -311,7 +313,9 @@ class PrintRanged(monai.transforms.InvertibleTransform):
             keys = X.keys()
         for k in keys:
             try:
-                print(self.prefix, k, X[k].min(), X[k].max())
+                logger.debug(
+                    "%s %s %s %s", self.prefix, k, X[k].min(), X[k].max()
+                )
             except Exception:
                 pass
         return X
@@ -349,7 +353,7 @@ class PrintTyped(monai.transforms.InvertibleTransform):
             TensorDict: dictionary of tensors.
         """
         for k in X:
-            print(self.prefix, k, type(X[k]))
+            logger.debug("%s %s %s", self.prefix, k, type(X[k]))
         return X
 
     def inverse(self, X: TensorDict) -> TensorDict:
@@ -388,9 +392,9 @@ class Printd(monai.transforms.InvertibleTransform):
         for k in X:
             if self.keys is not None:
                 if k in self.keys:
-                    print(self.prefix, k, X[k])
+                    logger.debug("%s %s %s", self.prefix, k, X[k])
             else:
-                print(self.prefix, k, X[k])
+                logger.debug("%s %s %s", self.prefix, k, X[k])
         return X
 
     def inverse(self, X: TensorDict) -> TensorDict:

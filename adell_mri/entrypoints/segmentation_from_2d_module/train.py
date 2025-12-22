@@ -10,6 +10,7 @@ from sklearn.model_selection import KFold, train_test_split
 from tqdm import tqdm
 
 from adell_mri.utils.logging import CSVLogger
+from adell_mri.utils.python_logging import get_logger as get_python_logger
 from adell_mri.utils.torch_utils import get_generator_and_rng
 
 from adell_mri.entrypoints.assemble_args import Parser
@@ -60,6 +61,7 @@ def get_first(*lists):
 
 
 def main(arguments):
+    logger = get_python_logger(__name__)
     parser = Parser()
 
     parser.add_argument_by_key(
@@ -225,10 +227,10 @@ def main(arguments):
             train_idxs = [i for i, x in enumerate(all_pids) if x not in val_ids]
             val_idxs = [i for i, x in enumerate(all_pids) if x in val_ids]
             if len(train_idxs) == 0:
-                print("No train samples in fold {}".format(fold_idx))
+                logger.info("No train samples in fold %s", fold_idx)
                 continue
             if len(val_idxs) == 0:
-                print("No val samples in fold {}".format(fold_idx))
+                logger.info("No val samples in fold %s", fold_idx)
                 continue
             folds.append([train_idxs, val_idxs])
         args.n_folds = len(folds)
@@ -236,8 +238,8 @@ def main(arguments):
 
     csv_logger = CSVLogger(args.metric_path, not args.resume_from_last)
     for val_fold in range(args.n_folds):
-        print("=" * 80)
-        print("Starting fold={}".format(val_fold))
+        logger.info("=" * 80)
+        logger.info("Starting fold=%s", val_fold)
 
         train_idxs, val_idxs = next(fold_generator)
         if args.use_val_as_train_val is False:
@@ -355,8 +357,8 @@ def main(arguments):
         if args.checkpoint is not None:
             if len(args.checkpoint) >= (val_fold + 1):
                 ckpt_path = args.checkpoint[val_fold]
-                print(
-                    "Resuming training from checkpoint in {}".format(ckpt_path)
+                logger.info(
+                    "Resuming training from checkpoint in %s", ckpt_path
                 )
 
         transforms_train.set_random_state(args.seed)
@@ -436,7 +438,7 @@ def main(arguments):
                 dtype=torch.float32,
                 device=dev,
             )
-        print("Weights set to:", weights)
+        logger.info("Weights set to: %s", weights)
 
         # get loss function parameters
         loss_params = get_loss_param_dict(
@@ -580,7 +582,7 @@ def main(arguments):
 
         trainer.fit(unet, train_loader, train_val_loader, ckpt_path=ckpt_path)
 
-        print("Validating...")
+        logger.info("Validating...")
         ckpt_list = ["last", "best"] if ckpt is True else ["last"]
         for ckpt_key in ckpt_list:
             test_metrics = trainer.test(
@@ -603,7 +605,7 @@ def main(arguments):
                         "n_val": len(val_pids),
                     }
                     csv_logger.log(x)
-                    print(x)
+                    logger.info(x)
                 else:
                     for i, v in enumerate(out):
                         x = {
@@ -616,9 +618,9 @@ def main(arguments):
                             "n_val": len(val_pids),
                         }
                         csv_logger.log(x)
-                        print(x)
+                        logger.info(x)
 
-        print("=" * 80)
+        logger.info("=" * 80)
         gc.collect()
 
         # just for safety

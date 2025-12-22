@@ -20,11 +20,13 @@ from adell_mri.utils.monai_transforms import (
 )
 from adell_mri.utils.parser import get_params, merge_args, parse_ids
 from adell_mri.utils.pl_utils import get_devices
+from adell_mri.utils.python_logging import get_logger
 from adell_mri.utils.torch_utils import get_generator_and_rng
 from adell_mri.utils.utils import safe_collate
 
 
 def main(arguments):
+    logger = get_logger(__name__)
     parser = Parser()
 
     parser.add_argument_by_key(
@@ -135,7 +137,7 @@ def main(arguments):
 
     all_pids = [k for k in data_dict]  # noqa
 
-    print("Setting up transforms...")
+    logger.info("Setting up transforms...")
     label_mode = "binary" if n_classes == 2 else "cat"
     transform_arguments = {
         "keys": keys,
@@ -184,7 +186,9 @@ def main(arguments):
         else:
             checkpoint_list = args.checkpoints
         for checkpoint in checkpoint_list:
-            print(f"Iteration {iteration} with checkpoint {checkpoint}")
+            logger.info(
+                "Iteration %s with checkpoint %s", iteration, checkpoint
+            )
             n_slices = int(len(keys) * args.crop_size[-1])
             boilerplate_args = {
                 "n_classes": n_classes,
@@ -207,16 +211,15 @@ def main(arguments):
                 network_config["module"]
             )
             if "module_out_dim" not in network_config:
-                print("2D module output size not specified, inferring...")
+                logger.info("2D module output size not specified, inferring...")
                 input_example = torch.rand(
                     1, 1, *[int(x) for x in args.crop_size][:2]
                 ).to(args.dev.split(":")[0])
                 output = network_config["module"](input_example)
                 network_config["module_out_dim"] = int(output.shape[1])
-                print(
-                    "2D module output size={}".format(
-                        network_config["module_out_dim"]
-                    )
+                logger.info(
+                    "2D module output size=%s",
+                    network_config["module_out_dim"],
                 )
             if args.mil_method == "transformer":
                 network = TransformableTransformerPL(

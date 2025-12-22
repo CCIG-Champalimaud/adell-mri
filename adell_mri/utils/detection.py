@@ -9,6 +9,9 @@ from sklearn.cluster import KMeans
 from tqdm import tqdm
 
 from adell_mri.custom_types import NDArrayOrTensor
+from adell_mri.utils.python_logging import get_logger
+
+logger = get_logger(__name__)
 
 
 def anchors_from_nested_list(
@@ -75,7 +78,7 @@ def anchors_from_nested_list(
         c = np.mean(all_sizes[cluster_assignment == k], axis=0)
         anchors.append(c)
     anchors = np.array(anchors)
-    print("Inferred {} anchors:".format(anchors.shape[0]))
+    logger.info("Inferred %s anchors:", anchors.shape[0])
     for i in range(anchors.shape[0]):
-        print("\tAnchor {}: {}".format(i, anchors[i]))
+        logger.info("Anchor %s: %s", i, anchors[i])
     return anchors

@@ -6,6 +6,9 @@ def main(arguments):
 
     import numpy as np
     import SimpleITK as sitk
+    from adell_mri.utils.python_logging import get_logger
+
+    logger = get_logger(__name__)
 
     parser = argparse.ArgumentParser(description=desc)
 
@@ -22,16 +25,17 @@ def main(arguments):
         image = sitk.ReadImage(sitk_image_path)
         image_array = sitk.GetArrayFromImage(image)
         u, c = np.unique(image_array, return_counts=True)
-        print(f"Image: {sitk_image_path}")
-        print(f"\tImage size: {image.GetSize()}")
-        print(f"\tImage spacing: {image.GetSpacing()}")
-        print(f"\tImage origin: {image.GetOrigin()}")
-        print(f"\tImage direction: {image.GetDirection()}")
-        print(
-            f"\tImage number of components: {image.GetNumberOfComponentsPerPixel()}"
+        logger.info("Image: %s", sitk_image_path)
+        logger.info("Image size: %s", image.GetSize())
+        logger.info("Image spacing: %s", image.GetSpacing())
+        logger.info("Image origin: %s", image.GetOrigin())
+        logger.info("Image direction: %s", image.GetDirection())
+        logger.info(
+            "Image number of components: %s",
+            image.GetNumberOfComponentsPerPixel(),
         )
-        print(f"\tImage pixel type: {image.GetPixelIDTypeAsString()}")
+        logger.info("Image pixel type: %s", image.GetPixelIDTypeAsString())
         if u.shape[0] > 5:
-            print(f"\tNumber of unique values: {len(u)}")
+            logger.info("Number of unique values: %s", len(u))
         else:
-            print(f"\tUnique values: {[(i,j) for i,j in zip(u,c)]}")
+            logger.info("Unique values: %s", [(i, j) for i, j in zip(u, c)])

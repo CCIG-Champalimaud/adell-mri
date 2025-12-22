@@ -6,6 +6,10 @@ import SimpleITK as sitk
 from multiprocess import Pool
 from tqdm import tqdm
 
+from adell_mri.utils.python_logging import get_logger
+
+logger = get_logger(__name__)
+
 DatasetDict = dict[str, dict[str, str]]
 
 
@@ -83,7 +87,7 @@ def get_spacing_quantile(
     """
     all_spacings = np.array([spacing_dict[k] for k in spacing_dict])
     output = np.quantile(all_spacings, quantile, axis=0).tolist()
-    print("Inferred spacing:", output)
+    logger.info("Inferred spacing: %s", output)
     return output
 
 

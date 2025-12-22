@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from typing import Any, Optional
 
 import monai
 import monai.transforms

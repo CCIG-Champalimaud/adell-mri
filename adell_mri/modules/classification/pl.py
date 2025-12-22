@@ -49,6 +49,9 @@ from adell_mri.modules.classification.classification import (
 from adell_mri.modules.classification.classification import (
     DeconfoundedNetGeneric,
 )
+from adell_mri.utils.python_logging import get_logger
+
+logger = get_logger(__name__)
 
 try:
     import monai
@@ -334,10 +337,10 @@ class ClassPLABC(pl.LightningModule, ABC):
         """
         Called when training begins. Logs hyperparameters.
         """
-        print("Training with the following hyperparameters:")
+        logger.info("Training with the following hyperparameters:")
         parameter_dict = {}
         for k, v in self.hparams.items():
-            print(f"\t{k}: {v}")
+            logger.info("%s: %s", k, v)
             if isinstance(v, (list, tuple, torch.Tensor, np.ndarray)):
                 if len(v) > 1:
                     for i in range(len(v)):
@@ -670,7 +673,11 @@ class ClassNetPL(ClassPLABC):
         self.kwargs = kwargs
 
         self.save_hyperparameters(
-            ignore=["training_dataloader_call", "training_batch_preproc"]
+            ignore=[
+                "training_dataloader_call",
+                "training_batch_preproc",
+                "loss_fn",
+            ]
         )
         self.setup_network()
         self.setup_metrics()
@@ -1034,7 +1041,11 @@ class UNetEncoderPL(UNetEncoder, ClassPLABC):
         self.kwargs = kwargs
 
         self.save_hyperparameters(
-            ignore=["training_dataloader_call", "training_batch_preproc"]
+            ignore=[
+                "training_dataloader_call",
+                "training_batch_preproc",
+                "loss_fn",
+            ]
         )
         self.setup_metrics()
 
@@ -1105,7 +1116,11 @@ class GenericEnsemblePL(GenericEnsemble, ClassPLABC):
         self.kwargs = kwargs
 
         self.save_hyperparameters(
-            ignore=["training_dataloader_call", "training_batch_preproc"]
+            ignore=[
+                "training_dataloader_call",
+                "training_batch_preproc",
+                "loss_fn",
+            ]
         )
         self.setup_metrics()
 
@@ -1226,6 +1241,7 @@ class AveragingEnsemblePL(AveragingEnsemble, ClassPLABC):
                 "networks",
                 "training_dataloader_call",
                 "training_batch_preproc",
+                "loss_fn",
             ]
         )
         self.setup_metrics()
@@ -1350,7 +1366,11 @@ class ViTClassifierPL(ViTClassifier, ClassPLABC):
         self.kwargs = kwargs
 
         self.save_hyperparameters(
-            ignore=["training_dataloader_call", "training_batch_preproc"]
+            ignore=[
+                "training_dataloader_call",
+                "training_batch_preproc",
+                "loss_fn",
+            ]
         )
         self.setup_metrics()
 
@@ -1428,7 +1448,11 @@ class FactorizedViTClassifierPL(FactorizedViTClassifier, ClassPLABC):
         self.kwargs = kwargs
 
         self.save_hyperparameters(
-            ignore=["training_dataloader_call", "training_batch_preproc"]
+            ignore=[
+                "training_dataloader_call",
+                "training_batch_preproc",
+                "loss_fn",
+            ]
         )
         self.setup_metrics()
 
@@ -1673,11 +1697,10 @@ class HybridClassifierPL(HybridClassifier, ClassPLABC):
         self.kwargs = kwargs
 
         self.save_hyperparameters(
-            # explicitly ignoring as lightning seems to have some issues with
-            # this during testing
             ignore=[
                 "args",
                 "kwargs",
+                "loss_fn",
                 "convolutional_module",
                 "tabular_module",
                 "training_dataloader_call",

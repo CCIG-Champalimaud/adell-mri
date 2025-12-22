@@ -5,6 +5,7 @@ from pathlib import Path
 from pydicom import dcmread, errors
 from pydicom.dataset import FileDataset
 from pydicom.multival import MultiValue
+from adell_mri.utils.python_logging import get_logger
 
 DICOMInformation = tuple[str, str, str, tuple[float, float, float]]
 DICOMDictionary = dict[
@@ -126,7 +127,6 @@ def update_dict(
 def main(arguments):
     import argparse
     import json
-    from multiprocessing import Pool
     from pathlib import Path
 
     from tqdm import tqdm
@@ -183,10 +183,11 @@ def main(arguments):
         included_ids = None
 
     dicom_dict = {}
+    logger = get_logger(__name__)
     for pattern in args.patterns:
-        print("Locating all studies/series...")
+        logger.info("Locating all studies/series...")
         all_dicoms = [str(x) for x in path.glob(pattern)]
-        print("Iterating studies/series...")
+        logger.info("Iterating studies/series...")
         with tqdm(all_dicoms) as pbar:
             if args.n_workers < 2:
                 for dcm in pbar:

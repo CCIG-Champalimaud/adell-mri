@@ -37,12 +37,11 @@ from adell_mri.utils.torch_utils import (
 )
 from adell_mri.utils.utils import safe_collate
 from adell_mri.entrypoints.assemble_args import Parser
-from adell_mri.utils.python_logging import get_logger
-
-logger = get_logger(__name__)
+from adell_mri.utils.python_logging import get_python_logger
 
 
 def main(arguments):
+    logger = get_python_logger(__name__)
     parser = Parser()
 
     # params

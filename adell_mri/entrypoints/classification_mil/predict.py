@@ -7,6 +7,7 @@ import torch
 from tqdm import tqdm
 
 from adell_mri.utils.prediction_utils import get_ensemble_prediction
+from adell_mri.utils.python_logging import get_logger
 
 from adell_mri.entrypoints.assemble_args import Parser
 from adell_mri.modules.classification.pl import (
@@ -26,6 +27,7 @@ from adell_mri.utils.utils import safe_collate
 
 
 def main(arguments):
+    logger = get_logger(__name__)
     parser = Parser()
 
     parser.add_argument_by_key(
@@ -83,9 +85,7 @@ def main(arguments):
         data_dict = {
             k: data_dict[k] for k in data_dict if k not in excluded_ids
         }
-        print(
-            "Excluded {} cases with --excluded_ids".format(a - len(data_dict))
-        )
+        logger.info("Excluded %s cases with --excluded_ids", a - len(data_dict))
 
     data_dict.filter_dictionary(
         filters_presence=args.image_keys,
@@ -121,7 +121,7 @@ def main(arguments):
 
     all_pids = [k for k in data_dict]  # noqa
 
-    print("Setting up transforms...")
+    logger.info("Setting up transforms...")
     label_mode = "binary" if args.n_classes == 2 else "cat"
     transform_arguments = {
         "keys": keys,
@@ -193,16 +193,14 @@ def main(arguments):
                 network_config["module"]
             )
             if "module_out_dim" not in network_config:
-                print("2D module output size not specified, inferring...")
+                logger.info("2D module output size not specified, inferring...")
                 input_example = torch.rand(
                     1, 1, *[int(x) for x in args.crop_size][:2]
                 ).to(args.dev)
                 output = network_config["module"](input_example)
                 network_config["module_out_dim"] = int(output.shape[1])
-                print(
-                    "2D module output size={}".format(
-                        network_config["module_out_dim"]
-                    )
+                logger.info(
+                    "2D module output size=%s", network_config["module_out_dim"]
                 )
             if args.mil_method == "transformer":
                 network = TransformableTransformerPL(

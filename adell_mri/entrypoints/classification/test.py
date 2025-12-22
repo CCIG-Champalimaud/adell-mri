@@ -188,13 +188,13 @@ def main(arguments):
         test_ids = all_test_ids[iteration]
         test_list = [data_dict[pid] for pid in test_ids if pid in data_dict]
 
-        logger.info("Testing fold", iteration)
+        logger.info("Testing fold %d", iteration)
         for u, c in zip(
             *np.unique(
                 [x[args.label_keys] for x in test_list], return_counts=True
             )
         ):
-            logger.info(f"\tCases({u}) = {c}")
+            logger.info("Cases(%s) = %s", u, c)
 
         test_dataset = monai.data.CacheDataset(
             test_list,
