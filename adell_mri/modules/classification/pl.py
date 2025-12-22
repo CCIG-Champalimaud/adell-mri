@@ -84,6 +84,7 @@ def f1(prediction: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
 
 
 def get_ordinal_metric_dict(
+    nc: int,
     metric_keys: list[str] = None,
     prefix: str = "",
 ) -> dict[str, torchmetrics.Metric]:
@@ -106,6 +107,9 @@ def get_ordinal_metric_dict(
         "Pearson": lambda: torchmetrics.PearsonCorrCoef(),
         "Spearman": lambda: torchmetrics.SpearmanCorrCoef(),
         "MSE": lambda: torchmetrics.MeanSquaredError(),
+        "Kappa": lambda: torchmetrics.CohenKappa(
+            task="multiclass", num_classes=nc, weights="linear"
+        ),
     }
     if metric_keys is None:
         metric_keys = list(md.keys())
@@ -693,9 +697,15 @@ class ClassNetPL(ClassPLABC):
 
     def setup_metrics(self):
         if self.net_type == "ord":
-            self.train_metrics = get_ordinal_metric_dict(prefix="")
-            self.val_metrics = get_ordinal_metric_dict(prefix="V_")
-            self.test_metrics = get_ordinal_metric_dict(prefix="T_")
+            self.train_metrics = get_ordinal_metric_dict(
+                self.n_classes, prefix=""
+            )
+            self.val_metrics = get_ordinal_metric_dict(
+                self.n_classes, prefix="V_"
+            )
+            self.test_metrics = get_ordinal_metric_dict(
+                self.n_classes, prefix="T_"
+            )
         else:
             super().setup_metrics()
 
