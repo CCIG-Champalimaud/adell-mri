@@ -1,6 +1,7 @@
 import monai
 import numpy as np
 import torch
+from monai.data.meta_tensor import MetaTensor
 from skimage.morphology import convex_hull_image
 from sklearn.cluster import DBSCAN
 
@@ -101,6 +102,8 @@ class LabelOperatord(monai.transforms.Transform):
     def convert(self, x):
         if isinstance(x, (tuple, list)):
             x = max(x)
+        if isinstance(x, MetaTensor):
+            x = x.item()
         return self.possible_labels_match[str(x)]
 
     def __call__(self, data):
