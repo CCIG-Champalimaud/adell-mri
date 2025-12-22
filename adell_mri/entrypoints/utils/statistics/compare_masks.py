@@ -7,8 +7,8 @@ import numpy as np
 import SimpleITK as sitk
 from tqdm import tqdm
 
-from adell_mri.utils.sitk_utils import resample_image_to_target
 from adell_mri.utils.python_logging import get_logger
+from adell_mri.utils.sitk_utils import resample_image_to_target
 
 desc = "Calculates IoU of masks in two separate folders corresponding to the \
     same strcture and with the same identifier."

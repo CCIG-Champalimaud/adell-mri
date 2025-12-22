@@ -4,9 +4,10 @@ import sys
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 import torch
-from adell_mri.modules.segmentation.mimunet import MIMUNet
-from adell_mri.modules.layers.res_net import ResNetBackbone
+
 from adell_mri.modules.layers.adn_fn import get_adn_fn
+from adell_mri.modules.layers.res_net import ResNetBackbone
+from adell_mri.modules.segmentation.mimunet import MIMUNet
 
 h, w, d, c = 32, 32, 20, 1
 

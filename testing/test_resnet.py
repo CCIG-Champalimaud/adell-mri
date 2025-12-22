@@ -2,12 +2,13 @@ import os
 import sys
 
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
-import pytest
-
-import torch
 from itertools import product
-from adell_mri.modules.layers.res_net import ResNet
+
+import pytest
+import torch
+
 from adell_mri.modules.layers.adn_fn import ActDropNormBuilder
+from adell_mri.modules.layers.res_net import ResNet
 
 h, w, d, c = 32, 32, 20, 1
 res_types = ["resnet", "resnext", "convnext", "convnextv2"]

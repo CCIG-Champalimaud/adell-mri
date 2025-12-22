@@ -59,7 +59,7 @@ def calculate_dsc(
     y_det: "npt.NDArray[np.float32]", y_true: "npt.NDArray[np.int32]"
 ) -> float:
     """
-Calculate Dice similarity coefficient (DSC) for N-D Arrays"""
+    Calculate Dice similarity coefficient (DSC) for N-D Arrays"""
     epsilon = 1e-8
     dsc_num = np.sum(y_det[y_true == 1]) * 2.0
     dsc_denom = np.sum(y_det) + np.sum(y_true)
@@ -70,7 +70,7 @@ def calculate_iou(
     y_det: "npt.NDArray[np.float32]", y_true: "npt.NDArray[np.int32]"
 ) -> float:
     """
-Calculate Intersection over Union (IoU) for N-D Arrays"""
+    Calculate Intersection over Union (IoU) for N-D Arrays"""
     epsilon = 1e-8
     iou_num = np.sum(y_det[y_true == 1])
     iou_denom = np.sum(y_det) + np.sum(y_true) - iou_num

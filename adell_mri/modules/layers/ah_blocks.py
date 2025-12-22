@@ -13,6 +13,7 @@ class Refine2d(torch.nn.Module):
 
     [1] https://arxiv.org/pdf/1711.08580.pdf
     """
+
     def __init__(
         self,
         in_channels: int,
@@ -60,13 +61,13 @@ class Refine2d(torch.nn.Module):
 
     def forward(self, X: torch.Tensor) -> torch.Tensor:
         """
-Forward pass for this Module.
+        Forward pass for this Module.
 
-        Args:
-            X (torch.Tensor)
+                Args:
+                    X (torch.Tensor)
 
-        Returns:
-            torch.Tensor
+                Returns:
+                    torch.Tensor
         """
         return X + self.op(X)
 
@@ -80,6 +81,7 @@ class AHNetDecoderUnit3d(torch.nn.Module):
 
     [1] https://arxiv.org/pdf/1711.08580.pdf
     """
+
     def __init__(
         self,
         in_channels: int,
@@ -130,9 +132,10 @@ class AHNetDecoderUnit3d(torch.nn.Module):
 
 class AHNetDecoder3d(torch.nn.Module):
     """
-    Three consecutive AHNetDecoderUnit3d. Can be modified to include more but 
+    Three consecutive AHNetDecoderUnit3d. Can be modified to include more but
     it is hard to know what concrete improvements this may lead to.
     """
+
     def __init__(
         self,
         in_channels: int,
@@ -156,7 +159,7 @@ class AHNetDecoder3d(torch.nn.Module):
 
     def init_layers(self):
         """
-Initializes layers."""
+        Initializes layers."""
         self.op = torch.nn.Sequential(
             AHNetDecoderUnit3d(self.in_channels, self.adn_fn, self.adn_args),
             torch.nn.Conv3d(self.in_channels * 2, self.in_channels, 1),
@@ -168,13 +171,13 @@ Initializes layers."""
 
     def forward(self, X: torch.Tensor) -> torch.Tensor:
         """
-Forward pass for this class.
+        Forward pass for this class.
 
-        Args:
-            X (torch.Tensor)
+                Args:
+                    X (torch.Tensor)
 
-        Returns:
-            torch.Tensor
+                Returns:
+                    torch.Tensor
         """
         return self.op(X)
 
@@ -186,6 +189,7 @@ class AnysotropicHybridResidual(torch.nn.Module):
     transfer the parameters from `adn_fn`, particularly those belonging to
     activation/batch normalization layers.
     """
+
     def __init__(
         self,
         spatial_dim: int,
@@ -218,13 +222,13 @@ class AnysotropicHybridResidual(torch.nn.Module):
 
     def init_layers(self):
         """
-Initialize layers."""
+        Initialize layers."""
         self.op = self.get_op_2d()
         self.op_ds = self.get_downsample_op_2d()
 
     def get_op_2d(self):
         """
-Creates the 2D operation."""
+        Creates the 2D operation."""
         adn_args = self.adn_args.copy()
         adn_args["norm_fn"] = torch.nn.BatchNorm2d
         return torch.nn.Sequential(
@@ -243,7 +247,7 @@ Creates the 2D operation."""
 
     def get_op_3d(self):
         """
-Creates the 3D operation."""
+        Creates the 3D operation."""
         adn_args = self.adn_args.copy()
         adn_args["norm_fn"] = torch.nn.BatchNorm3d
         K = [self.kernel_size for _ in range(3)]
@@ -261,12 +265,12 @@ Creates the 3D operation."""
 
     def get_downsample_op_2d(self):
         """
-Creates the downsampling 2D operation."""
+        Creates the downsampling 2D operation."""
         return torch.nn.Conv2d(self.in_channels, self.in_channels, 2, stride=2)
 
     def get_downsample_op_3d(self):
         """
-Creates the downsampling 3D operation."""
+        Creates the downsampling 3D operation."""
         return torch.nn.Sequential(
             torch.nn.Conv3d(
                 self.in_channels, self.in_channels, [2, 2, 1], stride=[2, 2, 1]
@@ -276,13 +280,13 @@ Creates the downsampling 3D operation."""
 
     def forward(self, X: torch.Tensor) -> torch.Tensor:
         """
-Forward pass for this class.
+        Forward pass for this class.
 
-        Args:
-            X (torch.Tensor)
+                Args:
+                    X (torch.Tensor)
 
-        Returns:
-            torch.Tensor
+                Returns:
+                    torch.Tensor
         """
         out = X + self.op(X)
         out = self.op_ds(out)
@@ -290,8 +294,8 @@ Forward pass for this class.
 
     def convert_to_3d(self) -> None:
         """
-Converts the layer from 2D to 3D, handling all of the necessary
-        weight transfers between layers.
+        Converts the layer from 2D to 3D, handling all of the necessary
+                weight transfers between layers.
         """
         if self.spatial_dim == 3:
             pass
@@ -317,8 +321,8 @@ Converts the layer from 2D to 3D, handling all of the necessary
 
     def convert_to_2d(self) -> None:
         """
-Converts the layer from 3D to 2D, handling all of the necessary
-        weight transfers between layers.
+        Converts the layer from 3D to 2D, handling all of the necessary
+                weight transfers between layers.
         """
         if self.spatial_dim == 2:
             pass
@@ -350,6 +354,7 @@ class AnysotropicHybridInput(torch.nn.Module):
     normalization layers. Unlike `AnysotropicHybridResidual`, this cannot
     be converted from 3D to 2D.
     """
+
     def __init__(
         self,
         spatial_dim: int,
@@ -384,7 +389,7 @@ class AnysotropicHybridInput(torch.nn.Module):
 
     def init_layers(self):
         """
-Initializes layers."""
+        Initializes layers."""
         self.p = int(self.kernel_size // 2)
         self.op = torch.nn.Sequential(
             torch.nn.Conv2d(
@@ -399,20 +404,20 @@ Initializes layers."""
 
     def forward(self, X: torch.Tensor) -> torch.Tensor:
         """
-Forward pass for this class.
+        Forward pass for this class.
 
-        Args:
-            X (torch.Tensor)
+                Args:
+                    X (torch.Tensor)
 
-        Returns:
-            torch.Tensor
+                Returns:
+                    torch.Tensor
         """
         return self.op(X)
 
     def convert_to_3d(self) -> None:
         """
-Converts the layer from 2D to 3D, handling all of the necessary
-        weight transfers between layers.
+        Converts the layer from 2D to 3D, handling all of the necessary
+                weight transfers between layers.
         """
         if self.spatial_dim == 3:
             pass

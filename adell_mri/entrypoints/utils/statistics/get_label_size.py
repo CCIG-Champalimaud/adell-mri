@@ -6,8 +6,8 @@ import numpy as np
 import SimpleITK as sitk
 from tqdm import tqdm
 
-from adell_mri.utils.sitk_utils import resample_image
 from adell_mri.utils.python_logging import get_logger
+from adell_mri.utils.sitk_utils import resample_image
 
 desc = "Prints size of labels in a folder containing segmentation masks."
 

@@ -50,17 +50,17 @@ def get_dvc_params(path: str = None) -> Dict[str, any]:
 
 def read_param_file(path: str) -> Dict[str, Any]:
     """
-Reads parameters from a YAML file. If any ":" is present in path, then
-    it returns the field after ":" from the YAML config file. For example, if
-    the path is `config.yaml:training`, then the parameters are assumed to be
-    in the `training` field of `config.yaml`. This works recursively.
+    Reads parameters from a YAML file. If any ":" is present in path, then
+        it returns the field after ":" from the YAML config file. For example, if
+        the path is `config.yaml:training`, then the parameters are assumed to be
+        in the `training` field of `config.yaml`. This works recursively.
 
-    Args:
-        path (str): path to YAML file, containing none or more ":" characters
-            corresponding to nested fields in the YAML file.
+        Args:
+            path (str): path to YAML file, containing none or more ":" characters
+                corresponding to nested fields in the YAML file.
 
-    Returns:
-        Dict[str,Any]: parameter dictionary.
+        Returns:
+            Dict[str,Any]: parameter dictionary.
     """
     if ":" in path:
         out = ":".split(path)
@@ -75,15 +75,15 @@ Reads parameters from a YAML file. If any ":" is present in path, then
 
 def get_params(path: str) -> Dict[str, Any]:
     """
-Wrapper around `get_dvc_params` and `read_param_file`. If the first
-    element of `path.split(":")` is `"dvc"`, then `get_dvc_params` is called
-    for the rest of `path`. Otherwise, `read_param_file` is used.
+    Wrapper around `get_dvc_params` and `read_param_file`. If the first
+        element of `path.split(":")` is `"dvc"`, then `get_dvc_params` is called
+        for the rest of `path`. Otherwise, `read_param_file` is used.
 
-    Args:
-        path (str): path to config.
+        Args:
+            path (str): path to config.
 
-    Returns:
-        Dict[str,Any]: parameter dictionary.
+        Returns:
+            Dict[str,Any]: parameter dictionary.
     """
     path_ = path.split(":")
     if len(path_) > 1:
@@ -103,23 +103,23 @@ def merge_args(
     sys_arg: List[str] = None,
 ) -> argparse.Namespace:
     """
-Replaces the key-value pairs in a given argparse.Namespace `args` by
-    the values in param_dict if they are not defined in sys_arg. In essence,
-    the priority is: default arguments < param_dict < command line arguments.
-    This function works in place but also returns `args`.
+    Replaces the key-value pairs in a given argparse.Namespace `args` by
+        the values in param_dict if they are not defined in sys_arg. In essence,
+        the priority is: default arguments < param_dict < command line arguments.
+        This function works in place but also returns `args`.
 
-    Args:
-        args (argparse.Namespace): argparse.Namespace as returned by
-            `ArgumentParser().parse_args()`.
-        param_dict (Dict[str,Any]): dictionary containing parameters that will
-            be used to replace arguments in args.
-        sys_arg (List[str], optional): command line arguments as returned by
-            `sys.argv`, used to check if an argument has been defined in the
-            command line (checks all strings with a leading "--"). Defaults to
-            None (sys.argv[1:]).
+        Args:
+            args (argparse.Namespace): argparse.Namespace as returned by
+                `ArgumentParser().parse_args()`.
+            param_dict (Dict[str,Any]): dictionary containing parameters that will
+                be used to replace arguments in args.
+            sys_arg (List[str], optional): command line arguments as returned by
+                `sys.argv`, used to check if an argument has been defined in the
+                command line (checks all strings with a leading "--"). Defaults to
+                None (sys.argv[1:]).
 
-    Returns:
-        argparse.Namespace: merged argparse.Namespace
+        Returns:
+            argparse.Namespace: merged argparse.Namespace
     """
     if sys_arg is None:
         sys_arg = sys.argv[1:]

@@ -4,11 +4,13 @@ Lightning modules for StyleGAN training. Includes:
 - ProGAN
 """
 
-import torch
-import lightning.pytorch as pl
-import torch.nn.functional as F
 import logging
 from typing import Any, Callable
+
+import lightning.pytorch as pl
+import torch
+import torch.nn.functional as F
+
 from adell_mri.modules.gan.gan.loss_functions import compute_gradient_penalty_r1
 from adell_mri.utils.logging import make_grid
 

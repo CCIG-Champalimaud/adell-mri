@@ -6,9 +6,6 @@ import monai
 import torch
 from tqdm import tqdm
 
-from adell_mri.utils.prediction_utils import get_ensemble_prediction
-from adell_mri.utils.python_logging import get_logger
-
 from adell_mri.entrypoints.assemble_args import Parser
 from adell_mri.modules.classification.pl import (
     MultipleInstanceClassifierPL,
@@ -22,6 +19,8 @@ from adell_mri.utils.monai_transforms import (
     ScaleIntensityAlongDimd,
 )
 from adell_mri.utils.parser import get_params, merge_args, parse_ids
+from adell_mri.utils.prediction_utils import get_ensemble_prediction
+from adell_mri.utils.python_logging import get_logger
 from adell_mri.utils.torch_utils import get_generator_and_rng
 from adell_mri.utils.utils import safe_collate
 

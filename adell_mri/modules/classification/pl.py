@@ -29,12 +29,11 @@ import torchmetrics
 import torchmetrics.classification as tmc
 from tqdm import tqdm
 
-from adell_mri.modules.conformal_prediction import AdaptivePredictionSets
-from adell_mri.modules.learning_rate import CosineAnnealingWithWarmupLR
 from adell_mri.modules.classification.classification import (
     VGG,
     AveragingEnsemble,
     CatNet,
+    DeconfoundedNetGeneric,
     FactorizedViTClassifier,
     GenericEnsemble,
     HybridClassifier,
@@ -46,9 +45,8 @@ from adell_mri.modules.classification.classification import (
     ViTClassifier,
     ordinal_prediction_to_class,
 )
-from adell_mri.modules.classification.classification import (
-    DeconfoundedNetGeneric,
-)
+from adell_mri.modules.conformal_prediction import AdaptivePredictionSets
+from adell_mri.modules.learning_rate import CosineAnnealingWithWarmupLR
 from adell_mri.utils.python_logging import get_logger
 
 logger = get_logger(__name__)

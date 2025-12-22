@@ -2,11 +2,12 @@ import os
 import sys
 
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
-import pytest
-
-import torch
-from adell_mri.modules.segmentation.unetr import SWINUNet
 from copy import deepcopy
+
+import pytest
+import torch
+
+from adell_mri.modules.segmentation.unetr import SWINUNet
 
 h, w, d, c = 16, 16, 16, 1
 

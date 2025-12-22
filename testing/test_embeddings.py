@@ -1,12 +1,13 @@
-import sys
 import os
+import sys
 
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
-import pytest
-
-import torch
-import numpy as np
 from itertools import product
+
+import numpy as np
+import pytest
+import torch
+
 from adell_mri.modules.layers.vit import LinearEmbedding
 
 image_size = [32, 32, 32]

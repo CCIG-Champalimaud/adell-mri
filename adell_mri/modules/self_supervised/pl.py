@@ -4,23 +4,22 @@ Implements Lightning-based training utilities.
 
 import warnings
 from abc import ABC
+from typing import Any
 
 import lightning.pytorch as pl
 import numpy as np
 import torch
 import torchmetrics
 
-from typing import Any
 from adell_mri.custom_types import Callable
-from adell_mri.utils.python_logging import get_logger
 from adell_mri.modules.layers.conv_next import ConvNeXt
 from adell_mri.modules.layers.res_net import ResNet
 from adell_mri.modules.learning_rate import CosineAnnealingWithWarmupLR
 from adell_mri.modules.segmentation.unet import UNet
+from adell_mri.modules.self_supervised.autoencoders import ViTMaskedAutoEncoder
 from adell_mri.modules.self_supervised.dino import DINO
 from adell_mri.modules.self_supervised.ibot import iBOT
 from adell_mri.modules.self_supervised.jepa import IJEPA
-from adell_mri.modules.self_supervised.autoencoders import ViTMaskedAutoEncoder
 from adell_mri.modules.self_supervised.losses import (
     BarlowTwinsLoss,
     DinoLoss,
@@ -30,6 +29,7 @@ from adell_mri.modules.self_supervised.losses import (
     byol_loss,
     simsiam_loss,
 )
+from adell_mri.utils.python_logging import get_logger
 
 logger = get_logger(__name__)
 

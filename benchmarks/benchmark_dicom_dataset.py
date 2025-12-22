@@ -1,17 +1,17 @@
-import sys
 import os
+import sys
 
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
-import time
-import json
 import argparse
-import numpy as np
+import json
+import time
+
 import monai
+import numpy as np
 from tqdm import trange
 
+from adell_mri.transform_factory import SSLTransforms, get_augmentations_ssl
 from adell_mri.utils.dicom_loader import DICOMDataset
-from adell_mri.transform_factory import SSLTransforms
-from adell_mri.transform_factory import get_augmentations_ssl
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

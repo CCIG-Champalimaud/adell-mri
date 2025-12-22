@@ -1,11 +1,11 @@
-import sys
 import os
+import sys
 
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
-import pytest
-
-import torch
 import numpy as np
+import pytest
+import torch
+
 from adell_mri.modules.classification.classification import ViTClassifier
 from adell_mri.modules.layers.adn_fn import get_adn_fn
 

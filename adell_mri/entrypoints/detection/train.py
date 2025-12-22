@@ -9,9 +9,6 @@ from lightning.pytorch import Trainer
 from lightning.pytorch.callbacks import RichProgressBar
 from sklearn.model_selection import KFold, train_test_split
 
-from adell_mri.utils.torch_utils import get_generator_and_rng
-from adell_mri.utils.python_logging import get_logger as get_python_logger
-
 from adell_mri.entrypoints.assemble_args import Parser
 from adell_mri.modules.object_detection import YOLONet3d
 from adell_mri.transform_factory import (
@@ -25,7 +22,9 @@ from adell_mri.utils.dataset_filters import (
 from adell_mri.utils.detection import anchors_from_nested_list
 from adell_mri.utils.network_factories import get_detection_network
 from adell_mri.utils.pl_utils import get_ckpt_callback, get_devices, get_logger
+from adell_mri.utils.python_logging import get_logger as get_python_logger
 from adell_mri.utils.sitk_utils import spacing_from_dataset_json
+from adell_mri.utils.torch_utils import get_generator_and_rng
 from adell_mri.utils.utils import load_anchors, safe_collate
 
 torch.backends.cudnn.benchmark = True
@@ -311,7 +310,7 @@ def main(arguments):
         if ckpt_callback is not None:
             callbacks.append(ckpt_callback)
 
-        logger = get_logger(
+        pl_logger = get_logger(
             summary_name=args.summary_name,
             summary_dir=args.summary_dir,
             project_name=args.project_name,
@@ -330,7 +329,7 @@ def main(arguments):
         trainer = Trainer(
             accelerator="gpu" if "cuda" in args.dev else "cpu",
             devices=devices,
-            logger=logger,
+            logger=pl_logger,
             callbacks=callbacks,
             max_epochs=args.max_epochs,
             check_val_every_n_epoch=1,

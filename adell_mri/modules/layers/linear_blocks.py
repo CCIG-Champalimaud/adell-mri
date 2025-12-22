@@ -146,7 +146,7 @@ class Attention(torch.nn.Module):
 
     def init_layers(self):
         """
-Initialises layers."""
+        Initialises layers."""
         self.q = MLP(self.input_dim_primary, self.attention_dim)
         self.k = MLP(self.input_dim_context, self.attention_dim)
         self.v = MLP(self.input_dim_context, self.output_dim)
@@ -155,16 +155,16 @@ Initialises layers."""
 
     def forward(self, X_primary: torch.Tensor, X_context: torch.Tensor):
         """
-Forward pass. Expects the input to have two or more dimensions.
+        Forward pass. Expects the input to have two or more dimensions.
 
-        Args:
-            X_primary (torch.Tensor): tensor with shape
-                [...,self.input_dim_primary]
-            X_context (torch.Tensor): tensor with shape
-                [...,self.input_dim_context]
+                Args:
+                    X_primary (torch.Tensor): tensor with shape
+                        [...,self.input_dim_primary]
+                    X_context (torch.Tensor): tensor with shape
+                        [...,self.input_dim_context]
 
-        Returns:
-            torch.Tensor: tensor with shape [...,self.output_dim]
+                Returns:
+                    torch.Tensor: tensor with shape [...,self.output_dim]
         """
         Q = self.q(X_primary)
         K = self.k(X_context)
@@ -210,7 +210,7 @@ class SelfAttention(torch.nn.Module):
 
     def init_layers(self):
         """
-Initialises layers."""
+        Initialises layers."""
         self.qkv_dim = self.attention_dim * 2 + self.output_dim
         self.qkv = torch.nn.Linear(self.input_dim, self.qkv_dim, bias=False)
         self.q_idx = torch.arange(self.attention_dim).long()
@@ -223,14 +223,14 @@ Initialises layers."""
 
     def forward(self, X: torch.Tensor) -> torch.Tensor:
         """
-Forward pass. Expects the input to have two or more dimensions.
+        Forward pass. Expects the input to have two or more dimensions.
 
-        Args:
-            X_primary (torch.Tensor): tensor with shape
-                [...,self.input_dim]
+                Args:
+                    X_primary (torch.Tensor): tensor with shape
+                        [...,self.input_dim]
 
-        Returns:
-            torch.Tensor: tensor with shape [...,self.output_dim]
+                Returns:
+                    torch.Tensor: tensor with shape [...,self.output_dim]
         """
         QKV = self.qkv(X)
         Q, K, V = (
@@ -343,28 +343,28 @@ class MultiHeadSelfAttention(torch.nn.Module):
 
     def init_output_layer(self):
         """
-Initialises the last (linear) output layer."""
+        Initialises the last (linear) output layer."""
         self.output_layer = torch.nn.Linear(self.hidden_dim, self.output_dim)
 
     def init_weights(self):
         """
-Initialize weights with Xavier uniform (got this from the original
-        transformer code and from the Annotated Transformer).
+        Initialize weights with Xavier uniform (got this from the original
+                transformer code and from the Annotated Transformer).
         """
         torch.nn.init.xavier_uniform_(self.qkv.weight)
         torch.nn.init.xavier_uniform_(self.output_layer.weight)
 
     def forward(self, X: torch.Tensor, mask=None) -> torch.Tensor:
         """
-Forward pass. Expects the input to have two or more dimensions.
+        Forward pass. Expects the input to have two or more dimensions.
 
-        Args:
-            X (torch.Tensor): tensor with shape
-                [...,self.input_dim]
-            mask (torch.Tensor): attention masking tensor.
+                Args:
+                    X (torch.Tensor): tensor with shape
+                        [...,self.input_dim]
+                    mask (torch.Tensor): attention masking tensor.
 
-        Returns:
-            torch.Tensor: tensor with shape [...,self.output_dim]
+                Returns:
+                    torch.Tensor: tensor with shape [...,self.output_dim]
         """
         sh = X.shape
         b, t, _ = sh[:-2], sh[-2], sh[-1]

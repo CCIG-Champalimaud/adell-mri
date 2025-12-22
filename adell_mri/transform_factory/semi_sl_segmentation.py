@@ -9,9 +9,9 @@ from adell_mri.modules.semi_supervised_segmentation.utils import (
     convert_arguments_post,
     convert_arguments_pre,
 )
-from adell_mri.utils.monai_transforms import CopyEntryd
 from adell_mri.transform_factory.augmentations import get_augmentations_unet
 from adell_mri.transform_factory.transforms import SegmentationTransforms
+from adell_mri.utils.monai_transforms import CopyEntryd
 
 
 def get_semi_sl_transforms(

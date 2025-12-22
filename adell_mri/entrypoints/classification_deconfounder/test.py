@@ -6,6 +6,7 @@ import numpy as np
 import torch
 from lightning.pytorch import Trainer
 
+from adell_mri.entrypoints.assemble_args import Parser
 from adell_mri.modules.classification.losses import OrdinalSigmoidalLoss
 from adell_mri.modules.classification.pl import AveragingEnsemblePL
 from adell_mri.modules.config_parsing import parse_config_cat, parse_config_unet
@@ -17,13 +18,12 @@ from adell_mri.utils.network_factories import (
 )
 from adell_mri.utils.parser import get_params, merge_args, parse_ids
 from adell_mri.utils.pl_utils import get_devices
+from adell_mri.utils.python_logging import get_logger
 from adell_mri.utils.torch_utils import (
     get_generator_and_rng,
     load_checkpoint_to_model,
 )
 from adell_mri.utils.utils import safe_collate
-from adell_mri.entrypoints.assemble_args import Parser
-from adell_mri.utils.python_logging import get_logger
 
 logger = get_logger(__name__)
 

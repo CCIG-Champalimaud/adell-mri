@@ -18,11 +18,7 @@ from skimage import measure
 from skimage.morphology import convex_hull_image
 from sklearn.cluster import DBSCAN
 
-from adell_mri.custom_types import (
-    NDArrayOrTensor,
-    Size2dOr3d,
-    TensorDict,
-)
+from adell_mri.custom_types import NDArrayOrTensor, Size2dOr3d, TensorDict
 from adell_mri.utils.python_logging import get_logger
 
 logger = get_logger(__name__)

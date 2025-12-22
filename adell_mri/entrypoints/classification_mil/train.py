@@ -11,9 +11,6 @@ from lightning.pytorch.callbacks import (
 )
 from sklearn.model_selection import StratifiedKFold, train_test_split
 
-from adell_mri.utils.logging import CSVLogger
-from adell_mri.utils.python_logging import get_logger as get_python_logger
-
 from adell_mri.entrypoints.assemble_args import Parser
 from adell_mri.modules.classification.pl import (
     MultipleInstanceClassifierPL,
@@ -26,6 +23,7 @@ from adell_mri.transform_factory import (
 )
 from adell_mri.utils.batch_preprocessing import BatchPreprocessing
 from adell_mri.utils.dataset import Dataset
+from adell_mri.utils.logging import CSVLogger
 from adell_mri.utils.monai_transforms import (
     EinopsRearranged,
     ScaleIntensityAlongDimd,
@@ -37,6 +35,7 @@ from adell_mri.utils.pl_utils import (
     get_devices,
     get_logger,
 )
+from adell_mri.utils.python_logging import get_logger as get_python_logger
 from adell_mri.utils.torch_utils import (
     get_generator_and_rng,
     set_classification_layer_bias,
@@ -481,7 +480,7 @@ def main(arguments):
         if status == "finished":
             continue
 
-        logger = get_logger(
+        pl_logger = get_logger(
             summary_name=args.summary_name,
             summary_dir=args.summary_dir,
             project_name=args.project_name,
@@ -527,7 +526,7 @@ def main(arguments):
         trainer = Trainer(
             accelerator=accelerator,
             devices=devices,
-            logger=logger,
+            logger=pl_logger,
             callbacks=callbacks,
             max_epochs=args.max_epochs,
             enable_checkpointing=ckpt,

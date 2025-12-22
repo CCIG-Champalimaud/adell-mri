@@ -1,4 +1,5 @@
 import sys
+
 from adell_mri.entrypoints.cli_utils import run_main
 
 package_name = "adell_mri.entrypoints.classification_ensemble"

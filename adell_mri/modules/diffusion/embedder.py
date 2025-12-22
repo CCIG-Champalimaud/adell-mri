@@ -397,9 +397,9 @@ class Embedder(torch.nn.Module):
             for idx in uncondition_idx:
                 ncf = self.cat_embedder.embedding_size
                 start_idx, stop_idx = ncf * idx, ncf * (idx + 1)
-                categorical_embeddings[:, :, start_idx:stop_idx] = (
-                    self.unconditional_like(categorical_embeddings)[:, None]
-                )
+                categorical_embeddings[
+                    :, :, start_idx:stop_idx
+                ] = self.unconditional_like(categorical_embeddings)[:, None]
 
         return categorical_embeddings, converted_class_X
 

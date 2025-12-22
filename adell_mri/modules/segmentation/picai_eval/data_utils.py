@@ -38,7 +38,7 @@ def save_metrics(metrics, file_path: PathLike):
 
 def load_metrics(file_path: PathLike):
     """
-Read metrics from disk"""
+    Read metrics from disk"""
     if not os.path.exists(file_path):
         raise FileNotFoundError(f"Metrics not found at {file_path}!")
 
@@ -50,7 +50,7 @@ Read metrics from disk"""
 
 def sterilize(obj):
     """
-Prepare object for conversion to json"""
+    Prepare object for conversion to json"""
     if isinstance(obj, dict):
         return {k: sterilize(v) for k, v in obj.items()}
     elif isinstance(obj, (list, tuple, np.ndarray)):
@@ -110,7 +110,7 @@ def get_subject_list(
     construct_all_from_train=True,
 ) -> Dict[str, Any]:
     """
-Get subject list from a dataset configuration"""
+    Get subject list from a dataset configuration"""
     try:
         dataset_config = get_dataset_config(
             name=name, split=split, fold=fold, config_root=config_root

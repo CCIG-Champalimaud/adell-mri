@@ -1,5 +1,5 @@
-import sys
 import os
+import sys
 
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
@@ -7,9 +7,9 @@ import torch
 
 from adell_mri.utils.batch_preprocessing import (
     BatchPreprocessing,
+    label_smoothing,
     mixup,
     partial_mixup,
-    label_smoothing,
 )
 
 

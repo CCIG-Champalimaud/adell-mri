@@ -1,11 +1,11 @@
 from typing import Any
 
-
 import torch
 import torch.nn.functional as F
+
 from adell_mri.modules.gan.losses import (
-    compute_gradient_penalty_r1,
     apply_discriminator,
+    compute_gradient_penalty_r1,
 )
 
 

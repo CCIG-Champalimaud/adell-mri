@@ -1,12 +1,14 @@
 import os
 import sys
 import time
+
 from tqdm import trange
 
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 import torch
-from adell_mri.modules.self_supervised import VICRegLoss, VICRegLocalLoss
+
+from adell_mri.modules.self_supervised import VICRegLocalLoss, VICRegLoss
 
 batch_size = 32
 N = 100

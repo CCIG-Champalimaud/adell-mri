@@ -1,10 +1,10 @@
-import sys
 import os
+import sys
 
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 import pytest
-
 import torch
+
 from adell_mri.modules.segmentation.unet import BrUNet
 
 h, w, d, c = 32, 32, 20, 1

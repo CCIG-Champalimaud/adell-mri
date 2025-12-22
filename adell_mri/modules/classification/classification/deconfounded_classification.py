@@ -2,10 +2,10 @@ from typing import List, Tuple
 
 import torch
 
+from adell_mri.modules.classification.classification import VGG, CatNet
 from adell_mri.modules.layers.adn_fn import get_adn_fn
 from adell_mri.modules.layers.linear_blocks import MLP
 from adell_mri.modules.layers.standard_blocks import GlobalPooling
-from adell_mri.modules.classification.classification import VGG, CatNet
 
 
 class DeconfoundedNet(VGG):
@@ -295,21 +295,21 @@ class DeconfoundedNetGeneric(torch.nn.Module):
         | torch.Tensor
     ):
         """
-Forward method.
+        Forward method.
 
-        Args:
-            X (torch.Tensor): input tensor
-            return_features (bool, optional): returns the features rather than
-                the classification_head output. Defaults to False.
-            args, kwargs: features passed to the feature extraction module.
+                Args:
+                    X (torch.Tensor): input tensor
+                    return_features (bool, optional): returns the features rather than
+                        the classification_head output. Defaults to False.
+                    args, kwargs: features passed to the feature extraction module.
 
-        Returns:
-            Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor] | torch.Tensor:
-                returns a tuple containing the classification, the confounder
-                classifications (if self.n_cat_deconfounder is specified),
-                the confounder regressior (if self.n_cont_deconfounder is
-                specified) and the bottleneck features. If return_features is
-                True, only the bottleneck features are returned.
+                Returns:
+                    Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor] | torch.Tensor:
+                        returns a tuple containing the classification, the confounder
+                        classifications (if self.n_cat_deconfounder is specified),
+                        the confounder regressior (if self.n_cont_deconfounder is
+                        specified) and the bottleneck features. If return_features is
+                        True, only the bottleneck features are returned.
         """
         features = self.feature_extraction_module.forward_features(X)
         features = self.gp(features)

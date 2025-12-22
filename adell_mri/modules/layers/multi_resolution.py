@@ -27,22 +27,22 @@ class FeaturePyramidNetworkBackbone(torch.nn.Module):
         adn_fn: torch.nn.Module = torch.nn.Identity,
     ):
         """
-Feature pyramid network. Aggregates the intermediate features from a
-        given backbone with `backbone.forward(X,return_intermediate=Trues)`.
+        Feature pyramid network. Aggregates the intermediate features from a
+                given backbone with `backbone.forward(X,return_intermediate=Trues)`.
 
-        Args:
-            backbone (torch.nn.Module): backbone module. Must have a `forward`
-                method that takes a `return_intermediate=True` argument, returning
-                the output and the features specified in the `structure` argument.
-            spatial_dim (int): number of dimensions.
-            structure (List[Tuple[int,int,int,int]]): Structure of the backbone.
-                Only the first three integers of each element are used, corresponding
-                to input features, output features and kernel size.
-            maxpool_structure (List[Union[Tuple[int,int],Tuple[int,int,int]]],
-                optional): The maxpooling structure used for the backbone. Defaults to
-                None.
-            adn_fn (torch.nn.Module, optional): the activation-dropout-normalization
-                module used. Defaults to torch.nn.Identity.
+                Args:
+                    backbone (torch.nn.Module): backbone module. Must have a `forward`
+                        method that takes a `return_intermediate=True` argument, returning
+                        the output and the features specified in the `structure` argument.
+                    spatial_dim (int): number of dimensions.
+                    structure (List[Tuple[int,int,int,int]]): Structure of the backbone.
+                        Only the first three integers of each element are used, corresponding
+                        to input features, output features and kernel size.
+                    maxpool_structure (List[Union[Tuple[int,int],Tuple[int,int,int]]],
+                        optional): The maxpooling structure used for the backbone. Defaults to
+                        None.
+                    adn_fn (torch.nn.Module, optional): the activation-dropout-normalization
+                        module used. Defaults to torch.nn.Identity.
         """
         super().__init__()
 
@@ -110,23 +110,23 @@ class GCN2d(torch.nn.Module):
         adn_args: dict = {},
     ):
         """
-Global convolution network module. First introduced in [1]. Useful
-        with very large kernel sizes to get information from very distant
-        pixels. In essence, a n*n convolution is decomposed into two separate
-        branches, where one is two convolutions (1*n->n*1) and the other is
-        two convolutions (n*1->1*n). After this, the result from both branches
-        is combined.
+        Global convolution network module. First introduced in [1]. Useful
+                with very large kernel sizes to get information from very distant
+                pixels. In essence, a n*n convolution is decomposed into two separate
+                branches, where one is two convolutions (1*n->n*1) and the other is
+                two convolutions (n*1->1*n). After this, the result from both branches
+                is combined.
 
-        [1] https://arxiv.org/pdf/1703.02719.pdf
+                [1] https://arxiv.org/pdf/1703.02719.pdf
 
-        Args:
-            in_channels (int): number of input channels.
-            out_channels (int): number of output channels.
-            kernel_size (int): kernel size.
-            adn_fn (torch.nn.Module, optional): module applied after
-            convolutions. Defaults to torch.nn.Identity.
-            adn_args (dict, optional): args for the module applied after
-            convolutions. Defaults to {}.
+                Args:
+                    in_channels (int): number of input channels.
+                    out_channels (int): number of output channels.
+                    kernel_size (int): kernel size.
+                    adn_fn (torch.nn.Module, optional): module applied after
+                    convolutions. Defaults to torch.nn.Identity.
+                    adn_args (dict, optional): args for the module applied after
+                    convolutions. Defaults to {}.
         """
         super().__init__()
         self.in_channels = in_channels
@@ -139,7 +139,7 @@ Global convolution network module. First introduced in [1]. Useful
 
     def init_layers(self):
         """
-Initializes layers."""
+        Initializes layers."""
         self.op1 = torch.nn.Sequential(
             torch.nn.Conv2d(
                 self.in_channels,
@@ -186,20 +186,20 @@ class SpatialPyramidPooling2d(torch.nn.Module):
         adn_fn: torch.nn.Module = torch.nn.Identity,
     ):
         """
-Spatial pyramid pooling for 2d inputs. Applies a set of differently
-        sized filters to an input and then concatenates the output of each
-        filter.
+        Spatial pyramid pooling for 2d inputs. Applies a set of differently
+                sized filters to an input and then concatenates the output of each
+                filter.
 
-        [1] https://arxiv.org/abs/1612.01105
+                [1] https://arxiv.org/abs/1612.01105
 
-        Args:
-            in_channels (int): number of input channels
-            out_channels (int): number of output channels
-            filter_sizes (List[int], optional): list of kernel sizes. Defaults
-            to 3.
-            padding (int, optional): amount of padding. Defaults to 1.
-            adn_fn (torch.nn.Module, optional): ADN function applied after
-                convolutions. Defaults to torch.nn.Identity.
+                Args:
+                    in_channels (int): number of input channels
+                    out_channels (int): number of output channels
+                    filter_sizes (List[int], optional): list of kernel sizes. Defaults
+                    to 3.
+                    padding (int, optional): amount of padding. Defaults to 1.
+                    adn_fn (torch.nn.Module, optional): ADN function applied after
+                        convolutions. Defaults to torch.nn.Identity.
         """
         super().__init__()
         self.in_channels = in_channels
@@ -245,19 +245,19 @@ class SpatialPyramidPooling3d(torch.nn.Module):
         adn_fn: torch.nn.Module = torch.nn.Identity,
     ):
         """
-Spatial pyramid pooling for 3d inputs. Applies a set of differently
-        sized filters to an input and then concatenates the output of each
-        filter.
+        Spatial pyramid pooling for 3d inputs. Applies a set of differently
+                sized filters to an input and then concatenates the output of each
+                filter.
 
-        [1] https://arxiv.org/abs/1612.01105
+                [1] https://arxiv.org/abs/1612.01105
 
-        Args:
-            in_channels (int): number of input channels
-            out_channels (int): number of output channels
-            filter_sizes (List[int], optional): list of kernel sizes. Defaults
-            to 3.
-            adn_fn (torch.nn.Module, optional): ADN function applied after
-                convolutions. Defaults to torch.nn.Identity.
+                Args:
+                    in_channels (int): number of input channels
+                    out_channels (int): number of output channels
+                    filter_sizes (List[int], optional): list of kernel sizes. Defaults
+                    to 3.
+                    adn_fn (torch.nn.Module, optional): ADN function applied after
+                        convolutions. Defaults to torch.nn.Identity.
         """
         super().__init__()
         self.in_channels = in_channels
@@ -305,19 +305,19 @@ class AtrousSpatialPyramidPooling2d(torch.nn.Module):
         adn_fn: torch.nn.Module = torch.nn.Identity,
     ):
         """
-Atrous spatial pyramid pooling for 2d inputs. Applies a set of
-        differently sized dilated filters to an input and then concatenates
-        the output of each  filter. Similar to SpatialPyramidPooling2d but
-        much less computationally demanding.
+        Atrous spatial pyramid pooling for 2d inputs. Applies a set of
+                differently sized dilated filters to an input and then concatenates
+                the output of each  filter. Similar to SpatialPyramidPooling2d but
+                much less computationally demanding.
 
-        [1] https://arxiv.org/abs/1612.01105
+                [1] https://arxiv.org/abs/1612.01105
 
-        Args:
-            in_channels (int): number of input channels
-            out_channels (int): number of output channels
-            rates (List[int], optional): list dilation rates.
-            adn_fn (torch.nn.Module, optional): ADN function applied after
-                convolutions. Defaults to torch.nn.Identity.
+                Args:
+                    in_channels (int): number of input channels
+                    out_channels (int): number of output channels
+                    rates (List[int], optional): list dilation rates.
+                    adn_fn (torch.nn.Module, optional): ADN function applied after
+                        convolutions. Defaults to torch.nn.Identity.
         """
         super().__init__()
         self.in_channels = in_channels
@@ -365,19 +365,19 @@ class AtrousSpatialPyramidPooling3d(torch.nn.Module):
         adn_fn: torch.nn.Module = torch.nn.Identity,
     ):
         """
-Atrous spatial pyramid pooling for 3d inputs. Applies a set of
-        differently sized dilated filters to an input and then concatenates
-        the output of each  filter. Similar to SpatialPyramidPooling3d but
-        much less computationally demanding.
+        Atrous spatial pyramid pooling for 3d inputs. Applies a set of
+                differently sized dilated filters to an input and then concatenates
+                the output of each  filter. Similar to SpatialPyramidPooling3d but
+                much less computationally demanding.
 
-        [1] https://arxiv.org/abs/1612.01105
+                [1] https://arxiv.org/abs/1612.01105
 
-        Args:
-            in_channels (int): number of input channels
-            out_channels (int): number of output channels
-            rates (List[int], optional): list dilation rates.
-            adn_fn (torch.nn.Module, optional): ADN function applied after
-                convolutions. Defaults to torch.nn.Identity.
+                Args:
+                    in_channels (int): number of input channels
+                    out_channels (int): number of output channels
+                    rates (List[int], optional): list dilation rates.
+                    adn_fn (torch.nn.Module, optional): ADN function applied after
+                        convolutions. Defaults to torch.nn.Identity.
         """
         super().__init__()
         self.in_channels = in_channels
@@ -425,19 +425,19 @@ class ReceptiveFieldBlock2d(torch.nn.Module):
         adn_fn: torch.nn.Module = torch.nn.Identity,
     ):
         """
-Receptive field block for 2d inputs [1]. A mid ground between a
-        residual operator and AtrousSpatialPyramidPooling2d - a series of
-        dilated convolutions is applied to the input, the output of these
-        dilated convolutions is concatenated and added to the input.
+        Receptive field block for 2d inputs [1]. A mid ground between a
+                residual operator and AtrousSpatialPyramidPooling2d - a series of
+                dilated convolutions is applied to the input, the output of these
+                dilated convolutions is concatenated and added to the input.
 
-        [1] https://arxiv.org/pdf/1711.07767.pdf
+                [1] https://arxiv.org/pdf/1711.07767.pdf
 
-        Args:
-            in_channels (int): input channels.
-            out_channels (int): output channels.
-            rates (List[int]): dilation rates.
-            adn_fn (torch.nn.Module, optional): ADN function applied after
-                convolutions. Defaults to torch.nn.Identity.
+                Args:
+                    in_channels (int): input channels.
+                    out_channels (int): output channels.
+                    rates (List[int]): dilation rates.
+                    adn_fn (torch.nn.Module, optional): ADN function applied after
+                        convolutions. Defaults to torch.nn.Identity.
         """
         super().__init__()
         self.in_channels = in_channels
@@ -496,19 +496,19 @@ class ReceptiveFieldBlock3d(torch.nn.Module):
         adn_fn: torch.nn.Module = torch.nn.Identity,
     ):
         """
-Receptive field block for 3d inputs [1]. A mid ground between a
-        residual operator and AtrousSpatialPyramidPooling3d - a series of
-        dilated convolutions is applied to the input, the output of these
-        dilated convolutions is concatenated and added to the input.
+        Receptive field block for 3d inputs [1]. A mid ground between a
+                residual operator and AtrousSpatialPyramidPooling3d - a series of
+                dilated convolutions is applied to the input, the output of these
+                dilated convolutions is concatenated and added to the input.
 
-        [1] https://arxiv.org/pdf/1711.07767.pdf
+                [1] https://arxiv.org/pdf/1711.07767.pdf
 
-        Args:
-            in_channels (int): input channels.
-            bottleneck_channels (int): number of channels in bottleneck.
-            rates (List[int]): dilation rates.
-            adn_fn (torch.nn.Module, optional): ADN function applied after
-                convolutions. Defaults to torch.nn.Identity.
+                Args:
+                    in_channels (int): input channels.
+                    bottleneck_channels (int): number of channels in bottleneck.
+                    rates (List[int]): dilation rates.
+                    adn_fn (torch.nn.Module, optional): ADN function applied after
+                        convolutions. Defaults to torch.nn.Identity.
         """
         super().__init__()
         self.in_channels = in_channels
@@ -565,17 +565,17 @@ Receptive field block for 3d inputs [1]. A mid ground between a
 class PyramidSpatialPooling3d(torch.nn.Module):
     def __init__(self, in_channels: int, levels: List[float]):
         """
-Pyramidal spatial pooling layer. In this operation, the image is
-        first downsample at different levels and convolutions are applied to
-        the downsampled image, retrieving features at different resoltuions [1].
-        Quite similar to other, more recent developments encompassing atrous
-        convolutions.
+        Pyramidal spatial pooling layer. In this operation, the image is
+                first downsample at different levels and convolutions are applied to
+                the downsampled image, retrieving features at different resoltuions [1].
+                Quite similar to other, more recent developments encompassing atrous
+                convolutions.
 
-        [1] https://arxiv.org/abs/1612.01105
+                [1] https://arxiv.org/abs/1612.01105
 
-        Args:
-            in_channels (int): number of input channels.
-            levels (List[float]): number of downsampling levels.
+                Args:
+                    in_channels (int): number of input channels.
+                    levels (List[float]): number of downsampling levels.
         """
         super().__init__()
         self.in_channels = in_channels

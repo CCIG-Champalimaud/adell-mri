@@ -241,15 +241,15 @@ class MultipleInstanceClassifier(torch.nn.Module):
         self, X: torch.Tensor, return_attention: bool = False
     ) -> torch.Tensor:
         """
-Forward pass.
+        Forward pass.
 
-        Args:
-            X (torch.Tensor): input tensor.
-            return_attention (bool, optional): returns the attention layer for
-                the last transformer block. Defaults to False.
+                Args:
+                    X (torch.Tensor): input tensor.
+                    return_attention (bool, optional): returns the attention layer for
+                        the last transformer block. Defaults to False.
 
-        Returns:
-            torch.Tensor: output logits.
+                Returns:
+                    torch.Tensor: output logits.
         """
         # tried to replace this with vmap but it leads to OOM errors?
         ssl_representation = self.v_module(X)
@@ -395,13 +395,13 @@ class TransformableTransformer(torch.nn.Module):
 
     def iter_over_dim(self, X: torch.Tensor) -> torch.Tensor:
         """
-Iterates a tensor along the dim specified in the constructor.
+        Iterates a tensor along the dim specified in the constructor.
 
-        Args:
-            X (torch.Tensor): a tensor with shape [b,c,h,w,d].
+                Args:
+                    X (torch.Tensor): a tensor with shape [b,c,h,w,d].
 
-        Yields:
-            Iterator[torch.Tensor]: tensor slices along dim.
+                Yields:
+                    Iterator[torch.Tensor]: tensor slices along dim.
         """
         dim = 2 + self.dim
         for i in range(X.shape[dim]):
@@ -441,15 +441,15 @@ Iterates a tensor along the dim specified in the constructor.
         self, X: torch.Tensor, return_attention: bool = False
     ) -> torch.Tensor:
         """
-Forward pass.
+        Forward pass.
 
-        Args:
-            X (torch.Tensor): input tensor.
-            return_attention (bool, optional): returns the attention layer for
-                the last transformer block. Defaults to False.
+                Args:
+                    X (torch.Tensor): input tensor.
+                    return_attention (bool, optional): returns the attention layer for
+                        the last transformer block. Defaults to False.
 
-        Returns:
-            torch.Tensor: output logits.
+                Returns:
+                    torch.Tensor: output logits.
         """
         sh = X.shape
         batch_size = sh[0]

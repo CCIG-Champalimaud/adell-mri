@@ -1,12 +1,13 @@
-import sys
 import os
+import sys
 
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
-import pytest
 from itertools import product
 
 import numpy as np
+import pytest
 import torch
+
 from adell_mri.utils.masking import get_masker
 
 in_channels = 16

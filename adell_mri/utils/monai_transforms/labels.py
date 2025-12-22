@@ -6,9 +6,9 @@ from skimage.morphology import convex_hull_image
 from sklearn.cluster import DBSCAN
 
 from adell_mri.custom_types import (
+    NDArrayOrTensor,
     NDArrayOrTensorDict,
     TensorDict,
-    NDArrayOrTensor,
 )
 
 

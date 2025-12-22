@@ -13,12 +13,13 @@ from adell_mri.modules.layers.utils import unsqueeze_to_target
 
 class BatchEnsemble(torch.nn.Module):
     """
-    Batch ensemble layer. Instantiates a linear/convolutional layer (depending 
-    on spatial_dim) and, given a forward pass, scales the channels before and 
+    Batch ensemble layer. Instantiates a linear/convolutional layer (depending
+    on spatial_dim) and, given a forward pass, scales the channels before and
     after the application of the linear/convolutional layer. Details in [1].
 
     [1] https://arxiv.org/abs/2002.06715
     """
+
     def __init__(
         self,
         spatial_dim: int,
@@ -153,6 +154,7 @@ class BatchEnsembleWrapper(torch.nn.Module):
 
     [1] https://arxiv.org/abs/2002.06715
     """
+
     def __init__(
         self,
         mod: torch.nn.Module,

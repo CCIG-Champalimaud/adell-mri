@@ -7,8 +7,8 @@ import SimpleITK as sitk
 import torch
 from multiprocess import Process, Queue
 
-from adell_mri.utils.sitk_utils import copy_information_nd
 from adell_mri.utils.python_logging import get_logger
+from adell_mri.utils.sitk_utils import copy_information_nd
 
 logger = get_logger(__name__)
 

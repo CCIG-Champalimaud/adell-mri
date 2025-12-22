@@ -17,11 +17,11 @@ def is_if_none(a: Any, b: Any) -> Any:
     """
     Returns the first argument if it is not None, otherwise returns the second
     argument.
-    
+
     Args:
         a (Any): first argument.
         b (Any): second argument.
-    
+
     Returns:
         Any: first argument if it is not None, otherwise second argument.
     """
@@ -33,13 +33,13 @@ def is_if_none(a: Any, b: Any) -> Any:
 def zeros_like(X: torch.Tensor, shape: List[int]):
     """
     Returns a tensor of zeros with the same device as `X` and the given shape.
-    
+
     Args:
         X (torch.Tensor): tensor to use for device.
         shape (List[int]): shape of the tensor to return.
-    
+
     Returns:
-        torch.Tensor: tensor of zeros with the same device as `X` and the 
+        torch.Tensor: tensor of zeros with the same device as `X` and the
             given shape.
     """
     X_shape = X.shape
@@ -264,7 +264,7 @@ class MIMUNet(torch.nn.Module):
 
     def init_decoder(self):
         """
-Initializes the decoder operations."""
+        Initializes the decoder operations."""
         self.decoding_operations = torch.nn.ModuleList([])
         depths = self.depth[-2::-1]
         padding = self.padding[-2::-1]
@@ -282,7 +282,7 @@ Initializes the decoder operations."""
 
     def init_upscale_ops(self):
         """
-Initializes upscaling operations."""
+        Initializes upscaling operations."""
         depths_a = self.depth[:0:-1]
         depths_b = self.depth[-2::-1]
         self.strides = [2 for _ in self.depth]
@@ -310,13 +310,13 @@ Initializes upscaling operations."""
 
     def get_final_layer(self, d: int) -> torch.nn.Module:
         """
-Returns the final layer.
+        Returns the final layer.
 
-        Args:
-            d (int): depth.
+                Args:
+                    d (int): depth.
 
-        Returns:
-            torch.nn.Module: final classification layer.
+                Returns:
+                    torch.nn.Module: final classification layer.
         """
         op = torch.nn.Conv3d
         if self.n_classes > 2:
@@ -338,13 +338,13 @@ Returns the final layer.
 
     def get_ds_final_layer(self, d: int) -> torch.nn.Module:
         """
-Returns the final layer for deep supervision.
+        Returns the final layer for deep supervision.
 
-        Args:
-            d (int): depth.
+                Args:
+                    d (int): depth.
 
-        Returns:
-            torch.nn.Module: final classification layer.
+                Returns:
+                    torch.nn.Module: final classification layer.
         """
         op = torch.nn.Conv3d
         if self.n_classes > 2:
@@ -363,19 +363,19 @@ Returns the final layer for deep supervision.
 
     def init_final_layer(self):
         """
-Initializes the classification layer (simple linear layer)."""
+        Initializes the classification layer (simple linear layer)."""
         o = self.depth[0]
         self.final_layer = self.get_final_layer(o)
 
     def forward(self, X: torch.Tensor) -> torch.Tensor:
         """
-Forward pass for this class.
+        Forward pass for this class.
 
-        Args:
-            X (torch.Tensor)
+                Args:
+                    X (torch.Tensor)
 
-        Returns:
-            torch.Tensor
+                Returns:
+                    torch.Tensor
         """
         encoding_out = self.v_module(X)
         encoding_out = [

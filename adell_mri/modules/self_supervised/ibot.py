@@ -6,9 +6,9 @@ from typing import Any
 
 import torch
 
-from adell_mri.utils.masking import get_masker
 from adell_mri.modules.layers.linear_blocks import MLP
 from adell_mri.modules.layers.vit import ViT
+from adell_mri.utils.masking import get_masker
 
 iBOTOut = torch.Tensor
 

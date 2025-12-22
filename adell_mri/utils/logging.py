@@ -3,11 +3,12 @@ Includes a logging class which can store data in different formats.
 """
 
 import os
-import torch
-import pandas as pd
-from pathlib import Path
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
+
+import pandas as pd
+import torch
 
 
 def make_grid(image_tensor: torch.Tensor) -> torch.Tensor:

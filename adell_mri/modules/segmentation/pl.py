@@ -13,14 +13,10 @@ import torch.nn.functional as F
 import torchmetrics
 import torchmetrics.classification as tmc
 
-from adell_mri.utils.optimizer_factory import get_optimizer
-from adell_mri.utils.python_logging import get_logger
 from adell_mri.modules.extract_lesion_candidates import (
     extract_lesion_candidates,
 )
-from adell_mri.modules.learning_rate import (
-    CosineAnnealingWithWarmupLR,
-)
+from adell_mri.modules.learning_rate import CosineAnnealingWithWarmupLR
 from adell_mri.modules.segmentation.mimunet import MIMUNet
 from adell_mri.modules.segmentation.picai_eval import evaluate
 from adell_mri.modules.segmentation.unet import BrUNet, UNet
@@ -31,6 +27,8 @@ from adell_mri.modules.segmentation.unetr import (
     MonaiUNETR,
     SWINUNet,
 )
+from adell_mri.utils.optimizer_factory import get_optimizer
+from adell_mri.utils.python_logging import get_logger
 
 logger = get_logger(__name__)
 

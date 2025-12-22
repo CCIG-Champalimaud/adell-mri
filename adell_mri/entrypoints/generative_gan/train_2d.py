@@ -7,6 +7,7 @@ import torch
 from lightning.pytorch import Trainer
 from lightning.pytorch.callbacks import RichProgressBar
 
+from adell_mri.entrypoints.assemble_args import Parser
 from adell_mri.modules.config_parsing import parse_config_gan
 from adell_mri.transform_factory import GenerationTransforms
 from adell_mri.utils.dicom_dataset import filter_dicom_dict_on_presence
@@ -21,7 +22,6 @@ from adell_mri.utils.torch_utils import (
     load_checkpoint_to_model,
 )
 from adell_mri.utils.utils import safe_collate
-from adell_mri.entrypoints.assemble_args import Parser
 
 
 def get_conditional_specification(d: dict, cond_key: str):

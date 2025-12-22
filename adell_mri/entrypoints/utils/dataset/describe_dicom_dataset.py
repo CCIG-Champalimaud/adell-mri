@@ -1,4 +1,5 @@
 import os
+
 from pydicom import dcmread
 from pydicom.multival import MultiValue
 from pydicom.valuerep import IS, DSfloat
@@ -82,6 +83,7 @@ def main(arguments):
     from itertools import chain
     from multiprocessing import Pool
     from pathlib import Path
+
     from tqdm import tqdm
 
     parser = argparse.ArgumentParser(description=desc)

@@ -26,6 +26,7 @@ class UNETR(UNet, torch.nn.Module):
 
     [1] https://arxiv.org/abs/2103.10504
     """
+
     def __init__(
         self,
         # parametrize linear embedding and transformer
@@ -308,8 +309,8 @@ class UNETR(UNet, torch.nn.Module):
 
     def init_reconstruction_ops(self):
         """
-Initialises the operations that will reconstruct the ViT outputs
-        to be U-Net compliant.
+        Initialises the operations that will reconstruct the ViT outputs
+                to be U-Net compliant.
         """
         self.reconstructed_dim = [
             self.in_channels_rec,
@@ -338,13 +339,13 @@ Initialises the operations that will reconstruct the ViT outputs
         return_logits=False,
     ) -> torch.Tensor:
         """
-Forward pass for this class.
+        Forward pass for this class.
 
-        Args:
-            X (torch.Tensor)
+                Args:
+                    X (torch.Tensor)
 
-        Returns:
-            torch.Tensor
+                Returns:
+                    torch.Tensor
         """
         # check if channel dim is available and if not include it
         if X_skip_layer is not None:
@@ -617,13 +618,13 @@ class MonaiUNETR(UNet, torch.nn.Module):
         return_logits=False,
     ) -> torch.Tensor:
         """
-Forward pass for this class.
+        Forward pass for this class.
 
-        Args:
-            X (torch.Tensor)
+                Args:
+                    X (torch.Tensor)
 
-        Returns:
-            torch.Tensor
+                Returns:
+                    torch.Tensor
         """
         if return_logits is True:
             return self.network(X), None
@@ -863,8 +864,8 @@ class SWINUNet(UNet):
 
     def init_swin_blocks(self):
         """
-Initialises SWin and infers the number of channels at
-        (intermediary) output reconstruction.
+        Initialises SWin and infers the number of channels at
+                (intermediary) output reconstruction.
         """
         self.in_channels_rec = []
         self.first_swin_block = SWINTransformerBlockStack(
@@ -916,8 +917,8 @@ Initialises SWin and infers the number of channels at
 
     def init_reconstruction_ops(self):
         """
-Initialises the operations that will resize the SWin outputs
-        to be U-Net compliant.
+        Initialises the operations that will resize the SWin outputs
+                to be U-Net compliant.
         """
         layer_norm = get_adn_fn(self.spatial_dimensions, "layer", None, 0.0)
         self.first_rec_op = torch.nn.Sequential(
@@ -947,13 +948,13 @@ Initialises the operations that will resize the SWin outputs
         return_logits=False,
     ) -> torch.Tensor:
         """
-Forward pass for this class.
+        Forward pass for this class.
 
-        Args:
-            X (torch.Tensor)
+                Args:
+                    X (torch.Tensor)
 
-        Returns:
-            torch.Tensor
+                Returns:
+                    torch.Tensor
         """
         # check if channel dim is available and if not include it
         if X_skip_layer is not None:
@@ -1228,13 +1229,13 @@ class MonaiSWINUNet(UNet):
         return_logits=False,
     ) -> torch.Tensor:
         """
-Forward pass for this class.
+        Forward pass for this class.
 
-        Args:
-            X (torch.Tensor)
+                Args:
+                    X (torch.Tensor)
 
-        Returns:
-            torch.Tensor
+                Returns:
+                    torch.Tensor
         """
         if return_logits is True:
             return self.network(X), None

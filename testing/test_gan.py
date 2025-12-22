@@ -1,10 +1,10 @@
-import sys
 import os
+import sys
 
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 import pytest
-
 import torch
+
 from adell_mri.modules.gan.discriminator import Discriminator
 from adell_mri.modules.gan.generator import Generator
 from adell_mri.modules.gan.pl import GANPL

@@ -3,15 +3,17 @@ Implements StyleGAN architectures. It also implements ProGAN as most StyleGAN
 variants are based on ProGAN.
 """
 
+from functools import partial
+from math import prod, sqrt
+from typing import Any
+
 import torch
 import torch.nn.functional as F
-from math import sqrt, prod
-from typing import Any
-from functools import partial
 from torch.nn.utils import parametrize
+
 from adell_mri.modules.activations import get_activation
-from adell_mri.modules.layers.linear_blocks import MLP
 from adell_mri.modules.layers.adn_fn import get_adn_fn
+from adell_mri.modules.layers.linear_blocks import MLP
 from adell_mri.modules.layers.regularization import LRN
 
 

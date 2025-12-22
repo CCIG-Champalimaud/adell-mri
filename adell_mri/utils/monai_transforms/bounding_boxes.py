@@ -6,7 +6,7 @@ import numpy as np
 import torch
 from skimage import measure
 
-from adell_mri.custom_types import Size2dOr3d, NDArrayOrTensor
+from adell_mri.custom_types import NDArrayOrTensor, Size2dOr3d
 
 
 class BBToAdjustedAnchors(monai.transforms.Transform):
@@ -71,22 +71,22 @@ class BBToAdjustedAnchors(monai.transforms.Transform):
         shape: np.ndarray = None,
     ) -> np.ndarray:
         """
-Converts a set of bounding box vertices into their anchor
-        representation.
+        Converts a set of bounding box vertices into their anchor
+                representation.
 
-        Args:
-            bb_vertices (Iterable): list of lists or array of bounding box
-                vertices. Shape has to be [N,6], where N is the number of
-                bounding boxes.
-            classes (Iterable): vector of classes, shape [N,1].
-            shape (np.ndarray, optional): shape of the input image. Defaults to
-                `self.input_sh`.
+                Args:
+                    bb_vertices (Iterable): list of lists or array of bounding box
+                        vertices. Shape has to be [N,6], where N is the number of
+                        bounding boxes.
+                    classes (Iterable): vector of classes, shape [N,1].
+                    shape (np.ndarray, optional): shape of the input image. Defaults to
+                        `self.input_sh`.
 
-        Returns:
-            output (np.ndarray): anchor representation of the bounding boxes.
-            Shape is [1+7*A,*self.output_sh], where A is the number of anchors
-            and 7 contains the objectness (1), center adjustments (3) and
-            size adjustments (3) to the anchor.
+                Returns:
+                    output (np.ndarray): anchor representation of the bounding boxes.
+                    Shape is [1+7*A,*self.output_sh], where A is the number of anchors
+                    and 7 contains the objectness (1), center adjustments (3) and
+                    size adjustments (3) to the anchor.
         """
         bb_vertices = np.array(bb_vertices)
         if len(bb_vertices.shape) < 2:
@@ -162,14 +162,14 @@ Converts a set of bounding box vertices into their anchor
         self, anchor_map: np.ndarray
     ) -> tuple[np.ndarray, np.ndarray]:
         """
-Converts an anchor map into the input anchors.
+        Converts an anchor map into the input anchors.
 
-        Args:
-            anchor_map (np.ndarray): anchor map as produced by __call__.
+                Args:
+                    anchor_map (np.ndarray): anchor map as produced by __call__.
 
-        Returns:
-            top_left_output: top left corner for the bounding boxes.
-            bottom_right_output: bottom right corner for the bounding boxes.
+                Returns:
+                    top_left_output: top left corner for the bounding boxes.
+                    bottom_right_output: bottom right corner for the bounding boxes.
         """
         top_left_output = []
         bottom_right_output = []

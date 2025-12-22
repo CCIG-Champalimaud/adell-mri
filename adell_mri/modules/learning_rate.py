@@ -51,16 +51,16 @@ class _enable_get_lr_call:
 
 class PolynomialLRDecay(_LRScheduler):
     """
-Polynomial learning rate decay until step reach to max_decay_step
+    Polynomial learning rate decay until step reach to max_decay_step
 
-    Args:
-        optimizer (Optimizer): Wrapped optimizer.
-        max_decay_steps: after this step, we stop decreasing learning rate
-        end_learning_rate: scheduler stoping learning rate decay, value of learning rate
-            must be this value
-        power: The power of the polynomial.
+        Args:
+            optimizer (Optimizer): Wrapped optimizer.
+            max_decay_steps: after this step, we stop decreasing learning rate
+            end_learning_rate: scheduler stoping learning rate decay, value of learning rate
+                must be this value
+            power: The power of the polynomial.
 
-    From: https://github.com/cmpark0126/pytorch-polynomial-lr-decay/blob/master/torch_poly_lr_decay/torch_poly_lr_decay.py
+        From: https://github.com/cmpark0126/pytorch-polynomial-lr-decay/blob/master/torch_poly_lr_decay/torch_poly_lr_decay.py
     """
 
     def __init__(
@@ -105,11 +105,11 @@ Polynomial learning rate decay until step reach to max_decay_step
 
 class CosineAnnealingWithWarmupLR(_LRScheduler):
     """
-Implements cosine annealing with warmup learning rate scheduler.
+    Implements cosine annealing with warmup learning rate scheduler.
 
-    Initializes the scheduler, sets up cosine annealing and linear/exponential
-    warmup. Calculates learning rates at each step based on the current step,
-    maximum steps, warmup steps, final learning rate and initial learning rate.
+        Initializes the scheduler, sets up cosine annealing and linear/exponential
+        warmup. Calculates learning rates at each step based on the current step,
+        maximum steps, warmup steps, final learning rate and initial learning rate.
     """
 
     def __init__(
@@ -214,16 +214,16 @@ def poly_lr_decay(
     power: float = 1.0,
 ):
     """
-Polynomial LR decay.
+    Polynomial LR decay.
 
-    Args:
-        optimizer (torch.optim.Optimizer): torch optimizer.
-        step (int): step.
-        initial_lr (float): initial learning rate.
-        max_decay_steps (int): maximum number of steps for decay.
-        end_lr (float, optional): final learning rate. Defaults to 0.0.
-        power (float, optional): power (scales step/max_decay_steps). Defaults
-            to 1.0.
+        Args:
+            optimizer (torch.optim.Optimizer): torch optimizer.
+            step (int): step.
+            initial_lr (float): initial learning rate.
+            max_decay_steps (int): maximum number of steps for decay.
+            end_lr (float, optional): final learning rate. Defaults to 0.0.
+            power (float, optional): power (scales step/max_decay_steps). Defaults
+                to 1.0.
     """
     step = min(step, max_decay_steps)
     if isinstance(initial_lr, float):

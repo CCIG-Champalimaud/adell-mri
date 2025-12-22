@@ -105,15 +105,15 @@ class DiffusionUNet(UNet):
         self, X: torch.Tensor, t: torch.Tensor, cls: torch.Tensor = None
     ) -> torch.Tensor:
         """
-Forward pass for this class.
+        Forward pass for this class.
 
-        Args:
-            X (torch.Tensor)
-            t (int): time step.
-            cls (torch.Tensor): classification for guidance.
+                Args:
+                    X (torch.Tensor)
+                    t (int): time step.
+                    cls (torch.Tensor): classification for guidance.
 
-        Returns:
-            torch.Tensor
+                Returns:
+                    torch.Tensor
         """
 
         t = t.to(X.device)

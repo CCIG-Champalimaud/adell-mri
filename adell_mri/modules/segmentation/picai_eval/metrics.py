@@ -133,31 +133,31 @@ class Metrics:
     @property
     def AP(self) -> float:
         """
-Calculate Average Precision"""
+        Calculate Average Precision"""
         return self.calc_AP()
 
     @property
     def num_cases(self) -> int:
         """
-Calculate the number of cases"""
+        Calculate the number of cases"""
         return len(self.subject_list)
 
     @property
     def num_lesions(self) -> int:
         """
-Calculate the number of ground truth lesions"""
+        Calculate the number of ground truth lesions"""
         return sum([is_lesion for is_lesion, *_ in self.lesion_results_flat])
 
     @property
     def score(self):
         """
-Calculate the ranking score, as used in the PI-CAI 22 Grand Challenge"""
+        Calculate the ranking score, as used in the PI-CAI 22 Grand Challenge"""
         return (self.auroc + self.AP) / 2
 
     def lesion_TPR_at_FPR(self, FPR: float) -> float:
         """
-Calculate the lesion-level true positive rate (sensitivity) at a given
-        false positive rate (average number of false positives per examimation)
+        Calculate the lesion-level true positive rate (sensitivity) at a given
+                false positive rate (average number of false positives per examimation)
         """
         if np.max(self.lesion_FPR) < FPR:
             return 0
@@ -166,7 +166,7 @@ Calculate the lesion-level true positive rate (sensitivity) at a given
     # lesion-level results
     def get_lesion_results_flat(self, subject_list: Optional[List[str]] = None):
         """
-Flatten the per-case lesion evaluation results into a single list"""
+        Flatten the per-case lesion evaluation results into a single list"""
         if subject_list is None:
             subject_list = self.subject_list
 
@@ -181,14 +181,14 @@ Flatten the per-case lesion evaluation results into a single list"""
     @property
     def lesion_results_flat(self) -> List[Tuple[int, float, float]]:
         """
-Flatten the per-case y_list"""
+        Flatten the per-case y_list"""
         return self.get_lesion_results_flat()
 
     def get_lesion_weight_flat(
         self, subject_list: Optional[List[str]] = None
     ) -> List[float]:
         """
-Retrieve lesion-wise sample weights (for a given subset of cases)"""
+        Retrieve lesion-wise sample weights (for a given subset of cases)"""
         if subject_list is None:
             subject_list = self.subject_list
 
@@ -202,37 +202,37 @@ Retrieve lesion-wise sample weights (for a given subset of cases)"""
     @property
     def lesion_weight_flat(self) -> List[float]:
         """
-Retrieve lesion-wise sample weights (for a given subset of cases)"""
+        Retrieve lesion-wise sample weights (for a given subset of cases)"""
         return self.get_lesion_weight_flat()
 
     @property
     def precision(self) -> "npt.NDArray[np.float64]":
         """
-Calculate lesion-level precision at each threshold"""
+        Calculate lesion-level precision at each threshold"""
         return self.calculate_precision_recall()["precision"]
 
     @property
     def recall(self) -> "npt.NDArray[np.float64]":
         """
-Calculate lesion-level recall at each threshold"""
+        Calculate lesion-level recall at each threshold"""
         return self.calculate_precision_recall()["recall"]
 
     @property
     def lesion_TP(self) -> "npt.NDArray[np.float64]":
         """
-Calculate number of true positive lesion detections at each threshold"""
+        Calculate number of true positive lesion detections at each threshold"""
         return self.calculate_counts()["TP"]
 
     @property
     def lesion_FP(self) -> "npt.NDArray[np.float64]":
         """
-Calculate number of false positive lesion detections at each threshold"""
+        Calculate number of false positive lesion detections at each threshold"""
         return self.calculate_counts()["FP"]
 
     @property
     def lesion_TPR(self) -> "npt.NDArray[np.float64]":
         """
-Calculate lesion-level true positive rate (sensitivity) at each threshold"""
+        Calculate lesion-level true positive rate (sensitivity) at each threshold"""
         if self.num_lesions > 0:
             return self.lesion_TP / self.num_lesions
         else:
@@ -241,7 +241,7 @@ Calculate lesion-level true positive rate (sensitivity) at each threshold"""
     @property
     def lesion_FPR(self) -> "npt.NDArray[np.float64]":
         """
-Calculate lesion-level false positive rate (number of false positives per case) at each threshold"""
+        Calculate lesion-level false positive rate (number of false positives per case) at each threshold"""
         return self.lesion_FP / self.num_cases
 
     # case-level results
@@ -249,26 +249,26 @@ Calculate lesion-level false positive rate (number of false positives per case) 
         self, subject_list: Optional[List[str]] = None
     ) -> "npt.NDArray[np.float64]":
         """
-Calculate case-level true positive rate (sensitivity) at each threshold"""
+        Calculate case-level true positive rate (sensitivity) at each threshold"""
         return self.calculate_ROC(subject_list=subject_list)["TPR"]
 
     @property
     def case_TPR(self) -> "npt.NDArray[np.float64]":
         """
-Calculate case-level true positive rate (sensitivity) at each threshold"""
+        Calculate case-level true positive rate (sensitivity) at each threshold"""
         return self.calc_case_TPR()
 
     def calc_case_FPR(
         self, subject_list: Optional[List[str]] = None
     ) -> "npt.NDArray[np.float64]":
         """
-Calculate case-level false positive rate (1 - specificity) at each threshold"""
+        Calculate case-level false positive rate (1 - specificity) at each threshold"""
         return self.calculate_ROC(subject_list=subject_list)["FPR"]
 
     @property
     def case_FPR(self) -> "npt.NDArray[np.float64]":
         """
-Calculate case-level false positive rate (1 - specificity) at each threshold"""
+        Calculate case-level false positive rate (1 - specificity) at each threshold"""
         return self.calc_case_FPR()
 
     # supporting functions
@@ -465,22 +465,22 @@ Calculate case-level false positive rate (1 - specificity) at each threshold"""
 
     def save(self, path: PathLike):
         """
-Save metrics to file (including aggregates)"""
+        Save metrics to file (including aggregates)"""
         save_metrics(metrics=self.as_dict(), file_path=path)
 
     def save_full(self, path: PathLike):
         """
-Save metrics to file (including derived metrics)"""
+        Save metrics to file (including derived metrics)"""
         save_metrics(metrics=self.full_dict(), file_path=path)
 
     def save_minimal(self, path: PathLike):
         """
-Save metrics to file (minimal required metrics)"""
+        Save metrics to file (minimal required metrics)"""
         save_metrics(metrics=self.minimal_dict(), file_path=path)
 
     def load(self, path: PathLike):
         """
-Load metrics from file"""
+        Load metrics from file"""
         metrics = load_metrics(path)
 
         # parse metrics

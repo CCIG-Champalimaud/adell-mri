@@ -1,15 +1,16 @@
-import sys
 import os
+import sys
 
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+import argparse
 import time
+
 import numpy as np
 import torch
-import argparse
 from tqdm import trange
 
-from adell_mri.modules.augmentations import AugmentationWorkhorsed
 from adell_mri.modules.augmentations import (
+    AugmentationWorkhorsed,
     generic_augments,
     mri_specific_augments,
     spatial_augments,

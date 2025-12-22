@@ -24,9 +24,9 @@ from adell_mri.utils.dataset_filters import (
 from adell_mri.utils.network_factories import get_classification_network
 from adell_mri.utils.parser import get_params, merge_args, parse_ids
 from adell_mri.utils.pl_utils import get_devices
+from adell_mri.utils.python_logging import get_logger
 from adell_mri.utils.torch_utils import load_checkpoint_to_model
 from adell_mri.utils.utils import safe_collate
-from adell_mri.utils.python_logging import get_logger
 
 
 def main(arguments):

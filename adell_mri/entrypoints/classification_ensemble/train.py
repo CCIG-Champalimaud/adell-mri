@@ -8,9 +8,6 @@ from lightning.pytorch import Trainer
 from lightning.pytorch.callbacks import EarlyStopping, RichProgressBar
 from sklearn.model_selection import StratifiedKFold, train_test_split
 
-from adell_mri.utils.logging import CSVLogger
-from adell_mri.utils.python_logging import get_logger as get_python_logger
-
 from adell_mri.entrypoints.assemble_args import Parser
 from adell_mri.modules.classification.pl import GenericEnsemblePL
 from adell_mri.modules.config_parsing import (
@@ -19,11 +16,12 @@ from adell_mri.modules.config_parsing import (
     parse_config_unet,
 )
 from adell_mri.modules.losses import OrdinalSigmoidalLoss
-from adell_mri.transform_factory.transforms import ClassificationTransforms
 from adell_mri.transform_factory import (
     get_augmentations_class as get_augmentations,
 )
+from adell_mri.transform_factory.transforms import ClassificationTransforms
 from adell_mri.utils.dataset import Dataset
+from adell_mri.utils.logging import CSVLogger
 from adell_mri.utils.network_factories import get_classification_network
 from adell_mri.utils.parser import get_params, merge_args, parse_ids
 from adell_mri.utils.pl_utils import (
@@ -32,6 +30,7 @@ from adell_mri.utils.pl_utils import (
     get_devices,
     get_logger,
 )
+from adell_mri.utils.python_logging import get_logger as get_python_logger
 from adell_mri.utils.torch_utils import (
     conditional_parameter_freezing,
     get_class_weights,

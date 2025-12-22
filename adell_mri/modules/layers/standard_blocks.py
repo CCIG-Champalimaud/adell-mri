@@ -47,19 +47,19 @@ class DepthWiseSeparableConvolution2d(torch.nn.Module):
         adn_fn: torch.nn.Module = torch.nn.Identity,
     ):
         """
-Depthwise separable convolution [1] for 2d inputs. Very lightweight
-        version of a standard convolutional operation with a relatively small
-        drop in performance.
+        Depthwise separable convolution [1] for 2d inputs. Very lightweight
+                version of a standard convolutional operation with a relatively small
+                drop in performance.
 
-        [1] https://arxiv.org/abs/1902.00927v2
+                [1] https://arxiv.org/abs/1902.00927v2
 
-        Args:
-            in_channels (int): number of input channels
-            out_channels (int): number of output channels
-            kernel_size (int, optional): kernel size. Defaults to 3.
-            padding (int, optional): amount of padding. Defaults to 1.
-            adn_fn (torch.nn.Module, optional): ADN function applied after
-                convolutions. Defaults to torch.nn.Identity.
+                Args:
+                    in_channels (int): number of input channels
+                    out_channels (int): number of output channels
+                    kernel_size (int, optional): kernel size. Defaults to 3.
+                    padding (int, optional): amount of padding. Defaults to 1.
+                    adn_fn (torch.nn.Module, optional): ADN function applied after
+                        convolutions. Defaults to torch.nn.Identity.
         """
         super().__init__()
         self.input_channels = in_channels
@@ -100,19 +100,19 @@ class DepthWiseSeparableConvolution3d(torch.nn.Module):
         adn_fn: torch.nn.Module = torch.nn.Identity,
     ):
         """
-Depthwise separable convolution [1] for 3d inputs. Very lightweight
-        version of a standard convolutional operation with a relatively small
-        drop in performance.
+        Depthwise separable convolution [1] for 3d inputs. Very lightweight
+                version of a standard convolutional operation with a relatively small
+                drop in performance.
 
-        [1] https://arxiv.org/abs/1902.00927v2
+                [1] https://arxiv.org/abs/1902.00927v2
 
-        Args:
-            in_channels (int): number of input channels
-            out_channels (int): number of output channels
-            kernel_size (int, optional): kernel size. Defaults to 3.
-            padding (int, optional): amount of padding. Defaults to 1.
-            adn_fn (torch.nn.Module, optional): ADN function applied after
-                convolutions. Defaults to torch.nn.Identity.
+                Args:
+                    in_channels (int): number of input channels
+                    out_channels (int): number of output channels
+                    kernel_size (int, optional): kernel size. Defaults to 3.
+                    padding (int, optional): amount of padding. Defaults to 1.
+                    adn_fn (torch.nn.Module, optional): ADN function applied after
+                        convolutions. Defaults to torch.nn.Identity.
         """
         super().__init__()
         self.input_channels = in_channels
@@ -155,21 +155,21 @@ class ConvolutionalBlock2d(torch.nn.Module):
         padding: str = "valid",
     ):
         """
-Assembles a set of blocks containing convolutions followed by
-        adn_fn operations. Used to quickly build convolutional neural
-        networks.
+        Assembles a set of blocks containing convolutions followed by
+                adn_fn operations. Used to quickly build convolutional neural
+                networks.
 
-        Args:
-            in_channels (List[int]): list of input channels for convolutions.
-            out_channels (List[int]): list of output channels for convolutions.
-            kernel_size (List[int]): list of kernel sizes.
-            adn_fn (torch.nn.Module, optional): module applied after
-            convolutions. Defaults to torch.nn.Identity.
-            adn_args (dict, optional): args for the module applied after
-            convolutions. Defaults to {}.
-            stride (int, optional): stride for the convolutions. Defaults to 1.
-            padding (str, optional): padding for the convolutions. Defaults to
-            "valid".
+                Args:
+                    in_channels (List[int]): list of input channels for convolutions.
+                    out_channels (List[int]): list of output channels for convolutions.
+                    kernel_size (List[int]): list of kernel sizes.
+                    adn_fn (torch.nn.Module, optional): module applied after
+                    convolutions. Defaults to torch.nn.Identity.
+                    adn_args (dict, optional): args for the module applied after
+                    convolutions. Defaults to {}.
+                    stride (int, optional): stride for the convolutions. Defaults to 1.
+                    padding (str, optional): padding for the convolutions. Defaults to
+                    "valid".
         """
 
         super().__init__()
@@ -185,7 +185,7 @@ Assembles a set of blocks containing convolutions followed by
 
     def initialize_layers(self):
         """
-Initialize the layers for this Module."""
+        Initialize the layers for this Module."""
         self.mod_list = torch.nn.ModuleList()
         for i, o, k in zip(
             self.in_channels, self.out_channels, self.kernel_size
@@ -201,13 +201,13 @@ Initialize the layers for this Module."""
 
     def forward(self, X: torch.Tensor) -> torch.Tensor:
         """
-Forward pass for this Module.
+        Forward pass for this Module.
 
-        Args:
-            X (torch.Tensor)
+                Args:
+                    X (torch.Tensor)
 
-        Returns:
-            torch.Tensor
+                Returns:
+                    torch.Tensor
         """
         return self.op(X)
 
@@ -224,21 +224,21 @@ class ConvolutionalBlock3d(torch.nn.Module):
         padding: str = "valid",
     ):
         """
-Assembles a set of blocks containing convolutions followed by
-        adn_fn operations. Used to quickly build convolutional neural
-        networks.
+        Assembles a set of blocks containing convolutions followed by
+                adn_fn operations. Used to quickly build convolutional neural
+                networks.
 
-        Args:
-            in_channels (List[int]): list of input channels for convolutions.
-            out_channels (List[int]): list of output channels for convolutions.
-            kernel_size (List[int]): list of kernel sizes.
-            adn_fn (torch.nn.Module, optional): module applied after
-            convolutions. Defaults to torch.nn.Identity.
-            adn_args (dict, optional): args for the module applied after
-            convolutions. Defaults to {}.
-            stride (int, optional): stride for the convolutions. Defaults to 1.
-            padding (str, optional): padding for the convolutions. Defaults to
-            "valid".
+                Args:
+                    in_channels (List[int]): list of input channels for convolutions.
+                    out_channels (List[int]): list of output channels for convolutions.
+                    kernel_size (List[int]): list of kernel sizes.
+                    adn_fn (torch.nn.Module, optional): module applied after
+                    convolutions. Defaults to torch.nn.Identity.
+                    adn_args (dict, optional): args for the module applied after
+                    convolutions. Defaults to {}.
+                    stride (int, optional): stride for the convolutions. Defaults to 1.
+                    padding (str, optional): padding for the convolutions. Defaults to
+                    "valid".
         """
 
         super().__init__()
@@ -254,7 +254,7 @@ Assembles a set of blocks containing convolutions followed by
 
     def initialize_layers(self):
         """
-Initialize the layers for this Module."""
+        Initialize the layers for this Module."""
         self.mod_list = torch.nn.ModuleList()
         for i, o, k in zip(
             self.in_channels, self.out_channels, self.kernel_size
@@ -270,13 +270,13 @@ Initialize the layers for this Module."""
 
     def forward(self, X: torch.Tensor) -> torch.Tensor:
         """
-Forward pass for this Module.
+        Forward pass for this Module.
 
-        Args:
-            X (torch.Tensor)
+                Args:
+                    X (torch.Tensor)
 
-        Returns:
-            torch.Tensor
+                Returns:
+                    torch.Tensor
         """
         return self.op(X)
 
@@ -292,24 +292,24 @@ class DenseBlock(torch.nn.Module):
         return_all: bool = False,
     ):
         """
-Implementation of dense block with the possibility of including
-        skip connections for architectures such as U-Net++.
+        Implementation of dense block with the possibility of including
+                skip connections for architectures such as U-Net++.
 
-        Args:
-            spatial_dim (int): dimensionality of the input (2D or 3D).
-            structure (List[int]): structure of the convolutions in the dense
-                block.
-            kernel_size (int): kernel size for convolutions.
-            adn_fn (torch.nn.Module, optional): function to be applied after
-                each convolution. Defaults to torch.nn.PReLU.
-            structure_skip (List[int], optional): structure of the additional
-                skip inputs. Skip inputs are optionally fed into the forward
-                method and are appended to the outputs of each layer. For this
-                reason, len(structure_skip) == len(structure) - 1. Defaults to
-                None (normal dense block).
-            return_all (bool, optional): Whether all outputs (intermediate
-                convolutions) from this layer should be returned. Defaults to
-                False.
+                Args:
+                    spatial_dim (int): dimensionality of the input (2D or 3D).
+                    structure (List[int]): structure of the convolutions in the dense
+                        block.
+                    kernel_size (int): kernel size for convolutions.
+                    adn_fn (torch.nn.Module, optional): function to be applied after
+                        each convolution. Defaults to torch.nn.PReLU.
+                    structure_skip (List[int], optional): structure of the additional
+                        skip inputs. Skip inputs are optionally fed into the forward
+                        method and are appended to the outputs of each layer. For this
+                        reason, len(structure_skip) == len(structure) - 1. Defaults to
+                        None (normal dense block).
+                    return_all (bool, optional): Whether all outputs (intermediate
+                        convolutions) from this layer should be returned. Defaults to
+                        False.
         """
         super().__init__()
         self.spatial_dim = spatial_dim

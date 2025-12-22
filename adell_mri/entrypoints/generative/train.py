@@ -5,6 +5,7 @@ import torch
 from lightning.pytorch import Trainer
 from lightning.pytorch.callbacks import RichProgressBar
 
+from adell_mri.entrypoints.assemble_args import Parser
 from adell_mri.transform_factory import GenerationTransforms
 from adell_mri.transform_factory import (
     get_augmentations_class as get_augmentations,
@@ -25,7 +26,6 @@ from adell_mri.utils.torch_utils import (
     load_checkpoint_to_model,
 )
 from adell_mri.utils.utils import collate_last_slice, safe_collate
-from adell_mri.entrypoints.assemble_args import Parser
 
 
 def get_conditional_specification(d: dict, cond_key: str):
@@ -299,7 +299,7 @@ def main(arguments):
             EMACallback(decay=args.ema_decay, use_ema_weights=True)
         )
 
-    logger = get_logger(
+    pl_logger = get_logger(
         summary_name=args.summary_name,
         summary_dir=args.summary_dir,
         project_name=args.project_name,

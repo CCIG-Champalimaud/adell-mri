@@ -26,14 +26,14 @@ from adell_mri.modules.layers.standard_blocks import (
 
 def resnet_to_encoding_ops(res_net: List[torch.nn.Module]) -> ModuleList:
     """
-Convenience function generating UNet encoder from ResNet.
+    Convenience function generating UNet encoder from ResNet.
 
-    Args:
-        res_net (torch.nn.Module): a list of ResNet objects.
+        Args:
+            res_net (torch.nn.Module): a list of ResNet objects.
 
-    Returns:
-        encoding_operations: ModuleList of ModuleList objects containing
-            pairs of convolutions and pooling operations.
+        Returns:
+            encoding_operations: ModuleList of ModuleList objects containing
+                pairs of convolutions and pooling operations.
     """
     backbone = [x.backbone for x in res_net]
     res_ops = [[x.input_layer, *x.operations] for x in backbone]

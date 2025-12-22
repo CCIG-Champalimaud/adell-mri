@@ -23,7 +23,8 @@ class RandomAffined(monai.transforms.RandomizableTransform):
         prob: float = 0.1,
         rotate_range: tuple[int, int, int] | tuple[int, int] = [0, 0, 0],
         shear_range: tuple[int, int, int] | tuple[int, int] = [0, 0, 0],
-        translate_range: tuple[int, int, int] | tuple[int, int] = [
+        translate_range: tuple[int, int, int]
+        | tuple[int, int] = [
             0,
             0,
             0,

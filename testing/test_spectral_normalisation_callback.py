@@ -1,9 +1,10 @@
-import sys
 import os
+import sys
 
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 from copy import deepcopy
+
 import torch
 
 from adell_mri.utils.pl_callbacks import SpectralNorm

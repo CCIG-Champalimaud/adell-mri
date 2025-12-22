@@ -6,15 +6,20 @@ modules for various types of networks, including classification, segmentation,
 self-supervised learning, and generative models.
 """
 
+import os
+from functools import wraps
 from typing import Any, Callable
 
-import os
 import numpy as np
 import torch
 import torch.nn.functional as F
-from functools import wraps
 from lightning.pytorch import LightningModule
 
+# classification
+from adell_mri.modules.classification.classification import TabularClassifier
+from adell_mri.modules.classification.classification.deconfounded_classification import (
+    CategoricalConversion,
+)
 
 # confounder-free classification
 from adell_mri.modules.classification.pl import (
@@ -57,8 +62,8 @@ from adell_mri.modules.self_supervised.pl import (
     SelfSLResNetPL,
     SelfSLUNetPL,
     UNet,
-    iBOTPL,
     ViTMaskedAutoEncoderPL,
+    iBOTPL,
 )
 from adell_mri.modules.semi_supervised_segmentation.losses import (
     LocalContrastiveLoss,
@@ -67,12 +72,6 @@ from adell_mri.modules.semi_supervised_segmentation.losses import (
 # semi-supervised segmentation
 from adell_mri.modules.semi_supervised_segmentation.pl import (
     UNetContrastiveSemiSL,
-)
-
-# classification
-from adell_mri.modules.classification.classification import TabularClassifier
-from adell_mri.modules.classification.classification.deconfounded_classification import (
-    CategoricalConversion,
 )
 from adell_mri.utils.batch_preprocessing import BatchPreprocessing
 from adell_mri.utils.utils import (
@@ -113,6 +112,7 @@ def compile_if_necessary(func: Callable) -> Callable:
     Returns:
         The compiled :class:`torch.nn.Module`.
     """
+
     @wraps(func)
     def wrapper(*args, **kwargs):
         model = func(*args, **kwargs)
@@ -960,11 +960,11 @@ def get_generative_network(
         A :class:`LightningModule` generative network.
     """
     try:
-        from generative.networks.schedulers import DDPMScheduler
         from adell_mri.modules.diffusion.inferer import (
             DiffusionInfererSkipSteps,
         )
         from adell_mri.modules.diffusion.pl import DiffusionUNetPL
+        from generative.networks.schedulers import DDPMScheduler
     except ImportError:
         raise ImportError(
             "Please install the generative package to diffusion models"

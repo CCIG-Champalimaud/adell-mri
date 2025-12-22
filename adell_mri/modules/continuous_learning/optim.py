@@ -72,10 +72,10 @@ def create_param_groups(
 
 class EarlyStopper:
     """
-Early stopping of training if the validation loss does not improve
-    after `patience` epochs.
+    Early stopping of training if the validation loss does not improve
+        after `patience` epochs.
 
-    Based on https://stackoverflow.com/a/73704579
+        Based on https://stackoverflow.com/a/73704579
     """
 
     def __init__(self, patience: int = 1, min_delta: float = 0.0):

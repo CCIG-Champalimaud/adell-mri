@@ -9,10 +9,6 @@ from lightning.pytorch.callbacks import EarlyStopping, RichProgressBar
 from sklearn.model_selection import KFold, train_test_split
 from tqdm import tqdm
 
-from adell_mri.utils.logging import CSVLogger
-from adell_mri.utils.python_logging import get_logger as get_python_logger
-from adell_mri.utils.torch_utils import get_generator_and_rng
-
 from adell_mri.entrypoints.assemble_args import Parser
 from adell_mri.modules.config_parsing import parse_config_unet
 from adell_mri.modules.layers.adn_fn import get_adn_fn
@@ -22,6 +18,7 @@ from adell_mri.transform_factory import (
     get_augmentations_unet as get_augmentations,
 )
 from adell_mri.utils.dataset import Dataset
+from adell_mri.utils.logging import CSVLogger
 from adell_mri.utils.monai_transforms import (
     GetAllCropsd,
     RandomSlices,
@@ -29,11 +26,13 @@ from adell_mri.utils.monai_transforms import (
 )
 from adell_mri.utils.parser import parse_ids
 from adell_mri.utils.pl_utils import get_ckpt_callback, get_devices, get_logger
+from adell_mri.utils.python_logging import get_logger as get_python_logger
 from adell_mri.utils.samplers import PartiallyRandomSampler
 from adell_mri.utils.sitk_utils import (
     get_spacing_quantile,
     spacing_values_from_dataset_json,
 )
+from adell_mri.utils.torch_utils import get_generator_and_rng
 from adell_mri.utils.utils import (
     collate_last_slice,
     get_loss_param_dict,

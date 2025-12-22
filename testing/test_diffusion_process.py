@@ -3,8 +3,8 @@ import sys
 
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 import pytest
-
 import torch
+
 from adell_mri.modules.diffusion.diffusion_process import Diffusion
 from adell_mri.modules.diffusion.unet import DiffusionUNet
 

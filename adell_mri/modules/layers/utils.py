@@ -29,17 +29,17 @@ def split_int_into_n(i: int, n: int) -> List[int]:
 
 def crop_to_size(X: torch.Tensor, output_size: list) -> torch.Tensor:
     """
-Crops a tensor to the size given by list. Assumes the first two
-    dimensions are the batch and channel dimensions.
+    Crops a tensor to the size given by list. Assumes the first two
+        dimensions are the batch and channel dimensions.
 
-    Args:
-        X (torch.Tensor): torch Tensor to be cropped
-        output_size (list): list with the output dimensions. Should be
-        smaller or identical to the current dimensions and the list length
-        should be len(X.shape)
+        Args:
+            X (torch.Tensor): torch Tensor to be cropped
+            output_size (list): list with the output dimensions. Should be
+            smaller or identical to the current dimensions and the list length
+            should be len(X.shape)
 
-    Returns:
-        torch.Tensor: a resized torch Tensor
+        Returns:
+            torch.Tensor: a resized torch Tensor
     """
     sh = list(X.shape)[2:]
     diff = [i - j for i, j in zip(sh, output_size)]

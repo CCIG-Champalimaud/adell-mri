@@ -1,9 +1,10 @@
-import sys
 import os
+import sys
 
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 import torch
+
 from adell_mri.modules.segmentation.ahnet import AHNet
 
 h, w, d = 64, 64, 32

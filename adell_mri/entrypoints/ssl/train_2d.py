@@ -5,12 +5,9 @@ from copy import deepcopy
 import monai
 import numpy as np
 import torch
-from tqdm import tqdm
 from lightning.pytorch import Trainer
 from lightning.pytorch.callbacks import RichProgressBar
-
-from adell_mri.utils.torch_utils import get_generator_and_rng
-from adell_mri.utils.python_logging import get_logger as get_python_logger
+from tqdm import tqdm
 
 from adell_mri.entrypoints.assemble_args import Parser
 from adell_mri.modules.config_parsing import parse_config_ssl, parse_config_unet
@@ -22,6 +19,8 @@ from adell_mri.utils.dicom_dataset import (
 from adell_mri.utils.dicom_loader import DICOMDataset, SliceSampler
 from adell_mri.utils.network_factories import get_ssl_network
 from adell_mri.utils.pl_utils import get_ckpt_callback, get_devices, get_logger
+from adell_mri.utils.python_logging import get_logger as get_python_logger
+from adell_mri.utils.torch_utils import get_generator_and_rng
 from adell_mri.utils.utils import ExponentialMovingAverage, safe_collate
 
 torch.backends.cudnn.benchmark = True

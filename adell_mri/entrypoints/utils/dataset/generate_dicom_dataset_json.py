@@ -5,6 +5,7 @@ from pathlib import Path
 from pydicom import dcmread, errors
 from pydicom.dataset import FileDataset
 from pydicom.multival import MultiValue
+
 from adell_mri.utils.python_logging import get_logger
 
 DICOMInformation = tuple[str, str, str, tuple[float, float, float]]

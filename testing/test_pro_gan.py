@@ -1,10 +1,12 @@
+from copy import deepcopy
+
 import pytest
 import torch
+
 from adell_mri.modules.gan.gan.style import (
-    ProgressiveGenerator,
     ProgressiveDiscriminator,
+    ProgressiveGenerator,
 )
-from copy import deepcopy
 
 
 @pytest.fixture

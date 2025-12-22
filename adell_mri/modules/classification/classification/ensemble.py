@@ -3,13 +3,13 @@ from typing import Callable
 import numpy as np
 import torch
 
+from adell_mri.modules.classification.classification import CatNet
 from adell_mri.modules.layers.gaussian_process import GaussianProcessLayer
 from adell_mri.modules.layers.linear_blocks import MLP
 from adell_mri.modules.layers.self_attention import (
     ConcurrentSqueezeAndExcite2d,
     ConcurrentSqueezeAndExcite3d,
 )
-from adell_mri.modules.classification.classification import CatNet
 
 
 class GenericEnsemble(torch.nn.Module):

@@ -7,8 +7,8 @@ import numpy as np
 import torch
 from tqdm import tqdm
 
-from adell_mri.utils.utils import return_classes
 from adell_mri.utils.python_logging import get_logger
+from adell_mri.utils.utils import return_classes
 
 logger = get_logger(__name__)
 

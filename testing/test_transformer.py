@@ -1,14 +1,12 @@
-import sys
 import os
+import sys
 
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 import torch
-from adell_mri.modules.layers.vit import (
-    TransformerBlock,
-    TransformerBlockStack,
-)
+
 from adell_mri.modules.layers.adn_fn import get_adn_fn
+from adell_mri.modules.layers.vit import TransformerBlock, TransformerBlockStack
 
 input_dim_primary = 32
 input_dim_context = 16

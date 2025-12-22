@@ -168,18 +168,18 @@ def generate_mask(
     image_size: Size2dOr3d, window_size: Size2dOr3d, shift_size: Size2dOr3d
 ) -> torch.Tensor:
     """
-Masks the attention in a self-attention module in shifted inputs. A
-    generalization of the mask generation in [1] for 2 and 3 dimensions.
+    Masks the attention in a self-attention module in shifted inputs. A
+        generalization of the mask generation in [1] for 2 and 3 dimensions.
 
-    [1] https://github.com/microsoft/Swin-Transformer/blob/main/models/swin_transformer.py
+        [1] https://github.com/microsoft/Swin-Transformer/blob/main/models/swin_transformer.py
 
-    Args:
-        image_size (Size2dOr3d): size of image.
-        window_size (Size2dOr3d): size of window.
-        shift_size (Size2dOr3d): size of the shift.
+        Args:
+            image_size (Size2dOr3d): size of image.
+            window_size (Size2dOr3d): size of window.
+            shift_size (Size2dOr3d): size of the shift.
 
-    Returns:
-        torch.Tensor: tensor used to mask attention outputs.
+        Returns:
+            torch.Tensor: tensor used to mask attention outputs.
     """
     if isinstance(window_size, list) is False:
         window_size = [window_size for _ in image_size]
@@ -219,7 +219,6 @@ def sinusoidal_positional_encoding(n_tokens, dim_size):
 
 
 class SliceLinearEmbedding(torch.nn.Module):
-
     def __init__(
         self,
         in_channels: int,
@@ -339,10 +338,10 @@ class SliceLinearEmbedding(torch.nn.Module):
 
     def init_linear_layers_if_necessary(self):
         """
-Initialises a linear layers to convert to and from out_dim. This
-        allows for the linear embedding to have a different output without
-        affecting the size of everything else in the image before and after
-        the linear embedding.
+        Initialises a linear layers to convert to and from out_dim. This
+                allows for the linear embedding to have a different output without
+                affecting the size of everything else in the image before and after
+                the linear embedding.
         """
         self.map_to_out = torch.nn.Identity()
         self.map_to_in = torch.nn.Identity()
@@ -359,15 +358,15 @@ Initialises a linear layers to convert to and from out_dim. This
 
     def forward(self, X):
         """
-Forward pass.
+        Forward pass.
 
-        Args:
-            X (torch.Tensor): a tensor with shape
-                [-1,self.in_channels,*self.image_size]
+                Args:
+                    X (torch.Tensor): a tensor with shape
+                        [-1,self.in_channels,*self.image_size]
 
-        Returns:
-            torch.Tensor: the embedding of X, with size
-                [X.shape[0],self.n_patches,self.true_n_features].
+                Returns:
+                    torch.Tensor: the embedding of X, with size
+                        [X.shape[0],self.n_patches,self.true_n_features].
         """
         # output should always be [X.shape[0],self.n_patches,self.true_n_features]
         b, s = X.shape[0], X.shape[-1]
@@ -389,24 +388,24 @@ Forward pass.
 
 class LinearEmbedding(torch.nn.Module):
     """
-Linearly embeds images as described in the vision transformer paper
-    [1]. Essentially, it rearranges a given image of size [b,c,h,w] with a
-    given patch size [p1,p2] such that the output is
-    [b,c*(h//p1)*(w//p2),p1*p2]. This class also features the operations
-    necessary to i) reverse this operation and ii) "reverse" this operation
-    considering that the output has to be a downscaled version of the input
-    as described in the UNETR paper [2]. The convolutional embeding method
-    was inspired by the PatchEmbeddingBlock in MONAI [3] but I reworked it
-    so that it *always* uses einops, making operations more easily
-    reversible.
+    Linearly embeds images as described in the vision transformer paper
+        [1]. Essentially, it rearranges a given image of size [b,c,h,w] with a
+        given patch size [p1,p2] such that the output is
+        [b,c*(h//p1)*(w//p2),p1*p2]. This class also features the operations
+        necessary to i) reverse this operation and ii) "reverse" this operation
+        considering that the output has to be a downscaled version of the input
+        as described in the UNETR paper [2]. The convolutional embeding method
+        was inspired by the PatchEmbeddingBlock in MONAI [3] but I reworked it
+        so that it *always* uses einops, making operations more easily
+        reversible.
 
-    Here, I also included an argument that enables the support of windows as
-    in SWIN.
+        Here, I also included an argument that enables the support of windows as
+        in SWIN.
 
-    [1] https://arxiv.org/pdf/2010.11929.pdf
-    [2] https://arxiv.org/pdf/2103.10504.pdf
-    [3] https://docs.monai.io/en/stable/_modules/monai/networks/blocks/patchembedding.html
-    [4] https://arxiv.org/pdf/2103.14030.pdf
+        [1] https://arxiv.org/pdf/2010.11929.pdf
+        [2] https://arxiv.org/pdf/2103.10504.pdf
+        [3] https://docs.monai.io/en/stable/_modules/monai/networks/blocks/patchembedding.html
+        [4] https://arxiv.org/pdf/2103.14030.pdf
     """
 
     def __init__(
@@ -503,7 +502,7 @@ Linearly embeds images as described in the vision transformer paper
 
     def init_conv_if_necessary(self):
         """
-Initializes a convolutional if embed_method == "convolutional" """
+        Initializes a convolutional if embed_method == "convolutional" """
         if self.embed_method == "convolutional":
             if self.n_dims == 2:
                 self.conv = torch.nn.Conv2d(
@@ -522,10 +521,10 @@ Initializes a convolutional if embed_method == "convolutional" """
 
     def init_linear_layers_if_necessary(self):
         """
-Initialises a linear layers to convert to and from out_dim. This
-        allows for the linear embedding to have a different output without
-        affecting the size of everything else in the image before and after
-        the linear embedding.
+        Initialises a linear layers to convert to and from out_dim. This
+                allows for the linear embedding to have a different output without
+                affecting the size of everything else in the image before and after
+                the linear embedding.
         """
         self.map_to_out = torch.nn.Identity()
         self.map_to_in = torch.nn.Identity()
@@ -539,14 +538,14 @@ Initialises a linear layers to convert to and from out_dim. This
 
     def init_dropout(self):
         """
-Initialises the dropout operation that is applied after adding the
-        positional embeddings to the sequence embeddings.
+        Initialises the dropout operation that is applied after adding the
+                positional embeddings to the sequence embeddings.
         """
         self.drop_op = torch.nn.Dropout(self.dropout_rate)
 
     def calculate_parameters(self):
         """
-Calculates a few handy parameters for the linear embedding."""
+        Calculates a few handy parameters for the linear embedding."""
         self.n_dims = len(self.image_size)
         if self.window_size is None:
             self.n_patches_split = [
@@ -575,7 +574,7 @@ Calculates a few handy parameters for the linear embedding."""
 
     def initialize_classification_token(self):
         """
-Initializes the classification token."""
+        Initializes the classification token."""
         if self.use_class_token is True:
             self.class_token = torch.nn.Parameter(
                 torch.zeros([1, 1, self.true_n_features])
@@ -583,7 +582,7 @@ Initializes the classification token."""
 
     def initialize_registers(self):
         """
-Initializes the transformer registers."""
+        Initializes the transformer registers."""
         if self.n_registers > 0:
             self.registers = torch.nn.Parameter(
                 torch.zeros([1, self.n_registers, self.true_n_features])
@@ -591,8 +590,8 @@ Initializes the transformer registers."""
 
     def initialize_positional_embeddings(self):
         """
-Initilizes the positional embedding with a truncated normal
-        distribution.
+        Initilizes the positional embedding with a truncated normal
+                distribution.
         """
         if self.use_pos_embed is True:
             if self.learnable_embedding is True:
@@ -668,9 +667,9 @@ Initilizes the positional embedding with a truncated normal
 
     def get_einop_params(self):
         """
-Defines all necessary einops constants. This reduces the amount of
-        inference that einops.rearrange has to do internally and ensurest that
-        this operation is a bit easier to inspect.
+        Defines all necessary einops constants. This reduces the amount of
+                inference that einops.rearrange has to do internally and ensurest that
+                this operation is a bit easier to inspect.
         """
         (
             self.lh_l,
@@ -751,14 +750,14 @@ Defines all necessary einops constants. This reduces the amount of
 
     def rearrange(self, X: torch.Tensor) -> torch.Tensor:
         """
-Applies einops.rearrange given the parameters inferred in
-        self.get_einop_params.
+        Applies einops.rearrange given the parameters inferred in
+                self.get_einop_params.
 
-        Args:
-            X (torch.Tensor): a tensor of size (b,c,h,w,(d))
+                Args:
+                    X (torch.Tensor): a tensor of size (b,c,h,w,(d))
 
-        Returns:
-            torch.Tensor: a tensor of size (b,h*x,w*y,(d*z))
+                Returns:
+                    torch.Tensor: a tensor of size (b,h*x,w*y,(d*z))
         """
         if self.embed_method == "linear":
             X = self.einop_rearrange(X)
@@ -769,16 +768,16 @@ Applies einops.rearrange given the parameters inferred in
 
     def rearrange_inverse_basic(self, X: torch.Tensor) -> torch.Tensor:
         """
-Reverses the self.rearrange operation using the parameters inferred
-        in self.get_einop_params.
+        Reverses the self.rearrange operation using the parameters inferred
+                in self.get_einop_params.
 
-        Args:
-            X (torch.Tensor): a tensor of size (b,h*x,w*y,(d*z))
-            kwargs: arguments that will be appended to self.einop_dict (only
-                works with embed_method == "linear").
+                Args:
+                    X (torch.Tensor): a tensor of size (b,h*x,w*y,(d*z))
+                    kwargs: arguments that will be appended to self.einop_dict (only
+                        works with embed_method == "linear").
 
-        Returns:
-            x torch.Tensor: a tensor of size (b,c,h,w,(d))
+                Returns:
+                    x torch.Tensor: a tensor of size (b,c,h,w,(d))
         """
         if self.embed_method == "linear":
             X = self.map_to_in(X)
@@ -789,16 +788,16 @@ Reverses the self.rearrange operation using the parameters inferred
 
     def rearrange_inverse(self, X: torch.Tensor, **kwargs) -> torch.Tensor:
         """
-Reverses the self.rearrange operation using the parameters inferred
-        in self.get_einop_params.
+        Reverses the self.rearrange operation using the parameters inferred
+                in self.get_einop_params.
 
-        Args:
-            X (torch.Tensor): a tensor of size (b,h*x,w*y,(d*z))
-            kwargs: arguments that will be appended to self.einop_dict (only
-                works with embed_method == "linear").
+                Args:
+                    X (torch.Tensor): a tensor of size (b,h*x,w*y,(d*z))
+                    kwargs: arguments that will be appended to self.einop_dict (only
+                        works with embed_method == "linear").
 
-        Returns:
-            x torch.Tensor: a tensor of size (b,c,h,w,(d))
+                Returns:
+                    x torch.Tensor: a tensor of size (b,c,h,w,(d))
         """
         X = self.map_to_in(X)
         einop_dict = deepcopy(self.einop_dict_l)
@@ -846,17 +845,17 @@ Reverses the self.rearrange operation using the parameters inferred
         self, X: torch.Tensor, no_pos_embed: bool = False
     ) -> torch.Tensor:
         """
-Forward pass.
+        Forward pass.
 
-        Args:
-            X (torch.Tensor): a tensor with shape
-                [-1,self.in_channels,*self.image_size]
-            no_pos_embed (bool, optional): skips the addition of the positional
-                embedding.
+                Args:
+                    X (torch.Tensor): a tensor with shape
+                        [-1,self.in_channels,*self.image_size]
+                    no_pos_embed (bool, optional): skips the addition of the positional
+                        embedding.
 
-        Returns:
-            torch.Tensor: the embedding of X, with size
-                [X.shape[0],self.n_patches,self.true_n_features].
+                Returns:
+                    torch.Tensor: the embedding of X, with size
+                        [X.shape[0],self.n_patches,self.true_n_features].
         """
         # output should always be [X.shape[0],self.n_patches,self.true_n_features]
         if self.embed_method == "convolutional":
@@ -952,19 +951,19 @@ class TransformerBlock(torch.nn.Module):
 
     def init_drop_ops(self):
         """
-Initializes the dropout operations."""
+        Initializes the dropout operations."""
         self.drop_op_1 = torch.nn.Dropout(self.dropout_rate)
         self.drop_op_2 = torch.nn.Dropout(self.dropout_rate)
 
     def init_layer_norm_ops(self):
         """
-Initializes the MLP in the last step of the transformer."""
+        Initializes the MLP in the last step of the transformer."""
         self.norm_op_1 = torch.nn.LayerNorm(self.input_dim_primary)
         self.norm_op_2 = torch.nn.LayerNorm(self.input_dim_primary)
 
     def init_mlp(self):
         """
-Initializes the MLP in the last step of the transformer."""
+        Initializes the MLP in the last step of the transformer."""
         if isinstance(self.mlp_structure, list):
             struc = max(self.mlp_structure)
         else:
@@ -982,17 +981,17 @@ Initializes the MLP in the last step of the transformer."""
         return_attention: bool = False,
     ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         """
-Forward pass.
+        Forward pass.
 
-        Args:
-            X (torch.Tensor): tensor of shape [...,self.input_dim_primary]
-            mask (torch.Tensor, optioanl): attention masking tensor. Should have
-                shape []. Defaults to None.
-            return_attention (bool, optional): also returns the attention.
-                Defaults to False.
+                Args:
+                    X (torch.Tensor): tensor of shape [...,self.input_dim_primary]
+                    mask (torch.Tensor, optioanl): attention masking tensor. Should have
+                        shape []. Defaults to None.
+                    return_attention (bool, optional): also returns the attention.
+                        Defaults to False.
 
-        Returns:
-            torch.Tensor: tensor of shape [...,self.input_dim_primary]
+                Returns:
+                    torch.Tensor: tensor of shape [...,self.input_dim_primary]
         """
         attention = self.mha(self.norm_op_1(X), mask=mask)
         X = X + self.drop_op_1(attention)
@@ -1004,7 +1003,7 @@ Forward pass.
 
 class SWINTransformerBlock(torch.nn.Module):
     """
-Shifted window transformer module."""
+    Shifted window transformer module."""
 
     def __init__(
         self,
@@ -1144,7 +1143,7 @@ Shifted window transformer module."""
 
     def init_drop_ops(self):
         """
-Initializes the dropout operations."""
+        Initializes the dropout operations."""
         self.drop_op_1 = torch.nn.Dropout(self.dropout_rate)
         self.drop_op_2 = torch.nn.Dropout(self.dropout_rate)
 
@@ -1161,14 +1160,14 @@ Initializes the dropout operations."""
 
     def roll(self, X: torch.Tensor, shifts: List[int]):
         """
-Rolls a tensor along the last dimensions.
+        Rolls a tensor along the last dimensions.
 
-        Args:
-            X (torch.Tensor): tensor to roll.
-            shifts (List[int]): list of shifts to apply.
+                Args:
+                    X (torch.Tensor): tensor to roll.
+                    shifts (List[int]): list of shifts to apply.
 
-        Returns:
-            torch.Tensor: rolled tensor.
+                Returns:
+                    torch.Tensor: rolled tensor.
         """
         dims = [i + 1 for i in range(1, len(shifts) + 1)]
         return torch.roll(X, shifts=shifts, dims=dims)
@@ -1177,21 +1176,21 @@ Rolls a tensor along the last dimensions.
         self, X: torch.Tensor, scale: int = None
     ) -> Tuple[torch.Tensor, TensorList]:
         """
-Forward pass, based on MONAI implementation [1].
+        Forward pass, based on MONAI implementation [1].
 
-        [1] https://docs.monai.io/en/stable/_modules/monai/networks/nets/swin_unetr.html
+                [1] https://docs.monai.io/en/stable/_modules/monai/networks/nets/swin_unetr.html
 
-        Args:
-            X (torch.Tensor): tensor of shape
-                [-1,self.in_channels,*self.image_size]
-            scale (int): downsampling scale for output. Defaults to None
-                (returns the non-rearranged output).
+                Args:
+                    X (torch.Tensor): tensor of shape
+                        [-1,self.in_channels,*self.image_size]
+                    scale (int): downsampling scale for output. Defaults to None
+                        (returns the non-rearranged output).
 
-        Returns:
-            torch.Tensor: tensor of shape [...,self.input_dim_primary]
-            List[torch.Tensor]: list of intermediary tensors corresponding to
-                the ith transformer outputs, where i is contained in return_at.
-                Same shape as the final output.
+                Returns:
+                    torch.Tensor: tensor of shape [...,self.input_dim_primary]
+                    List[torch.Tensor]: list of intermediary tensors corresponding to
+                        the ith transformer outputs, where i is contained in return_at.
+                        Same shape as the final output.
         """
         X = move_axis(X, 1, -1)
         shortcut = X
@@ -1229,19 +1228,19 @@ Forward pass, based on MONAI implementation [1].
         self, X: torch.Tensor, scale: int = None
     ) -> Tuple[torch.Tensor, TensorList]:
         """
-Forward pass.
+        Forward pass.
 
-        Args:
-            X (torch.Tensor): tensor of shape
-                [-1,self.in_channels,*self.image_size]
-            scale (int): downsampling scale for output. Defaults to None
-                (returns the non-rearranged output).
+                Args:
+                    X (torch.Tensor): tensor of shape
+                        [-1,self.in_channels,*self.image_size]
+                    scale (int): downsampling scale for output. Defaults to None
+                        (returns the non-rearranged output).
 
-        Returns:
-            torch.Tensor: tensor of shape [...,self.input_dim_primary]
-            List[torch.Tensor]: list of intermediary tensors corresponding to
-                the ith transformer outputs, where i is contained in return_at.
-                Same shape as the final output.
+                Returns:
+                    torch.Tensor: tensor of shape [...,self.input_dim_primary]
+                    List[torch.Tensor]: list of intermediary tensors corresponding to
+                        the ith transformer outputs, where i is contained in return_at.
+                        Same shape as the final output.
         """
         if self.shift_size > 0:
             attention = self.apply_shift_and_attention(X)
@@ -1258,7 +1257,7 @@ Forward pass.
 
 class TransformerBlockStack(torch.nn.Module):
     """
-Convenience function that stacks a series of transformer blocks."""
+    Convenience function that stacks a series of transformer blocks."""
 
     def __init__(
         self,
@@ -1309,15 +1308,15 @@ Convenience function that stacks a series of transformer blocks."""
         self, x: Union[List[List[int]], List[int]]
     ) -> List[List[int]]:
         """
-Checks and corrects the MLP structure to see that everything is
-        as expected.
+        Checks and corrects the MLP structure to see that everything is
+                as expected.
 
-        Args:
-            x (Union[List[List[int]], List[int]]): MLP structure or list of
-                MLP structures.
+                Args:
+                    x (Union[List[List[int]], List[int]]): MLP structure or list of
+                        MLP structures.
 
-        Returns:
-            List[List[int]]: list of MLP structures.
+                Returns:
+                    List[List[int]]: list of MLP structures.
         """
         if isinstance(x, list) is False:
             x = [x]
@@ -1330,13 +1329,13 @@ Checks and corrects the MLP structure to see that everything is
         self, x: Union[List[int], int]
     ) -> List[int]:
         """
-Checks and corrects inputs if necessary.
+        Checks and corrects inputs if necessary.
 
-        Args:
-            x (Union[List[int],int]): integer or list of integers
+                Args:
+                    x (Union[List[int],int]): integer or list of integers
 
-        Returns:
-            List[int]: list of integers.
+                Returns:
+                    List[int]: list of integers.
         """
         if isinstance(x, list) is False:
             x = [x for _ in range(self.number_of_blocks)]
@@ -1347,16 +1346,16 @@ Checks and corrects inputs if necessary.
 
     def check_if_consistent(self, x: Sequence):
         """
-Checks that the size of x is self.number_of_blocks
+        Checks that the size of x is self.number_of_blocks
 
-        Args:
-            x (_type_): _description_
+                Args:
+                    x (_type_): _description_
         """
         assert len(x) == self.number_of_blocks
 
     def init_transformer_blocks(self):
         """
-Initialises the transformer blocks."""
+        Initialises the transformer blocks."""
         input_dim_primary = self.convert_to_list_if_necessary(
             self.input_dim_primary
         )
@@ -1395,22 +1394,22 @@ Initialises the transformer blocks."""
         Tuple[torch.Tensor, TensorList, TensorList],
     ]:
         """
-Forward pass.
+        Forward pass.
 
-        Args:
-            X (torch.Tensor): tensor of shape [...,self.input_dim_primary]
-            return_at (Union[str,List[int]], optional): sets the intermediary
-                outputs that will be returned together with the final output.
-            return_attention (bool, optional): also returns the attention for
-                all. blocks in return_at. Defaults to False.
+                Args:
+                    X (torch.Tensor): tensor of shape [...,self.input_dim_primary]
+                    return_at (Union[str,List[int]], optional): sets the intermediary
+                        outputs that will be returned together with the final output.
+                    return_attention (bool, optional): also returns the attention for
+                        all. blocks in return_at. Defaults to False.
 
-        Returns:
-            torch.Tensor: tensor of shape [...,self.input_dim_primary]
-            List[torch.Tensor]: list of intermediary tensors corresponding to
-                the ith transformer outputs, where i is contained in return_at.
-                Same shape as the final output.
-            List[torch.Tensor]: list of intermediary tensors corresponding to
-                the ith attention outputs, where i is contained in return_at.
+                Returns:
+                    torch.Tensor: tensor of shape [...,self.input_dim_primary]
+                    List[torch.Tensor]: list of intermediary tensors corresponding to
+                        the ith transformer outputs, where i is contained in return_at.
+                        Same shape as the final output.
+                    List[torch.Tensor]: list of intermediary tensors corresponding to
+                        the ith attention outputs, where i is contained in return_at.
         """
         if isinstance(return_at, list):
             assert (
@@ -1437,7 +1436,7 @@ Forward pass.
 
 class SWINTransformerBlockStack(torch.nn.Module):
     """
-Shifted window transformer stack module."""
+    Shifted window transformer stack module."""
 
     def __init__(
         self,
@@ -1514,15 +1513,15 @@ Shifted window transformer stack module."""
         self, x: Union[List[List[int]], List[int], float]
     ) -> List[List[int]]:
         """
-Checks and corrects list structure to see that everything is
-        as expected.
+        Checks and corrects list structure to see that everything is
+                as expected.
 
-        Args:
-            x (Union[List[List[int]], List[int]]): list structure or list of
-                lists structure.
+                Args:
+                    x (Union[List[List[int]], List[int]]): list structure or list of
+                        lists structure.
 
-        Returns:
-            List[List[int]]: list of lists structures.
+                Returns:
+                    List[List[int]]: list of lists structures.
         """
         if isinstance(x, float) is True:
             return [x for _ in self.shift_sizes]
@@ -1535,13 +1534,13 @@ Checks and corrects list structure to see that everything is
         self, x: Union[List[int], int]
     ) -> List[int]:
         """
-Checks and corrects inputs if necessary.
+        Checks and corrects inputs if necessary.
 
-        Args:
-            x (Union[List[int],int]): integer or list of integers
+                Args:
+                    x (Union[List[int],int]): integer or list of integers
 
-        Returns:
-            List[int]: list of integers.
+                Returns:
+                    List[int]: list of integers.
         """
         if isinstance(x, list) is False:
             return [x for _ in self.shift_sizes]
@@ -1550,10 +1549,10 @@ Checks and corrects inputs if necessary.
 
     def check_if_consistent(self, x: Sequence):
         """
-Checks that the size of x is self.number_of_blocks
+        Checks that the size of x is self.number_of_blocks
 
-        Args:
-            x (Sequence): _description_
+                Args:
+                    x (Sequence): _description_
         """
         assert len(x) == len(self.shift_sizes)
 
@@ -1598,17 +1597,17 @@ Checks that the size of x is self.number_of_blocks
         self, X: torch.Tensor, scale: int = 1
     ) -> Tuple[torch.Tensor, TensorList]:
         """
-Forward pass.
+        Forward pass.
 
-        Args:
-            X (torch.Tensor): tensor of shape
-                [-1,self.in_channels,*self.image_size]
+                Args:
+                    X (torch.Tensor): tensor of shape
+                        [-1,self.in_channels,*self.image_size]
 
-        Returns:
-            torch.Tensor: tensor of shape [...,self.input_dim_primary]
-            List[torch.Tensor]: list of intermediary tensors corresponding to
-                the ith transformer outputs, where i is contained in return_at.
-                Same shape as the final output.
+                Returns:
+                    torch.Tensor: tensor of shape [...,self.input_dim_primary]
+                    List[torch.Tensor]: list of intermediary tensors corresponding to
+                        the ith transformer outputs, where i is contained in return_at.
+                        Same shape as the final output.
         """
         for block in self.stbs[:-1]:
             X = block(X, scale=1)
@@ -1618,12 +1617,12 @@ Forward pass.
 
 class ViT(torch.nn.Module):
     """
-Vision transformer module. Put more simply, it is the
-    concatenation of a LinearEmbedding and a TransformberBlockStack [1]. This
-    model includes the possibility of PatchErasing regularization [2].
+    Vision transformer module. Put more simply, it is the
+        concatenation of a LinearEmbedding and a TransformberBlockStack [1]. This
+        model includes the possibility of PatchErasing regularization [2].
 
-    [1] https://arxiv.org/abs/2010.11929
-    [2] https://arxiv.org/abs/2209.15006
+        [1] https://arxiv.org/abs/2010.11929
+        [2] https://arxiv.org/abs/2209.15006
     """
 
     def __init__(
@@ -1771,19 +1770,19 @@ Vision transformer module. Put more simply, it is the
         self, X: torch.Tensor, return_at: Union[str, List[int]] = "end"
     ) -> Tuple[torch.Tensor, TensorList]:
         """
-Forward pass.
+        Forward pass.
 
-        Args:
-            X (torch.Tensor): tensor of shape
-                [-1,self.in_channels,*self.image_size]
-            return_at (Union[str,List[int]], optional): sets the intermediary
-                outputs that will be returned together with the final output.
+                Args:
+                    X (torch.Tensor): tensor of shape
+                        [-1,self.in_channels,*self.image_size]
+                    return_at (Union[str,List[int]], optional): sets the intermediary
+                        outputs that will be returned together with the final output.
 
-        Returns:
-            torch.Tensor: tensor of shape [...,self.input_dim_primary]
-            List[torch.Tensor]: list of intermediary tensors corresponding to
-                the ith transformer outputs, where i is contained in return_at.
-                Same shape as the final output.
+                Returns:
+                    torch.Tensor: tensor of shape [...,self.input_dim_primary]
+                    List[torch.Tensor]: list of intermediary tensors corresponding to
+                        the ith transformer outputs, where i is contained in return_at.
+                        Same shape as the final output.
         """
         if isinstance(return_at, list):
             assert (
@@ -1804,13 +1803,13 @@ Forward pass.
 
 class FactorizedViT(torch.nn.Module):
     """
-Factorized vision transformer module. Put more simply, it is the
-    concatenation of a SliceLinearEmbedding and two TransformberBlockStack [1]
-    (corresponding to within and between slice interactions). This model
-    includes the possibility of PatchErasing regularization [2].
+    Factorized vision transformer module. Put more simply, it is the
+        concatenation of a SliceLinearEmbedding and two TransformberBlockStack [1]
+        (corresponding to within and between slice interactions). This model
+        includes the possibility of PatchErasing regularization [2].
 
-    [1] https://www.sciencedirect.com/science/article/pii/S0010482522008459?via%3Dihub
-    [2] https://arxiv.org/abs/2209.15006
+        [1] https://www.sciencedirect.com/science/article/pii/S0010482522008459?via%3Dihub
+        [2] https://arxiv.org/abs/2209.15006
     """
 
     def __init__(
@@ -1954,17 +1953,17 @@ Factorized vision transformer module. Put more simply, it is the
 
     def forward(self, X: torch.Tensor) -> Tuple[torch.Tensor, TensorList]:
         """
-Forward pass.
+        Forward pass.
 
-        Args:
-            X (torch.Tensor): tensor of shape
-                [-1,self.in_channels,*self.image_size]
+                Args:
+                    X (torch.Tensor): tensor of shape
+                        [-1,self.in_channels,*self.image_size]
 
-        Returns:
-            torch.Tensor: tensor of shape [...,self.input_dim_primary]
-            List[torch.Tensor]: list of intermediary tensors corresponding to
-                the ith transformer outputs, where i is contained in return_at.
-                Same shape as the final output.
+                Returns:
+                    torch.Tensor: tensor of shape [...,self.input_dim_primary]
+                    List[torch.Tensor]: list of intermediary tensors corresponding to
+                        the ith transformer outputs, where i is contained in return_at.
+                        Same shape as the final output.
         """
         embeded_X = self.embedding(X)
         if self.patch_erasing_op is not None:

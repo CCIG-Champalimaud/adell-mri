@@ -2,16 +2,16 @@
 Activation, dropout and normalisation builder.
 """
 
-from typing import OrderedDict
 from functools import partial
+from typing import OrderedDict
 
 import torch
 
 from adell_mri.modules.activations import activation_factory
 from adell_mri.modules.layers.regularization import (
-    LayerNormChannelsFirst,
-    L2NormalizationLayer,
     LRN,
+    L2NormalizationLayer,
+    LayerNormChannelsFirst,
 )
 
 norm_fn_dict = {

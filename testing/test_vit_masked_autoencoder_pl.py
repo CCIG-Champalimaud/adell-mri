@@ -1,6 +1,7 @@
 import pytest
 import torch
 from torch.utils.data import DataLoader, TensorDataset
+
 from adell_mri.modules.self_supervised.pl import ViTMaskedAutoEncoderPL
 
 
@@ -72,7 +73,7 @@ def test_forward_pass(model_config, sample_data):
 
 def test_training_step(model_config, sample_data):
     """
-Test that a training step runs without errors."""
+    Test that a training step runs without errors."""
     model = ViTMaskedAutoEncoderPL(**model_config)
     batch = sample_data  # Mimic how batch comes from dataloader
     loss = model.training_step(batch, batch_idx=0)
@@ -93,7 +94,7 @@ def test_validation_step(model_config, sample_data):
 
 def test_test_step(model_config, sample_data):
     """
-Test that a test step runs without errors."""
+    Test that a test step runs without errors."""
     model = ViTMaskedAutoEncoderPL(**model_config)
     batch = sample_data  # Mimic how batch comes from dataloader
     loss = model.test_step(batch, batch_idx=0)
@@ -103,37 +104,43 @@ Test that a test step runs without errors."""
 
 def test_optimizer_configuration(model_config):
     """
-Test that the optimizer is configured correctly."""
+    Test that the optimizer is configured correctly."""
     model = ViTMaskedAutoEncoderPL(**model_config)
     optim_conf = model.configure_optimizers()
 
     if model.warmup_steps > 0:
         # With warmup, we should get a dict with optimizer and lr_scheduler
         assert isinstance(optim_conf, dict)
-        assert 'optimizer' in optim_conf
-        assert 'lr_scheduler' in optim_conf
+        assert "optimizer" in optim_conf
+        assert "lr_scheduler" in optim_conf
 
-        optimizer = optim_conf['optimizer']
-        scheduler_config = optim_conf['lr_scheduler']
+        optimizer = optim_conf["optimizer"]
+        scheduler_config = optim_conf["lr_scheduler"]
 
         # Check scheduler configuration
-        assert 'scheduler' in scheduler_config
-        assert 'interval' in scheduler_config
-        assert 'frequency' in scheduler_config
-        assert scheduler_config['scheduler'].base_lrs[0] == model_config['learning_rate']
+        assert "scheduler" in scheduler_config
+        assert "interval" in scheduler_config
+        assert "frequency" in scheduler_config
+        assert (
+            scheduler_config["scheduler"].base_lrs[0]
+            == model_config["learning_rate"]
+        )
     else:
         # Without warmup, just return the optimizer directly
         optimizer = optim_conf
-        assert optimizer.param_groups[0]['lr'] == model_config['learning_rate']
+        assert optimizer.param_groups[0]["lr"] == model_config["learning_rate"]
 
     # Check optimizer configuration
     assert isinstance(optimizer, torch.optim.AdamW)
-    assert optimizer.param_groups[0]['weight_decay'] == model_config['weight_decay']
+    assert (
+        optimizer.param_groups[0]["weight_decay"]
+        == model_config["weight_decay"]
+    )
 
 
 def test_metrics(model_config, sample_data):
     """
-Test that metrics are properly updated and logged."""
+    Test that metrics are properly updated and logged."""
     model = ViTMaskedAutoEncoderPL(**model_config)
     batch = sample_data
 

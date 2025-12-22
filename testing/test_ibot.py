@@ -1,9 +1,10 @@
-import sys
 import os
+import sys
 
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 import torch
+
 from adell_mri.modules.self_supervised.ibot import iBOT
 
 
@@ -15,8 +16,7 @@ def test_ibot():
     patch_size = 16
     attention_dim = 64
     feature_map_dimensions = [
-        im // p
-        for im, p in zip([img_size, img_size], [patch_size, patch_size])
+        im // p for im, p in zip([img_size, img_size], [patch_size, patch_size])
     ]
     n_tokens = feature_map_dimensions[0] * feature_map_dimensions[1]
     use_class_token = True
@@ -56,6 +56,4 @@ def test_ibot():
 
     # Check if output contains valid values
     assert not torch.isnan(reduced_out).any(), "Output contains NaN values"
-    assert not torch.isinf(
-        reduced_out
-    ).any(), "Output contains infinity values"
+    assert not torch.isinf(reduced_out).any(), "Output contains infinity values"

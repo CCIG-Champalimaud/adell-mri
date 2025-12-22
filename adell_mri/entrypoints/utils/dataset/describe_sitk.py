@@ -6,6 +6,7 @@ def main(arguments):
 
     import numpy as np
     import SimpleITK as sitk
+
     from adell_mri.utils.python_logging import get_logger
 
     logger = get_logger(__name__)

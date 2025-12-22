@@ -87,17 +87,17 @@ class VGGAutoencoder(torch.nn.Module):
         return_features: bool = False,
     ) -> torch.Tensor:
         """
-Forward method.
+        Forward method.
 
-        Args:
-            X (torch.Tensor): input tensor
-            return_features (bool, optional): returns the features before
-                applying classification layer. Defaults to False.
-            batch_idx (int, optional): uses a specific batch ensemble
-                transformation. Defaults to None (usually random).
+                Args:
+                    X (torch.Tensor): input tensor
+                    return_features (bool, optional): returns the features before
+                        applying classification layer. Defaults to False.
+                    batch_idx (int, optional): uses a specific batch ensemble
+                        transformation. Defaults to None (usually random).
 
-        Returns:
-            torch.Tensor: output (reconstruction)
+                Returns:
+                    torch.Tensor: output (reconstruction)
         """
         X = self.encoder_block(X)
         if return_features is True:

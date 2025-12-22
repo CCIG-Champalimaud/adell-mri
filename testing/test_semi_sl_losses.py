@@ -1,14 +1,15 @@
-import sys
 import os
+import sys
 
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 import torch
+
 from adell_mri.modules.semi_supervised_segmentation.losses import (
     AnatomicalContrastiveLoss,
-    PseudoLabelCrossEntropy,
-    NearestNeighbourLoss,
     LocalContrastiveLoss,
+    NearestNeighbourLoss,
+    PseudoLabelCrossEntropy,
 )
 
 bs, c, h, w, nc = 2, 1, 32, 32, 5

@@ -18,7 +18,6 @@ from adell_mri.modules.object_detection.utils import (
 
 
 class YOLONet3d(torch.nn.Module):
-
     def __init__(
         self,
         backbone_str: str = "resnet",
@@ -190,27 +189,27 @@ class YOLONet3d(torch.nn.Module):
         correction_factor: torch.Tensor = None,
     ) -> torch.Tensor:
         """
-Converts the predictions from a single prediction from forward into
-        bounding boxes. The format of these boxes is
-        (uc_x,uc_y,uc_z,lc_x,lc_y,lc_z), where uc and lc refer to upper and
-        lower corners, respectively.
+        Converts the predictions from a single prediction from forward into
+                bounding boxes. The format of these boxes is
+                (uc_x,uc_y,uc_z,lc_x,lc_y,lc_z), where uc and lc refer to upper and
+                lower corners, respectively.
 
-        Args:
-            bb_center_pred (torch.Tensor): center offset predictions.
-            bb_size_pred (torch.Tensor): size predictions.
-            bb_object_pred (torch.Tensor): objectness predictions.
-            class_pred (torch.Tensor): class predictions.
-            nms (bool, optional): whether to perform non-maximum suppression.
-                Defaults to False.
-            correction_factor (torch.Tensor, optional): corrects the long
-                centres using a multiplicative factor. Defaults to None (no
-                correction).
+                Args:
+                    bb_center_pred (torch.Tensor): center offset predictions.
+                    bb_size_pred (torch.Tensor): size predictions.
+                    bb_object_pred (torch.Tensor): objectness predictions.
+                    class_pred (torch.Tensor): class predictions.
+                    nms (bool, optional): whether to perform non-maximum suppression.
+                        Defaults to False.
+                    correction_factor (torch.Tensor, optional): corrects the long
+                        centres using a multiplicative factor. Defaults to None (no
+                        correction).
 
-        Returns:
-            long_bb (torch.Tensor): bounding boxes in the corner format
-                specified above.
-            object_scores (torch.Tensor): objectness scores (1d).
-            long_classes (torch.Tensor): classes.
+                Returns:
+                    long_bb (torch.Tensor): bounding boxes in the corner format
+                        specified above.
+                    object_scores (torch.Tensor): objectness scores (1d).
+                    long_classes (torch.Tensor): classes.
         """
         c, h, w, d, a = bb_center_pred.shape
 
@@ -276,26 +275,26 @@ Converts the predictions from a single prediction from forward into
         to_dict: bool = False,
     ) -> List[torch.Tensor]:
         """
-Generalises recover_boxes to a batch.
+        Generalises recover_boxes to a batch.
 
-        Args:
-            bb_center_pred (torch.Tensor): center offset predictions.
-            bb_size_pred (torch.Tensor): size predictions.
-            bb_object_pred (torch.Tensor): objectness predictions.
-            class_pred (torch.Tensor): class predictions.
-            nms (bool, optional): whether to perform non-maximum suppression.
-                Defaults to False.
-            correction_factor (torch.Tensor, optional): corrects the long
-                centres using a multiplicative factor. Defaults to None (no
-                correction).
-            to_dict (bool, optional): returns the output as a dict. Defaults
-                to False.
+                Args:
+                    bb_center_pred (torch.Tensor): center offset predictions.
+                    bb_size_pred (torch.Tensor): size predictions.
+                    bb_object_pred (torch.Tensor): objectness predictions.
+                    class_pred (torch.Tensor): class predictions.
+                    nms (bool, optional): whether to perform non-maximum suppression.
+                        Defaults to False.
+                    correction_factor (torch.Tensor, optional): corrects the long
+                        centres using a multiplicative factor. Defaults to None (no
+                        correction).
+                    to_dict (bool, optional): returns the output as a dict. Defaults
+                        to False.
 
-        Returns:
-            long_bb (torch.Tensor): bounding boxes in the corner format
-                specified above.
-            object_scores (torch.Tensor): objectness scores (1d).
-            long_classes (torch.Tensor): classes.
+                Returns:
+                    long_bb (torch.Tensor): bounding boxes in the corner format
+                        specified above.
+                    object_scores (torch.Tensor): objectness scores (1d).
+                    long_classes (torch.Tensor): classes.
         """
 
         def convert_to_dict(x):
@@ -322,7 +321,6 @@ Generalises recover_boxes to a batch.
 
 
 class CoarseDetector3d(torch.nn.Module):
-
     def __init__(
         self,
         in_channels: int = 1,
@@ -336,26 +334,26 @@ class CoarseDetector3d(torch.nn.Module):
         ),
     ):
         """
-Implementation of a YOLO network for object detection in 3d.
+        Implementation of a YOLO network for object detection in 3d.
 
-        Args:
-            in_channels (int, optional): number of input channels. Defaults to
-                1.
-            anchor_sizes (List, optional): anchor sizes. Redundant (kept for
-                compatibility purposes). Defaults to np.ones([1,6]).
-            dev (str, optional): device for memory allocation. Defaults to
-                "cuda".
-            resnet_structure (List[Tuple[int,int,int,int]], optional):
-                structure for the ResNet backbone. Defaults to resnet_default.
-            maxpool_structure (List[Tuple[int,int,int]], optional): structure
-                for the maximum pooling operations. Defaults to
-                maxpool_default.
-            pyramid_layers (List[Tuple[int,int,int]], optional): structure for
-                the atrous spatial pyramid pooling layer. Defaults to None.
-            adn_fn (torch.nn.Module, optional): function that is applied after
-                each layer (activations, batch normalisation, dropout and etc.
-                should be specified here). Defaults to
-                lambda s:ActDropNorm(s,norm_fn=torch.nn.BatchNorm3d).
+                Args:
+                    in_channels (int, optional): number of input channels. Defaults to
+                        1.
+                    anchor_sizes (List, optional): anchor sizes. Redundant (kept for
+                        compatibility purposes). Defaults to np.ones([1,6]).
+                    dev (str, optional): device for memory allocation. Defaults to
+                        "cuda".
+                    resnet_structure (List[Tuple[int,int,int,int]], optional):
+                        structure for the ResNet backbone. Defaults to resnet_default.
+                    maxpool_structure (List[Tuple[int,int,int]], optional): structure
+                        for the maximum pooling operations. Defaults to
+                        maxpool_default.
+                    pyramid_layers (List[Tuple[int,int,int]], optional): structure for
+                        the atrous spatial pyramid pooling layer. Defaults to None.
+                    adn_fn (torch.nn.Module, optional): function that is applied after
+                        each layer (activations, batch normalisation, dropout and etc.
+                        should be specified here). Defaults to
+                        lambda s:ActDropNorm(s,norm_fn=torch.nn.BatchNorm3d).
         """
 
         super().__init__()

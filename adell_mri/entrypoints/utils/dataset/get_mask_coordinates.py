@@ -4,12 +4,14 @@ desc = "Produces a JSON file with all mask coordinates after applying spatial tr
 def main(arguments):
     import argparse
     import json
+
     import monai
     import torch
     from tqdm import tqdm
+
+    from adell_mri.entrypoints.assemble_args import Parser
     from adell_mri.transform_factory.transforms import ClassificationTransforms
     from adell_mri.utils.dataset import Dataset
-    from adell_mri.entrypoints.assemble_args import Parser
 
     parser = argparse.ArgumentParser(description=desc)
 

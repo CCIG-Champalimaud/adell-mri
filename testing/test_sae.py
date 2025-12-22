@@ -1,9 +1,10 @@
-import sys
 import os
+import sys
 
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 import torch
+
 from adell_mri.modules.layers.self_attention import (
     ConcurrentSqueezeAndExcite2d,
     ConcurrentSqueezeAndExcite3d,

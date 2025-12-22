@@ -205,17 +205,17 @@ class ParallelOperationsAndSum(torch.nn.Module):
         self, operation_list: ModuleList, crop_to_smallest: bool = False
     ) -> torch.nn.Module:
         """
-Module that uses a set of other modules on the original input
-        and sums the output of this set of other modules as the output.
+        Module that uses a set of other modules on the original input
+                and sums the output of this set of other modules as the output.
 
-        Args:
-            operation_list (ModuleList): list of PyTorch Modules (i.e.
-                [torch.nn.Conv2d(16,32,3),torch.nn.Conv2d(16,32,5)])
-            crop_to_smallest (bool, optional): whether the output should be
-                cropped to the size of the smallest operation output
+                Args:
+                    operation_list (ModuleList): list of PyTorch Modules (i.e.
+                        [torch.nn.Conv2d(16,32,3),torch.nn.Conv2d(16,32,5)])
+                    crop_to_smallest (bool, optional): whether the output should be
+                        cropped to the size of the smallest operation output
 
-        Returns:
-            torch.nn.Module: a PyTorch Module
+                Returns:
+                    torch.nn.Module: a PyTorch Module
         """
         super().__init__()
         self.operation_list = operation_list
@@ -223,13 +223,13 @@ Module that uses a set of other modules on the original input
 
     def forward(self, X: torch.Tensor) -> torch.Tensor:
         """
-Forward pass for this Module.
+        Forward pass for this Module.
 
-        Args:
-            X (torch.Tensor): 5D tensor
+                Args:
+                    X (torch.Tensor): 5D tensor
 
-        Returns:
-            torch.Tensor: 5D Tensor
+                Returns:
+                    torch.Tensor: 5D Tensor
         """
         outputs = []
         for operation in self.operation_list:
@@ -428,9 +428,9 @@ class ResNeXtBlock3d(torch.nn.Module):
 
 class ConvNeXtBlock2d(torch.nn.Module):
     """
-Two-dimensional ConvNeXt Block. Adapted from [1].
+    Two-dimensional ConvNeXt Block. Adapted from [1].
 
-    [1] https://github.com/facebookresearch/ConvNeXt
+        [1] https://github.com/facebookresearch/ConvNeXt
     """
 
     def __init__(
@@ -515,9 +515,9 @@ Two-dimensional ConvNeXt Block. Adapted from [1].
 
 class ConvNeXtBlock3d(torch.nn.Module):
     """
-Three-dimensional ConvNeXt Block. Adapted from [1].
+    Three-dimensional ConvNeXt Block. Adapted from [1].
 
-    [1] https://github.com/facebookresearch/ConvNeXt
+        [1] https://github.com/facebookresearch/ConvNeXt
     """
 
     def __init__(
@@ -609,10 +609,10 @@ Three-dimensional ConvNeXt Block. Adapted from [1].
 
 class ConvNeXtBlockVTwo2d(torch.nn.Module):
     """
-Two-dimensional ConvNeXtV2 Block. Adapted from [1] and [2].
+    Two-dimensional ConvNeXtV2 Block. Adapted from [1] and [2].
 
-    [1] https://github.com/facebookresearch/ConvNeXt
-    [2] https://arxiv.org/pdf/2301.00808.pdf
+        [1] https://github.com/facebookresearch/ConvNeXt
+        [2] https://arxiv.org/pdf/2301.00808.pdf
     """
 
     def __init__(
@@ -687,10 +687,10 @@ Two-dimensional ConvNeXtV2 Block. Adapted from [1] and [2].
 
 class ConvNeXtBlockVTwo3d(torch.nn.Module):
     """
-Three-dimensional ConvNeXtV2 Block. Adapted from [1] and [2].
+    Three-dimensional ConvNeXtV2 Block. Adapted from [1] and [2].
 
-    [1] https://github.com/facebookresearch/ConvNeXt
-    [2] https://arxiv.org/pdf/2301.00808.pdf
+        [1] https://github.com/facebookresearch/ConvNeXt
+        [2] https://arxiv.org/pdf/2301.00808.pdf
     """
 
     def __init__(

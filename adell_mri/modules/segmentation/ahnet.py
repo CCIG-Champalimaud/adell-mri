@@ -131,13 +131,13 @@ class AHNet(torch.nn.Module):
 
     def forward_2d(self, X: torch.Tensor) -> torch.Tensor:
         """
-Forward pass for this class for 2D images.
+        Forward pass for this class for 2D images.
 
-        Args:
-            X (torch.Tensor)
+                Args:
+                    X (torch.Tensor)
 
-        Returns:
-            torch.Tensor
+                Returns:
+                    torch.Tensor
         """
         out_tensors = []
         out_tensors.append(self.res_layer_1(X))
@@ -160,7 +160,7 @@ Forward pass for this class for 2D images.
 
     def init_layers_3d(self):
         """
-Initializes the 3D layers."""
+        Initializes the 3D layers."""
         n_out = self.out_channels
         adn_args = self.adn_args.copy()
         adn_args["norm_fn"] = torch.nn.BatchNorm3d
@@ -199,13 +199,13 @@ Initializes the 3D layers."""
 
     def forward_3d(self, X: torch.Tensor) -> torch.Tensor:
         """
-Forward pass for this class for 3D images.
+        Forward pass for this class for 3D images.
 
-        Args:
-            X (torch.Tensor)
+                Args:
+                    X (torch.Tensor)
 
-        Returns:
-            torch.Tensor
+                Returns:
+                    torch.Tensor
         """
         out_tensors = []
         out_tensors.append(self.res_layer_1(X))
@@ -228,14 +228,14 @@ Forward pass for this class for 3D images.
 
     def forward(self, X: torch.Tensor) -> torch.Tensor:
         """
-Forward pass for this class. Uses `self.spatial_dim` to decide
-        between 2D and 3D operations.
+        Forward pass for this class. Uses `self.spatial_dim` to decide
+                between 2D and 3D operations.
 
-        Args:
-            X (torch.Tensor)
+                Args:
+                    X (torch.Tensor)
 
-        Returns:
-            torch.Tensor
+                Returns:
+                    torch.Tensor
         """
         if self.spatial_dim == 2:
             return self.forward_2d(X)

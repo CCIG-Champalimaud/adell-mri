@@ -1,13 +1,13 @@
-import sys
 import os
+import sys
 
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 import monai
 
 from adell_mri.utils.monai_transforms import (
-    CreateImageAndWeightsd,
     ConditionalRescalingd,
+    CreateImageAndWeightsd,
 )
 
 all_keys = ["image", "image_1", "image_2"]

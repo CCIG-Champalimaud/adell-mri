@@ -3,14 +3,16 @@ desc = "Produces a image examples from a DICOM dataset upon transformations."
 
 def main(arguments):
     import argparse
-    import numpy as np
-    import monai
     from pathlib import Path
+
+    import monai
+    import numpy as np
     from skimage import io
     from tqdm import tqdm
+
+    from adell_mri.entrypoints.assemble_args import Parser
     from adell_mri.transform_factory.transforms import ClassificationTransforms
     from adell_mri.utils.dataset import Dataset
-    from adell_mri.entrypoints.assemble_args import Parser
 
     parser = Parser(description=desc)
 

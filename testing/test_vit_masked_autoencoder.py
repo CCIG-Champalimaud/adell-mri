@@ -1,6 +1,8 @@
 import pytest
 import torch
+
 from adell_mri.modules.self_supervised.autoencoders import ViTMaskedAutoEncoder
+
 
 # Fixtures
 @pytest.fixture
@@ -26,6 +28,7 @@ def model_config():
         },
     }
 
+
 @pytest.fixture
 def create_model(model_config):
     def _create_model(mask_fraction=0.3, seed=42):
@@ -39,7 +42,9 @@ def create_model(model_config):
             mask_fraction=mask_fraction,
             seed=seed,
         )
+
     return _create_model
+
 
 # Tests
 def test_forward_pass(create_model, model_config):
@@ -69,6 +74,7 @@ def test_forward_pass(create_model, model_config):
     # Check mask values are binary
     assert torch.all((mask == 0) | (mask == 1))
 
+
 def test_mask_fraction(create_model, model_config):
     """
     Test that the mask fraction is approximately correct.
@@ -87,12 +93,14 @@ def test_mask_fraction(create_model, model_config):
 
     # Allow some tolerance for randomness
     tolerance = 0.1
-    assert abs(actual_mask_fraction - mask_fraction) < tolerance, \
-        f"Expected mask fraction {mask_fraction}, got {actual_mask_fraction}"
+    assert (
+        abs(actual_mask_fraction - mask_fraction) < tolerance
+    ), f"Expected mask fraction {mask_fraction}, got {actual_mask_fraction}"
+
 
 def test_deterministic_masking(create_model, model_config):
     """
-Test that masking is deterministic with the same seed."""
+    Test that masking is deterministic with the same seed."""
     seed = 42
     model1 = create_model(seed=seed)
     model2 = create_model(seed=seed)

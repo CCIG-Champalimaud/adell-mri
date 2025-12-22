@@ -3,8 +3,8 @@ import sys
 
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 import pytest
-
 import torch
+
 from adell_mri.modules.classification.classification import UNetEncoder
 from adell_mri.modules.layers.adn_fn import ActDropNormBuilder
 

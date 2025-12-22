@@ -1,11 +1,12 @@
-import sys
 import os
+import sys
 
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 import torch
-from adell_mri.modules.layers.standard_blocks import DenseBlock
+
 from adell_mri.modules.layers.adn_fn import ActDropNorm
+from adell_mri.modules.layers.standard_blocks import DenseBlock
 from adell_mri.utils.python_logging import get_logger
 
 c, h, w, d = [1, 32, 32, 16]

@@ -139,13 +139,13 @@ class UNetSemiSL(UNet):
         apply_linear_transformation: bool = False,
     ) -> torch.Tensor:
         """
-Forward pass for this class.
+        Forward pass for this class.
 
-        Args:
-            X (torch.Tensor)
+                Args:
+                    X (torch.Tensor)
 
-        Returns:
-            torch.Tensor
+                Returns:
+                    torch.Tensor
         """
         # check if channel dim is available and if not include it
         if X_skip_layer is not None:

@@ -163,7 +163,7 @@ def minimal_network_config(ssl_method):
 
 def test_simclr_network():
     """
-Test SimCLR network creation and forward pass."""
+    Test SimCLR network creation and forward pass."""
     ssl_method = "simclr"
     batch_size = 4
     config = minimal_network_config(ssl_method)
@@ -260,7 +260,7 @@ def test_byol_network():
 
 def test_vicreg_network():
     """
-Test VICReg network creation and forward pass."""
+    Test VICReg network creation and forward pass."""
     ssl_method = "vicreg"
     batch_size = 4
     config = minimal_network_config(ssl_method)
@@ -323,7 +323,7 @@ Test VICReg network creation and forward pass."""
 
 def test_vicregl_network():
     """
-Test VICRegL network creation and forward pass with local features."""
+    Test VICRegL network creation and forward pass with local features."""
     ssl_method = "vicregl"
     batch_size = 4
     num_boxes = 3  # Number of boxes per image
@@ -396,7 +396,7 @@ Test VICRegL network creation and forward pass with local features."""
 
 def test_mae_network():
     """
-Test MAE network creation and forward pass."""
+    Test MAE network creation and forward pass."""
     ssl_method = "mae"
     # Test parameters - use tuples for image_size and patch_size
     img_size = (224, 224)  # (height, width)

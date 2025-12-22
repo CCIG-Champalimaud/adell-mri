@@ -30,19 +30,19 @@ def mixup(
     g: np.random.Generator = None,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """
-Applies mixup to a set of inputs and labels. The mixup factor M is
-    defined as M ~ Beta(mixup_alpha,mixup_alpha).
+    Applies mixup to a set of inputs and labels. The mixup factor M is
+        defined as M ~ Beta(mixup_alpha,mixup_alpha).
 
-    Args:
-        x (torch.Tensor): set of inputs.
-        y (torch.Tensor): set of labels.
-        mixup_alpha (float): alpha/beta parametrising the beta distribution
-            from which the mixup factor is sampled.
-        g (np.random.Generator, optional): numpy random number generator.
-            Defaults to None.
+        Args:
+            x (torch.Tensor): set of inputs.
+            y (torch.Tensor): set of labels.
+            mixup_alpha (float): alpha/beta parametrising the beta distribution
+                from which the mixup factor is sampled.
+            g (np.random.Generator, optional): numpy random number generator.
+                Defaults to None.
 
-    Returns:
-        Tuple[torch.Tensor,torch.Tensor]: set of mixed up inputs and labels.
+        Returns:
+            Tuple[torch.Tensor,torch.Tensor]: set of mixed up inputs and labels.
     """
     batch_size = y.shape[0]
     if g is None:
@@ -69,23 +69,23 @@ def partial_mixup(
     g: np.random.Generator = None,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """
-Applies mixup to a fraction of the set of inputs and labels. The inputs
-    undergoing mixup are randomly selected according to a Bernoulli
-    distribution with p=mixup_fraction. The mixup  factor M is defined as
-    M ~ Beta(mixup_alpha,mixup_alpha).
+    Applies mixup to a fraction of the set of inputs and labels. The inputs
+        undergoing mixup are randomly selected according to a Bernoulli
+        distribution with p=mixup_fraction. The mixup  factor M is defined as
+        M ~ Beta(mixup_alpha,mixup_alpha).
 
-    Args:
-        x (torch.Tensor): set of inputs.
-        y (torch.Tensor): set of labels.
-        mixup_alpha (float): alpha/beta parametrising the beta distribution
-            from which the mixup factor is sampled.
-        mixup_fraction (float): expected fraction of mixed up samples. Defaults
-            to 0.5.
-        g (np.random.Generator, optional): numpy random number generator.
-            Defaults to None.
+        Args:
+            x (torch.Tensor): set of inputs.
+            y (torch.Tensor): set of labels.
+            mixup_alpha (float): alpha/beta parametrising the beta distribution
+                from which the mixup factor is sampled.
+            mixup_fraction (float): expected fraction of mixed up samples. Defaults
+                to 0.5.
+            g (np.random.Generator, optional): numpy random number generator.
+                Defaults to None.
 
-    Returns:
-        Tuple[torch.Tensor,torch.Tensor]: set of mixed up inputs and labels.
+        Returns:
+            Tuple[torch.Tensor,torch.Tensor]: set of mixed up inputs and labels.
     """
     batch_size = y.shape[0]
     if g is None:
