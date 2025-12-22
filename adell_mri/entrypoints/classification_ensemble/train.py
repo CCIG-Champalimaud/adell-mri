@@ -567,7 +567,7 @@ def main(arguments):
         if ckpt_callback is not None:
             callbacks.append(ckpt_callback)
 
-        logger = get_logger(
+        pl_logger = get_logger(
             summary_name=args.summary_name,
             summary_dir=args.summary_dir,
             project_name=args.project_name,
@@ -586,7 +586,7 @@ def main(arguments):
         trainer = Trainer(
             accelerator=accelerator,
             devices=devices,
-            logger=logger,
+            logger=pl_logger,
             callbacks=callbacks,
             max_epochs=args.max_epochs,
             enable_checkpointing=ckpt,
