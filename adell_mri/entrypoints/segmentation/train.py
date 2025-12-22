@@ -759,7 +759,7 @@ def main(arguments):
             )
             callbacks.append(early_stopping)
 
-        logger = get_logger(
+        pl_logger = get_logger(
             summary_name=args.summary_name,
             summary_dir=args.summary_dir,
             project_name=args.project_name,
@@ -785,7 +785,7 @@ def main(arguments):
         trainer = Trainer(
             accelerator=dev,
             devices=devices,
-            logger=logger,
+            logger=pl_logger,
             callbacks=callbacks,
             strategy=strategy,
             max_epochs=args.max_epochs,

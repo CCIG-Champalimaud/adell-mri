@@ -309,7 +309,7 @@ def main(arguments):
         logger.info("Training has finished")
         exit()
 
-    logger = get_logger(
+    pl_logger = get_logger(
         summary_name=args.summary_name,
         summary_dir=args.summary_dir,
         project_name=args.project_name,
@@ -329,7 +329,7 @@ def main(arguments):
     trainer = Trainer(
         accelerator=accelerator,
         devices=devices,
-        logger=logger,
+        logger=pl_logger,
         callbacks=callbacks,
         strategy=strategy,
         max_epochs=max_epochs,
