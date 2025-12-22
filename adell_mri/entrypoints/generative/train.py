@@ -317,7 +317,7 @@ def main(arguments):
         },
     )
 
-    if logger is not None:
+    if pl_logger is not None:
         size = return_first_not_none(args.pad_size, args.crop_size)
         callbacks.append(
             LogImageFromDiffusionProcess(
@@ -329,7 +329,7 @@ def main(arguments):
     trainer = Trainer(
         accelerator=accelerator,
         devices=devices,
-        logger=logger,
+        logger=pl_logger,
         callbacks=callbacks,
         max_epochs=args.max_epochs,
         enable_checkpointing=ckpt,
