@@ -41,8 +41,8 @@ from adell_mri.utils.utils import safe_collate
 
 
 def main(arguments):
-    logger = get_python_logger(__name__)
     parser = Parser()
+    logger = get_python_logger(__name__)
 
     # params
     parser.add_argument_by_key(
