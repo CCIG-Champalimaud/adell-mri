@@ -289,6 +289,8 @@ def main(arguments):
                     output_file.write(x + "\n")
                     print(x)
                     # bootstrap AUC estimate
+                if "T_AUC" not in network.test_metrics:
+                    continue
                 mean, (upper, lower) = bootstrap_metric(
                     network.test_metrics["T_AUC"], 100, 0.5
                 )
@@ -338,6 +340,8 @@ def main(arguments):
                 output_file.write(x + "\n")
                 print(x)
             # bootstrap AUC estimate
+            if "T_AUC" not in ensemble_network.test_metrics:
+                continue
             mean, (upper, lower) = bootstrap_metric(
                 ensemble_network.test_metrics["T_AUC"],
                 samples=10000,
