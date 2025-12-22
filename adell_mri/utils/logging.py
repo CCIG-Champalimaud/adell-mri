@@ -4,6 +4,7 @@ Includes a logging class which can store data in different formats.
 
 import os
 import torch
+from pathlib import Path
 from dataclasses import dataclass
 from typing import Any
 
@@ -71,4 +72,8 @@ class CSVLogger:
         self.history.append(data_dict)
 
     def write(self):
+        import pandas as pd
+
+        Path(self.file_path).parent.mkdir(parents=True, exist_ok=True)
+
         pd.DataFrame(self.history).to_csv(self.file_path, index=False)
