@@ -559,7 +559,7 @@ def main(arguments):
             )[0]
             for k in test_metrics:
                 out = test_metrics[k]
-                if n_classes == 2:
+                if n_classes == 2 or args.net_type == "ord":
                     try:
                         value = float(out.detach().numpy())
                     except Exception:
