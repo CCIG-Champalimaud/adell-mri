@@ -50,7 +50,15 @@ def main(arguments):
             "seed",
             "one_to_one",
             "prediction_ids",
-            ("prediction_type", "type"),
+            (
+                "prediction_type",
+                "type",
+                {
+                    "choices": ["probability", "logit", "pre_bias"],
+                    "help": "Returns either the classification probability, "
+                    "the logits or the pre-bias ordinal values.",
+                },
+            ),
             ("prediction_checkpoints", "checkpoints"),
             "ensemble",
             "output_path",
@@ -126,8 +134,17 @@ def main(arguments):
     ).transforms()
 
     global_output = []
+    extra_args = {}
     if args.type in ["probability", "logit"]:
         extra_args = {}
+    elif args.type in ["pre_bias"]:
+        if args.net_type == "ord":
+            extra_args = {"return_pre_bias": True}
+        else:
+            logger.warning(
+                "Net type must be ord for pre_bias, using probability instead"
+            )
+            extra_args = {}
     else:
         extra_args = {"return_features": True}
 
