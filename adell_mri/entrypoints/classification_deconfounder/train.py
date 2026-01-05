@@ -31,7 +31,7 @@ from adell_mri.utils.pl_utils import (
     get_devices,
     get_logger,
 )
-from adell_mri.utils.python_logging import get_python_logger
+from adell_mri.utils.python_logging import get_logger as get_python_logger
 from adell_mri.utils.torch_utils import (
     conditional_parameter_freezing,
     get_class_weights,
