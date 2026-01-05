@@ -59,31 +59,6 @@ except ModuleNotFoundError:
     has_monai = False
 
 
-def f1(prediction: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
-    """
-    Implementation of the sbinary F1 score for torch tensors.
-
-    Args:
-        prediction (torch.Tensor): prediction tensor.
-        y (torch.Tensor): ground truth tensor.
-
-    Returns:
-        torch.Tensor: F1-score.
-    """
-    prediction = prediction.detach() > 0.5
-    tp = torch.logical_and(prediction == y, y == 1).sum().float()
-    tn = torch.logical_and(prediction == y, y == 0).sum().float()
-    fp = torch.logical_and(prediction != y, y == 0).sum().float()
-    fn = torch.logical_and(prediction != y, y == 1).sum().float()
-    tp, tn, fp, fn = [float(x) for x in [tp, tn, fp, fn]]
-    n = tp
-    d = tp + 0.5 * (fp + fn)
-    if d > 0:
-        return n / d
-    else:
-        return 0
-
-
 def get_ordinal_metric_dict(
     nc: int,
     metric_keys: list[str] = None,
