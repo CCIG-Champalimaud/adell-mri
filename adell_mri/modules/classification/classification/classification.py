@@ -486,11 +486,10 @@ class OrdNet(CatNet):
         features = self.gp(self.feature_extraction(X))
         if return_features is True:
             return features
-        p_general = self.classification_layer(features).repeat(
-            1, self.n_classes - 1
-        )
+        p_general = self.classification_layer(features)
         if return_pre_bias is True:
             return p_general
+        p_general = p_general.repeat(1, self.n_classes - 1)
         p_ordinal = p_general + self.ordinal_bias * self.ordinal_bias_scale
         return p_ordinal
 
