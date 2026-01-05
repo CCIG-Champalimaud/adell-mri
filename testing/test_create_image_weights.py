@@ -40,7 +40,11 @@ t = [
         all_keys, ensure_channel_first=True, allow_missing_keys=True
     ),
     CreateImageAndWeightsd(["image", "image_1", "image_2"], [1] + crop_size),
-    monai.transforms.Orientationd(all_keys, "RAS"),
+    monai.transforms.Orientationd(
+        all_keys,
+        "RAS",
+        labels=(("L", "R"), ("P", "A"), ("I", "S")),
+    ),
     *rs,
     *scaling_ops,
     *crop_op,
