@@ -93,8 +93,9 @@ def get_ordinal_metric_dict(
     Constructs an ordinal metric dictionary.
 
     Args:
+        nc (int): number of classes.
         metric_keys (list[str], optional): keys corresponding to metrics.
-            Should be one of ["Rec","Spe","Pr","F1","AUC"]. Defaults to
+            Should be one of ["Pearson","Spearman","MSE","Kappa"]. Defaults to
             None (all keys).
         prefix (str, optional): which prefix should be added to the metric
             key on the output dict. Defaults to "".
