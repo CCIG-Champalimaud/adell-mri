@@ -109,7 +109,7 @@ def get_ordinal_metric_dict(
         "Spearman": lambda: torchmetrics.SpearmanCorrCoef(),
         "MSE": lambda: torchmetrics.MeanSquaredError(),
         "Kappa": lambda: torchmetrics.CohenKappa(
-            task="multiclass", num_classes=nc, weights="linear"
+            task="multiclass", num_classes=nc, weights="quadratic"
         ),
     }
     if metric_keys is None:
