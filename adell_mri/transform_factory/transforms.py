@@ -117,7 +117,13 @@ class SegmentationTransforms(TransformMixin):
                 CreateImageAndWeightsd(self.all_keys, [1] + self.crop_size)
             )
         # sets orientation
-        transforms.append(monai.transforms.Orientationd(self.all_keys, "RAS"))
+        transforms.append(
+            monai.transforms.Orientationd(
+                self.all_keys,
+                "RAS",
+                labels=(("L", "R"), ("P", "A"), ("I", "S")),
+            )
+        )
 
         # sets target spacing
         if self.target_spacing is not None:
@@ -288,7 +294,11 @@ class DetectionTransforms(TransformMixin):
             monai.transforms.LoadImaged(
                 self.image_keys, ensure_channel_first=True
             ),
-            monai.transforms.Orientationd(self.image_keys, "RAS"),
+            monai.transforms.Orientationd(
+                self.image_keys,
+                "RAS",
+                labels=(("L", "R"), ("P", "A"), ("I", "S")),
+            ),
         ]
         if self.target_spacing is not None:
             transforms.append(
@@ -403,7 +413,13 @@ class ClassificationTransforms(TransformMixin):
                     self.mask_key, key_dst=self.keys[0], mode="nearest"
                 )
             )
-        transforms.append(monai.transforms.Orientationd(self.all_keys, "RAS"))
+        transforms.append(
+            monai.transforms.Orientationd(
+                self.all_keys,
+                "RAS",
+                labels=(("L", "R"), ("P", "A"), ("I", "S")),
+            )
+        )
 
         if len(self.non_adc_keys) > 0:
             transforms.append(
@@ -561,7 +577,13 @@ class GenerationTransforms(TransformMixin):
                 ]
             )
         if self.n_dim == 3:
-            transforms.append(monai.transforms.Orientationd(self.keys, "RAS"))
+            transforms.append(
+                monai.transforms.Orientationd(
+                    self.keys,
+                    "RAS",
+                    labels=(("L", "R"), ("P", "A"), ("I", "S")),
+                )
+            )
 
         if self.target_spacing is not None:
             transforms.extend(
@@ -666,7 +688,11 @@ class SSLTransforms(TransformMixin):
             )
         if self.n_dim == 3:
             transforms.append(
-                monai.transforms.Orientationd(self.all_keys, "RAS")
+                monai.transforms.Orientationd(
+                    self.all_keys,
+                    "RAS",
+                    labels=(("L", "R"), ("P", "A"), ("I", "S")),
+                )
             )
         if self.target_spacing is not None:
             intp_resampling_augmentations = ["bilinear" for _ in self.all_keys]

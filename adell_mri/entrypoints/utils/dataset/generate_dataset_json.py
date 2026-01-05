@@ -149,7 +149,9 @@ def main(arguments):
     t = Compose(
         [
             LoadImaged(["image"], ensure_channel_first=True),
-            Orientationd(["image"], "RAS"),
+            Orientationd(
+                ["image"], "RAS", labels=(("L", "R"), ("P", "A"), ("I", "S"))
+            ),
         ]
     )
 
