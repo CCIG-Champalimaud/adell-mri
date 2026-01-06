@@ -62,6 +62,24 @@ def ordinal_sigmoidal_loss(
     return loss
 
 
+def relative_order_consistency(
+    pred: torch.Tensor, target: torch.Tensor
+) -> torch.Tensor:
+    pred = pred.squeeze(1)
+    pred_distances = pred[:, None] - pred[None, :]
+    pred_dist_probs = torch.sigmoid(pred_distances)
+    target_distances = target[:, None] - target[None, :]
+    target_distances = torch.where(
+        target_distances == 0,
+        -100.0,
+        torch.clamp(target_distances, min=0, max=1),
+    ).float()
+    return F.binary_cross_entropy(
+        pred_dist_probs[target_distances != -100],
+        target_distances[target_distances != -100],
+    )
+
+
 class OrdinalSigmoidalLoss(torch.nn.Module):
     """
     Module implementation of the ordinal sigmoidal loss.
@@ -89,7 +107,12 @@ class OrdinalSigmoidalLoss(torch.nn.Module):
         else:
             self.weight = None
 
-    def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self,
+        pred: torch.Tensor,
+        target: torch.Tensor,
+        pre_bias: torch.Tensor | None = None,
+    ) -> torch.Tensor:
         """
         Compute the ordinal sigmoidal loss.
 
@@ -100,4 +123,8 @@ class OrdinalSigmoidalLoss(torch.nn.Module):
         Returns:
             torch.Tensor: The computed ordinal sigmoidal loss.
         """
-        return ordinal_sigmoidal_loss(pred, target, self.n_classes, self.weight)
+        loss = ordinal_sigmoidal_loss(pred, target, self.n_classes, self.weight)
+        if pre_bias is not None:
+            roc_loss = relative_order_consistency(pre_bias, target)
+            return loss, roc_loss
+        return loss
