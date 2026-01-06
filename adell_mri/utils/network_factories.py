@@ -27,6 +27,7 @@ from adell_mri.modules.classification.pl import (
     DeconfoundedNetPL,
     FactorizedViTClassifierPL,
     HybridClassifierPL,
+    OrdNetPL,
     UNetEncoderPL,
     ViTClassifierPL,
 )
@@ -243,7 +244,15 @@ def get_classification_network(
                 **boilerplate_args,
                 **network_config,
             )
-
+    elif "ord" in net_type:
+        for k in ["net_type", "in_channels", "n_classes", "adn_fn"]:
+            if k in network_config:
+                del network_config[k]
+        network = OrdNetPL(
+            adn_fn=adn_fn,
+            **boilerplate_args,
+            **network_config,
+        )
     else:
         for k in ["in_channels", "n_classes", "adn_fn"]:
             if k in network_config:
