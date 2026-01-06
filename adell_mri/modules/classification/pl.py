@@ -188,14 +188,23 @@ class ClassPLABC(pl.LightningModule, ABC):
         self.raise_nan_loss = False
         self.calibrated = False
 
-    def calculate_loss(self, prediction, y, with_params=False):
+    def calculate_loss(
+        self,
+        prediction,
+        y,
+        additional_params: dict | None = None,
+        with_loss_params: bool = False,
+    ):
         """
         Calculates loss between prediction and ground truth.
 
         Args:
             prediction (torch.Tensor): Model predictions
             y (torch.Tensor): Ground truth labels
-            with_params (bool, optional): Whether to use loss parameters. Defaults to False.
+            additional_params (dict, optional): Additional parameters for the
+                loss function. Defaults to None.
+            with_loss_params (bool, optional): Whether to use ``self.loss_params``.
+                Defaults to False.
 
         Returns:
             torch.Tensor: Mean loss value
@@ -207,13 +216,20 @@ class ClassPLABC(pl.LightningModule, ABC):
             y = y.to(torch.int64)
         else:
             y = y.float()
-        if with_params is True:
+        params = {}
+        if additional_params is not None:
+            params.update(additional_params)
+        if with_loss_params is True:
             d = y.device
-            params = {k: self.loss_params[k].to(d) for k in self.loss_params}
-            loss = self.loss_fn(prediction, y, **params)
+            params.update(
+                {k: self.loss_params[k].to(d) for k in self.loss_params}
+            )
+        loss = self.loss_fn(prediction, y, **params)
+        if isinstance(loss, tuple):
+            loss = tuple([l.mean() for l in loss])
         else:
-            loss = self.loss_fn(prediction, y)
-        return loss.mean()
+            loss = loss.mean()
+        return loss
 
     def on_before_batch_transfer(self, batch, dataloader_idx):
         """
@@ -230,7 +246,7 @@ class ClassPLABC(pl.LightningModule, ABC):
 
     def training_step(self, batch, batch_idx):
         """
-                Performs a single training step.
+        Performs a single training step.
 
         Args:
             batch: Input batch containing images and labels
@@ -246,14 +262,14 @@ class ClassPLABC(pl.LightningModule, ABC):
         prediction = self.forward(x)
         prediction = torch.squeeze(prediction, 1)
 
-        loss = self.calculate_loss(prediction, y, with_params=True)
+        loss = self.calculate_loss(prediction, y, with_loss_params=True)
 
         self.log("train_loss", loss, sync_dist=True, prog_bar=True)
         return loss
 
     def validation_step(self, batch, batch_idx):
         """
-                Performs a single validation step.
+        Performs a single validation step.
 
         Args:
             batch: Input batch containing images and labels
@@ -266,7 +282,7 @@ class ClassPLABC(pl.LightningModule, ABC):
         prediction = self.forward(x)
         prediction = torch.squeeze(prediction, 1)
 
-        loss = self.calculate_loss(prediction, y, with_params=True)
+        loss = self.calculate_loss(prediction, y, with_loss_params=True)
         self.log(
             "val_loss",
             loss,
@@ -662,33 +678,17 @@ class ClassNetPL(ClassPLABC):
     def setup_network(self):
         if self.net_type == "cat":
             self.network = CatNet(*self.args, **self.kwargs)
-        elif self.net_type == "ord":
-            self.network = OrdNet(*self.args, **self.kwargs)
         elif self.net_type == "vgg":
             self.network = VGG(*self.args, **self.kwargs)
         else:
             raise Exception(
                 "net_type '{}' not valid, has to be one of \
-                ['ord', 'cat', 'vgg']".format(
+                ['cat', 'vgg']".format(
                     self.net_type
                 )
             )
         self.forward = self.network.forward
         self.n_classes = self.network.n_classes
-
-    def setup_metrics(self):
-        if self.net_type == "ord":
-            self.train_metrics = get_ordinal_metric_dict(
-                self.n_classes, prefix=""
-            )
-            self.val_metrics = get_ordinal_metric_dict(
-                self.n_classes, prefix="V_"
-            )
-            self.test_metrics = get_ordinal_metric_dict(
-                self.n_classes, prefix="T_"
-            )
-        else:
-            super().setup_metrics()
 
     def update_metrics(self, prediction, y, metrics, log=True):
         """
@@ -700,11 +700,7 @@ class ClassNetPL(ClassPLABC):
             metrics (dict): A dictionary of metrics to update.
             log (bool, optional): Whether to log the metrics. Defaults to True.
         """
-        if self.net_type == "ord":
-            prediction = torch.sigmoid(prediction)
-            prediction = ordinal_prediction_to_class(prediction).float()
-            y = y.float()
-        elif self.n_classes > 2:
+        if self.n_classes > 2:
             prediction = torch.softmax(prediction, 1)
         else:
             prediction = torch.sigmoid(prediction)
@@ -721,6 +717,239 @@ class ClassNetPL(ClassPLABC):
                     prog_bar=True,
                     sync_dist=True,
                 )
+
+
+class OrdNetPL(ClassPLABC):
+    """
+    Ordinal classification network implementation for Pytorch Lightning.
+    """
+
+    def __init__(
+        self,
+        image_key: str = "image",
+        label_key: str = "label",
+        learning_rate: float = 0.001,
+        batch_size: int = 4,
+        weight_decay: float = 0.0,
+        training_dataloader_call: Callable = None,
+        loss_fn: Callable = F.binary_cross_entropy,
+        loss_params: dict = {},
+        n_epochs: int = 100,
+        warmup_steps: int = 0,
+        start_decay: int = None,
+        training_batch_preproc: Callable = None,
+        *args,
+        **kwargs,
+    ) -> torch.nn.Module:
+        """
+        Args:
+            image_key (str): key corresponding to the key from the train
+                dataloader.
+            label_key (str): key corresponding to the label key from the train
+                dataloader.
+            learning_rate (float, optional): learning rate. Defaults to 0.001.
+                batch_size (int, optional): batch size. Defaults to 4.
+            weight_decay (float, optional): weight decay for optimizer. Defaults
+                to 0.005.
+            training_dataloader_call (Callable, optional): call for the
+                training dataloader. Defaults to None.
+            loss_fn (Callable, optional): loss function. Defaults to
+                F.binary_cross_entropy
+            loss_params (dict, optional): classification loss parameters.
+                Defaults to {}.
+            n_epochs (int, optional): number of epochs. Defaults to 100.
+            warmup_steps (int, optional): number of warmup steps. Defaults
+                to 0.
+            start_decay (int, optional): number of steps after which decay
+                begins. Defaults to None (decay starts after warmup).
+            training_batch_preproc (Callable): function to be applied to the
+                entire batch before feeding it to the model during training.
+                Can contain transformations such as mixup, which require access
+                to the entire training batch.
+            args: arguments for classification network class.
+            kwargs: keyword arguments for classification network class.
+
+        Returns:
+            pl.LightningModule: a classification network module.
+        """
+
+        super().__init__()
+
+        self.net_type = "ord"
+        self.image_key = image_key
+        self.label_key = label_key
+        self.learning_rate = learning_rate
+        self.batch_size = batch_size
+        self.weight_decay = weight_decay
+        self.training_dataloader_call = training_dataloader_call
+        self.loss_fn = loss_fn
+        self.loss_params = loss_params
+        self.n_epochs = n_epochs
+        self.warmup_steps = warmup_steps
+        self.start_decay = start_decay
+        self.training_batch_preproc = training_batch_preproc
+        self.args = args
+        self.kwargs = kwargs
+
+        self.save_hyperparameters(
+            ignore=[
+                "training_dataloader_call",
+                "training_batch_preproc",
+                "loss_fn",
+            ]
+        )
+        self.setup_network()
+        self.setup_metrics()
+
+        if hasattr(self.network, "forward_features"):
+            self.forward_features = self.network.forward_features
+
+    def setup_network(self):
+        self.network = OrdNet(*self.args, **self.kwargs)
+        self.forward = self.network.forward
+        self.n_classes = self.network.n_classes
+
+    def setup_metrics(self):
+        self.train_metrics = get_ordinal_metric_dict(self.n_classes, prefix="")
+        self.val_metrics = get_ordinal_metric_dict(self.n_classes, prefix="V_")
+        self.test_metrics = get_ordinal_metric_dict(self.n_classes, prefix="T_")
+
+    def update_metrics(self, prediction, y, metrics, log=True):
+        """
+        Update the metrics for the given batch.
+
+        Args:
+            prediction (torch.Tensor): The predicted values.
+            y (torch.Tensor): The true labels.
+            metrics (dict): A dictionary of metrics to update.
+            log (bool, optional): Whether to log the metrics. Defaults to True.
+        """
+        prediction = torch.sigmoid(prediction)
+        prediction = ordinal_prediction_to_class(prediction).float()
+        y = y.float()
+        if len(y.shape) > 1:
+            y = y.squeeze(1)
+        for k in metrics:
+            metrics[k](prediction, y)
+            if log is True:
+                self.log(
+                    k,
+                    metrics[k],
+                    on_epoch=True,
+                    on_step=False,
+                    prog_bar=True,
+                    sync_dist=True,
+                )
+
+    def training_step(self, batch, batch_idx):
+        """
+        Performs a single training step.
+
+        Args:
+            batch: Input batch containing images and labels
+            batch_idx: Index of current batch
+
+        Returns:
+            torch.Tensor: Training loss
+        """
+        x, y = batch[self.image_key], batch[self.label_key]
+        if hasattr(self, "training_batch_preproc"):
+            if self.training_batch_preproc is not None:
+                x, y = self.training_batch_preproc(x, y)
+        prediction, pre_bias = self.forward(x, return_pre_bias=True)
+        prediction = torch.squeeze(prediction, 1)
+
+        loss, roc_loss = self.calculate_loss(
+            prediction,
+            y,
+            additional_params={"pre_bias": pre_bias},
+            with_loss_params=True,
+        )
+
+        self.log("train_loss", loss, sync_dist=True, prog_bar=True)
+        self.log("train_roc_loss", roc_loss, sync_dist=True, prog_bar=True)
+        return loss + roc_loss
+
+    def validation_step(self, batch, batch_idx):
+        """
+        Performs a single validation step.
+
+        Args:
+            batch: Input batch containing images and labels
+            batch_idx: Index of current batch
+
+        Returns:
+            torch.Tensor: Validation loss
+        """
+        x, y = batch[self.image_key], batch[self.label_key]
+        prediction, pre_bias = self.forward(x, return_pre_bias=True)
+        prediction = torch.squeeze(prediction, 1)
+
+        loss, roc_loss = self.calculate_loss(
+            prediction,
+            y,
+            additional_params={"pre_bias": pre_bias},
+            with_loss_params=True,
+        )
+        self.log(
+            "val_loss",
+            loss,
+            on_epoch=True,
+            on_step=False,
+            prog_bar=True,
+            batch_size=x.shape[0],
+            sync_dist=True,
+        )
+        self.log(
+            "val_roc_loss",
+            roc_loss,
+            on_epoch=True,
+            on_step=False,
+            prog_bar=True,
+            batch_size=x.shape[0],
+            sync_dist=True,
+        )
+        self.update_metrics(prediction, y, self.val_metrics)
+        return loss + roc_loss
+
+    def test_step(self, batch, batch_idx):
+        """
+        Performs a single test step.
+
+        Args:
+            batch: Input batch containing images and labels
+            batch_idx: Index of current batch
+
+        Returns:
+            tuple: Test loss and predictions
+        """
+        x, y = batch[self.image_key], batch[self.label_key]
+        prediction, pre_bias = self.forward(x, return_pre_bias=True)
+        prediction = torch.squeeze(prediction, 1)
+
+        loss, roc_loss = self.calculate_loss(
+            prediction, y, additional_params={"pre_bias": pre_bias}
+        )
+        self.log(
+            "test_loss",
+            loss,
+            on_epoch=True,
+            on_step=False,
+            prog_bar=True,
+            batch_size=x.shape[0],
+            sync_dist=True,
+        )
+        self.log(
+            "test_roc_loss",
+            roc_loss,
+            on_epoch=True,
+            on_step=False,
+            prog_bar=True,
+            batch_size=x.shape[0],
+            sync_dist=True,
+        )
+        self.update_metrics(prediction, y, self.test_metrics, log=False)
+        return loss + roc_loss, prediction
 
 
 class SegCatNetPL(SegCatNet, pl.LightningModule):
@@ -1689,7 +1918,7 @@ class HybridClassifierPL(HybridClassifier, ClassPLABC):
         prediction = self.forward(x_conv, x_tab)
         prediction = torch.squeeze(prediction, 1)
 
-        loss = self.calculate_loss(prediction, y, with_params=True)
+        loss = self.calculate_loss(prediction, y, with_loss_params=True)
 
         self.log("train_loss", loss, sync_dist=True)
         return loss
@@ -1700,7 +1929,7 @@ class HybridClassifierPL(HybridClassifier, ClassPLABC):
         prediction = self.forward(x_conv, x_tab)
         prediction = torch.squeeze(prediction, 1)
 
-        loss = self.calculate_loss(prediction, y, with_params=True)
+        loss = self.calculate_loss(prediction, y, with_loss_params=True)
         self.log(
             "val_loss",
             loss,
@@ -1873,7 +2102,7 @@ class DeconfoundedNetPL(DeconfoundedNetGeneric, ClassPLABC):
         if self.n_features_deconfounder > 0:
             return self.correlation_loss(features)
 
-    def step(self, batch: dict[str, torch.Tensor], with_params: bool):
+    def step(self, batch: dict[str, torch.Tensor], with_loss_params: bool):
         x, y = batch[self.image_key], batch[self.label_key]
         if hasattr(self, "training_batch_preproc"):
             if self.training_batch_preproc is not None:
@@ -1899,7 +2128,7 @@ class DeconfoundedNetPL(DeconfoundedNetGeneric, ClassPLABC):
         if self.cat_confounder_key or self.cont_confounder_key:
             feature_loss = self.loss_features(features)
         classification_loss = self.calculate_loss(
-            classification.squeeze(1), y, with_params=with_params
+            classification.squeeze(1), y, with_loss_params=with_loss_params
         )
         return (
             classification_loss,
@@ -1918,7 +2147,7 @@ class DeconfoundedNetPL(DeconfoundedNetGeneric, ClassPLABC):
     def training_step(
         self, batch: dict[str, torch.Tensor], batch_idx: int
     ) -> torch.Tensor:
-        output = self.step(batch, with_params=True)
+        output = self.step(batch, with_loss_params=True)
         losses, _ = output[:4], output[4:]
         losses = [
             loss_val.mean() if loss_val is not None else None
@@ -1930,7 +2159,7 @@ class DeconfoundedNetPL(DeconfoundedNetGeneric, ClassPLABC):
     def validation_step(
         self, batch: dict[str, torch.Tensor], batch_idx: int
     ) -> torch.Tensor:
-        output = self.step(batch, with_params=False)
+        output = self.step(batch, with_loss_params=False)
         losses, pred_y = output[:4], output[4:]
         losses = [
             loss_val.mean() if loss_val is not None else None
@@ -1949,7 +2178,7 @@ class DeconfoundedNetPL(DeconfoundedNetGeneric, ClassPLABC):
     def test_step(
         self, batch: dict[str, torch.Tensor], batch_idx: int
     ) -> torch.Tensor:
-        output = self.step(batch, with_params=False)
+        output = self.step(batch, with_loss_params=False)
         losses, pred_y = output[:4], output[4:]
         losses = [
             loss_val.mean() if loss_val is not None else None
