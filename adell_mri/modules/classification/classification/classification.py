@@ -212,7 +212,7 @@ class VGG(torch.nn.Module):
                 self.output_features,
                 final_n,
                 classification_structure,
-                adn_fn=get_adn_fn(1, "batch", "gelu"),
+                adn_fn=get_adn_fn(1, "batch", "gelu", 0.1),
             ),
         )
 
@@ -377,7 +377,7 @@ class CatNet(torch.nn.Module):
                 self.last_size,
                 final_n,
                 self.classification_structure,
-                adn_fn=get_adn_fn(1, "batch", "gelu"),
+                adn_fn=get_adn_fn(1, "batch", "gelu", 0.1),
             )
         )
 
@@ -436,7 +436,7 @@ class OrdNet(CatNet):
             self.last_size,
             1,
             self.classification_structure,
-            adn_fn=get_adn_fn(1, "batch", "gelu"),
+            adn_fn=get_adn_fn(1, "batch", "leaky_relu", 0.0),
         )
         # remove bias from last layer
         self.classification_layer.op[-1].bias.data.zero_()
@@ -738,7 +738,7 @@ class ViTClassifier(ViT):
                 self.input_dim_primary,
                 nc,
                 [self.input_dim_primary for _ in range(1)],
-                adn_fn=get_adn_fn(1, "layer", "gelu"),
+                adn_fn=get_adn_fn(1, "layer", "gelu", 0.0),
             )
         )
         self.output_features = self.input_dim_primary
@@ -838,7 +838,7 @@ class FactorizedViTClassifier(FactorizedViT):
                 self.input_dim_primary,
                 nc,
                 [self.input_dim_primary for _ in range(1)],
-                adn_fn=get_adn_fn(1, "layer", "gelu"),
+                adn_fn=get_adn_fn(1, "layer", "gelu", 0.0),
             )
         )
         self.output_features = self.input_dim_primary
