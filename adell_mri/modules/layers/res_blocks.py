@@ -537,8 +537,8 @@ class ConvNeXtBlock3d(torch.nn.Module):
             inter_channels (int): number of intermediary channels. Defaults
                 to None.
             out_channels (int): number of output channels. Defaults to None.
-            adn_fn (torch.nn.Module, optional): used only when the output
-                channels are different. Defaults to torch.nn.Identity.
+            adn_fn (torch.nn.Module, optional): not used, kept for compatibility
+                purposes. Defaults to torch.nn.Identity.
             layer_scale_init_value (float, optional): init value for gamma (
                 scales non-residual term). Defaults to 1e-6.
             skip_activation (bool, optional): skips final activation during forward
@@ -604,9 +604,6 @@ class ConvNeXtBlock3d(torch.nn.Module):
         return x
 
 
-# TODO: implement SparseConvNeXtBlockVTwo2d and SparseConvNeXtBlockVTwo3d
-
-
 class ConvNeXtBlockVTwo2d(torch.nn.Module):
     """
     Two-dimensional ConvNeXtV2 Block. Adapted from [1] and [2].
@@ -631,7 +628,8 @@ class ConvNeXtBlockVTwo2d(torch.nn.Module):
             inter_channels (int): number of intermediary channels. Defaults
                 to None.
             out_channels (int): number of output channels. Defaults to None.
-            adn_fn (torch.nn.Module, optional): for compability purposes.
+            adn_fn (torch.nn.Module, optional): not used, kept for compability
+                purposes. Defaults to torch.nn.Identity.
             skip_activation (bool, optional): skips activation during forward
                 pass (redundant; for consistency). Defaults to False.
         """
