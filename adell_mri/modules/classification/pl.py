@@ -495,11 +495,11 @@ class ClassPLABC(pl.LightningModule, ABC):
                 else:
                     body_decay.append(p)
             parameters = [
-                {"params": reduced_decay_params, "weight_decay": wd / 100},
+                {"params": reduced_decay_params, "weight_decay": wd_body / 100},
                 {"params": head_decay, "weight_decay": wd_head},
                 {"params": body_decay, "weight_decay": wd_body},
             ]
-            base_wd = wd / 100
+            base_wd = wd_body / 100
         else:
             wd = float(self.weight_decay)
             parameters = [
