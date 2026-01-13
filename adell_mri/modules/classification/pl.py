@@ -470,15 +470,15 @@ class ClassPLABC(pl.LightningModule, ABC):
             dict: A dictionary containing the optimizer, learning rate scheduler,
                 and the name of the metric to monitor for early stopping.
         """
-        no_decay_params = []
-        decay_params = []
+        reduced_decay_params = []
+        normal_decay_params = []
         for n, p in self.named_parameters():
             if not p.requires_grad:
                 continue
-            if "ordinal_bias" in n or "ordinal_bias" in n:
-                no_decay_params.append(p)
+            if "ordinal_bias" in n:
+                reduced_decay_params.append(p)
             else:
-                decay_params.append(p)
+                normal_decay_params.append(p)
 
         if isinstance(self.weight_decay, (list, tuple)):
             # decouples body and head weight decay (but still respects no_decay)
@@ -488,29 +488,25 @@ class ClassPLABC(pl.LightningModule, ABC):
             for n, p in self.named_parameters():
                 if not p.requires_grad:
                     continue
-                if p in no_decay_params:
+                if p in reduced_decay_params:
                     continue
                 if "classification" in n:
                     head_decay.append(p)
                 else:
                     body_decay.append(p)
             parameters = [
-                {"params": no_decay_params, "weight_decay": 0.0},
+                {"params": reduced_decay_params, "weight_decay": wd / 100},
                 {"params": head_decay, "weight_decay": wd_head},
                 {"params": body_decay, "weight_decay": wd_body},
             ]
-            base_wd = 0.0
+            base_wd = wd / 100
         else:
             wd = float(self.weight_decay)
             parameters = [
-                {"params": no_decay_params, "weight_decay": 0.0},
-                {"params": decay_params, "weight_decay": wd},
+                {"params": reduced_decay_params, "weight_decay": wd / 100},
+                {"params": normal_decay_params, "weight_decay": wd},
             ]
-            base_wd = 0.0
-        if self.net_type == "ord":
-            for params in parameters:
-                if params["weight_decay"] == 0.0:
-                    params["lr"] = self.learning_rate * 10
+            base_wd = wd / 100
 
         optimizer = torch.optim.AdamW(
             parameters, lr=self.learning_rate, weight_decay=base_wd
