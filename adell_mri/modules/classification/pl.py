@@ -209,7 +209,7 @@ class ClassPLABC(pl.LightningModule, ABC):
         Returns:
             torch.Tensor: Mean loss value
         """
-        y = y.to(prediction.device)
+        y = y.to(device=prediction.device)
         if self.n_classes > 2:
             if len(y.shape) > 1:
                 y = y.squeeze(1)
@@ -224,12 +224,30 @@ class ClassPLABC(pl.LightningModule, ABC):
             params.update(
                 {k: self.loss_params[k].to(d) for k in self.loss_params}
             )
+        print(prediction.device, y.device)
         loss = self.loss_fn(prediction, y, **params)
         if isinstance(loss, tuple):
             loss = tuple([l.mean() for l in loss])
         else:
             loss = loss.mean()
         return loss
+
+    def on_batch_start(self, batch):
+        """
+        Moves label to same device as image.
+        """
+        dev = batch[self.image_key].device
+        batch[self.label_key] = batch[self.label_key].to(dev)
+        return batch
+
+    def on_train_batch_start(self, batch, batch_idx):
+        return self.on_batch_start(batch)
+
+    def on_validation_batch_start(self, batch, batch_idx):
+        return self.on_batch_start(batch)
+
+    def on_test_batch_start(self, batch, batch_idx):
+        return self.on_batch_start(batch)
 
     def on_before_batch_transfer(self, batch, dataloader_idx):
         """
@@ -242,6 +260,7 @@ class ClassPLABC(pl.LightningModule, ABC):
         Returns:
             dict: Batch with MetaTensors converted to regular tensors
         """
+        batch = self.on_batch_start(batch)
         return meta_tensors_to_tensors(batch)
 
     def training_step(self, batch, batch_idx):

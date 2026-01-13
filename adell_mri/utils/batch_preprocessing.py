@@ -7,6 +7,10 @@ from typing import Tuple
 import numpy as np
 import torch
 
+from adell_mri.utils.python_logging import get_logger
+
+logger = get_logger(__name__)
+
 
 def label_smoothing(y: torch.Tensor, smooth_factor: float) -> torch.Tensor:
     """
@@ -31,18 +35,18 @@ def mixup(
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Applies mixup to a set of inputs and labels. The mixup factor M is
-        defined as M ~ Beta(mixup_alpha,mixup_alpha).
+    defined as M ~ Beta(mixup_alpha,mixup_alpha).
 
-        Args:
-            x (torch.Tensor): set of inputs.
-            y (torch.Tensor): set of labels.
-            mixup_alpha (float): alpha/beta parametrising the beta distribution
-                from which the mixup factor is sampled.
-            g (np.random.Generator, optional): numpy random number generator.
-                Defaults to None.
+    Args:
+        x (torch.Tensor): set of inputs.
+        y (torch.Tensor): set of labels.
+        mixup_alpha (float): alpha/beta parametrising the beta distribution
+            from which the mixup factor is sampled.
+        g (np.random.Generator, optional): numpy random number generator.
+            Defaults to None.
 
-        Returns:
-            Tuple[torch.Tensor,torch.Tensor]: set of mixed up inputs and labels.
+    Returns:
+        Tuple[torch.Tensor,torch.Tensor]: set of mixed up inputs and labels.
     """
     batch_size = y.shape[0]
     if g is None:
@@ -70,22 +74,22 @@ def partial_mixup(
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Applies mixup to a fraction of the set of inputs and labels. The inputs
-        undergoing mixup are randomly selected according to a Bernoulli
-        distribution with p=mixup_fraction. The mixup  factor M is defined as
-        M ~ Beta(mixup_alpha,mixup_alpha).
+    undergoing mixup are randomly selected according to a Bernoulli
+    distribution with p=mixup_fraction. The mixup  factor M is defined as
+    M ~ Beta(mixup_alpha,mixup_alpha).
 
-        Args:
-            x (torch.Tensor): set of inputs.
-            y (torch.Tensor): set of labels.
-            mixup_alpha (float): alpha/beta parametrising the beta distribution
-                from which the mixup factor is sampled.
-            mixup_fraction (float): expected fraction of mixed up samples. Defaults
-                to 0.5.
-            g (np.random.Generator, optional): numpy random number generator.
-                Defaults to None.
+    Args:
+        x (torch.Tensor): set of inputs.
+        y (torch.Tensor): set of labels.
+        mixup_alpha (float): alpha/beta parametrising the beta distribution
+            from which the mixup factor is sampled.
+        mixup_fraction (float): expected fraction of mixed up samples. Defaults
+            to 0.5.
+        g (np.random.Generator, optional): numpy random number generator.
+            Defaults to None.
 
-        Returns:
-            Tuple[torch.Tensor,torch.Tensor]: set of mixed up inputs and labels.
+    Returns:
+        Tuple[torch.Tensor,torch.Tensor]: set of mixed up inputs and labels.
     """
     batch_size = y.shape[0]
     if g is None:
@@ -140,6 +144,12 @@ class BatchPreprocessing:
 
         if self.mixup_alpha is not None:
             self.g = np.random.default_rng(seed)
+
+        logger.info("BatchPreprocessing initialized with:")
+        logger.info("Label smoothing: %s" % self.label_smoothing)
+        logger.info("Mixup alpha: %s" % self.mixup_alpha)
+        logger.info("Partial mixup: %s" % self.partial_mixup)
+        logger.info("Seed: %s" % self.seed)
 
     def __call__(
         self, X: torch.Tensor, y: torch.Tensor

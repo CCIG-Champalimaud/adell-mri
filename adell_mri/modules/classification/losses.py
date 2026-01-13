@@ -67,15 +67,14 @@ def relative_order_consistency(
 ) -> torch.Tensor:
     pred = pred.squeeze(1)
     pred_distances = pred[:, None] - pred[None, :]
-    pred_dist_probs = torch.sigmoid(pred_distances)
     target_distances = target[:, None] - target[None, :]
     target_distances = torch.where(
         target_distances == 0,
         -100.0,
         torch.clamp(target_distances, min=0, max=1),
-    ).float()
-    return F.binary_cross_entropy(
-        pred_dist_probs[target_distances != -100],
+    ).to(pred.dtype)
+    return F.binary_cross_entropy_with_logits(
+        pred_distances[target_distances != -100],
         target_distances[target_distances != -100],
     )
 
