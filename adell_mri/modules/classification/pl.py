@@ -224,7 +224,6 @@ class ClassPLABC(pl.LightningModule, ABC):
             params.update(
                 {k: self.loss_params[k].to(d) for k in self.loss_params}
             )
-        print(prediction.device, y.device)
         loss = self.loss_fn(prediction, y, **params)
         if isinstance(loss, tuple):
             loss = tuple([l.mean() for l in loss])
