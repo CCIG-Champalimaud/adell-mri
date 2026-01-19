@@ -469,6 +469,7 @@ class OrdNet(CatNet):
         X: torch.Tensor,
         return_features: bool = False,
         return_pre_bias: bool = False,
+        return_only_pre_bias: bool = False,
     ) -> torch.Tensor:
         """
         Forward method.
@@ -479,6 +480,8 @@ class OrdNet(CatNet):
                 the classification_head output. Defaults to False.
             return_pre_bias (bool, optional): returns the pre-bias ordinal
                 values. Defaults to False.
+            return_only_pre_bias (bool, optional): returns only the pre-bias
+                ordinal values. Defaults to False.
 
         Returns:
             torch.Tensor: output (classification or features)
@@ -491,6 +494,8 @@ class OrdNet(CatNet):
         p_ordinal = p_general + self.ordinal_bias * self.ordinal_bias_scale
         if return_pre_bias is True:
             return p_ordinal, pre_bias
+        if return_only_pre_bias is True:
+            return pre_bias
         return p_ordinal
 
 

@@ -139,7 +139,7 @@ def main(arguments):
         extra_args = {}
     elif args.type in ["pre_bias"]:
         if args.net_type == "ord":
-            extra_args = {"return_pre_bias": True}
+            extra_args = {"return_only_pre_bias": True}
         else:
             logger.warning(
                 "Net type must be ord for pre_bias, using probability instead"
