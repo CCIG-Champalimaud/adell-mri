@@ -443,7 +443,7 @@ def main(arguments):
                 collate_fn=safe_collate,
                 pin_memory=True,
                 sampler=sampler,
-                persistent_workers=args.n_workers > 0,
+                persistent_workers=False,
                 drop_last=True,
             )
 
