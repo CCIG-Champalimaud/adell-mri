@@ -57,7 +57,7 @@ class CSVLogger:
         import pandas as pd
     except Exception:
         raise ImportError(
-            "Pandas is required to parse parquet files. ",
+            "Pandas is required to parse CSV files. ",
             "Please install it with `pip install pandas`.",
         )
 

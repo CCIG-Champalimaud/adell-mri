@@ -581,6 +581,8 @@ def main(arguments):
                     csv_logger.log(x)
                     logger.info(x)
                 else:
+                    if isinstance(out, float):
+                        out = [out]
                     for i, v in enumerate(out):
                         x = {
                             "metric": k,
