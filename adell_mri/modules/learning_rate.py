@@ -146,6 +146,7 @@ class CosineAnnealingWithWarmupLR(_LRScheduler):
         self.start_decay = float_to_epochs(self.start_decay, self.T_max)
 
         self.last_lr = None
+        self.verbose = verbose
         super(CosineAnnealingWithWarmupLR, self).__init__(optimizer, last_epoch)
 
     def get_lr(self):
@@ -200,9 +201,15 @@ class CosineAnnealingWithWarmupLR(_LRScheduler):
         for i, data in enumerate(zip(self.optimizer.param_groups, values)):
             param_group, lr = data
             param_group["lr"] = lr
-            self.print_lr(self.verbose, i, lr, step)
+            if self.verbose:
+                print(
+                    f"Epoch {self.last_epoch}: setting learning rate to {lr}."
+                )
 
         self._last_lr = [group["lr"] for group in self.optimizer.param_groups]
+
+    def print_lr(self):
+        print(self.get_last_lr())
 
 
 def poly_lr_decay(

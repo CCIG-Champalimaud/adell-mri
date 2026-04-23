@@ -27,7 +27,7 @@ dependencies = [
     "scipy>=1.11.4",
     "SimpleITK>=2.3.1",
     "torchmetrics==1.6",
-    "torch>=2.3",
+    "torch>=2.8",
     "tqdm>=4.66.3",
     "generative",
     "cycler>=0.12.1",
