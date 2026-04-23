@@ -1,10 +1,10 @@
-torch>=2.3
+torch>=2.8
 lightning==2.3.3
-monai>1.5.1
+monai>1.5.2
 numpy==1.23.4
 picai_eval==1.4.1
 PyYAML==6.0
-pydicom==2.4.0
+pydicom==2.4.5
 scikit_learn==1.5
 scipy==1.11.1
 SimpleITK==2.2.1
