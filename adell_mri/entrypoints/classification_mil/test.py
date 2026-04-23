@@ -125,7 +125,7 @@ def main(arguments):
     if n_classes == 2:
         network_config["loss_fn"] = torch.nn.BCEWithLogitsLoss(torch.ones([]))
     else:
-        network_config["loss_fn"] = torch.nn.CrossEntropy(
+        network_config["loss_fn"] = torch.nn.CrossEntropyLoss(
             torch.ones([n_classes])
         )
 

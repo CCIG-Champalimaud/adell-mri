@@ -374,7 +374,7 @@ def main(arguments):
                 class_weights
             )
         else:
-            network_config["loss_fn"] = torch.nn.CrossEntropy(class_weights)
+            network_config["loss_fn"] = torch.nn.CrossEntropyLoss(class_weights)
 
         n_workers = args.n_workers
         if network_config["batch_size"] < n_workers:

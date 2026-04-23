@@ -176,7 +176,7 @@ def main(arguments):
         if args.n_classes == 2:
             network_config["loss_fn"] = torch.nn.BCEWithLogitsLoss()
         else:
-            network_config["loss_fn"] = torch.nn.CrossEntropy()
+            network_config["loss_fn"] = torch.nn.CrossEntropyLoss()
 
         if args.net_type == "unet":
             act_fn = network_config["activation_fn"]

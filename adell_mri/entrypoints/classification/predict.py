@@ -183,7 +183,7 @@ def main(arguments):
                 n_classes=args.n_classes
             )
         else:
-            network_config["loss_fn"] = torch.nn.CrossEntropy()
+            network_config["loss_fn"] = torch.nn.CrossEntropyLoss()
 
         if args.net_type == "unet":
             act_fn = network_config["activation_fn"]
