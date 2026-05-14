@@ -75,160 +75,179 @@ I use PyTorch Lightning to train my models as it offers a very comprehensive set
 
 ### Entrypoints
 
-A generic entrypoint has been created, this can be accessed through `python -m adell_mri` (or `adell` if you have installed this package as described in the [installation](#installation)). Running this produces:
+A generic entrypoint has been created, accessible through `python -m adell_mri` (or `adell` if the package is installed as described in [Installation](#installation)). All entrypoints live under `adell_mri/entrypoints` and follow the same two-level dispatch pattern:
 
 ```
-        Supported modes: ['classification', 'classification_deconfounder', 'classification_mil', 'classification_ensemble', 'generative', 'segmentation', 'segmentation_from_2d_module', 'ssl', 'detection', 'utils']
+adell_mri <mode> <sub-command> [args...]
 ```
 
-And specifying different modes leads to (for classification, for example - `python -m adell_mri classification`):
+Running `adell_mri` with no arguments prints the top-level supported modes. Each mode then has its own set of sub-commands. Arguments can also be provided via a YAML parameter file using `--params_from <path.yaml>` for some endpoints.
+
+---
+
+#### `classification`
 
 ```
-        Supported modes: ['train', 'test', 'predict']
+adell_mri classification {train,test,predict,explain,model_to_torchscript}
 ```
 
-Finally, upon further specification (`python -m adell_mri classification train`):
+Standard image classification pipeline. Supports categorical (`cat`), ordinal (`ord`), U-Net encoder (`unet`), Vision Transformer (`vit`), Factorized Vision Transformer (`factorized_vit`) and VGG-like (`vgg`) network types.
+
+- **`train`** – Cross-validated training with stratified k-folds. Supports data augmentation, label smoothing, mixup, class-weighted sampling, gradient clipping, learning-rate warm-up / decay, stochastic weight averaging (SWA), early stopping, and optional partial parameter freezing (useful for fine-tuning from a checkpoint). Logs metrics to W&B or a local CSV.
+- **`test`** – Evaluates one or more checkpoints on a labelled dataset and writes bootstrap-aggregated metrics to a file.
+- **`predict`** – Runs inference on unlabelled data and writes per-sample predictions (probabilities, logits, or pre-bias ordinal values) to a JSON file. Supports ensemble prediction from multiple checkpoints.
+- **`explain`** – Generates saliency/attribution maps for trained models using [Captum](https://captum.ai/) (`IntegratedGradients` or `LayerGradCam`). Saves output as NIfTI/SimpleITK images alongside the originals. `explain` is implemented exclusively for the `classification` modules.
+- **`model_to_torchscript`** – Traces a trained classification model to a TorchScript module for deployment.
+
+---
+
+#### `classification_deconfounder`
 
 ```
-usage: __main__.py [-h] [--net_type {cat,ord,unet,vit,factorized_vit,vgg}] [--params_from PARAMS_FROM] --dataset_json DATASET_JSON
-                   --image_keys IMAGE_KEYS [IMAGE_KEYS ...] [--clinical_feature_keys CLINICAL_FEATURE_KEYS [CLINICAL_FEATURE_KEYS ...]]
-                   [--label_keys LABEL_KEYS] [--mask_key MASK_KEY] [--image_masking] [--image_crop_from_mask]
-                   [--t2_keys T2_KEYS [T2_KEYS ...]] [--adc_keys ADC_KEYS [ADC_KEYS ...]] --possible_labels POSSIBLE_LABELS
-                   [POSSIBLE_LABELS ...] [--positive_labels POSITIVE_LABELS [POSITIVE_LABELS ...]]
-                   [--label_groups LABEL_GROUPS [LABEL_GROUPS ...]] [--cache_rate CACHE_RATE]
-                   [--target_spacing TARGET_SPACING [TARGET_SPACING ...]] [--pad_size PAD_SIZE [PAD_SIZE ...]]
-                   [--crop_size CROP_SIZE [CROP_SIZE ...]] [--subsample_size SUBSAMPLE_SIZE]
-                   [--subsample_training_data SUBSAMPLE_TRAINING_DATA] [--filter_on_keys FILTER_ON_KEYS [FILTER_ON_KEYS ...]]
-                   [--val_from_train VAL_FROM_TRAIN] --config_file CONFIG_FILE [--dev DEV] [--n_workers N_WORKERS] [--seed SEED]
-                   [--augment AUGMENT [AUGMENT ...]] [--label_smoothing LABEL_SMOOTHING] [--mixup_alpha MIXUP_ALPHA]
-                   [--partial_mixup PARTIAL_MIXUP] [--max_epochs MAX_EPOCHS] [--n_folds N_FOLDS] [--folds FOLDS [FOLDS ...]]
-                   [--excluded_ids EXCLUDED_IDS [EXCLUDED_IDS ...]]
-                   [--excluded_ids_from_training_data EXCLUDED_IDS_FROM_TRAINING_DATA [EXCLUDED_IDS_FROM_TRAINING_DATA ...]]
-                   [--checkpoint_dir CHECKPOINT_DIR] [--checkpoint_name CHECKPOINT_NAME] [--checkpoint CHECKPOINT [CHECKPOINT ...]]
-                   [--delete_checkpoints] [--freeze_regex FREEZE_REGEX [FREEZE_REGEX ...]]
-                   [--not_freeze_regex NOT_FREEZE_REGEX [NOT_FREEZE_REGEX ...]]
-                   [--exclude_from_state_dict EXCLUDE_FROM_STATE_DICT [EXCLUDE_FROM_STATE_DICT ...]] [--resume_from_last] [--monitor MONITOR]
-                   [--project_name PROJECT_NAME] [--summary_dir SUMMARY_DIR] [--summary_name SUMMARY_NAME] [--metric_path METRIC_PATH]
-                   [--resume {allow,must,never,auto,none}] [--warmup_steps WARMUP_STEPS] [--start_decay START_DECAY]
-                   [--dropout_param DROPOUT_PARAM] [--accumulate_grad_batches ACCUMULATE_GRAD_BATCHES] [--gradient_clip_val GRADIENT_CLIP_VAL]
-                   [--early_stopping EARLY_STOPPING] [--swa] [--learning_rate LEARNING_RATE] [--batch_size BATCH_SIZE]
-                   [--class_weights CLASS_WEIGHTS [CLASS_WEIGHTS ...]] [--weighted_sampling] [--correct_classification_bias]
-
-options:
-  -h, --help            show this help message and exit
-  --net_type {cat,ord,unet,vit,factorized_vit,vgg}
-                        Classification type
-  --params_from PARAMS_FROM
-                        Parameter path used to retrieve values for the CLI (can be a path to a YAML file or 'dvc' to retrieve dvc params)
-  --dataset_json DATASET_JSON
-                        JSON containing dataset information
-  --image_keys IMAGE_KEYS [IMAGE_KEYS ...]
-                        Image keys in the dataset JSON.
-  --clinical_feature_keys CLINICAL_FEATURE_KEYS [CLINICAL_FEATURE_KEYS ...]
-                        Tabular clinical feature keys in the dataset JSON.
-  --label_keys LABEL_KEYS
-                        Label keys in the dataset JSON.
-  --mask_key MASK_KEY   Mask key in dataset JSON
-  --image_masking       Uses mask_key to mask the rest of the image.
-  --image_crop_from_mask
-                        Crops image using mask_key.
-  --t2_keys T2_KEYS [T2_KEYS ...]
-                        Image keys corresponding to T2.
-  --adc_keys ADC_KEYS [ADC_KEYS ...]
-                        Image keys corresponding to ADC.
-  --possible_labels POSSIBLE_LABELS [POSSIBLE_LABELS ...]
-                        All the possible labels in the data.
-  --positive_labels POSITIVE_LABELS [POSITIVE_LABELS ...]
-                        Labels that should be considered positive (binarizes labels)
-  --label_groups LABEL_GROUPS [LABEL_GROUPS ...]
-                        Label groups for classification.
-  --cache_rate CACHE_RATE
-                        Rate of samples to be cached
-  --target_spacing TARGET_SPACING [TARGET_SPACING ...]
-                        Resamples all images to target spacing
-  --pad_size PAD_SIZE [PAD_SIZE ...]
-                        Size of central padded image after resizing (if none is specified then no padding is performed).
-  --crop_size CROP_SIZE [CROP_SIZE ...]
-                        Size of central crop after resizing (if none is specified then no cropping is performed).
-  --subsample_size SUBSAMPLE_SIZE
-                        Subsamples data to a given size
-  --subsample_training_data SUBSAMPLE_TRAINING_DATA
-                        Subsamples training data by this fraction (for learning curves)
-  --filter_on_keys FILTER_ON_KEYS [FILTER_ON_KEYS ...]
-                        Filters the dataset based on a set of specific key:value pairs.
-  --val_from_train VAL_FROM_TRAIN
-                        Uses this fraction of training data as a validation set during training
-  --config_file CONFIG_FILE
-                        Path to network configuration file (yaml)
-  --dev DEV             Device for PyTorch training
-  --n_workers N_WORKERS
-                        No. of workers
-  --seed SEED           Random seed
-  --augment AUGMENT [AUGMENT ...]
-                        Use data augmentations
-  --label_smoothing LABEL_SMOOTHING
-                        Label smoothing value
-  --mixup_alpha MIXUP_ALPHA
-                        Alpha for mixup
-  --partial_mixup PARTIAL_MIXUP
-                        Applies mixup only to this fraction of the batch
-  --max_epochs MAX_EPOCHS
-                        Maximum number of training epochs
-  --n_folds N_FOLDS     Number of validation folds
-  --folds FOLDS [FOLDS ...]
-                        Comma-separated IDs to be used in each space-separated fold
-  --excluded_ids EXCLUDED_IDS [EXCLUDED_IDS ...]
-                        Comma separated list of IDs to exclude.
-  --excluded_ids_from_training_data EXCLUDED_IDS_FROM_TRAINING_DATA [EXCLUDED_IDS_FROM_TRAINING_DATA ...]
-                        Comma separated list of IDs to exclude from training data.
-  --checkpoint_dir CHECKPOINT_DIR
-                        Path to directory where checkpoints will be saved.
-  --checkpoint_name CHECKPOINT_NAME
-                        Checkpoint ID.
-  --checkpoint CHECKPOINT [CHECKPOINT ...]
-                        Resumes training from or tests/predicts with these checkpoint.
-  --delete_checkpoints  Deletes checkpoints after training (keeps only metrics).
-  --freeze_regex FREEZE_REGEX [FREEZE_REGEX ...]
-                        Matches parameter names and freezes them.
-  --not_freeze_regex NOT_FREEZE_REGEX [NOT_FREEZE_REGEX ...]
-                        Matches parameter names and skips freezing them (overrides --freeze_regex)
-  --exclude_from_state_dict EXCLUDE_FROM_STATE_DICT [EXCLUDE_FROM_STATE_DICT ...]
-                        Regex to exclude parameters from state dict in --checkpoint
-  --resume_from_last    Resumes from the last checkpoint stored for a given fold.
-  --monitor MONITOR     Metric that is monitored to determine the best checkpoint.
-  --project_name PROJECT_NAME
-                        Wandb project name.
-  --summary_dir SUMMARY_DIR
-                        Path to summary directory (for wandb).
-  --summary_name SUMMARY_NAME
-                        Summary name.
-  --metric_path METRIC_PATH
-                        Path to file with CV metrics + information.
-  --resume {allow,must,never,auto,none}
-                        Whether wandb project should be resumed (check https://docs.wandb.ai/ref/python/init for more details).
-  --warmup_steps WARMUP_STEPS
-                        Number of warmup steps/epochs (if SWA is triggered it starts after this number of steps).
-  --start_decay START_DECAY
-                        Step at which decay starts. Defaults to starting right after warmup ends.
-  --dropout_param DROPOUT_PARAM
-                        Parameter for dropout.
-  --accumulate_grad_batches ACCUMULATE_GRAD_BATCHES
-                        Number batches to accumulate before backpropgating gradient
-  --gradient_clip_val GRADIENT_CLIP_VAL
-                        Value for gradient clipping
-  --early_stopping EARLY_STOPPING
-                        No. of checks before early stop (defaults to no early stop).
-  --swa                 Use stochastic gradient averaging.
-  --learning_rate LEARNING_RATE
-                        Overrides learning rate in config file
-  --batch_size BATCH_SIZE
-                        Batch size
-  --class_weights CLASS_WEIGHTS [CLASS_WEIGHTS ...]
-                        Class weights (by alphanumeric order).
-  --weighted_sampling   Samples according to class proportions.
-  --correct_classification_bias
-                        Sets the final classification bias to log(pos/neg).
+adell_mri classification_deconfounder {train,test,predict}
 ```
+
+Variant of the classification pipeline that explicitly models and removes the effect of confounding variables (e.g. scanner, site, patient demographics) via a deconfounder network head. Accepts `--cat_confounder_keys` / `--cont_confounder_keys` for categorical and continuous confounders and `--n_features_deconfounder` to size the deconfounder. Otherwise shares the same `train` / `test` / `predict` interface as the standard classification entrypoint.
+
+---
+
+#### `classification_mil`
+
+```
+adell_mri classification_mil {train,test,predict}
+```
+
+Multiple-Instance Learning (MIL) classification. Treats a 3D volume as a bag of 2D slices. Supports attention-based (`MultipleInstanceClassifierPL`) and transformer-based (`TransformableTransformerPL`) aggregation methods, selectable via `--mil_method`. A pre-trained 2D feature extractor can be loaded via `--module_path`.
+
+---
+
+#### `classification_ensemble`
+
+```
+adell_mri classification_ensemble {train,test,predict}
+```
+
+Trains an ensemble of classifiers jointly using `GenericEnsemblePL`. Each member can be a different network type or operate on a different image key, and their outputs are combined before computing the loss. Useful for multi-modal fusion.
+
+---
+
+#### `segmentation`
+
+```
+adell_mri segmentation {train,test,predict,test_from_predictions}
+```
+
+3D (and 2D-in-3D) segmentation pipeline.
+
+- **`train`** – Supports full/semi-supervised training (a combined loader can mix labelled and unlabelled data), k-fold cross-validation, multiple loss functions, partially random sampling, and optional SSL pre-training backbone initialisation.
+- **`test`** – Evaluates checkpoints with sliding-window inference and computes segmentation metrics (IoU, Dice, lesion-level detection metrics via `get_lesions`).
+- **`predict`** – Runs sliding-window segmentation inference and writes prediction masks to disk via `SitkWriter`.
+- **`test_from_predictions`** – Re-computes metrics from predicted files.
+
+---
+
+#### `segmentation_from_2d_module`
+
+```
+adell_mri segmentation_from_2d_module {train}
+```
+
+Trains a 3D segmentation network that borrows its encoder from a 2D module (AHNet-style transfer). Uses `MIMUNetPL` internally.
+
+---
+
+#### `detection`
+
+*This is **experimental***
+
+```
+adell_mri detection {train,predict}
+```
+
+3D object detection using a YOLO-inspired network (`YOLONet3d`). Requires a pre-computed anchor CSV (`--anchor_csv`) generated by `adell_mri utils bb_to_anchors`. Accepts bounding-box annotations via `--box_key` and `--box_class_key` in the dataset JSON.
+
+---
+
+#### `ssl`
+
+```
+adell_mri ssl {train_2d,train_3d,model_to_torchscript,predict_folder}
+```
+
+Self-supervised pre-training.
+
+- **`train_2d`** – Trains a 2D SSL model (BYOL, SimSiam, VICReg, VICRegL, I-JEPA) from DICOM slices sampled on-the-fly with `SliceSampler`. Suitable for large unlabelled DICOM archives.
+- **`train_3d`** – Trains a 3D SSL model from volumetric NIfTI data.
+- **`model_to_torchscript`** – Exports the encoder backbone of a trained SSL model to TorchScript for downstream use.
+- **`predict_folder`** – Runs a TorchScript SSL encoder over a folder of DICOM files and saves per-file feature vectors to a JSON file.
+
+---
+
+#### `generative`
+
+```
+adell_mri generative {train,generate}
+```
+
+Conditional / unconditional diffusion-based image generation.
+
+- **`train`** – Trains a generative diffusion model. Supports categorical (`--cat_condition_keys`) and numerical (`--num_condition_keys`) conditioning with classifier-free guidance (controlled via `--uncondition_proba`). Uses an EMA callback and logs sample images during training.
+- **`generate`** – Runs reverse diffusion from a checkpoint to produce synthetic MRI volumes. Conditioning specifications and transform parameters are automatically recovered from the checkpoint metadata.
+
+---
+
+#### Utilities (`utils`)
+
+```
+adell_mri utils <utility>
+```
+
+A collection of standalone data preparation and analysis scripts. Available utilities:
+
+**Preprocessing**
+
+| Utility | Description |
+|---|---|
+| `bias_field_correction` | Correct the bias field in MRI scans. |
+| `merge_masks` | Merge two masks with an OR operator. |
+| `resample_image` | Resample an image to a target spacing. |
+| `resample_volumes_and_masks` | Resample volumes and their masks to a target spacing. |
+
+**Dataset management**
+
+| Utility | Description |
+|---|---|
+| `generate_dataset_json` | Create a dataset JSON file with image paths and bounding boxes. |
+| `generate_dicom_dataset_json` | Create a dataset JSON file from a DICOM archive. |
+| `generate_image_dataset_json` | Create a dataset JSON file from generic image files. |
+| `generate_json_from_csv` | Convert a CSV into a hierarchical dataset JSON. |
+| `merge_json_datasets` | Merge two JSON datasets (conflict resolution via suffixes). |
+| `fill_with_condition` | Create empty masks for a given image key when a condition is met. |
+| `get_test_set_and_folds` | Split dataset entries into a test set and cross-validation folds. |
+| `get_temporal_test_set_and_folds` | Split by a date key into prospective test set and folds. |
+| `get_image_examples` | Produce image examples from a DICOM dataset after transforms. |
+| `get_mask_coordinates` | Produce a JSON of mask coordinates after spatial transforms. |
+| `remove_constant_masks` | Remove empty/constant masks from a dataset JSON. |
+| `bb_to_anchors` | Compute detection anchors from bounding-box annotations. |
+| `bb_to_distances` | Compute minimum distances between bounding boxes. |
+| `describe_sitk` | Print SimpleITK image properties. |
+| `describe_dicom_dataset` | Print general statistics for a DICOM dataset. |
+| `inspect_dicom_dataset` | List entries with NaN/infinite values in a DICOM dataset. |
+
+**Statistics**
+
+| Utility | Description |
+|---|---|
+| `compare_masks` | Compute IoU between masks in two folders with matching identifiers. |
+| `get_label_size` | Print the size of labels in a folder of segmentation masks. |
+| `match_to_mask` | Determine which MRI sequence was most likely used as the mask template. |
+
+**Other**
+
+| Utility | Description |
+|---|---|
+| `random_image_panel` | Generate a panel of random images from a DICOM folder. |
+| `test_traced_model` | Test a JIT-traced model with an input of a given shape. |
 
 This creates a consistent way of entering different scripts. All entrypoints are specified in `adell_mri/entrypoints`.
 
@@ -236,11 +255,8 @@ This creates a consistent way of entering different scripts. All entrypoints are
 
 I have included a few unit tests in `testing`. In them, we confirm that networks and modules are outputing the correct shapes and that they are compiling correctly. They are prepared to run with `pytest`, i.e. `pytest` runs all of the relevant tests.
 
-## To-do
-
-* <del>Change dataset generation to entrypoint</del>
-* <del>Create minimal installer</del>
-
 ## CCIG publications using `adell`
 
 * Rodrigues NM, Almeida JG, Verde ASC, Gaivão AM, Bilreiro C, Santiago I, Ip J, Belião S, Moreno R, Matos C, Vanneschi L, Tsiknakis M, Marias K, Regge D, Silva S; ProCAncer-I Consortium; Papanikolaou N. [Analysis of domain shift in whole prostate gland, zonal and lesions segmentation and detection, using multicentric retrospective data.](https://pubmed.ncbi.nlm.nih.gov/38442555/) Comput Biol Med. 2024 Mar 2;171:108216. doi: 10.1016/j.compbiomed.2024.108216. Epub ahead of print. PMID: 38442555.
+* de Almeida JG, Rodrigues NM, Castro Verde AS, Mascarenhas Gaivão A, Bilreiro C, Santiago I, Ip J, Belião S, Matos C, Silva S, Tsiknakis M, Marias K, Regge D, Papanikolaou N; ProCAncer-I Consortium. [Impact of Scanner Manufacturer, Endorectal Coil Use, and Clinical Variables on Deep Learning-assisted Prostate Cancer Classification Using Multiparametric MRI](https://pubmed.ncbi.nlm.nih.gov/39841063/). Radiol Artif Intell. 2025 May;7(3):e230555. doi: 10.1148/ryai.230555. PMID: 39841063.
+* de Almeida JG, Castro Verde AS, Mascarenhas Gaivão A, Bilreiro C, Santiago I, Ip J, Belião S, Matos C, Tsiknakis M, Marias K, Regge D; ProCAncer-I Consortium; Papanikolaou N. [Self-supervised learning leads to improved performance in biparametric prostate MRI classification](https://pubmed.ncbi.nlm.nih.gov/41192119/). Comput Biol Med. 2025 Nov;198(Pt B):111262. doi: 10.1016/j.compbiomed.2025.111262. Epub 2025 Nov 4. PMID: 41192119.
