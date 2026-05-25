@@ -348,6 +348,7 @@ def main(arguments):
                 for identifier, element in zip(
                     curr_prediction_ids, prediction_dataset
                 ):
+                    network.zero_grad()
                     pbar.set_description("Explaining {}".format(identifier))
                     image = element["image"].unsqueeze(0).to(args.dev)
                     image.requires_grad_(True)
