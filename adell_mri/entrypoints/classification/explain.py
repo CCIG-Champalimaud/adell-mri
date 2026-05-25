@@ -1,3 +1,4 @@
+import json
 import sys
 from copy import deepcopy
 from pathlib import Path
@@ -259,6 +260,8 @@ def main(arguments):
     # PL sometimes needs a little hint to detect GPUs.
     torch.ones([1]).to("cuda" if "cuda" in args.dev else "cpu")
 
+    global_output = []
+
     for iteration in range(len(prediction_ids)):
         curr_prediction_ids = [
             pid for pid in prediction_ids[iteration] if pid in data_dict
@@ -317,6 +320,13 @@ def main(arguments):
 
             ckpt_name = Path(checkpoint).stem
 
+            output_dict = {
+                "iteration": iteration,
+                "prediction_ids": curr_prediction_ids,
+                "checkpoint": checkpoint,
+                "predictions": {},
+            }
+
             attr_methods = {}
             for method_name in args.methods:
                 if method_name == "gradcam":
@@ -353,20 +363,24 @@ def main(arguments):
                     image = element["image"].unsqueeze(0).to(args.dev)
                     image.requires_grad_(True)
 
+                    with torch.no_grad():
+                        logits = network(image)
                     if is_ordinal:
                         target = None
                     elif is_binary:
                         with torch.no_grad():
-                            logit = network(image)
                             pred_class = (
-                                (torch.sigmoid(logit) > 0.5).long().item()
+                                (torch.sigmoid(logits) > 0.5).long().item()
                             )
                         target = pred_class
                     else:
                         with torch.no_grad():
-                            logits = network(image)
                             pred_class = logits.argmax(dim=-1).item()
                         target = pred_class
+
+                    output_dict["predictions"][identifier] = (
+                        logits.detach().cpu().numpy().tolist()
+                    )
 
                     safe_id = str(identifier).replace("/", "_")
                     sample_dir = output_dir / safe_id / ckpt_name
@@ -416,4 +430,11 @@ def main(arguments):
 
                     pbar.update()
 
+            global_output.append(output_dict)
     logger.info("Explanations saved to %s", output_dir)
+
+    predictions_path = output_dir / "predictions.json"
+    with open(predictions_path, "w") as o:
+        o.write(json.dumps(global_output))
+
+    logger.info("Predictions saved to %s", predictions_path)
