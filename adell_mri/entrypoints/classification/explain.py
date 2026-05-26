@@ -443,6 +443,7 @@ def main(arguments):
                                 image,
                                 target=target,
                             )
+                            attribution = attribution.sum(dim=1, keepdim=True)
                         elif attr_name == "deeplift":
                             baseline = torch.zeros_like(image)
                             for ch in range(image.shape[1]):
