@@ -7,9 +7,16 @@ import monai
 import numpy as np
 import SimpleITK as sitk
 import torch
-from captum.attr import IntegratedGradients, LayerGradCam
+from captum.attr import (
+    DeepLift,
+    GuidedBackprop,
+    GuidedGradCam,
+    IntegratedGradients,
+    LayerGradCam,
+)
 from monai.data import MetaTensor
 from monai.transforms.utils import allow_missing_keys_mode
+from scipy.ndimage import gaussian_filter
 from tqdm import tqdm
 
 from adell_mri.entrypoints.assemble_args import Parser
@@ -160,7 +167,13 @@ def main(arguments):
         type=str,
         nargs="+",
         default=["gradcam", "integrated_gradients"],
-        choices=["gradcam", "integrated_gradients"],
+        choices=[
+            "gradcam",
+            "integrated_gradients",
+            "guided_gradcam",
+            "deeplift",
+            "guided_backprop",
+        ],
         help="Attribution methods to use.",
     )
 
@@ -349,6 +362,27 @@ def main(arguments):
                     attr_methods["integrated_gradients"] = IntegratedGradients(
                         wrapped_model
                     )
+                elif method_name == "guided_gradcam":
+                    logger.info(f"Using guided gradcam")
+                    last_conv = get_last_conv_layer(network, args.net_type)
+                    if last_conv is None:
+                        logger.warning(
+                            "Could not find a convolutional layer for "
+                            "GuidedGradCAM with net_type=%s, skipping GuidedGradCAM.",
+                            args.net_type,
+                        )
+                        continue
+                    attr_methods["guided_gradcam"] = GuidedGradCam(
+                        wrapped_model, last_conv
+                    )
+                elif method_name == "deeplift":
+                    logger.info(f"Using deeplift")
+                    attr_methods["deeplift"] = DeepLift(wrapped_model)
+                elif method_name == "guided_backprop":
+                    logger.info(f"Using guided backprop")
+                    attr_methods["guided_backprop"] = GuidedBackprop(
+                        wrapped_model
+                    )
 
             if not attr_methods:
                 logger.warning("No valid attribution methods, skipping.")
@@ -401,7 +435,33 @@ def main(arguments):
                                 image,
                                 target=target,
                                 n_steps=50,
-                                internal_batch_size=args.batch_size,
+                                internal_batch_size=batch_size,
+                            )
+                            attribution = attribution.sum(dim=1, keepdim=True)
+                        elif attr_name == "guided_gradcam":
+                            attribution = attr_method.attribute(
+                                image,
+                                target=target,
+                            )
+                        elif attr_name == "deeplift":
+                            baseline = torch.zeros_like(image)
+                            for ch in range(image.shape[1]):
+                                baseline[0, ch] = torch.tensor(
+                                    gaussian_filter(
+                                        image[0, ch].detach().cpu().numpy(),
+                                        sigma=2.0,
+                                    )
+                                ).to(image.device)
+                            attribution = attr_method.attribute(
+                                image,
+                                baselines=baseline,
+                                target=target,
+                            )
+                            attribution = attribution.sum(dim=1, keepdim=True)
+                        elif attr_name == "guided_backprop":
+                            attribution = attr_method.attribute(
+                                image,
+                                target=target,
                             )
                             attribution = attribution.sum(dim=1, keepdim=True)
 
