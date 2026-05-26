@@ -16,8 +16,47 @@ from captum.attr import (
 )
 from monai.data import MetaTensor
 from monai.transforms.utils import allow_missing_keys_mode
-from scipy.ndimage import gaussian_filter
+from torch.nn.functional import conv3d
 from tqdm import tqdm
+
+
+def gaussian_blur_3d(image, sigma=2.0, kernel_size=None):
+    """
+    Apply 3D Gaussian blur using PyTorch on GPU.
+
+    Args:
+        image: Tensor of shape (C, D, H, W) or (B, C, D, H, W)
+        sigma: Standard deviation for Gaussian kernel
+        kernel_size: Size of kernel (default: 2 * int(4 * sigma + 0.5) + 1)
+
+    Returns:
+        Blurred image tensor of same shape as input
+    """
+    if kernel_size is None:
+        kernel_size = 2 * int(4 * sigma + 0.5) + 1
+
+    ax = torch.arange(
+        -kernel_size // 2 + 1.0, kernel_size // 2 + 1.0, device=image.device
+    )
+    xx, yy, zz = torch.meshgrid(ax, ax, ax, indexing="ij")
+    kernel = torch.exp(-(xx**2 + yy**2 + zz**2) / (2.0 * sigma**2))
+    kernel = kernel / kernel.sum()
+
+    if image.dim() == 4:  # (C, D, H, W)
+        c = image.shape[0]
+        kernel = kernel.view(1, 1, kernel_size, kernel_size, kernel_size)
+        kernel = kernel.expand(c, 1, -1, -1, -1)
+        padding = kernel_size // 2
+        return conv3d(
+            image.unsqueeze(0), kernel, padding=padding, groups=c
+        ).squeeze(0)
+    else:  # (B, C, D, H, W)
+        c = image.shape[1]
+        kernel = kernel.view(1, 1, kernel_size, kernel_size, kernel_size)
+        kernel = kernel.expand(c, 1, -1, -1, -1)
+        padding = kernel_size // 2
+        return conv3d(image, kernel, padding=padding, groups=c)
+
 
 from adell_mri.entrypoints.assemble_args import Parser
 from adell_mri.modules.classification.losses import OrdinalSigmoidalLoss
@@ -175,6 +214,12 @@ def main(arguments):
             "guided_backprop",
         ],
         help="Attribution methods to use.",
+    )
+    parser.add_argument(
+        "--ig_n_steps",
+        type=int,
+        default=25,
+        help="Number of steps for Integrated Gradients (lower = faster).",
     )
 
     args = parser.parse_args(arguments)
@@ -434,7 +479,7 @@ def main(arguments):
                             attribution = attr_method.attribute(
                                 image,
                                 target=target,
-                                n_steps=50,
+                                n_steps=args.ig_n_steps,
                                 internal_batch_size=batch_size,
                             )
                             attribution = attribution.sum(dim=1, keepdim=True)
@@ -445,14 +490,9 @@ def main(arguments):
                             )
                             attribution = attribution.sum(dim=1, keepdim=True)
                         elif attr_name == "deeplift":
-                            baseline = torch.zeros_like(image)
-                            for ch in range(image.shape[1]):
-                                baseline[0, ch] = torch.tensor(
-                                    gaussian_filter(
-                                        image[0, ch].detach().cpu().numpy(),
-                                        sigma=2.0,
-                                    )
-                                ).to(image.device)
+                            baseline = gaussian_blur_3d(
+                                image[0], sigma=2.0
+                            ).unsqueeze(0)
                             attribution = attr_method.attribute(
                                 image,
                                 baselines=baseline,
