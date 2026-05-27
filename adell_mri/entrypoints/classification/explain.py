@@ -437,10 +437,24 @@ def main(arguments):
                 for identifier, element in zip(
                     curr_prediction_ids, prediction_dataset
                 ):
+                    safe_id = str(identifier).replace("/", "_")
+                    sample_dir = output_dir / safe_id / ckpt_name
+                    sample_dir.mkdir(exist_ok=True, parents=True)
+                    file_exists = {
+                        attr_name: len(
+                            list(
+                                sample_dir.glob(f"{attr_name}_{safe_id}*nii.gz")
+                            )
+                        )
+                        > 0
+                        for attr_name in attr_methods.keys()
+                    }
+
                     network.zero_grad()
                     pbar.set_description("Explaining {}".format(identifier))
-                    image = element["image"].unsqueeze(0).to(args.dev)
-                    image.requires_grad_(True)
+                    image = element["image"].to(args.dev).unsqueeze(0)
+                    if not all(file_exists.values()):
+                        image.requires_grad_(True)
 
                     with torch.no_grad():
                         logits = network(image)
@@ -461,18 +475,8 @@ def main(arguments):
                         logits.detach().cpu().numpy().tolist()
                     )
 
-                    safe_id = str(identifier).replace("/", "_")
-                    sample_dir = output_dir / safe_id / ckpt_name
-                    sample_dir.mkdir(exist_ok=True, parents=True)
-
                     for attr_name, attr_method in attr_methods.items():
-                        file_exists = (
-                            len(
-                                sample_dir.glob(f"{attr_name}_{safe_id}*nii.gz")
-                            )
-                            > 0
-                        )
-                        if file_exists:
+                        if file_exists[attr_name]:
                             continue
                         if attr_name == "gradcam":
                             attribution = attr_method.attribute(
