@@ -466,6 +466,14 @@ def main(arguments):
                     sample_dir.mkdir(exist_ok=True, parents=True)
 
                     for attr_name, attr_method in attr_methods.items():
+                        file_exists = (
+                            len(
+                                sample_dir.glob(f"{attr_name}_{safe_id}*nii.gz")
+                            )
+                            > 0
+                        )
+                        if file_exists:
+                            continue
                         if attr_name == "gradcam":
                             attribution = attr_method.attribute(
                                 image,
@@ -526,7 +534,7 @@ def main(arguments):
                             save_attribution_nifti(
                                 attr_np[ch_idx],
                                 str(data_dict[identifier][keys[0]]),
-                                sample_dir / fname,
+                                output_path=sample_dir / fname,
                             )
 
                     pbar.update()
