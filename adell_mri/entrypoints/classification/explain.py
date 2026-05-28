@@ -1,6 +1,7 @@
 import json
 import sys
 from copy import deepcopy
+from functools import lru_cache
 from pathlib import Path
 
 import monai
@@ -277,6 +278,20 @@ def get_last_conv_layer(
     return None
 
 
+@lru_cache(maxsize=512)
+def read_sitk(path: str):
+    """
+    Cached version of SimpleITK.ReadImage.
+
+    Args:
+        path: Path to the NIfTI file.
+
+    Returns:
+        SimpleITK image object.
+    """
+    return sitk.ReadImage(path)
+
+
 def save_attribution_nifti(
     attribution_np: np.ndarray, input_image: str, output_path: str
 ) -> None:
@@ -285,7 +300,7 @@ def save_attribution_nifti(
     """
     attribution_np = np.transpose(attribution_np, (2, 1, 0))
     image = sitk.GetImageFromArray(attribution_np)
-    image.CopyInformation(sitk.ReadImage(input_image))
+    image.CopyInformation(read_sitk(input_image))
     sitk.WriteImage(image, output_path)
 
 
@@ -536,19 +551,14 @@ def main(arguments):
                     if not all(file_exists.values()):
                         image.requires_grad_(True)
 
-                    with torch.no_grad():
-                        logits = network(image)
+                    logits = network(image)
                     if is_ordinal:
                         target = None
                     elif is_binary:
-                        with torch.no_grad():
-                            pred_class = (
-                                (torch.sigmoid(logits) > 0.5).long().item()
-                            )
+                        pred_class = (torch.sigmoid(logits) > 0.5).long().item()
                         target = pred_class
                     else:
-                        with torch.no_grad():
-                            pred_class = logits.argmax(dim=-1).item()
+                        pred_class = logits.argmax(dim=-1).item()
                         target = pred_class
 
                     output_dict["predictions"][identifier] = (
