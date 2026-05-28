@@ -2,6 +2,8 @@ import monai
 import numpy as np
 import torch
 from monai.data.meta_tensor import MetaTensor
+from monai.transforms.inverse import InvertibleTransform
+from monai.utils import TraceKeys
 from skimage.morphology import convex_hull_image
 from sklearn.cluster import DBSCAN
 
@@ -400,7 +402,7 @@ class DbscanAssistedSegmentSelection(monai.transforms.MapTransform):
         return output
 
 
-class CropFromMaskd(monai.transforms.MapTransform):
+class CropFromMaskd(monai.transforms.MapTransform, InvertibleTransform):
     """
     Crops the input image(s) from a binary mask.
 
@@ -461,6 +463,7 @@ class CropFromMaskd(monai.transforms.MapTransform):
                     )
 
         for k in self.keys:
+            orig_shape = X[k].shape[1:]
             if len(extremes) == 2:
                 X[k] = X[k][
                     :,
@@ -477,7 +480,28 @@ class CropFromMaskd(monai.transforms.MapTransform):
             else:
                 raise Exception(
                     "mask and image should have same size or \
-                                output_size should have length identical to the \
-                                spatial dimensions of the image"
+                        output_size should have length identical to the \
+                        spatial dimensions of the image"
                 )
+            cropped = [
+                val
+                for e, s in zip(extremes, orig_shape)
+                for val in (int(e[0]), int(s - e[1]))
+            ]
+            extra_info = {"cropped": cropped, "orig_shape": list(orig_shape)}
+            if isinstance(X[k], MetaTensor):
+                self.push_transform(X[k], extra_info=extra_info)
         return X
+
+    def inverse(self, data: dict) -> dict:
+        d = dict(data)
+        for k in self.key_iterator(d):
+            if not isinstance(d[k], MetaTensor):
+                continue
+            transform = self.pop_transform(d[k])
+            extra_info = transform[TraceKeys.EXTRA_INFO]
+            cropped = extra_info["cropped"]
+            inverse_transform = monai.transforms.BorderPad(cropped)
+            with inverse_transform.trace_transform(False):
+                d[k] = inverse_transform(d[k])
+        return d
