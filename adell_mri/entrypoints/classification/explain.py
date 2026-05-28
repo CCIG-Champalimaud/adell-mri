@@ -20,6 +20,119 @@ from torch.nn.functional import conv3d
 from tqdm import tqdm
 
 
+class Attributions:
+    def __init__(self, model):
+        self.model = model
+        self.attributions = {}
+
+    def __getitem__(self, key):
+        if key not in self.attributions:
+            if key == "gradcam":
+                logger.info(f"Using gradcam")
+                last_conv = get_last_conv_layer(network, args.net_type)
+                if last_conv is None:
+                    logger.warning(
+                        "Could not find a convolutional layer for "
+                        "GradCAM with net_type=%s, skipping GradCAM.",
+                        args.net_type,
+                    )
+                    continue
+                self.attributions["gradcam"] = LayerGradCam(
+                    wrapped_model, last_conv
+                )
+            elif key == "integrated_gradients":
+                logger.info(
+                    f"Using integrated gradients with batch size = {batch_size}"
+                )
+                self.attributions["integrated_gradients"] = IntegratedGradients(
+                    wrapped_model
+                )
+            elif key == "guided_gradcam":
+                logger.info(f"Using guided gradcam")
+                last_conv = get_last_conv_layer(network, args.net_type)
+                if last_conv is None:
+                    logger.warning(
+                        "Could not find a convolutional layer for "
+                        "GuidedGradCAM with net_type=%s, skipping GuidedGradCAM.",
+                        args.net_type,
+                    )
+                    continue
+                self.attributions["guided_gradcam"] = GuidedGradCam(
+                    wrapped_model, last_conv
+                )
+            elif key == "deeplift":
+                logger.info(f"Using deeplift")
+                self.attributions["deeplift"] = DeepLift(wrapped_model)
+            elif key == "guided_backprop":
+                logger.info(f"Using guided backprop")
+                self.attributions["guided_backprop"] = GuidedBackprop(
+                    wrapped_model
+                )
+            else:
+                raise ValueError(f"Unknown attribution method: {key}")
+        return self.attributions[key]
+
+    def __setitem__(self, key, value):
+        self.attributions[key] = value
+
+    def __len__(self):
+        return len(self.attributions)
+
+
+def apply_attribution(attr_name: str, attr_method, image: torch.Tensor):
+    """
+    Wrapper for attribution.
+
+    Args:
+        attr_name: Name of the attribution method.
+        attr_method: Attribution method.
+        image: Input image.
+
+    Returns:
+        Attribution map.
+    """
+    if attr_name == "gradcam":
+        attribution = attr_method.attribute(
+            image,
+            target=target,
+        )
+        attribution = LayerGradCam.interpolate(
+            attribution,
+            image.shape[2:],
+        )
+    elif attr_name == "integrated_gradients":
+        attribution = attr_method.attribute(
+            image,
+            target=target,
+            n_steps=args.ig_n_steps,
+            internal_batch_size=batch_size,
+        )
+        attribution = attribution.sum(dim=1, keepdim=True)
+    elif attr_name == "guided_gradcam":
+        attribution = attr_method.attribute(
+            image,
+            target=target,
+        )
+        attribution = attribution.sum(dim=1, keepdim=True)
+    elif attr_name == "deeplift":
+        baseline = gaussian_blur_3d(image[0], sigma=2.0).unsqueeze(0)
+        attribution = attr_method.attribute(
+            image,
+            baseline,
+            target=target,
+        )
+        attribution = attribution.sum(dim=1, keepdim=True)
+    elif attr_name == "attention":
+        attribution = attr_method.attribute(
+            image,
+            target=target,
+        )
+        attribution = attribution.sum(dim=1, keepdim=True)
+    else:
+        raise ValueError(f"Unknown attribution method: {attr_name}")
+    return attribution
+
+
 def gaussian_blur_3d(image, sigma=2.0, kernel_size=None):
     """
     Apply 3D Gaussian blur using PyTorch on GPU.
@@ -385,51 +498,11 @@ def main(arguments):
                 "predictions": {},
             }
 
-            attr_methods = {}
+            attr_methods = Attributions(wrapped_model)
             for method_name in args.methods:
-                if method_name == "gradcam":
-                    logger.info(f"Using gradcam")
-                    last_conv = get_last_conv_layer(network, args.net_type)
-                    if last_conv is None:
-                        logger.warning(
-                            "Could not find a convolutional layer for "
-                            "GradCAM with net_type=%s, skipping GradCAM.",
-                            args.net_type,
-                        )
-                        continue
-                    attr_methods["gradcam"] = LayerGradCam(
-                        wrapped_model, last_conv
-                    )
-                elif method_name == "integrated_gradients":
-                    logger.info(
-                        f"Using integrated gradients with batch size = {batch_size}"
-                    )
-                    attr_methods["integrated_gradients"] = IntegratedGradients(
-                        wrapped_model
-                    )
-                elif method_name == "guided_gradcam":
-                    logger.info(f"Using guided gradcam")
-                    last_conv = get_last_conv_layer(network, args.net_type)
-                    if last_conv is None:
-                        logger.warning(
-                            "Could not find a convolutional layer for "
-                            "GuidedGradCAM with net_type=%s, skipping GuidedGradCAM.",
-                            args.net_type,
-                        )
-                        continue
-                    attr_methods["guided_gradcam"] = GuidedGradCam(
-                        wrapped_model, last_conv
-                    )
-                elif method_name == "deeplift":
-                    logger.info(f"Using deeplift")
-                    attr_methods["deeplift"] = DeepLift(wrapped_model)
-                elif method_name == "guided_backprop":
-                    logger.info(f"Using guided backprop")
-                    attr_methods["guided_backprop"] = GuidedBackprop(
-                        wrapped_model
-                    )
+                _ = attr_methods[method_name]
 
-            if not attr_methods:
+            if len(attr_methods) == 0:
                 logger.warning("No valid attribution methods, skipping.")
                 continue
 
@@ -451,7 +524,7 @@ def main(arguments):
                     }
 
                     network.zero_grad()
-                    pbar.set_description("Explaining {}".format(identifier))
+                    pbar.set_description(f"Explaining {identifier}")
                     image = element["image"].to(args.dev).unsqueeze(0)
                     if not all(file_exists.values()):
                         image.requires_grad_(True)
@@ -478,45 +551,9 @@ def main(arguments):
                     for attr_name, attr_method in attr_methods.items():
                         if file_exists[attr_name]:
                             continue
-                        if attr_name == "gradcam":
-                            attribution = attr_method.attribute(
-                                image,
-                                target=target,
-                            )
-                            attribution = LayerGradCam.interpolate(
-                                attribution,
-                                image.shape[2:],
-                            )
-                        elif attr_name == "integrated_gradients":
-                            attribution = attr_method.attribute(
-                                image,
-                                target=target,
-                                n_steps=args.ig_n_steps,
-                                internal_batch_size=batch_size,
-                            )
-                            attribution = attribution.sum(dim=1, keepdim=True)
-                        elif attr_name == "guided_gradcam":
-                            attribution = attr_method.attribute(
-                                image,
-                                target=target,
-                            )
-                            attribution = attribution.sum(dim=1, keepdim=True)
-                        elif attr_name == "deeplift":
-                            baseline = gaussian_blur_3d(
-                                image[0], sigma=2.0
-                            ).unsqueeze(0)
-                            attribution = attr_method.attribute(
-                                image,
-                                baselines=baseline,
-                                target=target,
-                            )
-                            attribution = attribution.sum(dim=1, keepdim=True)
-                        elif attr_name == "guided_backprop":
-                            attribution = attr_method.attribute(
-                                image,
-                                target=target,
-                            )
-                            attribution = attribution.sum(dim=1, keepdim=True)
+                        attribution = apply_attribution(
+                            attr_name, attr_method, image
+                        )
 
                         attribution = MetaTensor(
                             attribution[0],
