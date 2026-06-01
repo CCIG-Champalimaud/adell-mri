@@ -2,8 +2,15 @@ import monai
 import numpy as np
 import torch
 from monai.data.meta_tensor import MetaTensor
+from monai.transforms import (
+    Crop,
+    Cropd,
+    MapTransform,
+    TraceableTransform,
+    Transform,
+)
 from monai.transforms.inverse import InvertibleTransform
-from monai.utils import TraceKeys
+from monai.utils import TraceKeys, ensure_tuple
 from skimage.morphology import convex_hull_image
 from sklearn.cluster import DBSCAN
 
@@ -402,35 +409,13 @@ class DbscanAssistedSegmentSelection(monai.transforms.MapTransform):
         return output
 
 
-class CropFromMaskd(monai.transforms.MapTransform, InvertibleTransform):
-    """
-    Crops the input image(s) from a binary mask.
-
-    Finds the extremes of the positive class in the binary mask along each
-    dimension. Uses these to crop the image(s) to the smallest box containing
-    the mask.
-    """
-
+class CropFromMask(Crop):
     def __init__(
-        self,
-        keys: list[str] | str,
-        mask_key: str,
-        output_size: list[int] = None,
+        self, output_size: list[int] | None = None, lazy: bool = False
     ):
-        """
-        Args:
-            keys (List[str] | str): Keys of the input images.
-            mask_key (str): Key of the binary mask.
-            output_size (List[int], optional): output size. If provided, uses
-                this to determine crop region instead of the mask extremes.
-                Defaults to None.
-        """
-        super().__init__(keys=keys)
-        self.mask_key = mask_key
+        super().__init__()
         self.output_size = output_size
-
-        if isinstance(self.keys, str):
-            self.keys = [self.keys]
+        self.lazy = lazy
 
     def get_centre_extremes(self, mask: torch.Tensor):
         if mask.shape[0] == 1:
@@ -444,9 +429,9 @@ class CropFromMaskd(monai.transforms.MapTransform, InvertibleTransform):
             extremes = None
         return centre, extremes
 
-    def __call__(self, X: dict[str, torch.Tensor]):
-        centres, extremes = self.get_centre_extremes(X[self.mask_key])
-        min_shape = np.array([X[k].shape for k in self.keys]).min(0)[1:]
+    def compute_slices(self, X: torch.Tensor, mask: torch.Tensor):
+        centres, extremes = self.get_centre_extremes(mask)
+        min_shape = np.array(X.shape)[1:]
         if (self.output_size is not None) or (extremes is None):
             half_size = [x // 2 for x in self.output_size]
             extremes = [
@@ -461,51 +446,77 @@ class CropFromMaskd(monai.transforms.MapTransform, InvertibleTransform):
                         min_shape[i] - self.output_size[i],
                         min_shape[i],
                     )
-
-        for k in self.keys:
-            orig_shape = X[k].shape[1:]
-            if len(extremes) == 2:
-                X[k] = X[k][
-                    :,
-                    extremes[0][0] : extremes[0][1],
-                    extremes[1][0] : extremes[1][1],
-                ]
-            elif len(extremes) == 3:
-                X[k] = X[k][
-                    :,
-                    extremes[0][0] : extremes[0][1],
-                    extremes[1][0] : extremes[1][1],
-                    extremes[2][0] : extremes[2][1],
-                ]
-            else:
-                raise Exception(
-                    "mask and image should have same size or \
-                        output_size should have length identical to the \
-                        spatial dimensions of the image"
-                )
-            cropped = [
-                val
-                for e, s in zip(extremes, orig_shape)
-                for val in (int(e[0]), int(s - e[1]))
+        orig_shape = X.shape[1:]
+        if len(extremes) == 2:
+            slices = [
+                slice(extremes[0][0], extremes[0][1]),
+                slice(extremes[1][0], extremes[1][1]),
             ]
-            extra_info = {"cropped": cropped, "orig_shape": list(orig_shape)}
-            if isinstance(X[k], MetaTensor):
-                extra_info["pre_crop_affine"] = X[k].affine.clone()
-                self.push_transform(X[k], extra_info=extra_info)
-        return X
+        elif len(extremes) == 3:
+            slices = [
+                slice(extremes[0][0], extremes[0][1]),
+                slice(extremes[1][0], extremes[1][1]),
+                slice(extremes[2][0], extremes[2][1]),
+            ]
+        else:
+            raise Exception(
+                "mask and image should have same size or \
+                    output_size should have length identical to the \
+                    spatial dimensions of the image"
+            )
 
-    def inverse(self, data: dict) -> dict:
+        return slices
+
+    def __call__(
+        self,
+        img: torch.Tensor,
+        mask: torch.Tensor,
+        lazy: bool = False,
+    ):
+        lazy_ = self.lazy if lazy is None else lazy
+        slices = self.compute_slices(img, mask)
+        return super().__call__(
+            img=img,
+            slices=ensure_tuple(slices),
+            lazy=lazy_,
+        )
+
+
+class CropFromMaskd(Cropd):
+    """
+    Crops the input image(s) from a binary mask.
+
+    Finds the extremes of the positive class in the binary mask along each
+    dimension. Uses these to crop the image(s) to the smallest box containing
+    the mask.
+    """
+
+    def __init__(
+        self,
+        keys: list[str] | str,
+        mask_key: str,
+        output_size: list[int] | None = None,
+        lazy: bool = False,
+    ):
+        """
+        Args:
+            keys (List[str] | str): Keys of the input images.
+            mask_key (str): Key of the binary mask.
+            output_size (List[int], optional): output size. If provided, uses
+                this to determine crop region instead of the mask extremes.
+                Defaults to None.
+        """
+        self.cropper = CropFromMask(output_size=output_size, lazy=lazy)
+        super().__init__(keys=keys, cropper=self.cropper)
+        self.mask_key = mask_key
+        self.output_size = output_size
+        self.lazy = lazy
+
+        if isinstance(self.keys, str):
+            self.keys = [self.keys]
+
+    def __call__(self, data: dict[str, torch.Tensor], lazy: bool = False):
         d = dict(data)
-        for k in self.key_iterator(d):
-            if not isinstance(d[k], MetaTensor):
-                continue
-            transform = self.pop_transform(d[k])
-            extra_info = transform[TraceKeys.EXTRA_INFO]
-            cropped = extra_info["cropped"]
-            pre_crop_affine = extra_info.get("pre_crop_affine")
-            inverse_transform = monai.transforms.BorderPad(cropped)
-            with inverse_transform.trace_transform(False):
-                d[k] = inverse_transform(d[k])
-            if pre_crop_affine is not None and isinstance(d[k], MetaTensor):
-                d[k].affine = pre_crop_affine
+        for k in self.keys:
+            d[k] = self.cropper(d[k], d[self.mask_key], lazy=lazy)
         return d
