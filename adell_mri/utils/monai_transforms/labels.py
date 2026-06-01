@@ -437,7 +437,7 @@ class CropFromMaskd(monai.transforms.MapTransform, InvertibleTransform):
             mask = mask[0]
         coords = torch.where(mask)
         if len(coords[0]) > 0:
-            extremes = [(c.min(), c.max()) for c in coords]
+            extremes = [(c.min(), c.max() + 1) for c in coords]
             centre = [(e[1] + e[0]) // 2 for e in extremes]
         else:
             centre = [c // 2 for c in mask.shape]
@@ -490,6 +490,7 @@ class CropFromMaskd(monai.transforms.MapTransform, InvertibleTransform):
             ]
             extra_info = {"cropped": cropped, "orig_shape": list(orig_shape)}
             if isinstance(X[k], MetaTensor):
+                extra_info["pre_crop_affine"] = X[k].affine.clone()
                 self.push_transform(X[k], extra_info=extra_info)
         return X
 
@@ -501,7 +502,10 @@ class CropFromMaskd(monai.transforms.MapTransform, InvertibleTransform):
             transform = self.pop_transform(d[k])
             extra_info = transform[TraceKeys.EXTRA_INFO]
             cropped = extra_info["cropped"]
+            pre_crop_affine = extra_info.get("pre_crop_affine")
             inverse_transform = monai.transforms.BorderPad(cropped)
             with inverse_transform.trace_transform(False):
                 d[k] = inverse_transform(d[k])
+            if pre_crop_affine is not None and isinstance(d[k], MetaTensor):
+                d[k].affine = pre_crop_affine
         return d

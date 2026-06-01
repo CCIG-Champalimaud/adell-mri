@@ -17,6 +17,7 @@ from captum.attr import (
 )
 from monai.data import MetaTensor
 from monai.transforms.utils import allow_missing_keys_mode
+from monai.utils import TraceKeys
 from torch.nn.functional import conv3d
 from tqdm import tqdm
 
@@ -427,12 +428,6 @@ def main(arguments):
         **transform_arguments,
     ).transforms()
 
-    invert_transform = monai.transforms.Invertd(
-        keys=["explanation"],
-        transform=transforms_prediction,
-        orig_keys=["image"],
-    )
-
     if args.n_classes == 2:
         network_config["loss_fn"] = torch.nn.BCEWithLogitsLoss()
     elif args.net_type == "ord":
@@ -580,9 +575,9 @@ def main(arguments):
                         attribution = MetaTensor(
                             attribution[0],
                             meta=element["image"].meta.copy(),
-                            applied_operations=element[
-                                "image"
-                            ].applied_operations.copy(),
+                            applied_operations=deepcopy(
+                                element["image"].applied_operations
+                            ),
                         )
                         with allow_missing_keys_mode(transforms_prediction):
                             attribution = transforms_prediction.inverse(
@@ -599,7 +594,6 @@ def main(arguments):
                                 str(data_dict[identifier][keys[0]]),
                                 output_path=sample_dir / fname,
                             )
-
                     pbar.update()
 
             global_output.append(output_dict)
