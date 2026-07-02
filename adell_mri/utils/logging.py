@@ -2,6 +2,7 @@
 Includes a logging class which can store data in different formats.
 """
 
+import csv
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -52,20 +53,13 @@ class CSVLogger:
             file.
     """
 
-    try:
-        import pandas as pd
-    except Exception:
-        raise ImportError(
-            "Pandas is required to parse CSV files. ",
-            "Please install it with `pip install pandas`.",
-        )
-
     file_path: str
     overwrite: bool = False
 
     def __post_init__(self):
         if os.path.exists(self.file_path) and (self.overwrite is False):
-            self.history = pd.read_csv(self.file_path).to_dict("records")
+            with open(self.file_path, newline="") as f:
+                self.history = list(csv.DictReader(f))
         else:
             self.history = []
 
@@ -75,4 +69,9 @@ class CSVLogger:
     def write(self):
         Path(self.file_path).parent.mkdir(parents=True, exist_ok=True)
 
-        pd.DataFrame(self.history).to_csv(self.file_path, index=False)
+        if not self.history:
+            return
+        with open(self.file_path, "w", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=self.history[0].keys())
+            writer.writeheader()
+            writer.writerows(self.history)
