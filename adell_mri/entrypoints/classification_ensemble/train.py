@@ -606,7 +606,10 @@ def main(arguments):
         ckpt_list = ["last", "best"] if ckpt is True else ["last"]
         for ckpt_key in ckpt_list:
             test_metrics = trainer.test(
-                ensemble, validation_loader, ckpt_path=ckpt_key
+                ensemble,
+                validation_loader,
+                ckpt_path=ckpt_key,
+                weights_only=False,
             )
             test_metrics = test_metrics[0]
             for k in test_metrics:

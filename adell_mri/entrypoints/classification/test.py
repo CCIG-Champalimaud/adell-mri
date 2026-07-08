@@ -271,7 +271,11 @@ def main(arguments):
                 checkpoint = checkpoint_list[network_idx]
                 network = network.eval()
                 trainer = Trainer(accelerator=accelerator, devices=devices)
-                test_metrics = trainer.test(network, test_loader)[0]
+                test_metrics = trainer.test(
+                    network,
+                    test_loader,
+                    weights_only=False,
+                )[0]
                 for k in test_metrics:
                     out = test_metrics[k]
                     try:
@@ -322,7 +326,11 @@ def main(arguments):
             )
             ensemble_network = ensemble_network.eval()
             trainer = Trainer(accelerator=accelerator, devices=devices)
-            test_metrics = trainer.test(ensemble_network, test_loader)[0]
+            test_metrics = trainer.test(
+                ensemble_network,
+                test_loader,
+                weights_only=False,
+            )[0]
             for k in test_metrics:
                 out = test_metrics[k]
                 try:

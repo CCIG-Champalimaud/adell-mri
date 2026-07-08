@@ -341,7 +341,11 @@ def main(arguments):
         # assessing performance on validation set
         logger.info("Validating...")
 
-        trainer.test(yolo, validation_loader)
+        trainer.test(
+            yolo,
+            validation_loader,
+            weights_only=False,
+        )
         for k in yolo.test_metrics:
             out = yolo.test_metrics[k].compute()
             try:

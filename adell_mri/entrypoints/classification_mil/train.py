@@ -546,7 +546,10 @@ def main(arguments):
         ckpt_list = ["last", "best"] if ckpt is True else ["last"]
         for ckpt_key in ckpt_list:
             test_metrics = trainer.test(
-                network, validation_loader, ckpt_path=ckpt_key
+                network,
+                validation_loader,
+                ckpt_path=ckpt_key,
+                weights_only=False,
             )[0]
             for k in test_metrics:
                 out = test_metrics[k]

@@ -351,9 +351,12 @@ def main(arguments):
     else:
         ckpt_list = ["last"]
     for ckpt_key in ckpt_list:
-        test_metrics = trainer.test(network, train_loader, ckpt_path=ckpt_key)[
-            0
-        ]
+        test_metrics = trainer.test(
+            network,
+            train_loader,
+            ckpt_path=ckpt_key,
+            weights_only=False,
+        )[0]
         for k in test_metrics:
             out = test_metrics[k]
             if isinstance(out, float) is False:

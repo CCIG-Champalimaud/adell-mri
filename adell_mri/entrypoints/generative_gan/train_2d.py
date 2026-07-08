@@ -329,7 +329,11 @@ def main(arguments):
     trainer.fit(model, val_dataloaders=val_loader, ckpt_path=ckpt_path)
 
     logger.info("Validating...")
-    test_metrics = trainer.test(model, val_loader)[0]
+    test_metrics = trainer.test(
+        model,
+        val_loader,
+        weights_only=False,
+    )[0]
     for k in test_metrics:
         out = test_metrics[k]
         try:

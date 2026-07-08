@@ -237,7 +237,11 @@ def main(arguments):
             network.load_state_dict(state_dict)
             network = network.eval().to(args.dev)
             trainer = Trainer(accelerator=accelerator, devices=devices)
-            test_metrics = trainer.test(network, test_loader)[0]
+            test_metrics = trainer.test(
+                network,
+                test_loader,
+                weights_only=False,
+            )[0]
             test_metrics["checkpoint"] = checkpoint
             test_metrics["pids"] = test_pids
             all_metrics.append(test_metrics)

@@ -284,7 +284,11 @@ def main(arguments):
             )
 
             trainer = Trainer(accelerator=accelerator, devices=devices)
-            test_metrics = trainer.test(ensemble, test_loader)[0]
+            test_metrics = trainer.test(
+                ensemble,
+                test_loader,
+                weights_only=False,
+            )[0]
             for k in test_metrics:
                 out = test_metrics[k]
                 try:
