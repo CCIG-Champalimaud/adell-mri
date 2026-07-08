@@ -396,6 +396,7 @@ def main(arguments):
                 sampler=sampler,
                 persistent_workers=args.n_workers > 0,
                 drop_last=True,
+                prefetch_factor=8,
             )
 
         train_loader = train_loader_call()

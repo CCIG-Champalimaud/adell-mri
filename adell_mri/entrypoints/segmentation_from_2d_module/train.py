@@ -466,6 +466,7 @@ def main(arguments):
                 pin_memory=True,
                 persistent_workers=True,
                 drop_last=True,
+                prefetch_factor=8,
             )
 
         train_loader = train_loader_call(network_config["batch_size"])

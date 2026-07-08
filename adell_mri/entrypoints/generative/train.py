@@ -257,6 +257,7 @@ def main(arguments):
                 num_samples=args.steps_per_epoch * bs,
                 generator=g,
             ),
+            prefetch_factor=8,
         )
 
     train_loader = train_loader_call()
