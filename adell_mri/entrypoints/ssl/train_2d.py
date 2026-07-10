@@ -18,6 +18,7 @@ from adell_mri.utils.dicom_dataset import (
 )
 from adell_mri.utils.dicom_loader import DICOMDataset, SliceSampler
 from adell_mri.utils.network_factories import get_ssl_network
+from adell_mri.utils.pl_callbacks import SpectralNorm
 from adell_mri.utils.pl_utils import get_ckpt_callback, get_devices, get_logger
 from adell_mri.utils.python_logging import get_logger as get_python_logger
 from adell_mri.utils.torch_utils import get_generator_and_rng

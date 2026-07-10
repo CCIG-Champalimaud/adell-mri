@@ -28,6 +28,7 @@ from adell_mri.utils.monai_transforms import (
 )
 from adell_mri.utils.network_factories import get_segmentation_network
 from adell_mri.utils.parser import parse_ids
+from adell_mri.utils.pl_callbacks import SpectralNorm
 from adell_mri.utils.pl_utils import get_ckpt_callback, get_devices, get_logger
 from adell_mri.utils.python_logging import get_logger as get_python_logger
 from adell_mri.utils.samplers import PartiallyRandomSampler
