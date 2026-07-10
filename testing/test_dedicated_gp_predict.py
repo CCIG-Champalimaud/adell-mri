@@ -48,7 +48,9 @@ class SimpleGPNetwork(nn.Module):
 
 
 class TestGPPLModule(ClassPLABC):
-    """Test Lightning module with GP support"""
+    """
+    Test Lightning module with GP support.
+    """
 
     def __init__(self, network, image_key="image", label_key="label"):
         super().__init__()

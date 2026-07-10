@@ -387,8 +387,10 @@ class ClassPLABC(pl.LightningModule, ABC):
                 with tqdm(self.training_dataloader_call()) as pbar:
                     pbar.set_description("Fitting GP covariance")
                     for batch in pbar:
-                        x, y = batch[self.image_key], batch[self.label_key]
-                        self.gaussian_process_head.update_inv_cov(x, y)
+                        x = batch[self.image_key]
+                        prediction = self.forward(x)
+                        proba = self.get_proba(prediction)
+                        self.gaussian_process_head.update_inv_cov(x, proba)
                     self.gaussian_process_head.get_cov()
 
     def calibrate(self, dataloader):
@@ -595,7 +597,14 @@ class ClassPLABC(pl.LightningModule, ABC):
             self.n_classes, None, prefix="T_", average="none"
         )
 
-    def update_metrics(self, prediction, y, metrics, log=True):
+    def get_proba(self, prediction: torch.Tensor) -> torch.Tensor:
+        if self.n_classes > 2:
+            proba = torch.softmax(prediction, 1)
+        else:
+            proba = torch.sigmoid(prediction)
+        return proba
+
+    def update_metrics(self, prediction, y, metrics, log: bool = True):
         """
         Updates the metrics for the model based on the prediction and ground
         truth labels.
@@ -609,10 +618,7 @@ class ClassPLABC(pl.LightningModule, ABC):
         Returns:
             None
         """
-        if self.n_classes > 2:
-            prediction = torch.softmax(prediction, 1)
-        else:
-            prediction = torch.sigmoid(prediction)
+        prediction = self.get_proba(prediction)
         if len(y.shape) > 1:
             y.squeeze(1)
         for k in metrics:
@@ -764,34 +770,6 @@ class ClassNetPL(ClassPLABC):
             )
         self.forward = self.network.forward
         self.n_classes = self.network.n_classes
-
-    def update_metrics(self, prediction, y, metrics, log=True):
-        """
-        Update the metrics for the given batch.
-
-        Args:
-            prediction (torch.Tensor): The predicted values.
-            y (torch.Tensor): The true labels.
-            metrics (dict): A dictionary of metrics to update.
-            log (bool, optional): Whether to log the metrics. Defaults to True.
-        """
-        if self.n_classes > 2:
-            prediction = torch.softmax(prediction, 1)
-        else:
-            prediction = torch.sigmoid(prediction)
-        if len(y.shape) > 1:
-            y = y.squeeze(1)
-        for k in metrics:
-            metrics[k](prediction, y)
-            if log is True:
-                self.log(
-                    k,
-                    metrics[k],
-                    on_epoch=True,
-                    on_step=False,
-                    prog_bar=True,
-                    sync_dist=True,
-                )
 
 
 class OrdNetPL(ClassPLABC):
