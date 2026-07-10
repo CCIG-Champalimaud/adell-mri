@@ -30,38 +30,57 @@ class GaussianProcessLayer(torch.nn.Module):
     [1] https://arxiv.org/pdf/2006.10108.pdf
     """
 
-    def __init__(self, in_channels: int, out_channels: int, m: float = 0.999):
+    def __init__(
+        self,
+        in_channels: int,
+        n_rff: int,
+        n_outputs: int = None,
+        m: float = 0.999,
+        ordinal: bool = False,
+        n_classes: int = None,
+    ):
         """
         Args:
             in_channels (int): input channels.
-            out_channels (int): output channels (after RFF transform)
+            n_rff (int): number of random Fourier features.
+            n_outputs (int, optional): output dimensionality. Defaults to
+                n_rff (backward compatible with old out_channels-only API).
             m (float, optional): momentum for updating inv covariance matrix.
                 Defaults to 0.999.
+            ordinal (bool, optional): whether this layer is used for ordinal
+                classification. Defaults to False.
+            n_classes (int, optional): number of classes (required when
+                ordinal=True). Defaults to None.
         """
         super().__init__()
         self.in_channels = in_channels
-        self.out_channels = out_channels
+        self.n_rff = n_rff
+        self.n_outputs = n_outputs if n_outputs is not None else n_rff
+        self.out_channels = self.n_outputs
         self.m = m
+        self.ordinal = ordinal
+        self.n_classes = n_classes
 
         self.initialize_params()
 
     def initialize_params(self):
         i = self.in_channels
-        o = self.out_channels
+        r = self.n_rff
+        o = self.n_outputs
         self.scaling_term = torch.sqrt(torch.as_tensor(2.0 / i))
         self.W = torch.nn.Parameter(
-            torch.normal(torch.zeros([1, o, i]), torch.ones([1, o, i])).float(),
+            torch.normal(torch.zeros([1, r, i]), torch.ones([1, r, i])).float(),
             requires_grad=False,
         )
         self.b = torch.nn.Parameter(
-            torch.rand([1, o]).float() * torch.pi, requires_grad=False
+            torch.rand([1, r]).float() * torch.pi, requires_grad=False
         )
         self.weights = torch.nn.Parameter(
-            torch.normal(torch.zeros([o, o]), torch.ones([o, o])).float(),
+            torch.normal(torch.zeros([o, r]), torch.ones([o, r])).float(),
             requires_grad=True,
         )
         self.inv_conv = torch.nn.Parameter(
-            torch.eye(o, o).unsqueeze(0).float(), requires_grad=False
+            torch.eye(r, r).unsqueeze(0).float(), requires_grad=False
         )
 
     def update_inv_cov(self, X: torch.Tensor, y: torch.Tensor):
@@ -72,7 +91,18 @@ class GaussianProcessLayer(torch.nn.Module):
             K = K.flatten(start_dim=1, end_dim=-3)
             K = K.mean(1)
 
-        if y.dim() == 1:
+        if self.ordinal:
+            # ordinal: scalar latent with cumulative-link likelihood.
+            # essentially treats each probability as an individual binary probability.
+            with torch.no_grad():
+                f_mean = self.forward(X)
+                p_cum = torch.sigmoid(f_mean)
+                variance = p_cum * (1 - p_cum)
+                variance = variance.unsqueeze(-1).expand(
+                    -1, K.shape[-1], K.shape[-1]
+                )
+            update_term = variance * K
+        elif y.dim() == 1:
             # binary
             y_float = y.float().unsqueeze(-1)
             variance = y_float * (1 - y_float)
@@ -165,7 +195,7 @@ class GaussianProcessLayer(torch.nn.Module):
         mean = phi @ self.weights.T
         cov_feature_product = self.cov @ phi.unsqueeze(-1)
         var = (phi.unsqueeze(-2) @ cov_feature_product).squeeze(-1).squeeze(-1)
-        cov = torch.diag_embed(var.unsqueeze(-1).expand(-1, self.out_channels))
+        cov = torch.diag_embed(var.unsqueeze(-1).expand(-1, self.n_outputs))
         return mean, cov
 
     def rsample(self, X: torch.Tensor, n_samples: int) -> torch.Tensor:

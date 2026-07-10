@@ -6,6 +6,7 @@ import torch.nn.functional as F
 
 from adell_mri.custom_types import TensorList
 from adell_mri.modules.layers.adn_fn import ActDropNorm, get_adn_fn
+from adell_mri.modules.layers.gaussian_process import GaussianProcessLayer
 from adell_mri.modules.layers.linear_blocks import MLP, SeqPool
 from adell_mri.modules.layers.res_net import (
     ProjectionHead,
@@ -279,6 +280,7 @@ class CatNet(torch.nn.Module):
         classification_structure: list[int] = None,
         batch_ensemble: bool = False,
         skip_last_activation: bool = False,
+        gaussian_process: bool = False,
     ):
         """
         Args:
@@ -313,6 +315,8 @@ class CatNet(torch.nn.Module):
                 Defaults to False.
             skip_last_activation (bool, optional): skips the last activation in
                 the ResNet backbone. Defaults to False.
+            gaussian_process (bool, optional): uses a Gaussian process layer
+                for the classification head. Defaults to False.
         """
         super().__init__()
         self.spatial_dim = spatial_dimensions
@@ -326,6 +330,7 @@ class CatNet(torch.nn.Module):
         self.classification_structure = classification_structure
         self.batch_ensemble = batch_ensemble
         self.skip_last_activation = skip_last_activation
+        self.gaussian_process = gaussian_process
 
         if self.adn_fn is None:
             if self.spatial_dim == 2:
@@ -372,14 +377,30 @@ class CatNet(torch.nn.Module):
         if self.classification_structure is None:
             self.classification_structure = [self.last_size for _ in range(3)]
         self.gp = GlobalPooling()
-        self.classification_layer = torch.nn.Sequential(
-            MLP(
-                self.last_size,
-                final_n,
-                self.classification_structure,
-                adn_fn=get_adn_fn(1, "batch", "gelu", 0.1),
+        if self.gaussian_process:
+            self.classification_layer = torch.nn.Sequential(
+                MLP(
+                    self.last_size,
+                    self.last_size,
+                    self.classification_structure,
+                    adn_fn=get_adn_fn(1, "batch", "gelu", 0.1),
+                ),
+                GaussianProcessLayer(
+                    in_channels=self.last_size,
+                    n_rff=self.last_size,
+                    n_outputs=final_n,
+                ),
             )
-        )
+            self.gaussian_process_head = self.classification_layer[-1]
+        else:
+            self.classification_layer = torch.nn.Sequential(
+                MLP(
+                    self.last_size,
+                    final_n,
+                    self.classification_structure,
+                    adn_fn=get_adn_fn(1, "batch", "gelu", 0.1),
+                )
+            )
 
     def forward_features(
         self, X: torch.Tensor, *args, **kwargs
@@ -413,6 +434,8 @@ class CatNet(torch.nn.Module):
         """
         features = self.gp(self.feature_extraction(X, *args, **kwargs))
         if return_features is True:
+            if self.gaussian_process:
+                return self.classification_layer[0](features)
             return features
         classification = self.classification_layer(features)
         return classification
@@ -432,15 +455,33 @@ class OrdNet(CatNet):
 
     def init_classification_layer(self):
         self.gp = GlobalPooling()
-        self.classification_layer = MLP(
-            self.last_size,
-            1,
-            self.classification_structure,
-            adn_fn=get_adn_fn(1, "batch", "leaky_relu", 0.0),
-        )
-        # remove bias from last layer
-        self.classification_layer.op[-1].bias.data.zero_()
-        self.classification_layer.op[-1].bias.data.requires_grad = False
+        if self.gaussian_process:
+            self.classification_layer = torch.nn.Sequential(
+                MLP(
+                    self.last_size,
+                    self.last_size,
+                    self.classification_structure,
+                    adn_fn=get_adn_fn(1, "batch", "leaky_relu", 0.0),
+                ),
+                GaussianProcessLayer(
+                    in_channels=self.last_size,
+                    n_rff=self.last_size,
+                    n_outputs=1,
+                    ordinal=True,
+                    n_classes=self.n_classes,
+                ),
+            )
+            self.gaussian_process_head = self.classification_layer[-1]
+        else:
+            self.classification_layer = MLP(
+                self.last_size,
+                1,
+                self.classification_structure,
+                adn_fn=get_adn_fn(1, "batch", "leaky_relu", 0.0),
+            )
+            # remove bias from last layer
+            self.classification_layer.op[-1].bias.data.zero_()
+            self.classification_layer.op[-1].bias.data.requires_grad = False
 
         # initialize bias as described in the CORAL paper
         self.ordinal_bias = torch.nn.parameter.Parameter(
@@ -488,6 +529,8 @@ class OrdNet(CatNet):
         """
         features = self.gp(self.feature_extraction(X))
         if return_features is True:
+            if self.gaussian_process:
+                return self.classification_layer[0](features)
             return features
         pre_bias = self.classification_layer(features)
         p_general = pre_bias.repeat(1, self.n_classes - 1)
