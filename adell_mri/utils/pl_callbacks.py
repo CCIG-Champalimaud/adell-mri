@@ -135,9 +135,10 @@ class SpectralNorm(pl.Callback):
         [2] https://pytorch.org/docs/stable/_modules/torch/nn/utils/spectral_norm.html
 
         Args:
-            power_iterations (_type_): _description_
-            eps (_type_, optional): _description_. Defaults to 1e-8.
-            name (str, optional): _description_. Defaults to "weight".
+            power_iterations (_type_): number of power iterations.
+            eps (_type_, optional): normalization epsilon. Defaults to 1e-8.
+            name (str, optional): substring to match in parameter names.
+                Defaults to "weight".
         """
         self.power_iterations = power_iterations
         self.eps = eps
