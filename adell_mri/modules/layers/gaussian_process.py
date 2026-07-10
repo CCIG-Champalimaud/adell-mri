@@ -65,20 +65,45 @@ class GaussianProcessLayer(torch.nn.Module):
         )
 
     def update_inv_cov(self, X: torch.Tensor, y: torch.Tensor):
-        y = y.unsqueeze(-1)
         phi = self.calculate_phi(X)
         phi, phi_t = phi.unsqueeze(-2), phi.unsqueeze(-1)
         K = torch.matmul(phi_t, phi)
         if len(K.shape) > 3:
             K = K.flatten(start_dim=1, end_dim=-3)
             K = K.mean(1)
-        update_term = y * (1 - y) * K
+
+        if y.dim() == 1:
+            # binary
+            y_float = y.float().unsqueeze(-1)
+            update_term = y_float * (1 - y_float) * K
+        else:
+            # multi-class
+            y_onehot = y.float()
+            y_expanded = y_onehot.unsqueeze(-1)
+            y_expanded_t = y_onehot.unsqueeze(-2)
+            variance = y_expanded * (
+                torch.eye(y_onehot.shape[-1], device=y_onehot.device)
+                - y_expanded_t
+            )
+            update_term = torch.matmul(
+                torch.matmul(variance, K), variance.transpose(-2, -1)
+            )
+
         self.inv_conv.data = torch.add(
             self.inv_conv * self.m, (1 - self.m) * update_term.sum(0)
         )
 
     def get_cov(self):
-        self.cov = torch.linalg.inv(self.inv_conv)
+        try:
+            # small jitter for numerical stability
+            jitter = 1e-6 * torch.eye(
+                self.inv_conv.shape[-1], device=self.inv_conv.device
+            )
+            inv_conv_stable = self.inv_conv + jitter
+            self.cov = torch.linalg.inv(inv_conv_stable)
+        except torch.linalg.LinAlgError:
+            # pseudo-inverse if matrix is singular
+            self.cov = torch.linalg.pinv(self.inv_conv)
 
     def calculate_phi(self, X: torch.Tensor):
         """
@@ -134,7 +159,7 @@ class GaussianProcessLayer(torch.nn.Module):
             )
         phi = self.calculate_phi(X)
         mean = phi @ self.weights
-        cov = phi @ self.cov
+        cov = phi @ self.cov @ phi.transpose(-2, -1)
         return mean, cov
 
     def rsample(self, X: torch.Tensor, n_samples: int) -> torch.Tensor:
@@ -149,5 +174,13 @@ class GaussianProcessLayer(torch.nn.Module):
             torch.Tensor: tensor with shape [n_samples,b,out_channels].
         """
         mean, cov = self.get_parameters(X)
-        mvn = MultivariateNormal(mean, cov)
-        return mvn.rsample(n_samples)
+        try:
+            mvn = MultivariateNormal(mean, cov)
+            return mvn.rsample(n_samples)
+        except ValueError as e:
+            print(
+                f"Warning: Covariance matrix not positive semidefinite, using diagonal: {e}"
+            )
+            diag_cov = torch.diag_embed(torch.diagonal(cov, dim1=-2, dim2=-1))
+            mvn = MultivariateNormal(mean, diag_cov)
+            return mvn.rsample(n_samples)
