@@ -75,7 +75,11 @@ class GaussianProcessLayer(torch.nn.Module):
         if y.dim() == 1:
             # binary
             y_float = y.float().unsqueeze(-1)
-            update_term = y_float * (1 - y_float) * K
+            variance = y_float * (1 - y_float)
+            variance = variance.unsqueeze(-1).expand(
+                -1, K.shape[-1], K.shape[-1]
+            )
+            update_term = variance * K
         else:
             # multi-class
             y_onehot = y.float()
@@ -158,8 +162,10 @@ class GaussianProcessLayer(torch.nn.Module):
                 "self.get_cov() must be called before getting parameters"
             )
         phi = self.calculate_phi(X)
-        mean = phi @ self.weights
-        cov = phi @ self.cov @ phi.transpose(-2, -1)
+        mean = phi @ self.weights.T
+        cov_feature_product = self.cov @ phi.unsqueeze(-1)
+        var = (phi.unsqueeze(-2) @ cov_feature_product).squeeze(-1).squeeze(-1)
+        cov = torch.diag_embed(var.unsqueeze(-1).expand(-1, self.out_channels))
         return mean, cov
 
     def rsample(self, X: torch.Tensor, n_samples: int) -> torch.Tensor:
@@ -176,11 +182,11 @@ class GaussianProcessLayer(torch.nn.Module):
         mean, cov = self.get_parameters(X)
         try:
             mvn = MultivariateNormal(mean, cov)
-            return mvn.rsample(n_samples)
+            return mvn.rsample([n_samples])
         except ValueError as e:
             print(
                 f"Warning: Covariance matrix not positive semidefinite, using diagonal: {e}"
             )
             diag_cov = torch.diag_embed(torch.diagonal(cov, dim1=-2, dim2=-1))
             mvn = MultivariateNormal(mean, diag_cov)
-            return mvn.rsample(n_samples)
+            return mvn.rsample([n_samples])
