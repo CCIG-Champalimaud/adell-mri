@@ -70,8 +70,6 @@ class TestGPPLModule(ClassPLABC):
 
 def test_dedicated_gp_predict_step():
     """Test the dedicated predict_step_gp method"""
-    print("Testing dedicated predict_step_gp method...")
-
     # Setup
     input_dim, hidden_dim, output_dim = 64, 32, 1
     batch_size = 8
@@ -92,23 +90,18 @@ def test_dedicated_gp_predict_step():
     batch = {pl_module.image_key: x, pl_module.label_key: y}
 
     # Test 1: Standard predict_step still works
-    print("  Test 1: Standard predict_step unchanged...")
     prediction = pl_module.predict_step(batch, 0)
     assert prediction.shape == (batch_size, output_dim)
-    print("    ✓ Standard predict_step works unchanged")
 
     # Test 2: GP fitting
-    print("  Test 2: Fitting GP...")
     for batch_train in dataloader:
         x_train, y_train = batch_train
         features = network.forward_features(x_train)
         pl_module.gaussian_process_head.update_inv_cov(features, y_train)
     pl_module.gaussian_process_head.get_cov()
     assert hasattr(pl_module.gaussian_process_head, "cov")
-    print("    ✓ GP fitting completed")
 
     # Test 3: Dedicated GP predict_step
-    print("  Test 3: Dedicated predict_step_gp...")
     result = pl_module.predict_step_gp(batch, 0, n_samples=n_samples)
 
     # Check result structure
@@ -132,10 +125,7 @@ def test_dedicated_gp_predict_step():
     assert result["predictive_std"].shape == (batch_size, output_dim)
     assert result["epistemic_uncertainty"].shape == (batch_size, output_dim)
 
-    print("    ✓ Dedicated GP predict_step works")
-
     # Test 4: Non-GP model should raise error
-    print("  Test 4: Non-GP model should raise error...")
     network_no_gp = SimpleGPNetwork(
         input_dim, hidden_dim, output_dim, use_gp=False
     )
@@ -146,10 +136,8 @@ def test_dedicated_gp_predict_step():
         assert False, "Should have raised RuntimeError"
     except RuntimeError as e:
         assert "Gaussian process is not enabled" in str(e)
-        print("    ✓ Non-GP model correctly raises error")
 
     # Test 5: GP not fitted should raise error
-    print("  Test 5: GP not fitted should raise error...")
     network_unfitted = SimpleGPNetwork(
         input_dim, hidden_dim, output_dim, use_gp=True
     )
@@ -160,14 +148,10 @@ def test_dedicated_gp_predict_step():
         assert False, "Should have raised RuntimeError"
     except RuntimeError as e:
         assert "not fitted" in str(e)
-        print("    ✓ Unfitted GP correctly raises error")
-
-    print("\n🎉 All dedicated GP predict_step tests passed!")
 
 
 def test_multiclass_dedicated_gp():
     """Test dedicated GP predict_step with multiclass"""
-    print("Testing multiclass dedicated GP predict_step...")
 
     # Setup
     input_dim, hidden_dim, n_classes = 64, 32, 4
@@ -201,11 +185,7 @@ def test_multiclass_dedicated_gp():
     assert result["predictions"].shape == (batch_size, n_classes)
     assert result["predictive_mean"].shape == (batch_size, n_classes)
 
-    print("  ✓ Multiclass dedicated GP prediction works")
-    print("🎉 Multiclass test passed!")
-
 
 if __name__ == "__main__":
     test_dedicated_gp_predict_step()
     test_multiclass_dedicated_gp()
-    print("\n✅ All dedicated GP predict_step tests completed successfully!")
