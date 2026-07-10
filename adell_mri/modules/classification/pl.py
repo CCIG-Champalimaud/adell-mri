@@ -389,7 +389,7 @@ class ClassPLABC(pl.LightningModule, ABC):
                     for batch in pbar:
                         x, y = batch[self.image_key], batch[self.label_key]
                         self.gaussian_process_head.update_inv_cov(x, y)
-                    self.cov = torch.linalg.inv(self.inv_conv)
+                    self.gaussian_process_head.get_cov()
 
     def calibrate(self, dataloader):
         """
