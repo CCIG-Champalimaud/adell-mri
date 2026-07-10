@@ -205,6 +205,12 @@ argument_factory = {
             warmup ends.",
     ),
     "n_classes": dict(type=int, default=2, help="Number of classes"),
+    "spectral_norm_power_iterations": dict(
+        type=int,
+        default=None,
+        help="Performs spectral normalization on network weights with this number "
+        "of power iterations. Defaults to None (no spectral normalization).",
+    ),
     # collects params from yaml files
     "params_from": dict(
         type=str,

@@ -24,6 +24,7 @@ from adell_mri.utils.dataset import Dataset
 from adell_mri.utils.logging import CSVLogger
 from adell_mri.utils.network_factories import get_classification_network
 from adell_mri.utils.parser import get_params, merge_args, parse_ids
+from adell_mri.utils.pl_callbacks import SpectralNorm
 from adell_mri.utils.pl_utils import (
     delete_checkpoints,
     get_ckpt_callback,
@@ -117,6 +118,7 @@ def main(arguments):
             "correct_classification_bias",
             "batch_size",
             "learning_rate",
+            "spectral_norm_power_iterations",
         ]
     )
 
@@ -566,6 +568,12 @@ def main(arguments):
 
         if ckpt_callback is not None:
             callbacks.append(ckpt_callback)
+
+        if args.spectral_norm_power_iterations is not None:
+            spectral_norm = SpectralNorm(
+                power_iterations=args.spectral_norm_power_iterations
+            )
+            callbacks.append(spectral_norm)
 
         pl_logger = get_logger(
             summary_name=args.summary_name,

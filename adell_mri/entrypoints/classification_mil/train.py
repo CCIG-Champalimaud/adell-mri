@@ -29,6 +29,7 @@ from adell_mri.utils.monai_transforms import (
     ScaleIntensityAlongDimd,
 )
 from adell_mri.utils.parser import get_params, merge_args, parse_ids
+from adell_mri.utils.pl_callbacks import SpectralNorm
 from adell_mri.utils.pl_utils import (
     GPULock,
     get_ckpt_callback,
@@ -108,6 +109,7 @@ def main(arguments):
             "weighted_sampling",
             "correct_classification_bias",
             "class_weights",
+            "spectral_norm_power_iterations",
         ]
     )
 
@@ -477,6 +479,13 @@ def main(arguments):
         )
         if ckpt_callback is not None:
             callbacks.append(ckpt_callback)
+
+        if args.spectral_norm_power_iterations is not None:
+            spectral_norm = SpectralNorm(
+                power_iterations=args.spectral_norm_power_iterations
+            )
+            callbacks.append(spectral_norm)
+
         ckpt = ckpt_callback is not None
         if status == "finished":
             continue

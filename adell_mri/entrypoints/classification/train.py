@@ -518,6 +518,12 @@ def main(arguments):
             )
             callbacks.append(swa_callback)
 
+        if args.spectral_norm_power_iterations is not None:
+            spectral_norm = SpectralNorm(
+                power_iterations=args.spectral_norm_power_iterations
+            )
+            callbacks.append(spectral_norm)
+
         pl_logger = get_logger(
             summary_name=args.summary_name,
             summary_dir=args.summary_dir,

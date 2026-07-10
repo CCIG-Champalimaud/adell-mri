@@ -14,7 +14,7 @@ from adell_mri.utils.dicom_dataset import filter_dicom_dict_on_presence
 from adell_mri.utils.dicom_loader import DICOMDataset, SliceSampler
 from adell_mri.utils.network_factories import get_gan_network
 from adell_mri.utils.parser import get_params, merge_args
-from adell_mri.utils.pl_callbacks import LogImageFromGAN
+from adell_mri.utils.pl_callbacks import LogImageFromGAN, SpectralNorm
 from adell_mri.utils.pl_utils import get_ckpt_callback, get_devices, get_logger
 from adell_mri.utils.python_logging import get_logger as get_python_logger
 from adell_mri.utils.torch_utils import (
@@ -94,6 +94,7 @@ def main(arguments):
             "log_model",
             "summary_dir",
             "summary_name",
+            "spectral_norm_power_iterations",
             "tracking_uri",
             "monitor",
             "metric_path",
@@ -273,6 +274,13 @@ def main(arguments):
 
     if ckpt_callback is not None:
         callbacks.append(ckpt_callback)
+
+    if args.spectral_norm_power_iterations is not None:
+        spectral_norm = SpectralNorm(
+            power_iterations=args.spectral_norm_power_iterations
+        )
+        callbacks.append(spectral_norm)
+
     ckpt = ckpt_callback is not None
     if status == "finished":
         logger.info("Training has finished")

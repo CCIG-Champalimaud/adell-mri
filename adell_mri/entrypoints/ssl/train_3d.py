@@ -85,6 +85,7 @@ def main(arguments):
             "gradient_clip_val",
             ("warmup_steps", "warmup_epochs"),
             "dropout_param",
+            "spectral_norm_power_iterations",
         ]
     )
 
@@ -305,6 +306,13 @@ def main(arguments):
     )
     if ckpt_callback is not None:
         callbacks.append(ckpt_callback)
+
+    if args.spectral_norm_power_iterations is not None:
+        spectral_norm = SpectralNorm(
+            power_iterations=args.spectral_norm_power_iterations
+        )
+        callbacks.append(spectral_norm)
+
     ckpt = ckpt_callback is not None
     if status == "finished":
         logger.info("Training has finished")

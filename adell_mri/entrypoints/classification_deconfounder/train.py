@@ -25,6 +25,7 @@ from adell_mri.utils.network_factories import (
     get_deconfounded_classification_network,
 )
 from adell_mri.utils.parser import get_params, merge_args, parse_ids
+from adell_mri.utils.pl_callbacks import SpectralNorm
 from adell_mri.utils.pl_utils import (
     delete_checkpoints,
     get_ckpt_callback,
@@ -120,6 +121,7 @@ def main(arguments):
             "class_weights",
             "weighted_sampling",
             "correct_classification_bias",
+            "spectral_norm_power_iterations",
         ]
     )
 
@@ -520,6 +522,12 @@ def main(arguments):
 
         if ckpt_callback is not None:
             callbacks.append(ckpt_callback)
+
+        if args.spectral_norm_power_iterations is not None:
+            spectral_norm = SpectralNorm(
+                power_iterations=args.spectral_norm_power_iterations
+            )
+            callbacks.append(spectral_norm)
 
         if args.swa is True:
             swa_callback = StochasticWeightAveraging(

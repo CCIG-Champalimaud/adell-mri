@@ -21,6 +21,7 @@ from adell_mri.utils.dataset_filters import (
 )
 from adell_mri.utils.detection import anchors_from_nested_list
 from adell_mri.utils.network_factories import get_detection_network
+from adell_mri.utils.pl_callbacks import SpectralNorm
 from adell_mri.utils.pl_utils import get_ckpt_callback, get_devices, get_logger
 from adell_mri.utils.python_logging import get_logger as get_python_logger
 from adell_mri.utils.sitk_utils import spacing_from_dataset_json
@@ -87,6 +88,7 @@ def main(arguments):
             "subsample_size",
             "dropout_param",
             "iou_threshold",
+            "spectral_norm_power_iterations",
         ]
     )
 
@@ -309,6 +311,12 @@ def main(arguments):
             continue
         if ckpt_callback is not None:
             callbacks.append(ckpt_callback)
+
+        if args.spectral_norm_power_iterations is not None:
+            spectral_norm = SpectralNorm(
+                power_iterations=args.spectral_norm_power_iterations
+            )
+            callbacks.append(spectral_norm)
 
         pl_logger = get_logger(
             summary_name=args.summary_name,

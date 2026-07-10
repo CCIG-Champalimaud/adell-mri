@@ -17,6 +17,7 @@ from adell_mri.utils.parser import compose, get_params, merge_args
 from adell_mri.utils.pl_callbacks import (
     EMACallback,
     LogImageFromDiffusionProcess,
+    SpectralNorm,
 )
 from adell_mri.utils.pl_utils import get_ckpt_callback, get_devices, get_logger
 from adell_mri.utils.python_logging import get_logger as get_python_logger
@@ -101,6 +102,7 @@ def main(arguments):
             "diffusion_steps",
             "ema_decay",
             "fill_missing_with_placeholder",
+            "spectral_norm_power_iterations",
         ]
     )
 
@@ -294,6 +296,12 @@ def main(arguments):
 
     if ckpt_callback is not None:
         callbacks.append(ckpt_callback)
+
+    if args.spectral_norm_power_iterations is not None:
+        spectral_norm = SpectralNorm(
+            power_iterations=args.spectral_norm_power_iterations
+        )
+        callbacks.append(spectral_norm)
 
     if args.ema_decay is not None:
         callbacks.append(

@@ -25,6 +25,7 @@ from adell_mri.utils.monai_transforms import (
     SlicesToFirst,
 )
 from adell_mri.utils.parser import parse_ids
+from adell_mri.utils.pl_callbacks import SpectralNorm
 from adell_mri.utils.pl_utils import get_ckpt_callback, get_devices, get_logger
 from adell_mri.utils.python_logging import get_logger as get_python_logger
 from adell_mri.utils.samplers import PartiallyRandomSampler
@@ -130,6 +131,7 @@ def main(arguments):
             "metric_path",
             "early_stopping",
             ("class_weights", "class_weights", {"default": [1.0]}),
+            "spectral_norm_power_iterations",
         ]
     )
 
@@ -352,6 +354,12 @@ def main(arguments):
             continue
         if ckpt_callback is not None:
             callbacks.append(ckpt_callback)
+
+        if args.spectral_norm_power_iterations is not None:
+            spectral_norm = SpectralNorm(
+                power_iterations=args.spectral_norm_power_iterations
+            )
+            callbacks.append(spectral_norm)
 
         if args.checkpoint is not None:
             if len(args.checkpoint) >= (val_fold + 1):
