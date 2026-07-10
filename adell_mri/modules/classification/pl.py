@@ -435,6 +435,67 @@ class ClassPLABC(pl.LightningModule, ABC):
         prediction = self.forward(x, *args, **kwargs)
         return prediction
 
+    def predict_step_gp(self, batch, batch_idx, n_samples=100):
+        """
+        Performs prediction with GP uncertainty estimation.
+        Dedicated method for models with fitted Gaussian process layers.
+
+        Args:
+            batch: Input batch containing images
+            batch_idx: Index of current batch
+            n_samples (int): Number of GP samples for uncertainty estimation
+                (default: 100)
+
+        Returns:
+            dict: Dictionary containing predictions and uncertainty estimates:
+                - predictions: Original model predictions
+                - gp_mean: GP posterior mean
+                - gp_samples: Monte Carlo samples from GP posterior
+                - predictive_mean: Mean of GP samples
+                - predictive_std: Standard deviation of GP samples
+                - epistemic_uncertainty: Model uncertainty from GP covariance
+
+        Raises:
+            RuntimeError: If GP is not enabled or not fitted
+        """
+        if not (hasattr(self, "gaussian_process") and self.gaussian_process):
+            raise RuntimeError("Gaussian process is not enabled for this model")
+
+        if not (
+            hasattr(self, "gaussian_process_head")
+            and hasattr(self.gaussian_process_head, "cov")
+        ):
+            raise RuntimeError(
+                "Gaussian process is not fitted. Call on_fit_end() first."
+            )
+
+        x = batch[self.image_key]
+        prediction = self.forward(x)
+
+        features = (
+            self.network.forward_features(x)
+            if hasattr(self.network, "forward_features")
+            else x
+        )
+
+        gp_mean, gp_cov = self.gaussian_process_head.get_parameters(features)
+        gp_samples = self.gaussian_process_head.rsample(features, n_samples)
+
+        predictive_mean = gp_samples.mean(dim=0)
+        # this is also the total uncertainty
+        predictive_std = gp_samples.std(dim=0)
+
+        epistemic_uncertainty = torch.diagonal(gp_cov, dim1=-2, dim2=-1)
+
+        return {
+            "predictions": prediction,
+            "gp_mean": gp_mean,
+            "gp_samples": gp_samples,
+            "predictive_mean": predictive_mean,
+            "predictive_std": predictive_std,
+            "epistemic_uncertainty": epistemic_uncertainty,
+        }
+
     def predict_calibrated_step(self, batch, batch_idx, *args, **kwargs):
         """
         Performs prediction on a batch using the calibrated model. Model must
