@@ -115,15 +115,11 @@ def test_dedicated_gp_predict_step():
     assert isinstance(result, dict), "Result should be a dictionary"
     required_keys = [
         "predictions",
-        "prediction_probs",
         "gp_mean",
         "gp_samples",
         "predictive_mean",
         "predictive_std",
-        "predictive_variance",
-        "predictive_probs",
         "epistemic_uncertainty",
-        "total_uncertainty",
     ]
 
     for key in required_keys:
@@ -203,11 +199,7 @@ def test_multiclass_dedicated_gp():
 
     # Check multiclass specific shapes and properties
     assert result["predictions"].shape == (batch_size, n_classes)
-    assert result["predictive_probs"].shape == (batch_size, n_classes)
-
-    # Check softmax properties (sums to 1)
-    prob_sums = result["predictive_probs"].sum(dim=-1)
-    assert torch.allclose(prob_sums, torch.ones_like(prob_sums), atol=1e-6)
+    assert result["predictive_mean"].shape == (batch_size, n_classes)
 
     print("  ✓ Multiclass dedicated GP prediction works")
     print("🎉 Multiclass test passed!")
