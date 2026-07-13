@@ -116,6 +116,7 @@ def main(arguments):
             "class_weights",
             "weighted_sampling",
             "correct_classification_bias",
+            "spectral_norm_power_iterations",
         ]
     )
 
