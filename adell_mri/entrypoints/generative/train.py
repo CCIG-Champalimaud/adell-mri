@@ -299,7 +299,7 @@ def main(arguments):
 
     if args.spectral_norm_power_iterations is not None:
         spectral_norm = SpectralNorm(
-            power_iterations=args.spectral_norm_power_iterations
+            n_power_iterations=args.spectral_norm_power_iterations
         )
         callbacks.append(spectral_norm)
 
