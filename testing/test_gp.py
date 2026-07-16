@@ -13,6 +13,26 @@ a, b, c = 16, 32, 64
 n = 4
 
 
+def test_gp_forward_matches_random_feature_projection():
+    gp = GaussianProcessLayer(2, 3, n_classes=2, n_outputs=2)
+    input_tensor = torch.tensor([[1.0, -2.0], [0.5, 3.0]])
+    with torch.no_grad():
+        gp.W.copy_(torch.tensor([[[1.0, -0.5], [-2.0, 1.0], [0.25, 2.0]]]))
+        gp.b.copy_(torch.tensor([[0.0, torch.pi / 2, torch.pi]]))
+        gp.weights.copy_(torch.tensor([[1.0, -1.0, 0.5], [-0.5, 2.0, 1.0]]))
+        gp.output_bias.copy_(torch.tensor([0.25, -1.5]))
+
+    output, phi = gp.forward_with_phi(input_tensor)
+    expected_phi = torch.sqrt(torch.tensor(2.0 / 3.0)) * torch.cos(
+        -(input_tensor @ gp.W.squeeze(0).T) + gp.b
+    )
+
+    torch.testing.assert_close(phi, expected_phi)
+    torch.testing.assert_close(
+        output, expected_phi @ gp.weights.T + gp.output_bias
+    )
+
+
 def test_gp_1d():
     gp = GaussianProcessLayer(i, o, n_classes=2)
     input_tensor = torch.as_tensor(

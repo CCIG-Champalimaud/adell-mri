@@ -69,17 +69,20 @@ class GaussianProcessLayer(torch.nn.Module):
         i = self.in_channels
         r = self.n_rff
         o = self.n_outputs
-        self.scaling_term = torch.sqrt(torch.as_tensor(2.0 / i))
+        self.scaling_term = torch.sqrt(torch.as_tensor(2.0 / r))
         self.W = torch.nn.Parameter(
             torch.normal(torch.zeros([1, r, i]), torch.ones([1, r, i])).float(),
             requires_grad=False,
         )
         self.b = torch.nn.Parameter(
-            torch.rand([1, r]).float() * torch.pi, requires_grad=False
+            torch.rand([1, r]).float() * (2 * torch.pi), requires_grad=False
         )
         self.weights = torch.nn.Parameter(
             torch.normal(torch.zeros([o, r]), torch.ones([o, r])).float(),
             requires_grad=True,
+        )
+        self.output_bias = torch.nn.Parameter(
+            torch.zeros(o), requires_grad=True
         )
         self.inv_conv = torch.nn.Parameter(
             torch.eye(r, r).unsqueeze(0).float(), requires_grad=False
@@ -200,7 +203,7 @@ class GaussianProcessLayer(torch.nn.Module):
         self, X: torch.Tensor
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         phi = self.calculate_phi(X)
-        output = phi @ self.weights.T
+        output = phi @ self.weights.T + self.output_bias
         if len(output.shape) > 2:
             output = output.swapaxes(1, -1)
         return output, phi
@@ -239,7 +242,7 @@ class GaussianProcessLayer(torch.nn.Module):
                 "self.get_cov() must be called before getting parameters"
             )
         phi = self.calculate_phi(X)
-        mean = phi @ self.weights.T
+        mean = phi @ self.weights.T + self.output_bias
         cov_feature_product = self.cov @ phi.unsqueeze(-1)
         var = (phi.unsqueeze(-2) @ cov_feature_product).squeeze(-1).squeeze(-1)
         cov = torch.diag_embed(var.unsqueeze(-1).expand(-1, self.n_outputs))
