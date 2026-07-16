@@ -1,6 +1,7 @@
 """
 Test the dedicated predict_step_gp implementation.
 """
+
 import os
 import sys
 
@@ -99,7 +100,9 @@ def test_dedicated_gp_predict_step():
     for batch_train in dataloader:
         x_train, y_train = batch_train
         features = network.forward_features(x_train)
-        pl_module.gaussian_process_head.update_inv_cov(features, y_train)
+        logits = pl_module.gaussian_process_head(features)
+        probabilities = torch.sigmoid(logits)
+        pl_module.gaussian_process_head.update_inv_cov(features, probabilities)
     pl_module.gaussian_process_head.get_cov()
     assert hasattr(pl_module.gaussian_process_head, "cov")
 
@@ -176,7 +179,9 @@ def test_multiclass_dedicated_gp():
     for batch_train in dataloader:
         x_train, y_train = batch_train
         features = network.forward_features(x_train)
-        pl_module.gaussian_process_head.update_inv_cov(features, y_train)
+        logits = pl_module.gaussian_process_head(features)
+        probabilities = torch.softmax(logits, dim=-1)
+        pl_module.gaussian_process_head.update_inv_cov(features, probabilities)
     pl_module.gaussian_process_head.get_cov()
 
     # Test prediction with uncertainty

@@ -1,6 +1,7 @@
 """
 Test the complete GP training flow to verify integration works correctly.
 """
+
 import os
 import sys
 
@@ -47,7 +48,11 @@ class SimpleGPModel(nn.Module):
                 x, y = batch
                 features = self.feature_extractor(x)
                 features = self.prediction_head(features)
-                self.gaussian_process_head.update_inv_cov(features, y)
+                logits = self.gaussian_process_head(features)
+                probabilities = torch.softmax(logits, dim=-1)
+                self.gaussian_process_head.update_inv_cov(
+                    features, probabilities
+                )
             self.gaussian_process_head.get_cov()
 
 
@@ -156,7 +161,7 @@ def test_gp_edge_cases():
     y_single = torch.tensor([1.0]).float()
 
     output = gp(x_single)
-    gp.update_inv_cov(x_single, y_single)
+    gp.update_inv_cov(x_single, torch.full_like(y_single, 0.5))
     gp.get_cov()
 
     assert output.shape == (1, output_dim)
@@ -166,7 +171,7 @@ def test_gp_edge_cases():
     x_same = torch.randn(batch_size, input_dim)
     y_same = torch.ones(batch_size).float()
 
-    gp.update_inv_cov(x_same, y_same)
+    gp.update_inv_cov(x_same, torch.full_like(y_same, 0.5))
     gp.get_cov()  # Should not crash
 
     print("✓ GP edge cases test passed")

@@ -20,7 +20,7 @@ def test_gp_1d():
     )
     labels = torch.randint(0, 2, [n]).float()
     output = gp(input_tensor)
-    gp.update_inv_cov(input_tensor, labels)
+    gp.update_inv_cov(input_tensor, torch.full_like(labels, 0.5))
     gp.get_cov()
     assert list(output.shape) == [n, o]
     assert list(gp.cov.shape) == [1, o, o]
@@ -33,7 +33,7 @@ def test_gp_2d():
     )
     labels = torch.randint(0, 2, [n]).float()
     output = gp(input_tensor)
-    gp.update_inv_cov(input_tensor, labels)
+    gp.update_inv_cov(input_tensor, torch.full_like(labels, 0.5))
     gp.get_cov()
     assert list(output.shape) == [n, o, a]
     assert list(gp.cov.shape) == [1, o, o]
@@ -46,7 +46,7 @@ def test_gp_3d():
     )
     labels = torch.randint(0, 2, [n]).float()
     output = gp(input_tensor)
-    gp.update_inv_cov(input_tensor, labels)
+    gp.update_inv_cov(input_tensor, torch.full_like(labels, 0.5))
     gp.get_cov()
     assert list(output.shape) == [n, o, a, b]
     assert list(gp.cov.shape) == [1, o, o]
@@ -59,7 +59,7 @@ def test_gp_4d():
     )
     labels = torch.randint(0, 2, [n]).float()
     output = gp(input_tensor)
-    gp.update_inv_cov(input_tensor, labels)
+    gp.update_inv_cov(input_tensor, torch.full_like(labels, 0.5))
     gp.get_cov()
     assert list(output.shape) == [n, o, a, b, c]
     assert list(gp.cov.shape) == [1, o, o]
@@ -74,7 +74,7 @@ def test_gp_multiclass():
     )
     labels = F.one_hot(torch.randint(0, n_classes, [n]), n_classes).float()
     output = gp(input_tensor)
-    gp.update_inv_cov(input_tensor, labels)
+    gp.update_inv_cov(input_tensor, torch.full_like(labels, 0.5))
     gp.get_cov()
     assert list(output.shape) == [n, n_classes]
     assert list(gp.cov.shape) == [1, n_classes, n_classes]
@@ -88,7 +88,7 @@ def test_gp_sampling():
     )
     labels = torch.randint(0, 2, [n]).float()
 
-    gp.update_inv_cov(input_tensor, labels)
+    gp.update_inv_cov(input_tensor, torch.full_like(labels, 0.5))
     gp.get_cov()
 
     samples = gp.rsample(input_tensor, n_samples=5)
@@ -103,7 +103,7 @@ def test_gp_numerical_stability():
     )
     labels = torch.ones([n]).float()
     output = gp(input_tensor)
-    gp.update_inv_cov(input_tensor, labels)
+    gp.update_inv_cov(input_tensor, torch.full_like(labels, 0.5))
     gp.get_cov()
     assert list(output.shape) == [n, o]
     assert list(gp.cov.shape) == [1, o, o]
