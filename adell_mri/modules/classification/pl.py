@@ -513,7 +513,7 @@ class ClassPLABC(pl.LightningModule, ABC):
         gp_samples = self.gaussian_process_head.rsample(features, n_samples)
 
         predictive_mean = gp_samples.mean(dim=0)
-        # this is also the total uncertainty
+        # predictive_std is also the total uncertainty
         predictive_std = gp_samples.std(dim=0)
 
         epistemic_uncertainty = torch.diagonal(gp_cov, dim1=-2, dim2=-1)
