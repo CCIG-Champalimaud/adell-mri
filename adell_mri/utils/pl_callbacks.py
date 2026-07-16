@@ -9,6 +9,7 @@ from lightning.pytorch import LightningModule, Trainer
 from lightning.pytorch.callbacks import Callback
 from lightning.pytorch.callbacks.model_checkpoint import ModelCheckpoint
 from PIL import Image
+from torch.nn.utils.parametrizations import spectral_norm
 
 from adell_mri.utils.utils import ExponentialMovingAverage
 
@@ -122,75 +123,61 @@ def reshape_weight_to_matrix(
 
 
 class SpectralNorm(pl.Callback):
-    def __init__(self, power_iterations, eps=1e-8, name="weight"):
-        """
-        Callback that performs spectral normalization before each training
-        batch. It uses the same power iteration implementation as specified in
-        [1] and is largely based in the PyTorch implementation [2].
+    """
+    PyTorch Lightning Callback that dynamically applies PyTorch's native,
+    autograd-safe spectral normalization to all compatible layers before
+    training starts.
+    """
 
-        Importantly, this stores u and v as a parameter dict within the
-        callback rather than as a part of
-
-        [1] https://arxiv.org/abs/1802.05957
-        [2] https://pytorch.org/docs/stable/_modules/torch/nn/utils/spectral_norm.html
-
-        Args:
-            power_iterations (_type_): number of power iterations.
-            eps (_type_, optional): normalization epsilon. Defaults to 1e-8.
-            name (str, optional): substring to match in parameter names.
-                Defaults to "weight".
-        """
-        self.power_iterations = power_iterations
-        self.eps = eps
-        self.name = name
-
-        self.u_dict = torch.nn.ParameterDict({})
-        self.v_dict = torch.nn.ParameterDict({})
-
-    def on_train_batch_start(
+    def __init__(
         self,
-        trainer: pl.Trainer,
-        pl_module: pl.LightningModule,
-        batch: Sequence,
-        batch_idx: int,
+        name: str = "weight",
+        n_power_iterations: int = 1,
+        eps: float = 1e-12,
     ):
-        return self(pl_module)
+        """
+        Args:
+            name (str): The name of the parameter to normalize (usually "weight").
+            n_power_iterations (int): Number of power iterations to calculate spectral norm.
+            eps (float): Epsilon to avoid division by zero.
+        """
+        super().__init__()
+        self.name = name
+        self.n_power_iterations = n_power_iterations
+        self.eps = eps
 
-    def __call__(self, module):
-        for k, param in module.named_parameters():
-            if self.name in k:
-                weight = deepcopy(param.data)
-                sh = weight.shape
-                weight_mat = reshape_weight_to_matrix(weight)
-                h, w = weight_mat.size()
-                if k not in self.u_dict:
-                    u = weight.new_empty(h).normal_(0, 1)
-                    v = weight.new_empty(w).normal_(0, 1)
-                    self.u_dict[k.replace(".", "_")] = torch.nn.Parameter(u)
-                    self.v_dict[k.replace(".", "_")] = torch.nn.Parameter(v)
+    def setup(
+        self, trainer: pl.Trainer, pl_module: pl.LightningModule, stage: str
+    ) -> None:
+        """
+        Recursively traverses the model and applies spectral normalization.
+        """
+        self._apply_spectral_norm(pl_module)
 
-                u = self.u_dict[k.replace(".", "_")].data
-                v = self.v_dict[k.replace(".", "_")].data
-
-                with torch.no_grad():
-                    for p in range(self.power_iterations):
-                        v = F.normalize(
-                            torch.mv(weight_mat.t(), u),
-                            dim=0,
-                            eps=self.eps,
-                            out=v,
-                        )
-                        u = F.normalize(
-                            torch.mv(weight_mat, v), dim=0, eps=self.eps, out=u
-                        )
-
-                self.u_dict[k.replace(".", "_")].data = u
-                self.v_dict[k.replace(".", "_")].data = v
-
-                sigma = torch.dot(u, torch.mv(weight_mat, v))
-                weight = weight / sigma
-
-                param.data = weight.reshape(sh)
+    def _apply_spectral_norm(self, model: torch.nn.Module):
+        """
+        Traverses every module in the network and checks its direct (non-recursive)
+        parameters. If a parameter matches the naming rule and has sufficient dimension,
+        we register the native spectral norm.
+        """
+        for module in model.modules():
+            for param_name, param in list(
+                module.named_parameters(recurse=False)
+            ):
+                if self.name in param_name:
+                    if param.ndim >= 2:
+                        try:
+                            spectral_norm(
+                                module,
+                                name=param_name,
+                                n_power_iterations=self.n_power_iterations,
+                                eps=self.eps,
+                            )
+                        except Exception as e:
+                            # Catch-all to gracefully skip any edge-case non-standard modules
+                            print(
+                                f"Skipping spectral norm on {module.__class__.__name__}.{param_name}: {e}"
+                            )
 
 
 class LogImage(Callback):
