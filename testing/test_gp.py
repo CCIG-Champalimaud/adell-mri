@@ -19,8 +19,9 @@ def test_gp_forward_matches_random_feature_projection():
     with torch.no_grad():
         gp.W.copy_(torch.tensor([[[1.0, -0.5], [-2.0, 1.0], [0.25, 2.0]]]))
         gp.b.copy_(torch.tensor([[0.0, torch.pi / 2, torch.pi]]))
-        gp.weights.copy_(torch.tensor([[1.0, -1.0, 0.5], [-0.5, 2.0, 1.0]]))
-        gp.output_bias.copy_(torch.tensor([0.25, -1.5]))
+        gp.output_layer.weight.copy_(
+            torch.tensor([[1.0, -1.0, 0.5], [-0.5, 2.0, 1.0]])
+        )
 
     output, phi = gp.forward_with_phi(input_tensor)
     expected_phi = torch.sqrt(torch.tensor(2.0 / 3.0)) * torch.cos(
@@ -28,9 +29,7 @@ def test_gp_forward_matches_random_feature_projection():
     )
 
     torch.testing.assert_close(phi, expected_phi)
-    torch.testing.assert_close(
-        output, expected_phi @ gp.weights.T + gp.output_bias
-    )
+    torch.testing.assert_close(output, expected_phi @ gp.output_layer.weight.T)
 
 
 def test_gp_1d():
