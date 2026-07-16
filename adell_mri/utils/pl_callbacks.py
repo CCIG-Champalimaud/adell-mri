@@ -132,6 +132,7 @@ class SpectralNorm(pl.Callback):
     def __init__(
         self,
         name: str = "weight",
+        exclude_modules: list[str] = ["GaussianProcessLayer"],
         n_power_iterations: int = 1,
         eps: float = 1e-12,
     ):
@@ -146,8 +147,11 @@ class SpectralNorm(pl.Callback):
         self.n_power_iterations = n_power_iterations
         self.eps = eps
 
-    def setup(
-        self, trainer: pl.Trainer, pl_module: pl.LightningModule, stage: str
+        self.exclude_modules = exclude_modules
+        self.exclude_modules.append("_SpectralNorm")
+
+    def on_train_start(
+        self, trainer: pl.Trainer, pl_module: pl.LightningModule
     ) -> None:
         """
         Recursively traverses the model and applies spectral normalization.
@@ -161,9 +165,13 @@ class SpectralNorm(pl.Callback):
         we register the native spectral norm.
         """
         for module in model.modules():
+            if module.__class__.__name__ in self.exclude_modules:
+                continue
             for param_name, param in list(
                 module.named_parameters(recurse=False)
             ):
+                if param.requires_grad is False:
+                    continue
                 if self.name in param_name:
                     if param.ndim >= 2:
                         try:
