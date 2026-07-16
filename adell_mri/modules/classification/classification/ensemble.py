@@ -79,7 +79,7 @@ class GenericEnsemble(torch.nn.Module):
                 ),
             )
             self.gaussian_process_head = GaussianProcessLayer(
-                self.head_structure[-1], nc
+                self.head_structure[-1], nc, self.n_classes
             )
         else:
             self.prediction_head = torch.nn.Sequential(

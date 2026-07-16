@@ -18,7 +18,9 @@ from adell_mri.modules.layers.gaussian_process import GaussianProcessLayer
 class SimpleGPNetwork(nn.Module):
     """Simple network with GP head for testing"""
 
-    def __init__(self, input_dim, hidden_dim, output_dim, use_gp=True):
+    def __init__(
+        self, input_dim, hidden_dim, output_dim, n_classes, use_gp=True
+    ):
         super().__init__()
         self.use_gp = use_gp
         self.feature_extractor = nn.Sequential(
@@ -30,7 +32,7 @@ class SimpleGPNetwork(nn.Module):
         if use_gp:
             self.prediction_head = nn.Linear(hidden_dim, output_dim)
             self.gaussian_process_head = GaussianProcessLayer(
-                output_dim, output_dim
+                output_dim, output_dim, n_classes
             )
         else:
             self.prediction_head = nn.Linear(hidden_dim, output_dim)
@@ -79,7 +81,9 @@ def test_dedicated_gp_predict_step():
     n_samples = 50
 
     # Create model with GP
-    network = SimpleGPNetwork(input_dim, hidden_dim, output_dim, use_gp=True)
+    network = SimpleGPNetwork(
+        input_dim, hidden_dim, output_dim, n_classes=2, use_gp=True
+    )
     pl_module = TestGPPLModule(network)
 
     # Create synthetic data
@@ -132,7 +136,7 @@ def test_dedicated_gp_predict_step():
 
     # Test 4: Non-GP model should raise error
     network_no_gp = SimpleGPNetwork(
-        input_dim, hidden_dim, output_dim, use_gp=False
+        input_dim, hidden_dim, output_dim, n_classes=2, use_gp=False
     )
     pl_module_no_gp = TestGPPLModule(network_no_gp)
 
@@ -144,7 +148,7 @@ def test_dedicated_gp_predict_step():
 
     # Test 5: GP not fitted should raise error
     network_unfitted = SimpleGPNetwork(
-        input_dim, hidden_dim, output_dim, use_gp=True
+        input_dim, hidden_dim, output_dim, n_classes=2, use_gp=True
     )
     pl_module_unfitted = TestGPPLModule(network_unfitted)
 
@@ -164,7 +168,9 @@ def test_multiclass_dedicated_gp():
     n_samples = 30
 
     # Create multiclass model with GP
-    network = SimpleGPNetwork(input_dim, hidden_dim, n_classes, use_gp=True)
+    network = SimpleGPNetwork(
+        input_dim, hidden_dim, n_classes, n_classes, use_gp=True
+    )
     pl_module = TestGPPLModule(network)
     pl_module.n_classes = n_classes
 

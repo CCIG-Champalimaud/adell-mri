@@ -378,18 +378,52 @@ class ClassPLABC(pl.LightningModule, ABC):
         self.log("lr", last_lr, sync_dist=True, prog_bar=True)
         gc.collect()
 
+    def classification_probabilities(
+        self, logits: torch.Tensor
+    ) -> torch.Tensor:
+        """
+        Converts classification logits to probabilities.
+
+        Args:
+            logits (torch.Tensor): Classification logits produced by the GP
+                classification head.
+
+        Returns:
+            torch.Tensor: Binary, multiclass, or ordinal probabilities.
+        """
+        if self.net_type == "ord":
+            logits = logits.repeat(1, self.n_classes - 1)
+            logits = logits + (
+                self.network.ordinal_bias * self.network.ordinal_bias_scale
+            )
+            return torch.sigmoid(logits)
+        if self.n_classes == 2:
+            return torch.sigmoid(logits)
+        return torch.softmax(logits, dim=1)
+
     def on_fit_end(self):
         """
         Called when fitting ends. Updates Gaussian process if enabled.
         """
         if hasattr(self, "gaussian_process") and self.gaussian_process:
-            with tqdm(self.training_dataloader_call()) as pbar:
+            self.eval()
+            self.gaussian_process_head.reset_inv_cov()
+            with torch.no_grad(), tqdm(self.training_dataloader_call()) as pbar:
                 pbar.set_description("Fitting GP covariance")
-                for batch in pbar:
-                    x, y = batch[self.image_key], batch[self.label_key]
+                for batch_idx, batch in enumerate(pbar):
+                    batch = self.transfer_batch_to_device(
+                        batch, self.device, batch_idx
+                    )
+                    x = batch[self.image_key]
                     features = self.network.forward_features(x)
-                    self.gaussian_process_head.update_inv_cov(features, y)
-                self.gaussian_process_head.get_cov()
+                    logits, phi = self.gaussian_process_head.forward_with_phi(
+                        features
+                    )
+                    probabilities = self.classification_probabilities(logits)
+                    self.gaussian_process_head.update_inv_cov_from_phi(
+                        phi, probabilities
+                    )
+            self.gaussian_process_head.get_cov()
 
     def calibrate(self, dataloader):
         """

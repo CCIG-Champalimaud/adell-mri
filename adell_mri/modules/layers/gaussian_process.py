@@ -34,23 +34,22 @@ class GaussianProcessLayer(torch.nn.Module):
         self,
         in_channels: int,
         n_rff: int,
+        n_classes: int,
         n_outputs: int = None,
         m: float = 0.999,
         ordinal: bool = False,
-        n_classes: int = None,
     ):
         """
         Args:
             in_channels (int): input channels.
             n_rff (int): number of random Fourier features.
+            n_classes (int): number of classes.
             n_outputs (int, optional): output dimensionality. Defaults to
                 n_rff (backward compatible with old out_channels-only API).
             m (float, optional): momentum for updating inv covariance matrix.
                 Defaults to 0.999.
             ordinal (bool, optional): whether this layer is used for ordinal
                 classification. Defaults to False.
-            n_classes (int, optional): number of classes (required when
-                ordinal=True). Defaults to None.
         """
         super().__init__()
         self.in_channels = in_channels
@@ -83,49 +82,51 @@ class GaussianProcessLayer(torch.nn.Module):
             torch.eye(r, r).unsqueeze(0).float(), requires_grad=False
         )
 
-    def update_inv_cov(self, X: torch.Tensor, y: torch.Tensor):
+    @torch.no_grad()
+    def update_inv_cov(
+        self,
+        X: torch.Tensor,
+        probabilities: torch.Tensor,
+        use_momentum: bool = False,
+    ):
         phi = self.calculate_phi(X)
-        phi, phi_t = phi.unsqueeze(-2), phi.unsqueeze(-1)
-        K = torch.matmul(phi_t, phi)
-        if len(K.shape) > 3:
-            K = K.flatten(start_dim=1, end_dim=-3)
-            K = K.mean(1)
+        self.update_inv_cov_from_phi(phi, probabilities, use_momentum)
 
+    @torch.no_grad()
+    def update_inv_cov_from_phi(
+        self,
+        phi: torch.Tensor,
+        probabilities: torch.Tensor,
+        use_momentum: bool = False,
+    ):
+        probabilities = probabilities.to(dtype=phi.dtype)
         if self.ordinal:
-            # ordinal: scalar latent with cumulative-link likelihood.
-            # essentially treats each probability as an individual binary probability.
-            with torch.no_grad():
-                f_mean = self.forward(X)
-                p_cum = torch.sigmoid(f_mean)
-                variance = p_cum * (1 - p_cum)
-                variance = variance.unsqueeze(-1).expand(
-                    -1, K.shape[-1], K.shape[-1]
-                )
-            update_term = variance * K
-        elif y.dim() == 1:
-            # binary
-            y_float = y.float().unsqueeze(-1)
-            variance = y_float * (1 - y_float)
-            variance = variance.unsqueeze(-1).expand(
-                -1, K.shape[-1], K.shape[-1]
-            )
-            update_term = variance * K
+            curvature = (probabilities * (1 - probabilities)).sum(-1)
+        elif self.n_classes == 2:
+            curvature = probabilities * (1 - probabilities)
         else:
-            # multi-class
-            y_onehot = y.float()
-            y_expanded = y_onehot.unsqueeze(-1)
-            y_expanded_t = y_onehot.unsqueeze(-2)
-            variance = y_expanded * (
-                torch.eye(y_onehot.shape[-1], device=y_onehot.device)
-                - y_expanded_t
-            )
-            update_term = torch.matmul(
-                torch.matmul(variance, K), variance.transpose(-2, -1)
-            )
+            curvature = (probabilities * (1 - probabilities)).sum(-1)
+        phi = phi.flatten(end_dim=-2)
+        curvature = curvature.flatten()
+        update_term = torch.einsum("n,ni,nj->ij", curvature, phi, phi)
+        update_term = update_term.unsqueeze(0)
 
-        self.inv_conv.data = torch.add(
-            self.inv_conv * self.m, (1 - self.m) * update_term.sum(0)
+        if use_momentum:
+            self.inv_conv.mul_(self.m).add_(update_term, alpha=1 - self.m)
+        else:
+            self.inv_conv.add_(update_term)
+
+    @torch.no_grad()
+    def reset_inv_cov(self):
+        self.inv_conv.copy_(
+            torch.eye(
+                self.n_rff,
+                dtype=self.inv_conv.dtype,
+                device=self.inv_conv.device,
+            ).unsqueeze(0)
         )
+        if hasattr(self, "cov"):
+            del self.cov
 
     def get_cov(self):
         try:
@@ -155,6 +156,15 @@ class GaussianProcessLayer(torch.nn.Module):
         mm = torch.matmul(-W, X).squeeze(-1)
         return self.scaling_term * torch.cos(mm + self.b)
 
+    def forward_with_phi(
+        self, X: torch.Tensor
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        phi = self.calculate_phi(X)
+        output = phi @ self.weights.T
+        if len(output.shape) > 2:
+            output = output.swapaxes(1, -1)
+        return output, phi
+
     def forward(self, X: torch.Tensor):
         """
         Uses phi to calculate the mean (phi * self.weights)
@@ -165,10 +175,7 @@ class GaussianProcessLayer(torch.nn.Module):
         Returns:
             mean of the Gaussian process
         """
-        phi = self.calculate_phi(X)
-        output = phi @ self.weights.T
-        if len(output.shape) > 2:
-            output = output.swapaxes(1, -1)
+        output, _ = self.forward_with_phi(X)
         return output
 
     def get_parameters(

@@ -14,7 +14,7 @@ n = 4
 
 
 def test_gp_1d():
-    gp = GaussianProcessLayer(i, o)
+    gp = GaussianProcessLayer(i, o, n_classes=2)
     input_tensor = torch.as_tensor(
         np.random.normal(size=[n, i]), dtype=torch.float32
     )
@@ -27,39 +27,42 @@ def test_gp_1d():
 
 
 def test_gp_2d():
-    gp = GaussianProcessLayer(i, o)
+    gp = GaussianProcessLayer(i, o, n_classes=2)
     input_tensor = torch.as_tensor(
         np.random.normal(size=[n, i, a]), dtype=torch.float32
     )
     labels = torch.randint(0, 2, [n]).float()
     output = gp(input_tensor)
-    gp.update_inv_cov(input_tensor, torch.full_like(labels, 0.5))
+    probabilities = torch.full((n, a), 0.5)
+    gp.update_inv_cov(input_tensor, probabilities)
     gp.get_cov()
     assert list(output.shape) == [n, o, a]
     assert list(gp.cov.shape) == [1, o, o]
 
 
 def test_gp_3d():
-    gp = GaussianProcessLayer(i, o)
+    gp = GaussianProcessLayer(i, o, n_classes=2)
     input_tensor = torch.as_tensor(
         np.random.normal(size=[n, i, a, b]), dtype=torch.float32
     )
     labels = torch.randint(0, 2, [n]).float()
     output = gp(input_tensor)
-    gp.update_inv_cov(input_tensor, torch.full_like(labels, 0.5))
+    probabilities = torch.full((n, a, b), 0.5)
+    gp.update_inv_cov(input_tensor, probabilities)
     gp.get_cov()
     assert list(output.shape) == [n, o, a, b]
     assert list(gp.cov.shape) == [1, o, o]
 
 
 def test_gp_4d():
-    gp = GaussianProcessLayer(i, o)
+    gp = GaussianProcessLayer(i, o, n_classes=2)
     input_tensor = torch.as_tensor(
         np.random.normal(size=[n, i, a, b, c]), dtype=torch.float32
     )
     labels = torch.randint(0, 2, [n]).float()
     output = gp(input_tensor)
-    gp.update_inv_cov(input_tensor, torch.full_like(labels, 0.5))
+    probabilities = torch.full((n, a, b, c), 0.5)
+    gp.update_inv_cov(input_tensor, probabilities)
     gp.get_cov()
     assert list(output.shape) == [n, o, a, b, c]
     assert list(gp.cov.shape) == [1, o, o]
@@ -68,7 +71,7 @@ def test_gp_4d():
 def test_gp_multiclass():
     """Test multiclass scenario with one-hot encoded labels"""
     n_classes = 4
-    gp = GaussianProcessLayer(i, n_classes)
+    gp = GaussianProcessLayer(i, n_classes, n_classes)
     input_tensor = torch.as_tensor(
         np.random.normal(size=[n, i]), dtype=torch.float32
     )
@@ -82,7 +85,7 @@ def test_gp_multiclass():
 
 def test_gp_sampling():
     """Test GP sampling functionality"""
-    gp = GaussianProcessLayer(i, o)
+    gp = GaussianProcessLayer(i, o, n_classes=2)
     input_tensor = torch.as_tensor(
         np.random.normal(size=[n, i]), dtype=torch.float32
     )
@@ -97,7 +100,7 @@ def test_gp_sampling():
 
 def test_gp_numerical_stability():
     """Test numerical stability with edge cases"""
-    gp = GaussianProcessLayer(i, o)
+    gp = GaussianProcessLayer(i, o, n_classes=2)
     input_tensor = torch.as_tensor(
         np.random.normal(size=[n, i]), dtype=torch.float32
     )

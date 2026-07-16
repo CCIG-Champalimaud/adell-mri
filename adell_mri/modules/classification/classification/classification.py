@@ -389,6 +389,7 @@ class CatNet(torch.nn.Module):
                     in_channels=self.last_size,
                     n_rff=self.last_size,
                     n_outputs=final_n,
+                    n_classes=self.n_classes,
                 ),
             )
             self.gaussian_process_head = self.classification_layer[-1]
