@@ -63,6 +63,9 @@ class GaussianProcessLayer(torch.nn.Module):
         self.initialize_params()
 
     def initialize_params(self):
+        """
+        Initialises the parameters for the GaussianProcessLayer.
+        """
         i = self.in_channels
         r = self.n_rff
         o = self.n_outputs
@@ -89,6 +92,20 @@ class GaussianProcessLayer(torch.nn.Module):
         probabilities: torch.Tensor,
         use_momentum: bool = False,
     ):
+        """
+        Updates the inverse covariance using the output features from a feature
+        extractor (i.e. the input features for this GaussianProcessLayer) and
+        the output probabilities.
+
+        Args:
+            X (torch.Tensor): output features from a feature extractor.
+            probabilities (torch.Tensor): probability vector. Should be
+                size (b) if `self.n_classes == 2` and `self.ordinal == False`,
+                size (b, c) if `self.n_classes > 2` and `self.ordinal == False`,
+                size (b, c-1) if `self.n_classes > 2` and `self.ordinal == True`.
+            use_momentum (bool, optional): whether the update should be
+                momentum-based. Defaults to False.
+        """
         phi = self.calculate_phi(X)
         self.update_inv_cov_from_phi(phi, probabilities, use_momentum)
 
@@ -99,6 +116,21 @@ class GaussianProcessLayer(torch.nn.Module):
         probabilities: torch.Tensor,
         use_momentum: bool = False,
     ):
+        """
+        Updates the inverted covariance matrix using phi (as calculated using
+        `self.calculate_phi`) and the curvature as calculated using the input
+        probabilities.
+
+        Args:
+            phi (torch.Tensor): low rank matrix used to calculate the kernel
+                matrix.
+            probabilities (torch.Tensor): probability vector. Should be
+                size (b) if `self.n_classes == 2` and `self.ordinal == False`,
+                size (b, c) if `self.n_classes > 2` and `self.ordinal == False`,
+                size (b, c-1) if `self.n_classes > 2` and `self.ordinal == True`.
+            use_momentum (bool, optional): whether the update should be
+                momentum-based. Defaults to False.
+        """
         probabilities = probabilities.to(dtype=phi.dtype)
         if self.ordinal:
             curvature = (probabilities * (1 - probabilities)).sum(-1)
@@ -118,6 +150,9 @@ class GaussianProcessLayer(torch.nn.Module):
 
     @torch.no_grad()
     def reset_inv_cov(self):
+        """
+        Resets the inverse covariance (i.e. sets it to the identity matrix).
+        """
         self.inv_conv.copy_(
             torch.eye(
                 self.n_rff,
@@ -129,6 +164,11 @@ class GaussianProcessLayer(torch.nn.Module):
             del self.cov
 
     def get_cov(self):
+        """
+        Calculates the covariance matrix by inverting the inverted covariance
+        matrix. If the computation fails due to the matrix being singular,
+        this calculates the pseudo-inverse.
+        """
         try:
             # small jitter for numerical stability
             jitter = 1e-6 * torch.eye(
@@ -142,7 +182,7 @@ class GaussianProcessLayer(torch.nn.Module):
 
     def calculate_phi(self, X: torch.Tensor):
         """
-        Calculates phi (low rank matrix used to calculate the kernel matrix)
+        Calculates phi (low rank matrix used to calculate the kernel matrix).
 
         Args:
             X (torch.Tensor): input tensor.
