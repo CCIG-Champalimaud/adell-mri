@@ -411,9 +411,6 @@ class ClassPLABC(pl.LightningModule, ABC):
             with torch.no_grad(), tqdm(self.training_dataloader_call()) as pbar:
                 pbar.set_description("Fitting GP covariance")
                 for batch_idx, batch in enumerate(pbar):
-                    batch = self.transfer_batch_to_device(
-                        batch, self.device, batch_idx
-                    )
                     x = batch[self.image_key]
                     features = self.network.forward_features(x)
                     logits, phi = self.gaussian_process_head.forward_with_phi(
