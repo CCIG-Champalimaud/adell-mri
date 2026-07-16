@@ -408,7 +408,9 @@ class ClassPLABC(pl.LightningModule, ABC):
         if hasattr(self, "gaussian_process") and self.gaussian_process:
             self.eval()
             self.gaussian_process_head.reset_inv_cov()
-            with torch.no_grad(), tqdm(self.training_dataloader_call()) as pbar:
+            with torch.no_grad(), tqdm(
+                self.training_dataloader_call(False), mininterval=2.5
+            ) as pbar:
                 pbar.set_description("Fitting GP covariance")
                 for batch_idx, batch in enumerate(pbar):
                     batch = self.transfer_batch_to_device(batch, self.device, 0)
