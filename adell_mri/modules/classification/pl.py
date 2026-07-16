@@ -401,7 +401,7 @@ class ClassPLABC(pl.LightningModule, ABC):
             return torch.sigmoid(logits)
         return torch.softmax(logits, dim=1)
 
-    def on_fit_end(self):
+    def on_train_end(self):
         """
         Called when fitting ends. Updates Gaussian process if enabled.
         """
@@ -411,6 +411,7 @@ class ClassPLABC(pl.LightningModule, ABC):
             with torch.no_grad(), tqdm(self.training_dataloader_call()) as pbar:
                 pbar.set_description("Fitting GP covariance")
                 for batch_idx, batch in enumerate(pbar):
+                    batch = self.transfer_batch_to_device(batch, self.device, 0)
                     x = batch[self.image_key]
                     features = self.network.forward_features(x)
                     logits, phi = self.gaussian_process_head.forward_with_phi(
