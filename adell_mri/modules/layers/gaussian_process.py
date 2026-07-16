@@ -13,10 +13,10 @@ from adell_mri.modules.layers.utils import unsqueeze_to_target
 class GaussianProcessLayer(torch.nn.Module):
     """
     Gaussian process layer as implemented in [1]. The model is first trained
-    and only `self.weights` is updated. `self.W` and `self.b` are randomly sampled
-    parameters for random Fourier features (this is generally used to map the
-    input feature space to a lower dimension space, making the GP more
-    efficient) and are not updated.
+    and only the weights of self.output_layer are updated. `self.W` and `self.b`
+    are randomly sampled parameters for random Fourier features (this is generally
+    used to map the input feature space to a lower dimension space, making the GP
+    more efficient) and are not updated.
 
     The inverse covariance can be updated at the end of the training cheaply
     by running `self.update_inv_cov` over the several batches that comprise a
@@ -77,13 +77,7 @@ class GaussianProcessLayer(torch.nn.Module):
         self.b = torch.nn.Parameter(
             torch.rand([1, r]).float() * (2 * torch.pi), requires_grad=False
         )
-        self.weights = torch.nn.Parameter(
-            torch.normal(torch.zeros([o, r]), torch.ones([o, r])).float(),
-            requires_grad=True,
-        )
-        self.output_bias = torch.nn.Parameter(
-            torch.zeros(o), requires_grad=True
-        )
+        self.output_layer = torch.nn.Linear(r, o, bias=False)
         self.inv_conv = torch.nn.Parameter(
             torch.eye(r, r).unsqueeze(0).float(), requires_grad=False
         )
@@ -203,14 +197,14 @@ class GaussianProcessLayer(torch.nn.Module):
         self, X: torch.Tensor
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         phi = self.calculate_phi(X)
-        output = phi @ self.weights.T + self.output_bias
+        output = self.output_layer(phi)
         if len(output.shape) > 2:
             output = output.swapaxes(1, -1)
         return output, phi
 
     def forward(self, X: torch.Tensor):
         """
-        Uses phi to calculate the mean (phi * self.weights)
+        Uses phi to calculate the mean (self.output_layer(phi)).
 
         Args:
             X (torch.Tensor): input tensor.
@@ -242,7 +236,7 @@ class GaussianProcessLayer(torch.nn.Module):
                 "self.get_cov() must be called before getting parameters"
             )
         phi = self.calculate_phi(X)
-        mean = phi @ self.weights.T + self.output_bias
+        mean = self.output_layer(phi)
         cov_feature_product = self.cov @ phi.unsqueeze(-1)
         var = (phi.unsqueeze(-2) @ cov_feature_product).squeeze(-1).squeeze(-1)
         cov = torch.diag_embed(var.unsqueeze(-1).expand(-1, self.n_outputs))
