@@ -458,7 +458,7 @@ def main(arguments):
 
         def train_loader_call(augment: bool = True):
             return monai.data.ThreadDataLoader(
-                train_dataset if augment is True else train_dataset_no_aug,
+                train_dataset if augment else train_dataset_no_aug,
                 batch_size=bs,
                 shuffle=sampler is None,
                 num_workers=n_workers,

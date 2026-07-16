@@ -365,6 +365,12 @@ def main(arguments):
             cache_rate=args.cache_rate,
             num_workers=args.n_workers,
         )
+        train_dataset_no_aug = monai.data.CacheDataset(
+            train_list,
+            transforms_val,
+            cache_rate=args.cache_rate,
+            num_workers=args.n_workers,
+        )
         train_dataset_val = monai.data.CacheDataset(
             train_val_list,
             transforms_val,
@@ -444,9 +450,9 @@ def main(arguments):
             bs = new_bs
             real_bs = bs * n_devices
 
-        def train_loader_call():
+        def train_loader_call(augment: bool = True):
             return monai.data.ThreadDataLoader(
-                train_dataset,
+                train_dataset if augment else train_dataset_no_aug,
                 batch_size=bs,
                 shuffle=sampler is None,
                 num_workers=n_workers,

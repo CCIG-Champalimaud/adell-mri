@@ -292,6 +292,12 @@ def main(arguments):
             cache_rate=args.cache_rate,
             num_workers=args.n_workers,
         )
+        train_dataset_no_aug = monai.data.CacheDataset(
+            [data_dict[pid] for pid in train_pids],
+            transforms_val,
+            cache_rate=args.cache_rate,
+            num_workers=args.n_workers,
+        )
         train_dataset_val = monai.data.CacheDataset(
             [data_dict[pid] for pid in val_pids],
             transforms_val,
@@ -386,9 +392,9 @@ def main(arguments):
         else:
             n_workers = n_workers
 
-        def train_loader_call():
+        def train_loader_call(augment: bool = True):
             return monai.data.ThreadDataLoader(
-                train_dataset,  # noqa
+                train_dataset if augment else train_dataset_no_aug,  # noqa
                 batch_size=network_config["batch_size"],
                 shuffle=sampler is None,
                 num_workers=n_workers,
