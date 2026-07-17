@@ -486,7 +486,8 @@ class OrdNet(CatNet):
 
         # initialize bias as described in the CORAL paper
         self.ordinal_bias = torch.nn.parameter.Parameter(
-            torch.arange(self.n_classes - 1, 0, -1).float(),
+            torch.arange(self.n_classes - 1, 0, -1).float()
+            - self.n_classes // 2,
             requires_grad=True,
         )
         self.ordinal_bias_scale = torch.nn.parameter.Parameter(

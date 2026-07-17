@@ -69,18 +69,16 @@ class GaussianProcessLayer(torch.nn.Module):
         i = self.in_channels
         r = self.n_rff
         o = self.n_outputs
-        self.scaling_term = torch.sqrt(torch.as_tensor(2.0 / r))
-        self.W = torch.nn.Parameter(
+        self.register_buffer(
+            "scaling_term", torch.sqrt(torch.as_tensor(2.0 / r))
+        )
+        self.register_buffer(
+            "W",
             torch.normal(torch.zeros([1, r, i]), torch.ones([1, r, i])).float(),
-            requires_grad=False,
         )
-        self.b = torch.nn.Parameter(
-            torch.rand([1, r]).float() * (2 * torch.pi), requires_grad=False
-        )
+        self.register_buffer("b", torch.rand([1, r]).float() * (2 * torch.pi))
+        self.register_buffer("inv_conv", torch.eye(r, r).unsqueeze(0).float())
         self.output_layer = torch.nn.Linear(r, o, bias=False)
-        self.inv_conv = torch.nn.Parameter(
-            torch.eye(r, r).unsqueeze(0).float(), requires_grad=False
-        )
 
     @torch.no_grad()
     def update_inv_cov(
@@ -169,7 +167,9 @@ class GaussianProcessLayer(torch.nn.Module):
         try:
             # small jitter for numerical stability
             jitter = 1e-6 * torch.eye(
-                self.inv_conv.shape[-1], device=self.inv_conv.device
+                self.inv_conv.shape[-1],
+                dtype=self.inv_conv.dtype,
+                device=self.inv_conv.device,
             )
             inv_conv_stable = self.inv_conv + jitter
             self.cov = torch.linalg.inv(inv_conv_stable)
