@@ -226,7 +226,8 @@ class ClassPLABC(pl.LightningModule, ABC):
             )
         loss = self.loss_fn(prediction, y, **params)
         if isinstance(loss, tuple):
-            loss = tuple([l.mean() for l in loss])
+            loss = [l.mean() for l in loss]
+            loss = tuple(loss)
         else:
             loss = loss.mean()
         return loss
@@ -565,11 +566,14 @@ class ClassPLABC(pl.LightningModule, ABC):
             dict: A dictionary containing the optimizer, learning rate scheduler,
                 and the name of the metric to monitor for early stopping.
         """
+        no_decay_params = []
         reduced_decay_params = []
         normal_decay_params = []
         for n, p in self.named_parameters():
             if not p.requires_grad:
                 continue
+            if "gaussian_process_head" in n:
+                no_decay_params.append(p)
             if "ordinal_bias" in n:
                 reduced_decay_params.append(p)
             else:
@@ -590,6 +594,7 @@ class ClassPLABC(pl.LightningModule, ABC):
                 else:
                     body_decay.append(p)
             parameters = [
+                {"params": no_decay_params, "weight_decay": 0},
                 {"params": reduced_decay_params, "weight_decay": wd_body / 100},
                 {"params": head_decay, "weight_decay": wd_head},
                 {"params": body_decay, "weight_decay": wd_body},
@@ -598,6 +603,7 @@ class ClassPLABC(pl.LightningModule, ABC):
         else:
             wd = float(self.weight_decay)
             parameters = [
+                {"params": no_decay_params, "weight_decay": 0},
                 {"params": reduced_decay_params, "weight_decay": wd / 100},
                 {"params": normal_decay_params, "weight_decay": wd},
             ]

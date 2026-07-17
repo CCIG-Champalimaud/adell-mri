@@ -32,7 +32,10 @@ class SimpleGPNetwork(nn.Module):
         if use_gp:
             self.prediction_head = nn.Linear(hidden_dim, output_dim)
             self.gaussian_process_head = GaussianProcessLayer(
-                output_dim, output_dim, n_classes
+                output_dim,
+                output_dim,
+                n_classes,
+                normalize_input=False,
             )
         else:
             self.prediction_head = nn.Linear(hidden_dim, output_dim)

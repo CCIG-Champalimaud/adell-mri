@@ -14,7 +14,9 @@ n = 4
 
 
 def test_gp_forward_matches_random_feature_projection():
-    gp = GaussianProcessLayer(2, 3, n_classes=2, n_outputs=2)
+    gp = GaussianProcessLayer(
+        2, 3, n_classes=2, n_outputs=2, normalize_input=False
+    )
     input_tensor = torch.tensor([[1.0, -2.0], [0.5, 3.0]])
     with torch.no_grad():
         gp.W.copy_(torch.tensor([[[1.0, -0.5], [-2.0, 1.0], [0.25, 2.0]]]))
@@ -33,7 +35,7 @@ def test_gp_forward_matches_random_feature_projection():
 
 
 def test_gp_1d():
-    gp = GaussianProcessLayer(i, o, n_classes=2)
+    gp = GaussianProcessLayer(i, o, n_classes=2, normalize_input=False)
     input_tensor = torch.as_tensor(
         np.random.normal(size=[n, i]), dtype=torch.float32
     )
@@ -46,7 +48,7 @@ def test_gp_1d():
 
 
 def test_gp_2d():
-    gp = GaussianProcessLayer(i, o, n_classes=2)
+    gp = GaussianProcessLayer(i, o, n_classes=2, normalize_input=False)
     input_tensor = torch.as_tensor(
         np.random.normal(size=[n, i, a]), dtype=torch.float32
     )
@@ -60,7 +62,7 @@ def test_gp_2d():
 
 
 def test_gp_3d():
-    gp = GaussianProcessLayer(i, o, n_classes=2)
+    gp = GaussianProcessLayer(i, o, n_classes=2, normalize_input=False)
     input_tensor = torch.as_tensor(
         np.random.normal(size=[n, i, a, b]), dtype=torch.float32
     )
@@ -74,7 +76,7 @@ def test_gp_3d():
 
 
 def test_gp_4d():
-    gp = GaussianProcessLayer(i, o, n_classes=2)
+    gp = GaussianProcessLayer(i, o, n_classes=2, normalize_input=False)
     input_tensor = torch.as_tensor(
         np.random.normal(size=[n, i, a, b, c]), dtype=torch.float32
     )
@@ -90,7 +92,7 @@ def test_gp_4d():
 def test_gp_multiclass():
     """Test multiclass scenario with one-hot encoded labels"""
     n_classes = 4
-    gp = GaussianProcessLayer(i, n_classes, n_classes)
+    gp = GaussianProcessLayer(i, n_classes, n_classes, normalize_input=False)
     input_tensor = torch.as_tensor(
         np.random.normal(size=[n, i]), dtype=torch.float32
     )
@@ -104,7 +106,7 @@ def test_gp_multiclass():
 
 def test_gp_sampling():
     """Test GP sampling functionality"""
-    gp = GaussianProcessLayer(i, o, n_classes=2)
+    gp = GaussianProcessLayer(i, o, n_classes=2, normalize_input=False)
     input_tensor = torch.as_tensor(
         np.random.normal(size=[n, i]), dtype=torch.float32
     )
@@ -119,7 +121,7 @@ def test_gp_sampling():
 
 def test_gp_numerical_stability():
     """Test numerical stability with edge cases"""
-    gp = GaussianProcessLayer(i, o, n_classes=2)
+    gp = GaussianProcessLayer(i, o, n_classes=2, normalize_input=False)
     input_tensor = torch.as_tensor(
         np.random.normal(size=[n, i]), dtype=torch.float32
     )
@@ -131,6 +133,30 @@ def test_gp_numerical_stability():
     assert list(gp.cov.shape) == [1, o, o]
 
 
+def test_gp_normalize_input():
+    """Test input layer normalization"""
+    gp = GaussianProcessLayer(i, o, n_classes=2, normalize_input=True)
+    input_tensor = torch.as_tensor(
+        np.random.normal(size=[n, i]), dtype=torch.float32
+    )
+    assert gp.input_norm is not None
+    output = gp(input_tensor)
+    gp.update_inv_cov(input_tensor, torch.full_like(torch.ones([n]), 0.5))
+    gp.get_cov()
+    assert list(output.shape) == [n, o]
+    assert list(gp.cov.shape) == [1, o, o]
+
+    # normalization should change the features
+    gp_no_norm = GaussianProcessLayer(i, o, n_classes=2, normalize_input=False)
+    with torch.no_grad():
+        gp_no_norm.W.copy_(gp.W)
+        gp_no_norm.b.copy_(gp.b)
+        gp_no_norm.output_layer.weight.copy_(gp.output_layer.weight)
+    phi_norm = gp.calculate_phi(input_tensor)
+    phi_no_norm = gp_no_norm.calculate_phi(input_tensor)
+    assert not torch.allclose(phi_norm, phi_no_norm)
+
+
 if __name__ == "__main__":
     test_gp_1d()
     test_gp_2d()
@@ -139,4 +165,5 @@ if __name__ == "__main__":
     test_gp_multiclass()
     test_gp_sampling()
     test_gp_numerical_stability()
+    test_gp_normalize_input()
     print("All tests passed!")

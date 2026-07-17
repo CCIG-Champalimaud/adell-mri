@@ -18,6 +18,10 @@ class GaussianProcessLayer(torch.nn.Module):
     used to map the input feature space to a lower dimension space, making the GP
     more efficient) and are not updated.
 
+    If `normalize_input=True`, the input is passed through a learned layer
+    normalization before the random Fourier feature transform, as in the
+    original SNGP reference implementation.
+
     The inverse covariance can be updated at the end of the training cheaply
     by running `self.update_inv_cov` over the several batches that comprise a
     training epoch.
@@ -38,6 +42,7 @@ class GaussianProcessLayer(torch.nn.Module):
         n_outputs: int = None,
         m: float = 0.999,
         ordinal: bool = False,
+        normalize_input: bool = True,
     ):
         """
         Args:
@@ -50,6 +55,9 @@ class GaussianProcessLayer(torch.nn.Module):
                 Defaults to 0.999.
             ordinal (bool, optional): whether this layer is used for ordinal
                 classification. Defaults to False.
+            normalize_input (bool, optional): whether to apply layer
+                normalization to the input before the random Fourier feature
+                transform. Defaults to True.
         """
         super().__init__()
         self.in_channels = in_channels
@@ -59,6 +67,7 @@ class GaussianProcessLayer(torch.nn.Module):
         self.m = m
         self.ordinal = ordinal
         self.n_classes = n_classes
+        self.normalize_input = normalize_input
 
         self.initialize_params()
 
@@ -78,6 +87,10 @@ class GaussianProcessLayer(torch.nn.Module):
         )
         self.register_buffer("b", torch.rand([1, r]).float() * (2 * torch.pi))
         self.register_buffer("inv_conv", torch.eye(r, r).unsqueeze(0).float())
+        if self.normalize_input:
+            self.input_norm = torch.nn.LayerNorm(i)
+        else:
+            self.input_norm = None
         self.output_layer = torch.nn.Linear(r, o, bias=False)
 
     @torch.no_grad()
@@ -187,6 +200,8 @@ class GaussianProcessLayer(torch.nn.Module):
         Returns:
             phi
         """
+        if self.input_norm is not None:
+            X = self.input_norm(X.swapaxes(1, -1)).swapaxes(1, -1)
         X = X.swapaxes(1, -1)
         X = X.unsqueeze(-1)
         W = unsqueeze_to_target(self.W, X, 1)

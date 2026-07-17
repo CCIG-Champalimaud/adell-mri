@@ -29,7 +29,10 @@ class SimpleGPModel(nn.Module):
         if use_gp:
             self.prediction_head = nn.Linear(hidden_dim, output_dim)
             self.gaussian_process_head = GaussianProcessLayer(
-                output_dim, output_dim, n_classes=output_dim
+                output_dim,
+                output_dim,
+                n_classes=output_dim,
+                normalize_input=False,
             )
         else:
             self.prediction_head = nn.Linear(hidden_dim, output_dim)
@@ -154,7 +157,9 @@ def test_gp_edge_cases():
     input_dim, output_dim = 32, 2
     batch_size = 4
 
-    gp = GaussianProcessLayer(input_dim, output_dim, n_classes=output_dim)
+    gp = GaussianProcessLayer(
+        input_dim, output_dim, n_classes=output_dim, normalize_input=False
+    )
 
     # Test with single batch
     x_single = torch.randn(1, input_dim)
