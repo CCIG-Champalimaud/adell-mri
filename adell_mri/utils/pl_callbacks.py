@@ -148,7 +148,16 @@ class SpectralNorm(pl.Callback):
         self.eps = eps
 
         self.exclude_modules = exclude_modules
-        self.exclude_modules.append("_SpectralNorm")
+        self.exclude_modules.extend(
+            [
+                "_SpectralNorm",
+                "GaussianProcessLayer",
+                "LayerNorm",
+                "BatchNorm1d",
+                "BatchNorm2d",
+                "BatchNorm3d",
+            ]
+        )
 
     def on_train_start(
         self, trainer: pl.Trainer, pl_module: pl.LightningModule
