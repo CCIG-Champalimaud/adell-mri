@@ -79,13 +79,11 @@ class GaussianProcessLayer(torch.nn.Module):
         i = self.in_channels
         r = self.n_rff
         o = self.n_outputs
+        W = torch.normal(torch.zeros([1, r, i]), torch.ones([1, r, i]))
         self.register_buffer(
             "scaling_term", torch.sqrt(torch.as_tensor(2.0 / r))
         )
-        self.register_buffer(
-            "W",
-            torch.normal(torch.zeros([1, r, i]), torch.ones([1, r, i])).float(),
-        )
+        self.register_buffer("W", (W / math.sqrt(i)).float())
         self.register_buffer("b", torch.rand([1, r]).float() * (2 * torch.pi))
         self.register_buffer("inv_conv", torch.eye(r, r).unsqueeze(0).float())
         if self.normalize_input:
