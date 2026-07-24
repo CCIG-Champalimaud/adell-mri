@@ -21,9 +21,7 @@ def test_gp_forward_matches_random_feature_projection():
     with torch.no_grad():
         gp.W.copy_(torch.tensor([[[1.0, -0.5], [-2.0, 1.0], [0.25, 2.0]]]))
         gp.b.copy_(torch.tensor([[0.0, torch.pi / 2, torch.pi]]))
-        gp.output_layer.weight.copy_(
-            torch.tensor([[1.0, -1.0, 0.5], [-0.5, 2.0, 1.0]])
-        )
+        gp.weights.copy_(torch.tensor([[1.0, -1.0, 0.5], [-0.5, 2.0, 1.0]]))
 
     output, phi = gp.forward_with_phi(input_tensor)
     expected_phi = torch.sqrt(torch.tensor(2.0 / 3.0)) * torch.cos(
@@ -31,7 +29,7 @@ def test_gp_forward_matches_random_feature_projection():
     )
 
     torch.testing.assert_close(phi, expected_phi)
-    torch.testing.assert_close(output, expected_phi @ gp.output_layer.weight.T)
+    torch.testing.assert_close(output, expected_phi @ gp.weights.T)
 
 
 def test_gp_1d():
@@ -151,7 +149,7 @@ def test_gp_normalize_input():
     with torch.no_grad():
         gp_no_norm.W.copy_(gp.W)
         gp_no_norm.b.copy_(gp.b)
-        gp_no_norm.output_layer.weight.copy_(gp.output_layer.weight)
+        gp_no_norm.weights.copy_(gp.weights)
     phi_norm = gp.calculate_phi(input_tensor)
     phi_no_norm = gp_no_norm.calculate_phi(input_tensor)
     assert not torch.allclose(phi_norm, phi_no_norm)
