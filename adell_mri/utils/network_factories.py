@@ -75,11 +75,14 @@ from adell_mri.modules.semi_supervised_segmentation.pl import (
     UNetContrastiveSemiSL,
 )
 from adell_mri.utils.batch_preprocessing import BatchPreprocessing
+from adell_mri.utils.python_logging import get_logger
 from adell_mri.utils.utils import (
     ExponentialMovingAverage,
     get_loss_param_dict,
     loss_factory,
 )
+
+logger = get_logger(__name__)
 
 ALLOWED_NET_TYPES = {
     "classification": [
@@ -117,7 +120,9 @@ def compile_if_necessary(func: Callable) -> Callable:
     @wraps(func)
     def wrapper(*args, **kwargs):
         model = func(*args, **kwargs)
-        if os.environ.get("TORCH_COMPILE", "False").lower() in ["true", "1"]:
+        tc = os.environ.get("TORCH_COMPILE", "False").lower()
+        if tc in ["true", "1"]:
+            logger.info(f"Compiling model because TORCH_COMPILE={tc}")
             if not isinstance(model, torch._dynamo.eval_frame.OptimizedModule):
                 model = torch.compile(model)
         return model

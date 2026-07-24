@@ -403,6 +403,7 @@ def main(arguments):
                 pin_memory=True,
                 sampler=sampler,
                 persistent_workers=args.n_workers > 0,
+                multiprocessing_context="spawn",
                 drop_last=True,
                 prefetch_factor=8,
             )

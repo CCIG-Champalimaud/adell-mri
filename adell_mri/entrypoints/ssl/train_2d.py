@@ -319,6 +319,7 @@ def main(arguments):
             collate_fn=safe_collate,
             pin_memory=True,
             persistent_workers=n_workers > 1,
+            multiprocessing_context="spawn",
             drop_last=True,
             prefetch_factor=8,
         )

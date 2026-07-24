@@ -256,6 +256,7 @@ def main(arguments):
                 collate_fn=safe_collate,
                 pin_memory=True,
                 persistent_workers=args.n_workers > 0,
+                multiprocessing_context="spawn",
             )
 
         train_loader = train_loader_call()
