@@ -605,7 +605,6 @@ def main(arguments):
                 collate_fn=collate_fn_train,
                 pin_memory=True,
                 persistent_workers=True,
-                multiprocessing_context="spawn",
                 drop_last=True,
             )
             if args.semi_supervised is True:

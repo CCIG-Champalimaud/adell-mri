@@ -252,7 +252,6 @@ def main(arguments):
             collate_fn=collate_fn,
             pin_memory=True,
             persistent_workers=args.n_workers > 0,
-            multiprocessing_context="spawn",
             drop_last=True,
             sampler=torch.utils.data.RandomSampler(
                 train_dataset,
