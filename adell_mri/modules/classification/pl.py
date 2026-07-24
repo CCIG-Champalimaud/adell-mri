@@ -46,6 +46,7 @@ from adell_mri.modules.classification.classification import (
     ordinal_prediction_to_class,
 )
 from adell_mri.modules.conformal_prediction import AdaptivePredictionSets
+from adell_mri.modules.layers.gaussian_process import GaussianProcessLayer
 from adell_mri.modules.learning_rate import CosineAnnealingWithWarmupLR
 from adell_mri.utils.python_logging import get_logger
 
@@ -566,15 +567,22 @@ class ClassPLABC(pl.LightningModule, ABC):
             dict: A dictionary containing the optimizer, learning rate scheduler,
                 and the name of the metric to monitor for early stopping.
         """
+        gaussian_process_param_ids = set()
+        for _, module in self.named_modules():
+            if isinstance(module, GaussianProcessLayer):
+                for _, p in module.named_parameters(recurse=True):
+                    if p.requires_grad:
+                        gaussian_process_param_ids.add(id(p))
+
         no_decay_params = []
         reduced_decay_params = []
         normal_decay_params = []
         for n, p in self.named_parameters():
             if not p.requires_grad:
                 continue
-            if "gaussian_process_head" in n:
+            if id(p) in gaussian_process_param_ids:
                 no_decay_params.append(p)
-            if "ordinal_bias" in n:
+            elif "ordinal_bias" in n:
                 reduced_decay_params.append(p)
             else:
                 normal_decay_params.append(p)
@@ -587,7 +595,7 @@ class ClassPLABC(pl.LightningModule, ABC):
             for n, p in self.named_parameters():
                 if not p.requires_grad:
                     continue
-                if p in reduced_decay_params:
+                if p in no_decay_params or p in reduced_decay_params:
                     continue
                 if "classification" in n:
                     head_decay.append(p)

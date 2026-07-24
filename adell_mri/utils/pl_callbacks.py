@@ -180,7 +180,8 @@ class SpectralNorm(pl.Callback):
         we register the native spectral norm.
         """
         for module in model.modules():
-            if module.__class__.__name__ in self.exclude_modules:
+            module_name = module.__class__.__name__
+            if module_name in self.exclude_modules:
                 continue
             for param_name, param in list(
                 module.named_parameters(recurse=False)
