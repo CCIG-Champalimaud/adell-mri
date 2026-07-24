@@ -132,13 +132,16 @@ class SpectralNorm(pl.Callback):
     def __init__(
         self,
         name: str = "weight",
-        exclude_modules: list[str] = ["GaussianProcessLayer"],
+        exclude_modules: list[str] | None = None,
         n_power_iterations: int = 1,
         eps: float = 1e-12,
     ):
         """
         Args:
             name (str): The name of the parameter to normalize (usually "weight").
+            exclude_modules (list[str] | None): List of module names to exclude
+                from spectral normalization. Defaults to None (which excludes
+                GaussianProcessLayer, LayerNorm and batch normalizations).
             n_power_iterations (int): Number of power iterations to calculate spectral norm.
             eps (float): Epsilon to avoid division by zero.
         """
@@ -148,14 +151,17 @@ class SpectralNorm(pl.Callback):
         self.eps = eps
 
         self.exclude_modules = exclude_modules
-        self.exclude_modules.extend(
-            [
-                "_SpectralNorm",
+        if self.exclude_models is None:
+            self.exclude_models = [
                 "GaussianProcessLayer",
                 "LayerNorm",
                 "BatchNorm1d",
                 "BatchNorm2d",
                 "BatchNorm3d",
+            ]
+        self.exclude_modules.extend(
+            [
+                "_SpectralNorm",
             ]
         )
 
