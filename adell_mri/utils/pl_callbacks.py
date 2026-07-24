@@ -151,8 +151,8 @@ class SpectralNorm(pl.Callback):
         self.eps = eps
 
         self.exclude_modules = exclude_modules
-        if self.exclude_models is None:
-            self.exclude_models = [
+        if self.exclude_modules is None:
+            self.exclude_modules = [
                 "GaussianProcessLayer",
                 "LayerNorm",
                 "BatchNorm1d",
