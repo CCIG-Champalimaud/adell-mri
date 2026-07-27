@@ -155,6 +155,66 @@ def test_gp_normalize_input():
     assert not torch.allclose(phi_norm, phi_no_norm)
 
 
+def test_rff_weight_initialization_scale():
+    """RFF weights should use He-style std to avoid saturated features."""
+    in_channels = 256
+    n_rff = 512
+    for _ in range(100):
+        gp = GaussianProcessLayer(
+            in_channels, n_rff, n_classes=2, normalize_input=False
+        )
+        std = gp.W.std().item()
+        expected = (2.0 / in_channels) ** 0.5
+        # allow generous sampling tolerance
+        assert abs(std - expected) < expected * 0.2
+
+
+def test_gp_can_learn_ordinal_task():
+    """Sanity check: GP ordinal head must be able to decrease loss on toy data."""
+    from adell_mri.modules.classification.classification import OrdNet
+
+    torch.manual_seed(42)
+    n_classes = 3
+    net = OrdNet(
+        in_channels=1,
+        n_classes=n_classes,
+        spatial_dimensions=3,
+        resnet_structure=[[8, 16, 3, 2], [16, 32, 3, 2]],
+        maxpool_structure=[2, 2],
+        res_type="convnext",
+        classification_structure=[32],
+        gaussian_process=True,
+    )
+    opt = torch.optim.AdamW(net.parameters(), lr=1e-3)
+    from adell_mri.modules.classification.losses import OrdinalSigmoidalLoss
+
+    loss_fn = OrdinalSigmoidalLoss(n_classes)
+
+    def make_batch():
+        x = torch.randn(16, 1, 32, 32, 8)
+        y = torch.randint(0, n_classes, (16,))
+        # give each class a slightly different mean intensity
+        for c in range(n_classes):
+            x[y == c] += c * 0.5
+        return x, y
+
+    losses = []
+    net.train()
+    for _ in range(20):
+        x, y = make_batch()
+        opt.zero_grad()
+        pred, pre_bias = net(x, return_pre_bias=True)
+        loss, _ = loss_fn(pred.squeeze(1), y, pre_bias=pre_bias)
+        loss = loss.mean()
+        loss.backward()
+        opt.step()
+        losses.append(loss.item())
+
+    assert (
+        losses[-1] < losses[0] * 0.9
+    ), f"GP ordinal loss did not decrease: {losses[0]:.4f} -> {losses[-1]:.4f}"
+
+
 if __name__ == "__main__":
     test_gp_1d()
     test_gp_2d()
@@ -164,4 +224,6 @@ if __name__ == "__main__":
     test_gp_sampling()
     test_gp_numerical_stability()
     test_gp_normalize_input()
+    test_rff_weight_initialization_scale()
+    test_gp_can_learn_ordinal_task()
     print("All tests passed!")
