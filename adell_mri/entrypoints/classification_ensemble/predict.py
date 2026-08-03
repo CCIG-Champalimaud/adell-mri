@@ -24,6 +24,7 @@ from adell_mri.utils.network_factories import get_classification_network
 from adell_mri.utils.parser import get_params, merge_args, parse_ids
 from adell_mri.utils.python_logging import get_logger
 from adell_mri.utils.torch_utils import load_checkpoint_to_model
+from adell_mri.utils.utils import make_json_serializable
 
 logger = get_logger(__name__)
 
@@ -264,12 +265,13 @@ def main(arguments):
                 checkpoint,
                 exclude_from_state_dict=["loss_fn.weight"],
             )
+            if getattr(ensemble, "gaussian_process", False):
+                ensemble.gaussian_process_head.get_cov()
 
             output_dict = {
                 "iteration": iteration,
                 "prediction_ids": curr_prediction_ids,
                 "checkpoint": checkpoint,
-                "predictions": {},
             }
 
             with tqdm(total=len(curr_prediction_ids)) as pbar:
@@ -277,14 +279,24 @@ def main(arguments):
                     curr_prediction_ids, prediction_dataset
                 ):
                     pbar.set_description("Predicting {}".format(identifier))
-                    output = ensemble.forward(
-                        element["image"].unsqueeze(0).to(args.dev),
-                        **extra_args,
-                    ).detach()
-                    output = output.cpu()
-                    output = post_proc_fn(output)
-                    output = output.numpy()[0].tolist()
-                    output_dict["predictions"][identifier] = output
+                    batch = {
+                        "image": element["image"].unsqueeze(0).to(args.dev)
+                    }
+                    output = ensemble.predict_step(batch, 0, **extra_args)
+                    if "features" in output:
+                        output["features"] = output["features"].flatten(
+                            start_dim=2
+                        )
+                        output["features"] = output["features"].max(-1).values
+                    if "prediction" in output:
+                        output["prediction"] = post_proc_fn(
+                            output["prediction"]
+                        )
+                    output = make_json_serializable(output)
+                    for key in output:
+                        if key not in output_dict:
+                            output_dict[key] = {}
+                        output_dict[key][identifier] = output[key]
                     pbar.update()
             global_output.append(output_dict)
 
