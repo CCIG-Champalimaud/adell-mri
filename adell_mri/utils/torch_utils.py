@@ -1,7 +1,7 @@
 import random
 import re
 from multiprocessing import Pool
-from typing import Any, Dict, List, Union
+from typing import Any
 
 import numpy as np
 import torch
@@ -13,10 +13,51 @@ from adell_mri.utils.utils import return_classes
 logger = get_logger(__name__)
 
 
+def calculate_sn_weights(state_dict: dict) -> dict:
+    """
+    Calculates the spectral-normalized weights in a given state dictionary
+    (if any).
+
+    Args:
+        state_dict (dict): a state dictionary.
+
+    Returns:
+        dict: the state dictionary with SN parameters.
+    """
+    sd_keys = list(state_dict.keys())
+    sn_keys = []
+    for key in sd_keys:
+        if key.endswith(".original"):
+            base_key = key[:-9]
+            u_key = base_key + ".0._u"
+            v_key = base_key + ".0._v"
+            if (u_key in sd_keys) and (v_key in sd_keys):
+                sn_keys.append(base_key)
+
+    logger.debug(f"Found {len(sn_keys)} parameters with spectral normalization")
+    for key in sn_keys:
+        out_name = key.replace(".parametrizations", "")
+        orig_key, u_key, v_key = f"{key}.original", f"{key}.0._u", f"{key}.0._v"
+        orig_w = state_dict[orig_key]
+        u = state_dict[u_key]
+        v = state_dict[v_key]
+        w_mat = orig_w.view(orig_w.size(0), -1)
+        sigma = torch.dot(u, torch.mv(w_mat, v))
+        w_normalized = orig_w / sigma
+        state_dict[out_name] = w_normalized
+        del state_dict[orig_key]
+        del state_dict[u_key]
+        del state_dict[v_key]
+    return state_dict
+
+
 def load_checkpoint_to_model(
     model: torch.nn.Module,
-    checkpoint: Union[str, Dict[str, torch.Tensor]],
-    exclude_from_state_dict: List[str],
+    checkpoint: str | dict[str, torch.Tensor],
+    exclude_from_state_dict: list[str] = [],
+    weights_only: bool = False,
+    *args,
+    **kwargs,
 ) -> torch.nn.Module:
     """
     Loads a checkpoint into a PyTorch model.
@@ -27,10 +68,10 @@ def load_checkpoint_to_model(
 
     Args:
         model (torch.nn.Module): PyTorch model to load state dict into.
-        checkpoint (Union[str, Dict[str, torch.Tensor]]): Checkpoint file path or
+        checkpoint (str | dict[str, torch.Tensor]): Checkpoint file path or
             dict containing state dict.
-        exclude_from_state_dict (List[str]): List of regex patterns to exclude
-            from state dict.
+        exclude_from_state_dict (list[str], optional): List of regex patterns to
+            exclude from state dict. Defaults to [].
 
     Returns:
       Model with loaded state dict.
@@ -42,33 +83,40 @@ def load_checkpoint_to_model(
         return
     elif isinstance(checkpoint, str):
         logger.info("Loading checkpoint from %s", checkpoint)
-        sd = torch.load(checkpoint, weights_only=False)
+        sd = torch.load(checkpoint, weights_only=False, *args, **kwargs)
     else:
         sd = checkpoint
     if "state_dict" in sd:
         sd = sd["state_dict"]
 
-    if exclude_from_state_dict is not None:
+    sd = calculate_sn_weights(sd)
+
+    if exclude_from_state_dict:
         for pattern in exclude_from_state_dict:
+            n = len(sd)
             sd = {k: sd[k] for k in sd if re.search(pattern, k) is None}
+            n_now = len(sd)
+            logger.info(
+                f"Removed {n} - {n_now} = {n - n_now} keys with {pattern}"
+            )
     output = model.load_state_dict(sd, strict=False)
 
     if len(output.unexpected_keys) > 0:
         raise Exception(
-            "Dictionary contains more keys than it should:"
+            "State dict contains more keys than it should:"
             + str(output.unexpected_keys)
         )
     logger.debug("Missing keys: %s", output.missing_keys)
 
 
 def get_class_weights(
-    class_weights: List[Union[float, str]],
+    class_weights: list[float | str],
     n_classes: int,
-    classes: List[Any],
-    positive_labels: List[Any],
-    possible_labels: List[Any],
-    label_groups: List[List[Any]] = None,
-) -> List[float]:
+    classes: list[Any],
+    positive_labels: list[Any],
+    possible_labels: list[Any],
+    label_groups: list[list[Any]] = None,
+) -> list[float]:
     """
     Computes class weights for imbalanced datasets.
 
@@ -76,13 +124,13 @@ def get_class_weights(
     frequencies, or computed from label groups.
 
     Args:
-      class_weights (List[Union[float, str]]): List of weights or "adaptive"
+      class_weights (list[float | str]): List of weights or "adaptive"
         string.
       n_classes (int): Number of classes.
-      classes (List[Any]): List of class labels.
-      positive_labels (List[Any]): Labels treated as the positive class.
-      possible_labels (List[Any]): Superset of labels.
-      label_groups (List[List[Any]]): Groups of labels to compute weights
+      classes (list[Any]): List of class labels.
+      positive_labels (list[Any]): Labels treated as the positive class.
+      possible_labels (list[Any]): Superset of labels.
+      label_groups (list[list[Any]]): Groups of labels to compute weights
         together (merges classes together if they belong to the same
         label_group).
 
@@ -118,9 +166,9 @@ def get_class_weights(
 
 def conditional_parameter_freezing(
     network: torch.nn.Module,
-    freeze_regex: List[str] = None,
-    do_not_freeze_regex: List[str] = None,
-    state_dict: Dict[str, torch.Tensor] = None,
+    freeze_regex: list[str] = None,
+    do_not_freeze_regex: list[str] = None,
+    state_dict: dict[str, torch.Tensor] = None,
 ):
     """
     Freezes (or not) parameters according to a list of regex and loads an
@@ -129,12 +177,12 @@ def conditional_parameter_freezing(
     Args:
         network (torch.nn.Module): torch module with a named_parameters
             attribute.
-        freeze_regex (List[str], optional): regex for parameter names that
+        freeze_regex (list[str], optional): regex for parameter names that
             should be frozen. Defaults to None.
-        do_not_freeze_regex (List[str], optional): regex for parameter names
+        do_not_freeze_regex (list[str], optional): regex for parameter names
             that should not be frozen (overrides freeze_regex). Defaults to
             None.
-        state_dict (Dict[str,torch.Tensor], optional): state dict that replaces
+        state_dict (dict[str,torch.Tensor], optional): state dict that replaces
             frozen values. Defaults to None.
     """
     keys_to_load = []
@@ -192,8 +240,8 @@ def set_classification_layer_bias(
 
 
 def get_segmentation_sample_weights(
-    data_list: List[Dict],
-    label_keys: List[str],
+    data_list: list[dict],
+    label_keys: list[str],
     n_workers: int = 1,
     base: str = "Calculating positive pixel counts",
 ) -> tuple[list[int], float, float]:
@@ -203,8 +251,8 @@ def get_segmentation_sample_weights(
     which correspond to paths to SimpleITK-readable segmentation masks.
 
     Args:
-        data_list (List[Dict]): list of data elements.
-        label_keys (List[str]): keys corresponding to segmentation masks.
+        data_list (list[dict]): list of data elements.
+        label_keys (list[str]): keys corresponding to segmentation masks.
         n_workers (int, optional): number of parallel workers. Defaults to 1.
         base (str, optional): base for the tqdm progress bar. Defaults to
             "Calculating positive pixel counts".

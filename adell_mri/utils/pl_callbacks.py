@@ -135,6 +135,7 @@ class SpectralNorm(pl.Callback):
         exclude_modules: list[str] | None = None,
         n_power_iterations: int = 1,
         eps: float = 1e-12,
+        bake_on_save: bool = False,
     ):
         """
         Args:
@@ -144,11 +145,19 @@ class SpectralNorm(pl.Callback):
                 GaussianProcessLayer, LayerNorm and batch normalizations).
             n_power_iterations (int): Number of power iterations to calculate spectral norm.
             eps (float): Epsilon to avoid division by zero.
+            bake_on_save (bool): If True, replace the parametrization keys
+                (``.original``, ``._u``, ``._v``) in saved checkpoints with the
+                baked normalized weight under the plain parameter name. The
+                resulting checkpoint can be loaded into a non-parametrized model
+                without ``calculate_sn_weights``. Note that such a checkpoint
+                cannot be used to resume SN training (the power-iteration
+                vectors are discarded). Defaults to False.
         """
         super().__init__()
         self.name = name
         self.n_power_iterations = n_power_iterations
         self.eps = eps
+        self.bake_on_save = bake_on_save
 
         self.exclude_modules = exclude_modules
         if self.exclude_modules is None:
@@ -202,6 +211,40 @@ class SpectralNorm(pl.Callback):
                             print(
                                 f"Skipping spectral norm on {module.__class__.__name__}.{param_name}: {e}"
                             )
+
+    def on_save_checkpoint(self, trainer, pl_module, checkpoint) -> None:
+        """
+        Optionally bakes the spectrally-normalized weights into the checkpoint,
+        replacing the parametrization keys (``.original``, ``._u``, ``._v``)
+        with the plain normalized parameter.
+        """
+        if not self.bake_on_save:
+            return
+        sd = checkpoint.get("state_dict")
+        if sd is None:
+            return
+        for module_name, module in pl_module.named_modules():
+            if not hasattr(module, "parametrizations"):
+                continue
+            for param_name in list(module.parametrizations.keys()):
+                if module_name:
+                    prefix = f"{module_name}.parametrizations.{param_name}"
+                else:
+                    prefix = f"parametrizations.{param_name}"
+
+                orig_key = f"{prefix}.original"
+                if orig_key not in sd:
+                    continue
+                u_key = f"{prefix}.0._u"
+                v_key = f"{prefix}.0._v"
+                out_key = (
+                    f"{module_name}.{param_name}" if module_name else param_name
+                )
+                with torch.no_grad():
+                    normalized = module.weight.detach().clone()
+                sd[out_key] = normalized
+                for k in (orig_key, u_key, v_key):
+                    sd.pop(k, None)
 
 
 class LogImage(Callback):
