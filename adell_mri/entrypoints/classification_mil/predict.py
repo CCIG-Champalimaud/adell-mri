@@ -172,11 +172,20 @@ def main(arguments):
         # PL sometimes needs a little hint to detect GPUs.
         torch.ones([1]).to("cuda" if "cuda" in args.dev else "cpu")
 
-        if args.one_to_one is True:
+        if args.checkpoints is None:
+            logger.warning(
+                "No checkpoint specified through the CLI; test mode "
+                "triggered (no checkpoint is loaded) and predictions will "
+                "be produced with randomly initialised weights."
+            )
+            checkpoint_list = [None]
+        elif args.one_to_one is True:
             checkpoint_list = [args.checkpoints[iteration]]
         else:
             checkpoint_list = args.checkpoints
         for checkpoint in checkpoint_list:
+            if checkpoint is not None:
+                logger.info(f"Predicting for {checkpoint}")
             n_slices = int(len(keys) * args.crop_size[-1])
             boilerplate_args = {
                 "n_classes": args.n_classes,
@@ -249,10 +258,10 @@ def main(arguments):
             global_output.append(output_dict)
 
         if args.ensemble is not None:
-            global_output = get_ensemble_prediction(
-                global_output, args.ensemble
+            global_output.append(
+                get_ensemble_prediction(global_output, args.ensemble)
             )
 
     Path(args.output_path).parent.mkdir(exist_ok=True, parents=True)
     with open(args.output_path, "w") as o:
-        json.dump(global_output, o)
+        o.write(json.dumps(global_output))

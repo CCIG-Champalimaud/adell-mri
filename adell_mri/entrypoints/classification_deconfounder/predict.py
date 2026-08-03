@@ -190,12 +190,20 @@ def main(arguments):
             act_fn = "swish"  # noqa
         batch_preprocessing = None  # noqa
 
-        if args.one_to_one is True and args.ensemble is None:
+        if args.checkpoints is None:
+            logger.warning(
+                "No checkpoint specified through the CLI; test mode "
+                "triggered (no checkpoint is loaded) and predictions will "
+                "be produced with randomly initialised weights."
+            )
+            checkpoint_list = [None]
+        elif args.one_to_one is True and args.ensemble is None:
             checkpoint_list = [args.checkpoints[iteration]]
         else:
             checkpoint_list = args.checkpoints
         for checkpoint in checkpoint_list:
-            logger.info(f"Predicting for {checkpoint}")
+            if checkpoint is not None:
+                logger.info(f"Predicting for {checkpoint}")
             network = get_deconfounded_classification_network(
                 network_config=network_config,
                 dropout_param=0,
