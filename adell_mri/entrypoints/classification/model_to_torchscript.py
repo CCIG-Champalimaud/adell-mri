@@ -7,6 +7,7 @@ import torch
 from adell_mri.modules.config_parsing import parse_config_cat, parse_config_unet
 from adell_mri.utils.network_factories import get_classification_network
 from adell_mri.utils.python_logging import get_logger
+from adell_mri.utils.torch_utils import load_checkpoint_to_model
 
 sys.path.append(r"..")
 logger = get_logger(__name__)
@@ -119,12 +120,9 @@ def main(arguments):
         partial_mixup=False,
     )
 
-    state_dict = torch.load(
-        args.checkpoint, map_location=args.dev, weights_only=False
-    )["state_dict"]
-    state_dict = {k: state_dict[k] for k in state_dict if "loss_fn" not in k}
-    inc = network.load_state_dict(state_dict)
-    logger.info("Inc: %s", inc)
+    load_checkpoint_to_model(
+        network, args.checkpoint, exclude_from_state_dict=["loss_fn"]
+    )
     network.eval()
 
     # example = torch.rand(1, argsin_channels, *args.input_shape).to(args.dev)

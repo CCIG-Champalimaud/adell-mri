@@ -29,7 +29,10 @@ from adell_mri.utils.dataset import Dataset
 from adell_mri.utils.network_factories import get_classification_network
 from adell_mri.utils.parser import get_params, merge_args, parse_ids
 from adell_mri.utils.python_logging import get_logger
-from adell_mri.utils.torch_utils import get_generator_and_rng
+from adell_mri.utils.torch_utils import (
+    get_generator_and_rng,
+    load_checkpoint_to_model,
+)
 
 logger = get_logger(__name__)
 
@@ -485,15 +488,9 @@ def main(arguments):
                 partial_mixup=None,
             )
 
-            state_dict = torch.load(checkpoint, weights_only=False)[
-                "state_dict"
-            ]
-            state_dict = {
-                k: state_dict[k]
-                for k in state_dict
-                if "loss_fn.weight" not in k
-            }
-            network.load_state_dict(state_dict)
+            load_checkpoint_to_model(
+                network, checkpoint, exclude_from_state_dict=["loss_fn.weight"]
+            )
             network = network.eval().to(args.dev)
 
             is_ordinal = args.net_type == "ord"

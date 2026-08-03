@@ -21,7 +21,10 @@ from adell_mri.utils.monai_transforms import (
 from adell_mri.utils.parser import get_params, merge_args, parse_ids
 from adell_mri.utils.prediction_utils import get_ensemble_prediction
 from adell_mri.utils.python_logging import get_logger
-from adell_mri.utils.torch_utils import get_generator_and_rng
+from adell_mri.utils.torch_utils import (
+    get_generator_and_rng,
+    load_checkpoint_to_model,
+)
 from adell_mri.utils.utils import safe_collate
 
 
@@ -210,10 +213,7 @@ def main(arguments):
                     **boilerplate_args, **network_config
                 )
 
-            state_dict = torch.load(checkpoint, weights_only=False)[
-                "state_dict"
-            ]
-            network.load_state_dict(state_dict)
+            load_checkpoint_to_model(network, checkpoint)
             network = network.eval().to(args.dev)
             kwargs = {}
             if args.type == "attention":

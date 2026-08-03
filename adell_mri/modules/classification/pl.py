@@ -1063,7 +1063,10 @@ class OrdNetPL(ClassPLABC):
         prediction = torch.squeeze(prediction, 1)
 
         loss, roc_loss = self.calculate_loss(
-            prediction, y, additional_params={"pre_bias": pre_bias}
+            prediction,
+            y,
+            additional_params={"pre_bias": pre_bias},
+            with_loss_params=True,
         )
         self.log(
             "test_loss",
