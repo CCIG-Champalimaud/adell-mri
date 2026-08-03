@@ -2,6 +2,7 @@ import os
 from collections import OrderedDict
 from copy import deepcopy
 from glob import glob
+from typing import Any
 
 import monai
 import numpy as np
@@ -539,3 +540,44 @@ def return_classes(paths: str | list[str]) -> dict[str | int, str]:
                 out[u] = 0
             out[u] += c
     return out
+
+
+def make_json_serializable(data_structure: Any) -> Any:
+    """
+    Recursively ensures that different data types are JSON-serializable. If
+    `data_structure` is a Tensor, it first gets converted to a squeezed numpy
+    array. If it is a numpy array, it gets converted to a list. Lists, tuples
+    and dicts get recursively converted to JSON-serializable objects.
+
+    If leaf objects are not one of `int`, `float` or `str`, they are coherced
+    to `str`.
+
+    Args:
+        data_structure (Any): an object which will be eventually stored as a
+            JSON file.
+
+    Returns:
+        data_structure (Any): an object which is compliant with JSON.
+    """
+    if isinstance(data_structure, torch.Tensor):
+        data_structure = data_structure.squeeze().detach().cpu().numpy()
+    if isinstance(data_structure, np.ndarray):
+        data_structure = data_structure.tolist()
+    if isinstance(data_structure, list):
+        for i in range(len(data_structure)):
+            data_structure[i] = make_json_serializable(data_structure[i])
+        return data_structure
+    elif isinstance(data_structure, tuple):
+        output = []
+        for i in range(len(data_structure)):
+            output[i] = make_json_serializable(data_structure[i])
+        return output
+    elif isinstance(data_structure, dict):
+        for k, v in data_structure.items():
+            data_structure[k] = make_json_serializable(v)
+        return data_structure
+    else:
+        # last resort cohercion
+        if isinstance(data_structure, (float, int, str)) is False:
+            data_structure = str(data_structure)
+    return data_structure
