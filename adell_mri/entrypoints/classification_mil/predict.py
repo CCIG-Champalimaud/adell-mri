@@ -25,7 +25,7 @@ from adell_mri.utils.torch_utils import (
     get_generator_and_rng,
     load_checkpoint_to_model,
 )
-from adell_mri.utils.utils import safe_collate
+from adell_mri.utils.utils import make_json_serializable
 
 
 def main(arguments):
@@ -78,9 +78,9 @@ def main(arguments):
 
     data_dict = Dataset(args.dataset_json, rng=rng)
     if args.prediction_ids:
-        all_prediction_pids = parse_ids(args.prediction_ids)
+        prediction_ids = parse_ids(args.prediction_ids)
     else:
-        all_prediction_pids = [[k for k in data_dict]]
+        prediction_ids = [[k for k in data_dict]]
     if args.excluded_ids is not None:
         excluded_ids = parse_ids(args.excluded_ids, output_format="list")
         a = len(data_dict)
@@ -121,8 +121,6 @@ def main(arguments):
     if "batch_size" not in network_config:
         network_config["batch_size"] = 1
 
-    all_pids = [k for k in data_dict]  # noqa
-
     logger.info("Setting up transforms...")
     label_mode = "binary" if args.n_classes == 2 else "cat"
     transform_arguments = {
@@ -147,9 +145,23 @@ def main(arguments):
     )
 
     global_output = []
-    for iteration, prediction_pids in enumerate(all_prediction_pids):
-        prediction_pids = [pid for pid in prediction_pids if pid in data_dict]
-        prediction_list = [data_dict[pid] for pid in prediction_pids]
+    extra_args = {}
+    if args.type == "attention":
+        extra_args = {"return_attention": True}
+
+    if args.type == "probability":
+        if args.n_classes > 2:
+            post_proc_fn = torch.nn.Softmax(-1)
+        else:
+            post_proc_fn = torch.nn.Sigmoid()
+    else:
+        post_proc_fn = torch.nn.Identity()
+
+    for iteration in range(len(prediction_ids)):
+        curr_prediction_ids = [
+            pid for pid in prediction_ids[iteration] if pid in data_dict
+        ]
+        prediction_list = [data_dict[pid] for pid in curr_prediction_ids]
         prediction_dataset = monai.data.CacheDataset(
             prediction_list,
             transforms,
@@ -159,14 +171,6 @@ def main(arguments):
 
         # PL sometimes needs a little hint to detect GPUs.
         torch.ones([1]).to("cuda" if "cuda" in args.dev else "cpu")
-
-        prediction_loader = monai.data.ThreadDataLoader(
-            prediction_dataset,
-            batch_size=network_config["batch_size"],
-            shuffle=False,
-            num_workers=args.n_workers,
-            collate_fn=safe_collate,
-        )
 
         if args.one_to_one is True:
             checkpoint_list = [args.checkpoints[iteration]]
@@ -215,46 +219,34 @@ def main(arguments):
 
             load_checkpoint_to_model(network, checkpoint)
             network = network.eval().to(args.dev)
-            kwargs = {}
-            if args.type == "attention":
-                kwargs["return_attention"] = True
-            prediction_output = []
-            attention_output = []
-            with tqdm(prediction_loader, total=len(prediction_loader)) as pbar:
-                for idx, batch in enumerate(pbar):
-                    batch = {
-                        k: batch[k].to(args.dev)
-                        for k in batch
-                        if isinstance(batch[k], torch.Tensor)
-                    }
-                    prediction = network.predict_step(batch, idx, **kwargs)
-                    if args.type == "probability":
-                        if args.n_classes == 2:
-                            prediction = torch.nn.functional.sigmoid(prediction)
-                        else:
-                            prediction = torch.nn.functional.softmax(
-                                prediction, axis=-1
-                            )
-                    elif args.type == "logit":
-                        prediction = prediction
-                    elif args.type == "attention":
-                        prediction, attention = prediction
-                        attention_output.extend(attention)
-                    prediction_output.extend(prediction)
+            if getattr(network, "gaussian_process", False):
+                network.gaussian_process_head.get_cov()
 
-            prediction_output = {
-                k: x.detach().cpu().numpy().tolist()
-                for k, x in zip(prediction_pids, prediction_output)
+            output_dict = {
+                "iteration": iteration,
+                "prediction_ids": curr_prediction_ids,
+                "checkpoint": checkpoint,
             }
-            prediction_output = {"prediction": prediction_output}
-            if len(attention_output) > 0:
-                prediction_output["attention"] = {
-                    k: x.detach().cpu().numpy().tolist()
-                    for k, x in zip(prediction_pids, attention_output)
-                }
-            prediction_output["checkpoint"] = checkpoint
-            prediction_output["iteration"] = iteration
-            global_output.append(prediction_output)
+            with tqdm(total=len(curr_prediction_ids)) as pbar:
+                for identifier, element in zip(
+                    curr_prediction_ids, prediction_dataset
+                ):
+                    pbar.set_description("Predicting {}".format(identifier))
+                    batch = {
+                        "image": element["image"].unsqueeze(0).to(args.dev)
+                    }
+                    output = network.predict_step(batch, 0, **extra_args)
+                    if "prediction" in output:
+                        output["prediction"] = post_proc_fn(
+                            output["prediction"]
+                        )
+                    output = make_json_serializable(output)
+                    for key in output:
+                        if key not in output_dict:
+                            output_dict[key] = {}
+                        output_dict[key][identifier] = output[key]
+                    pbar.update()
+            global_output.append(output_dict)
 
         if args.ensemble is not None:
             global_output = get_ensemble_prediction(
