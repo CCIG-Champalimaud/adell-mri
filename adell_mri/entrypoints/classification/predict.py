@@ -8,7 +8,13 @@ import torch
 from tqdm import tqdm
 
 from adell_mri.entrypoints.assemble_args import Parser
-from adell_mri.modules.classification.losses import OrdinalSigmoidalLoss
+from adell_mri.entrypoints.classification.predict_utils import (
+    ClassificationPredictionAccumulator,
+    configure_loss_fn,
+    predict_sample,
+    resolve_checkpoint_list,
+    resolve_postprocessing,
+)
 from adell_mri.modules.config_parsing import parse_config_cat, parse_config_unet
 from adell_mri.transform_factory.transforms import ClassificationTransforms
 from adell_mri.utils.dataset import Dataset
@@ -20,7 +26,6 @@ from adell_mri.utils.torch_utils import (
     get_generator_and_rng,
     load_checkpoint_to_model,
 )
-from adell_mri.utils.utils import make_json_serializable
 
 logger = get_logger(__name__)
 
@@ -136,29 +141,11 @@ def main(arguments):
         **transform_arguments
     ).transforms()
 
+    post_proc_fn, extra_args = resolve_postprocessing(
+        args.type, args.net_type, args.n_classes, caller_logger=logger
+    )
+
     global_output = []
-    extra_args = {}
-    if args.type in ["probability", "logit"]:
-        extra_args = {}
-    elif args.type in ["pre_bias"]:
-        if args.net_type == "ord":
-            extra_args = {"return_only_pre_bias": True}
-        else:
-            logger.warning(
-                "Net type must be ord for pre_bias, using probability instead"
-            )
-            extra_args = {}
-    else:
-        extra_args = {"return_features": True}
-
-    if args.type == "probability":
-        if args.n_classes > 2:
-            post_proc_fn = torch.nn.Softmax(-1)
-        else:
-            post_proc_fn = torch.nn.Sigmoid()
-    else:
-        post_proc_fn = torch.nn.Identity()
-
     if args.prediction_ids:
         prediction_ids = parse_ids(args.prediction_ids)
     else:
@@ -179,32 +166,15 @@ def main(arguments):
         # PL sometimes needs a little hint to detect GPUs.
         torch.ones([1]).to("cuda" if "cuda" in args.dev else "cpu")
 
-        if args.n_classes == 2:
-            network_config["loss_fn"] = torch.nn.BCEWithLogitsLoss()
-        elif args.net_type == "ord":
-            network_config["loss_fn"] = OrdinalSigmoidalLoss(
-                n_classes=args.n_classes
-            )
-        else:
-            network_config["loss_fn"] = torch.nn.CrossEntropyLoss()
+        configure_loss_fn(network_config, args.net_type, args.n_classes)
 
-        if args.net_type == "unet":
-            act_fn = network_config["activation_fn"]
-        else:
-            act_fn = "swish"  # noqa
-        batch_preprocessing = None  # noqa
-
-        if args.checkpoints is None:
-            logger.warning(
-                "No checkpoint specified through the CLI; test mode "
-                "triggered (no checkpoint is loaded) and predictions will "
-                "be produced with randomly initialised weights."
-            )
-            checkpoint_list = [None]
-        elif args.one_to_one is True and args.ensemble is None:
-            checkpoint_list = [args.checkpoints[iteration]]
-        else:
-            checkpoint_list = args.checkpoints
+        checkpoint_list = resolve_checkpoint_list(
+            args.checkpoints,
+            args.one_to_one,
+            args.ensemble,
+            iteration,
+            caller_logger=logger,
+        )
         for checkpoint in checkpoint_list:
             if checkpoint is not None:
                 logger.info("Predicting for %s", checkpoint)
@@ -235,40 +205,27 @@ def main(arguments):
             if network.gaussian_process:
                 network.gaussian_process_head.get_cov()
 
-            output_dict = {
-                "iteration": iteration,
-                "prediction_ids": curr_prediction_ids,
-                "checkpoint": checkpoint,
-            }
+            accumulator = ClassificationPredictionAccumulator(
+                iteration=iteration,
+                prediction_ids=curr_prediction_ids,
+                checkpoint=checkpoint,
+            )
             with tqdm(total=len(curr_prediction_ids)) as pbar:
                 for identifier, element in zip(
                     curr_prediction_ids, prediction_dataset
                 ):
                     pbar.set_description("Predicting {}".format(identifier))
-                    batch = {
-                        "image": element["image"].unsqueeze(0).to(args.dev)
-                    }
-                    if "tabular" in element:
-                        batch["tabular"] = (
-                            element["tabular"].unsqueeze(0).to(args.dev)
-                        )
-                    output = network.predict_step(batch, 0, **extra_args)
-                    if "features" in output:
-                        output["features"] = output["features"].flatten(
-                            start_dim=2
-                        )
-                        output["features"] = output["features"].max(-1).values
-                    if "prediction" in output:
-                        output["prediction"] = post_proc_fn(
-                            output["prediction"]
-                        )
-                    output = make_json_serializable(output)
-                    for key in output:
-                        if key not in output_dict:
-                            output_dict[key] = {}
-                        output_dict[key][identifier] = output[key]
+                    output = predict_sample(
+                        network,
+                        element,
+                        args.dev,
+                        post_proc_fn,
+                        extra_args,
+                        include_tabular=True,
+                    )
+                    accumulator.add(identifier, output)
                     pbar.update()
-            global_output.append(output_dict)
+            global_output.append(accumulator.as_dict())
 
         if args.ensemble is not None:
             global_output.append(

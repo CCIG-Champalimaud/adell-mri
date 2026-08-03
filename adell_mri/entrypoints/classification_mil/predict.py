@@ -7,6 +7,12 @@ import torch
 from tqdm import tqdm
 
 from adell_mri.entrypoints.assemble_args import Parser
+from adell_mri.entrypoints.classification.predict_utils import (
+    ClassificationPredictionAccumulator,
+    predict_sample,
+    resolve_checkpoint_list,
+    resolve_postprocessing,
+)
 from adell_mri.modules.classification.pl import (
     MultipleInstanceClassifierPL,
     TransformableTransformerPL,
@@ -25,7 +31,6 @@ from adell_mri.utils.torch_utils import (
     get_generator_and_rng,
     load_checkpoint_to_model,
 )
-from adell_mri.utils.utils import make_json_serializable
 
 
 def main(arguments):
@@ -144,19 +149,11 @@ def main(arguments):
         ]
     )
 
+    post_proc_fn, extra_args = resolve_postprocessing(
+        args.type, None, args.n_classes, caller_logger=logger
+    )
+
     global_output = []
-    extra_args = {}
-    if args.type == "attention":
-        extra_args = {"return_attention": True}
-
-    if args.type == "probability":
-        if args.n_classes > 2:
-            post_proc_fn = torch.nn.Softmax(-1)
-        else:
-            post_proc_fn = torch.nn.Sigmoid()
-    else:
-        post_proc_fn = torch.nn.Identity()
-
     for iteration in range(len(prediction_ids)):
         curr_prediction_ids = [
             pid for pid in prediction_ids[iteration] if pid in data_dict
@@ -172,17 +169,13 @@ def main(arguments):
         # PL sometimes needs a little hint to detect GPUs.
         torch.ones([1]).to("cuda" if "cuda" in args.dev else "cpu")
 
-        if args.checkpoints is None:
-            logger.warning(
-                "No checkpoint specified through the CLI; test mode "
-                "triggered (no checkpoint is loaded) and predictions will "
-                "be produced with randomly initialised weights."
-            )
-            checkpoint_list = [None]
-        elif args.one_to_one is True:
-            checkpoint_list = [args.checkpoints[iteration]]
-        else:
-            checkpoint_list = args.checkpoints
+        checkpoint_list = resolve_checkpoint_list(
+            args.checkpoints,
+            args.one_to_one,
+            None,
+            iteration,
+            caller_logger=logger,
+        )
         for checkpoint in checkpoint_list:
             if checkpoint is not None:
                 logger.info(f"Predicting for {checkpoint}")
@@ -231,31 +224,27 @@ def main(arguments):
             if getattr(network, "gaussian_process", False):
                 network.gaussian_process_head.get_cov()
 
-            output_dict = {
-                "iteration": iteration,
-                "prediction_ids": curr_prediction_ids,
-                "checkpoint": checkpoint,
-            }
+            accumulator = ClassificationPredictionAccumulator(
+                iteration=iteration,
+                prediction_ids=curr_prediction_ids,
+                checkpoint=checkpoint,
+            )
             with tqdm(total=len(curr_prediction_ids)) as pbar:
                 for identifier, element in zip(
                     curr_prediction_ids, prediction_dataset
                 ):
                     pbar.set_description("Predicting {}".format(identifier))
-                    batch = {
-                        "image": element["image"].unsqueeze(0).to(args.dev)
-                    }
-                    output = network.predict_step(batch, 0, **extra_args)
-                    if "prediction" in output:
-                        output["prediction"] = post_proc_fn(
-                            output["prediction"]
-                        )
-                    output = make_json_serializable(output)
-                    for key in output:
-                        if key not in output_dict:
-                            output_dict[key] = {}
-                        output_dict[key][identifier] = output[key]
+                    output = predict_sample(
+                        network,
+                        element,
+                        args.dev,
+                        post_proc_fn,
+                        extra_args,
+                        process_features=False,
+                    )
+                    accumulator.add(identifier, output)
                     pbar.update()
-            global_output.append(output_dict)
+            global_output.append(accumulator.as_dict())
 
         if args.ensemble is not None:
             global_output.append(
