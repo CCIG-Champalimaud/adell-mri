@@ -148,6 +148,10 @@ def main(arguments):
         module_paths = args.module_paths
         network_configs = None
     else:
+        if len(args.config_files) == 1:
+            config_files = [args.config_files[0] for _ in args.net_types]
+        else:
+            config_files = args.config_files
         network_configs = [
             (
                 parse_config_unet(config_file, len(keys), n_classes)
@@ -156,10 +160,6 @@ def main(arguments):
             )
             for config_file, net_type in zip(config_files, args.net_types)
         ]
-        if len(args.config_files) == 1:
-            config_files = [args.config_files[0] for _ in args.net_types]
-        else:
-            config_files = args.config_files
 
     if args.batch_size is not None:
         ensemble_config["batch_size"] = args.batch_size

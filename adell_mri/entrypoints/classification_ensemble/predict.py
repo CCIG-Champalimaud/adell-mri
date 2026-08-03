@@ -123,6 +123,10 @@ def main(arguments):
         module_paths = args.module_paths
         network_configs = None
     else:
+        if len(args.config_files) == 1:
+            config_files = [args.config_files[0] for _ in args.net_types]
+        else:
+            config_files = args.config_files
         network_configs = [
             (
                 parse_config_unet(config_file, len(keys), args.n_classes)
@@ -131,10 +135,6 @@ def main(arguments):
             )
             for config_file, net_type in zip(config_files, args.net_types)
         ]
-        if len(args.config_files) == 1:
-            config_files = [args.config_files[0] for _ in args.net_types]
-        else:
-            config_files = args.config_files
 
     if args.batch_size is not None:
         ensemble_config["batch_size"] = args.batch_size
@@ -205,11 +205,20 @@ def main(arguments):
             ensemble_config["loss_fn"] = torch.nn.CrossEntropyLoss()
 
         batch_preprocessing = None  # noqa
-        if args.one_to_one is True:
+        if args.checkpoints is None:
+            logger.warning(
+                "No checkpoint specified through the CLI; test mode "
+                "triggered (no checkpoint is loaded) and predictions will "
+                "be produced with randomly initialised weights."
+            )
+            checkpoint_list = [None]
+        elif args.one_to_one is True:
             checkpoint_list = [args.checkpoints[iteration]]
         else:
             checkpoint_list = args.checkpoints
         for checkpoint_idx, checkpoint in enumerate(checkpoint_list):
+            if checkpoint is not None:
+                logger.info(f"Predicting for {checkpoint}")
             if network_configs is not None:
                 networks = [
                     get_classification_network(
