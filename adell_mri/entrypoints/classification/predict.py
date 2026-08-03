@@ -246,14 +246,14 @@ def main(arguments):
                         )
                     output = network.predict_step(batch, 0, **extra_args)
                     if "features" in output:
-                        prediction["features"] = prediction["features"].flatten(
+                        output["features"] = output["features"].flatten(
                             start_dim=2
                         )
-                        prediction["features"] = (
-                            prediction["features"].max(-1).values
-                        )
+                        output["features"] = output["features"].max(-1).values
                     if "prediction" in output:
-                        prediction = post_proc_fn(prediction)
+                        output["prediction"] = post_proc_fn(
+                            output["prediction"]
+                        )
                     output = make_json_serializable(output)
                     for key in output:
                         if key not in output_dict:
