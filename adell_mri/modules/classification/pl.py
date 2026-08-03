@@ -405,14 +405,17 @@ class ClassPLABC(pl.LightningModule, ABC):
 
     def on_train_end(self):
         """
-        Called when fitting ends. Updates Gaussian process if enabled.
+        Called when training ends. Updates Gaussian process if enabled.
         """
         if hasattr(self, "gaussian_process") and self.gaussian_process:
             self.eval()
             self.gaussian_process_head.reset_inv_cov()
-            with torch.no_grad(), tqdm(
-                self.training_dataloader_call(False), mininterval=2.5
-            ) as pbar:
+            with (
+                torch.no_grad(),
+                tqdm(
+                    self.training_dataloader_call(False), mininterval=2.5
+                ) as pbar,
+            ):
                 pbar.set_description("Fitting GP covariance")
                 for batch_idx, batch in enumerate(pbar):
                     batch = self.transfer_batch_to_device(batch, self.device, 0)
@@ -454,24 +457,34 @@ class ClassPLABC(pl.LightningModule, ABC):
         """
         self.log_metrics_end_epoch(self.test_metrics)
 
-    def predict_step(self, batch, batch_idx, *args, **kwargs):
+    def predict_step(self, batch, batch_idx, dataloader_idx=0, *args, **kwargs):
         """
         Performs prediction on a batch.
 
         Args:
-            batch: Input batch containing images
-            batch_idx: Index of current batch
-            *args: Additional positional arguments
-            **kwargs: Additional keyword arguments
+            batch: Input batch containing images.
+            batch_idx: Index of current batch.
+            dataloader_idx: Index of current dataloader.
+            *args: Additional positional arguments.
+            **kwargs: Additional keyword arguments.
 
         Returns:
             torch.Tensor: Model predictions
         """
+        if self.gaussian_process:
+            if "return_features" in kwargs:
+                raise NotImplementedError(
+                    "return_features=True not implemented for Gaussian process models"
+                )
+            return self.predict_step_gp(batch, batch_idx, *args, **kwargs)
+
         x = batch[self.image_key]
         prediction = self.forward(x, *args, **kwargs)
-        return prediction
+        if "return_features" in kwargs:
+            return {"features": prediction}
+        return {"prediction": prediction}
 
-    def predict_step_gp(self, batch, batch_idx, n_samples=100):
+    def predict_step_gp(self, batch, batch_idx, n_samples=100, *args, **kwargs):
         """
         Performs prediction with GP uncertainty estimation.
         Dedicated method for models with fitted Gaussian process layers.
@@ -498,15 +511,17 @@ class ClassPLABC(pl.LightningModule, ABC):
             raise RuntimeError("Gaussian process is not enabled for this model")
 
         if not (
-            hasattr(self, "gaussian_process_head")
-            and hasattr(self.gaussian_process_head, "cov")
+            hasattr(self.network, "gaussian_process_head")
+            and hasattr(self.network.gaussian_process_head, "cov")
         ):
+            print(hasattr(self.network, "gaussian_process_head"))
+            print(hasattr(self.network.gaussian_process_head, "cov"))
             raise RuntimeError(
                 "Gaussian process is not fitted. Call on_fit_end() first."
             )
 
         x = batch[self.image_key]
-        prediction = self.forward(x)
+        prediction = self.forward(x, *args, **kwargs)
 
         features = (
             self.network.forward_features(x)
@@ -817,7 +832,15 @@ class ClassNetPL(ClassPLABC):
             and self.network.gaussian_process
         ):
             self.gaussian_process = True
-            self.gaussian_process_head = self.network.gaussian_process_head
+
+    @property
+    def gaussian_process_head(self):
+        if self.gaussian_process:
+            return self.network.gaussian_process_head
+        else:
+            raise ValueError(
+                "Model was not initialised with Gaussian process head"
+            )
 
     def update_metrics(self, prediction, y, metrics, log=True):
         """
@@ -1308,6 +1331,24 @@ class SegCatNetPL(SegCatNet, pl.LightningModule):
                 ignore_index=ign_idx,
             ).to(self.device)
 
+    def predict_step(self, batch, batch_idx, dataloader_idx=0, *args, **kwargs):
+        x = batch[self.image_key]
+        x_cond = (
+            batch[self.skip_conditioning_key]
+            if self.skip_conditioning_key is not None
+            else None
+        )
+        x_fc = (
+            batch[self.feature_conditioning_key]
+            if self.feature_conditioning_key is not None
+            else None
+        )
+        prediction = self.forward(
+            x, *args, X_skip_layer=x_cond, X_feature_conditioning=x_fc, **kwargs
+        )
+        prediction = torch.squeeze(prediction, 1)
+        return {"prediction": prediction}
+
 
 class UNetEncoderPL(UNetEncoder, ClassPLABC):
     """
@@ -1502,6 +1543,15 @@ class GenericEnsemblePL(GenericEnsemble, ClassPLABC):
         self.update_metrics(prediction, y, self.test_metrics, log=False)
         return loss
 
+    def predict_step(
+        self, batch, batch_idx, dataloader_idx: int = 0, *args, **kwargs
+    ):
+        x = [batch[k] for k in self.image_keys]
+        prediction = self.forward(x, *args, **kwargs)
+        prediction = torch.squeeze(prediction, 1)
+
+        return {"prediction": prediction}
+
     def train_dataloader(self) -> torch.utils.data.DataLoader:
         return self.training_dataloader_call()
 
@@ -1632,6 +1682,12 @@ class AveragingEnsemblePL(AveragingEnsemble, ClassPLABC):
         lr = self.learning_rate
         last_lr = sch["_last_lr"][0] if "_last_lr" in sch else lr
         self.log("lr", last_lr)
+
+    def predict_step(self, batch, batch_idx, dataloader_idx=0, *args, **kwargs):
+        x = [batch[k] for k in self.image_keys]
+        prediction = self.forward(x, *args, **kwargs)
+        prediction = torch.squeeze(prediction, 1)
+        return {"prediction": prediction}
 
 
 class ViTClassifierPL(ViTClassifier, ClassPLABC):
@@ -1879,6 +1935,14 @@ class TransformableTransformerPL(TransformableTransformer, ClassPLABC):
         )
         self.setup_metrics()
 
+    def predict_step(self, batch, batch_idx, dataloader_idx=0, *args, **kwargs):
+        x = batch[self.image_key]
+        output = self.forward(x, *args, **kwargs)
+        if kwargs.get("return_attention", False):
+            prediction, attention = output
+            return {"prediction": prediction, "attention": attention}
+        return {"prediction": output}
+
 
 class MultipleInstanceClassifierPL(MultipleInstanceClassifier, ClassPLABC):
     """
@@ -1960,6 +2024,14 @@ class MultipleInstanceClassifierPL(MultipleInstanceClassifier, ClassPLABC):
             ]
         )
         self.setup_metrics()
+
+    def predict_step(self, batch, batch_idx, dataloader_idx=0, *args, **kwargs):
+        x = batch[self.image_key]
+        output = self.forward(x, *args, **kwargs)
+        if kwargs.get("return_attention", False):
+            prediction, attention = output
+            return {"prediction": prediction, "attention": attention}
+        return {"prediction": output}
 
 
 class HybridClassifierPL(HybridClassifier, ClassPLABC):
@@ -2098,6 +2170,25 @@ class HybridClassifierPL(HybridClassifier, ClassPLABC):
         )
         self.update_metrics(prediction, y, self.test_metrics)
         return loss
+
+    def predict_step(self, batch, batch_idx, dataloader_idx=0, *args, **kwargs):
+        """
+        Performs prediction on a batch.
+
+        Args:
+            batch: Input batch containing images.
+            batch_idx: Index of current batch.
+            dataloader_idx: Index of current dataloader.
+            *args: Additional positional arguments.
+            **kwargs: Additional keyword arguments.
+
+        Returns:
+            torch.Tensor: Model predictions
+        """
+        x = batch[self.image_key]
+        x_tab = batch[self.tab_key]
+        prediction = self.forward(x, x_tab, *args, **kwargs)
+        return {"prediction": prediction}
 
 
 class DeconfoundedNetPL(DeconfoundedNetGeneric, ClassPLABC):
@@ -2382,3 +2473,10 @@ class DeconfoundedNetPL(DeconfoundedNetGeneric, ClassPLABC):
             "lr_scheduler": lr_schedulers,
             "monitor": "val_loss",
         }
+
+    def predict_step(self, batch, batch_idx, dataloader_idx=0, *args, **kwargs):
+        x = batch[self.image_key]
+        prediction = self.forward(x, *args, **kwargs)
+        classification = prediction[0]
+        classification = torch.squeeze(classification, 1)
+        return {"prediction": classification}

@@ -101,7 +101,9 @@ def test_dedicated_gp_predict_step():
 
     # Test 1: Standard predict_step still works
     prediction = pl_module.predict_step(batch, 0)
-    assert prediction.shape == (batch_size, output_dim)
+    assert isinstance(prediction, dict)
+    assert "prediction" in prediction
+    assert prediction["prediction"].shape == (batch_size, output_dim)
 
     # Test 2: GP fitting
     for batch_train in dataloader:

@@ -4,7 +4,6 @@ from copy import deepcopy
 from pathlib import Path
 
 import monai
-import numpy as np
 import torch
 from tqdm import tqdm
 
@@ -21,6 +20,7 @@ from adell_mri.utils.torch_utils import (
     get_generator_and_rng,
     load_checkpoint_to_model,
 )
+from adell_mri.utils.utils import make_json_serializable
 
 logger = get_logger(__name__)
 
@@ -224,37 +224,41 @@ def main(arguments):
                 network, checkpoint, exclude_from_state_dict=["loss_fn.weight"]
             )
             network = network.eval().to(args.dev)
+            if network.gaussian_process:
+                network.gaussian_process_head.get_cov()
 
             output_dict = {
                 "iteration": iteration,
                 "prediction_ids": curr_prediction_ids,
                 "checkpoint": checkpoint,
-                "predictions": {},
             }
             with tqdm(total=len(curr_prediction_ids)) as pbar:
                 for identifier, element in zip(
                     curr_prediction_ids, prediction_dataset
                 ):
                     pbar.set_description("Predicting {}".format(identifier))
+                    batch = {
+                        "image": element["image"].unsqueeze(0).to(args.dev)
+                    }
                     if "tabular" in element:
-                        output = network.forward(
-                            element["image"].unsqueeze(0).to(args.dev),
-                            element["tabular"].unsqueeze(0).to(args.dev),
-                            **extra_args,
-                        ).detach()
-                    else:
-                        output = network.forward(
-                            element["image"].unsqueeze(0).to(args.dev),
-                            **extra_args,
-                        ).detach()
-                    if args.type == "features":
-                        output = output.flatten(start_dim=2)
-                        output = output.max(-1).values.cpu()
-                    else:
-                        output = output.cpu()
-                    output = post_proc_fn(output)
-                    output = output.numpy()[0].tolist()
-                    output_dict["predictions"][identifier] = output
+                        batch["tabular"] = (
+                            element["tabular"].unsqueeze(0).to(args.dev)
+                        )
+                    output = network.predict_step(batch, 0, **extra_args)
+                    if "features" in output:
+                        prediction["features"] = prediction["features"].flatten(
+                            start_dim=2
+                        )
+                        prediction["features"] = (
+                            prediction["features"].max(-1).values
+                        )
+                    if "prediction" in output:
+                        prediction = post_proc_fn(prediction)
+                    output = make_json_serializable(output)
+                    for key in output:
+                        if key not in output_dict:
+                            output_dict[key] = {}
+                        output_dict[key][identifier] = output[key]
                     pbar.update()
             global_output.append(output_dict)
 
