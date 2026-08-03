@@ -99,13 +99,7 @@ def test_dedicated_gp_predict_step():
     # Create batch for prediction
     batch = {pl_module.image_key: x, pl_module.label_key: y}
 
-    # Test 1: Standard predict_step still works
-    prediction = pl_module.predict_step(batch, 0)
-    assert isinstance(prediction, dict)
-    assert "prediction" in prediction
-    assert prediction["prediction"].shape == (batch_size, output_dim)
-
-    # Test 2: GP fitting
+    # fitting
     for batch_train in dataloader:
         x_train, y_train = batch_train
         features = network.forward_features(x_train)
@@ -115,13 +109,19 @@ def test_dedicated_gp_predict_step():
     pl_module.gaussian_process_head.get_cov()
     assert hasattr(pl_module.gaussian_process_head, "cov")
 
-    # Test 3: Dedicated GP predict_step
+    # testing
+    prediction = pl_module.predict_step(batch, 0)
+    assert isinstance(prediction, dict)
+    assert "prediction" in prediction
+    assert prediction["prediction"].shape == (batch_size, output_dim)
+
+    # prediction with gp step
     result = pl_module.predict_step_gp(batch, 0, n_samples=n_samples)
 
     # Check result structure
     assert isinstance(result, dict), "Result should be a dictionary"
     required_keys = [
-        "predictions",
+        "prediction",
         "gp_mean",
         "gp_samples",
         "predictive_mean",
@@ -133,13 +133,13 @@ def test_dedicated_gp_predict_step():
         assert key in result, f"Missing key: {key}"
 
     # Check tensor shapes
-    assert result["predictions"].shape == (batch_size, output_dim)
+    assert result["prediction"].shape == (batch_size, output_dim)
     assert result["gp_samples"].shape == (n_samples, batch_size, output_dim)
     assert result["predictive_mean"].shape == (batch_size, output_dim)
     assert result["predictive_std"].shape == (batch_size, output_dim)
     assert result["epistemic_uncertainty"].shape == (batch_size, output_dim)
 
-    # Test 4: Non-GP model should raise error
+    # testing whether errors are correctly raised
     network_no_gp = SimpleGPNetwork(
         input_dim, hidden_dim, output_dim, n_classes=2, use_gp=False
     )
@@ -151,7 +151,6 @@ def test_dedicated_gp_predict_step():
     except RuntimeError as e:
         assert "Gaussian process is not enabled" in str(e)
 
-    # Test 5: GP not fitted should raise error
     network_unfitted = SimpleGPNetwork(
         input_dim, hidden_dim, output_dim, n_classes=2, use_gp=True
     )
@@ -200,7 +199,7 @@ def test_multiclass_dedicated_gp():
     result = pl_module.predict_step_gp(batch, 0, n_samples=n_samples)
 
     # Check multiclass specific shapes and properties
-    assert result["predictions"].shape == (batch_size, n_classes)
+    assert result["prediction"].shape == (batch_size, n_classes)
     assert result["predictive_mean"].shape == (batch_size, n_classes)
 
 
