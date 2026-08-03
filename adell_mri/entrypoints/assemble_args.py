@@ -183,6 +183,7 @@ argument_factory = {
     "config_files": dict(
         type=str,
         required=False,
+        nargs="+",
         help="Paths to network configuration file (yaml; size 1 or same size as\
             net types)",
     ),
@@ -413,7 +414,9 @@ argument_factory = {
         help="Classification type",
     ),
     "classification_net_types": dict(
-        default="cat",
+        type=str,
+        nargs="+",
+        default=["cat"],
         choices=["cat", "ord", "unet", "vit", "factorized_vit", "vgg"],
         help="Classification types",
     ),
