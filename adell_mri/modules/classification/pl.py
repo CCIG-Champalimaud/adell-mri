@@ -227,7 +227,7 @@ class ClassPLABC(pl.LightningModule, ABC):
             )
         loss = self.loss_fn(prediction, y, **params)
         if isinstance(loss, tuple):
-            loss = [l.mean() for l in loss]
+            loss = [loss_element.mean() for loss_element in loss]
             loss = tuple(loss)
         else:
             loss = loss.mean()
@@ -539,7 +539,7 @@ class ClassPLABC(pl.LightningModule, ABC):
         epistemic_uncertainty = torch.diagonal(gp_cov, dim1=-2, dim2=-1)
 
         return {
-            "predictions": prediction,
+            "prediction": prediction,
             "gp_mean": gp_mean,
             "gp_samples": gp_samples,
             "predictive_mean": predictive_mean,
@@ -2477,6 +2477,8 @@ class DeconfoundedNetPL(DeconfoundedNetGeneric, ClassPLABC):
     def predict_step(self, batch, batch_idx, dataloader_idx=0, *args, **kwargs):
         x = batch[self.image_key]
         prediction = self.forward(x, *args, **kwargs)
+        if kwargs.get("return_features", False):
+            return {"features": prediction}
         classification = prediction[0]
         classification = torch.squeeze(classification, 1)
         return {"prediction": classification}
