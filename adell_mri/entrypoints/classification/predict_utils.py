@@ -2,7 +2,7 @@
 Shared utilities for classification prediction entrypoints.
 
 Consolidates the common prediction logic duplicated across
-``classification``, ``classification_deconfounder``, ``classification_ensemble``
+``classification``, ``classification_ensemble``
 and ``classification_mil`` entrypoints.
 """
 

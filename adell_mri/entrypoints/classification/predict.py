@@ -8,9 +8,15 @@ import torch
 from tqdm import tqdm
 
 from adell_mri.entrypoints.assemble_args import Parser
+from adell_mri.entrypoints.classification._utils import (
+    configure_loss_fn,
+    create_classification_network,
+    create_transform_arguments,
+    extract_confounder_info,
+    use_deconfounding,
+)
 from adell_mri.entrypoints.classification.predict_utils import (
     ClassificationPredictionAccumulator,
-    configure_loss_fn,
     predict_sample,
     resolve_checkpoint_list,
     resolve_postprocessing,
@@ -18,7 +24,6 @@ from adell_mri.entrypoints.classification.predict_utils import (
 from adell_mri.modules.config_parsing import parse_config_cat, parse_config_unet
 from adell_mri.transform_factory.transforms import ClassificationTransforms
 from adell_mri.utils.dataset import Dataset
-from adell_mri.utils.network_factories import get_classification_network
 from adell_mri.utils.parser import get_params, merge_args, parse_ids
 from adell_mri.utils.prediction_utils import get_ensemble_prediction
 from adell_mri.utils.python_logging import get_logger
@@ -41,6 +46,10 @@ def main(arguments):
             "image_keys",
             "clinical_feature_keys",
             "adc_keys",
+            "cat_confounder_keys",
+            "cont_confounder_keys",
+            "exclude_surrogate_variables",
+            "n_features_deconfounder",
             "mask_key",
             "image_masking",
             "image_crop_from_mask",
@@ -62,9 +71,14 @@ def main(arguments):
                 "prediction_type",
                 "type",
                 {
-                    "choices": ["probability", "logit", "pre_bias"],
-                    "help": "Returns either the classification probability, "
-                    "the logits or the pre-bias ordinal values.",
+                    "choices": [
+                        "probability",
+                        "logit",
+                        "pre_bias",
+                    ],
+                    "help": "Returns either the classification "
+                    "probability, the logits or the pre-bias "
+                    "ordinal values.",
                 },
             ),
             ("prediction_checkpoints", "checkpoints"),
@@ -79,7 +93,7 @@ def main(arguments):
         param_dict = get_params(args.params_from)
         args = merge_args(args, param_dict, sys.argv[1:])
 
-    g, rng = get_generator_and_rng(args.seed)
+    _g, rng = get_generator_and_rng(args.seed)
 
     if args.clinical_feature_keys is None:
         clinical_feature_keys = []
@@ -87,9 +101,16 @@ def main(arguments):
         clinical_feature_keys = args.clinical_feature_keys
 
     data_dict = Dataset(args.dataset_json, rng=rng)
-    presence_keys = args.image_keys + clinical_feature_keys
+    presence_keys = list(args.image_keys)
     if args.mask_key is not None:
         presence_keys.append(args.mask_key)
+    if args.cat_confounder_keys is not None:
+        presence_keys.extend(args.cat_confounder_keys)
+    if args.cont_confounder_keys is not None:
+        presence_keys.extend(args.cont_confounder_keys)
+    if not use_deconfounding(args):
+        presence_keys.extend(clinical_feature_keys)
+
     data_dict.filter_dictionary(
         filters_presence=presence_keys,
         filters=args.filter_on_keys,
@@ -98,10 +119,8 @@ def main(arguments):
 
     if len(data_dict) == 0:
         raise Exception(
-            "No data available for prediction \
-                (dataset={}; keys={})".format(
-                args.dataset_json, args.image_keys
-            )
+            "No data available for prediction "
+            "(dataset={}; keys={})".format(args.dataset_json, args.image_keys)
         )
 
     keys = args.image_keys
@@ -111,6 +130,10 @@ def main(arguments):
     input_keys = deepcopy(keys)
     if mask_key is not None:
         input_keys.append(mask_key)
+
+    cat_key, cont_key, cat_vars, cont_vars = extract_confounder_info(
+        args, data_dict
+    )
 
     if args.net_type == "unet":
         network_config, _ = parse_config_unet(
@@ -125,24 +148,16 @@ def main(arguments):
     if "batch_size" not in network_config:
         network_config["batch_size"] = 1
 
-    transform_arguments = {
-        "keys": keys,
-        "mask_key": mask_key,
-        "image_masking": args.image_masking,
-        "image_crop_from_mask": args.image_crop_from_mask,
-        "clinical_feature_keys": clinical_feature_keys,
-        "adc_keys": adc_keys,
-        "target_spacing": args.target_spacing,
-        "crop_size": args.crop_size,
-        "pad_size": args.pad_size,
-    }
-
+    transform_arguments = create_transform_arguments(args)
     transforms_prediction = ClassificationTransforms(
         **transform_arguments
     ).transforms()
 
     post_proc_fn, extra_args = resolve_postprocessing(
-        args.type, args.net_type, args.n_classes, caller_logger=logger
+        args.type,
+        None if use_deconfounding(args) else args.net_type,
+        args.n_classes,
+        caller_logger=logger,
     )
 
     global_output = []
@@ -163,10 +178,13 @@ def main(arguments):
             cache_rate=args.cache_rate,
         )
 
-        # PL sometimes needs a little hint to detect GPUs.
         torch.ones([1]).to("cuda" if "cuda" in args.dev else "cpu")
 
-        configure_loss_fn(network_config, args.net_type, args.n_classes)
+        configure_loss_fn(
+            network_config,
+            None if use_deconfounding(args) else args.net_type,
+            args.n_classes,
+        )
 
         checkpoint_list = resolve_checkpoint_list(
             args.checkpoints,
@@ -178,31 +196,31 @@ def main(arguments):
         for checkpoint in checkpoint_list:
             if checkpoint is not None:
                 logger.info("Predicting for %s", checkpoint)
-            network = get_classification_network(
-                net_type=args.net_type,
+            args.n_classes = args.n_classes
+            network = create_classification_network(
+                args=args,
                 network_config=network_config,
-                dropout_param=0,
-                seed=None,
-                n_classes=args.n_classes,
-                keys=input_keys,
+                input_keys=input_keys,
                 clinical_feature_keys=clinical_feature_keys,
+                cat_vars=cat_vars,
+                cont_vars=cont_vars,
+                cat_key=cat_key,
+                cont_key=cont_key,
                 train_loader_call=None,
                 max_epochs=None,
                 warmup_steps=None,
                 start_decay=None,
-                crop_size=args.crop_size,
                 clinical_feature_means=None,
                 clinical_feature_stds=None,
-                label_smoothing=None,
-                mixup_alpha=None,
-                partial_mixup=None,
             )
 
             load_checkpoint_to_model(
-                network, checkpoint, exclude_from_state_dict=["loss_fn.weight"]
+                network,
+                checkpoint,
+                exclude_from_state_dict=["loss_fn.weight"],
             )
             network = network.eval().to(args.dev)
-            if network.gaussian_process:
+            if getattr(network, "gaussian_process", False):
                 network.gaussian_process_head.get_cov()
 
             accumulator = ClassificationPredictionAccumulator(
@@ -221,7 +239,7 @@ def main(arguments):
                         args.dev,
                         post_proc_fn,
                         extra_args,
-                        include_tabular=True,
+                        include_tabular=not use_deconfounding(args),
                     )
                     accumulator.add(identifier, output)
                     pbar.update()

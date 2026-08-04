@@ -17,16 +17,20 @@ from captum.attr import (
 )
 from monai.data import MetaTensor
 from monai.transforms.utils import allow_missing_keys_mode
-from monai.utils import TraceKeys
 from torch.nn.functional import conv3d
 from tqdm import tqdm
 
 from adell_mri.entrypoints.assemble_args import Parser
-from adell_mri.modules.classification.losses import OrdinalSigmoidalLoss
+from adell_mri.entrypoints.classification._utils import (
+    configure_loss_fn,
+    create_classification_network,
+    create_transform_arguments,
+    extract_confounder_info,
+    use_deconfounding,
+)
 from adell_mri.modules.config_parsing import parse_config_cat, parse_config_unet
 from adell_mri.transform_factory.transforms import ClassificationTransforms
 from adell_mri.utils.dataset import Dataset
-from adell_mri.utils.network_factories import get_classification_network
 from adell_mri.utils.parser import get_params, merge_args, parse_ids
 from adell_mri.utils.python_logging import get_logger
 from adell_mri.utils.torch_utils import (
@@ -41,14 +45,13 @@ class OrdinalRankWrapper(torch.nn.Module):
     """
     Wraps an ordinal classification model so that the output is a single
     scalar representing the predicted rank (sum of sigmoid outputs).
+
     This makes the output compatible with attribution methods that expect
     a scalar or per-class output without requiring a target specification.
     """
 
     def __init__(self, model):
         """
-        Initializes the wrapper.
-
         Args:
             model: The ordinal classification model to wrap.
         """
@@ -95,35 +98,37 @@ class Attributions:
     def __getitem__(self, key):
         if key not in self.attributions:
             if key == "gradcam":
-                logger.info(f"Using gradcam")
+                logger.info("Using gradcam")
                 last_conv = get_last_conv_layer(self.model, self.net_type)
                 if last_conv is None:
                     raise ValueError(
-                        f"Could not find a convolutional layer for GradCAM with net_type={self.net_type}"
+                        "Could not find a convolutional layer "
+                        f"for GradCAM with net_type={self.net_type}"
                     )
                 self.attributions["gradcam"] = LayerGradCam(
                     self.model, last_conv
                 )
             elif key == "integrated_gradients":
-                logger.info(f"Using integrated gradients")
+                logger.info("Using integrated gradients")
                 self.attributions["integrated_gradients"] = IntegratedGradients(
                     self.model
                 )
             elif key == "guided_gradcam":
-                logger.info(f"Using guided gradcam")
+                logger.info("Using guided gradcam")
                 last_conv = get_last_conv_layer(self.model, self.net_type)
                 if last_conv is None:
                     raise ValueError(
-                        f"Could not find a convolutional layer for GuidedGradCAM with net_type={self.net_type}"
+                        f"Could not find a convolutional layer "
+                        f"for GuidedGradCAM with net_type={self.net_type}"
                     )
                 self.attributions["guided_gradcam"] = GuidedGradCam(
                     self.model, last_conv
                 )
             elif key == "deeplift":
-                logger.info(f"Using deeplift")
+                logger.info("Using deeplift")
                 self.attributions["deeplift"] = DeepLift(self.model)
             elif key == "guided_backprop":
-                logger.info(f"Using guided backprop")
+                logger.info("Using guided backprop")
                 self.attributions["guided_backprop"] = GuidedBackprop(
                     self.model
                 )
@@ -164,14 +169,8 @@ def apply_attribution(
         Attribution map.
     """
     if attr_name == "gradcam":
-        attribution = attr_method.attribute(
-            image,
-            target=target,
-        )
-        attribution = LayerGradCam.interpolate(
-            attribution,
-            image.shape[2:],
-        )
+        attribution = attr_method.attribute(image, target=target)
+        attribution = LayerGradCam.interpolate(attribution, image.shape[2:])
     elif attr_name == "integrated_gradients":
         attribution = attr_method.attribute(
             image,
@@ -181,24 +180,14 @@ def apply_attribution(
         )
         attribution = attribution.sum(dim=1, keepdim=True)
     elif attr_name == "guided_gradcam":
-        attribution = attr_method.attribute(
-            image,
-            target=target,
-        )
+        attribution = attr_method.attribute(image, target=target)
         attribution = attribution.sum(dim=1, keepdim=True)
     elif attr_name == "deeplift":
         baseline = gaussian_blur_3d(image[0], sigma=2.0).unsqueeze(0)
-        attribution = attr_method.attribute(
-            image,
-            baseline,
-            target=target,
-        )
+        attribution = attr_method.attribute(image, baseline, target=target)
         attribution = attribution.sum(dim=1, keepdim=True)
     elif attr_name == "guided_backprop":
-        attribution = attr_method.attribute(
-            image,
-            target=target,
-        )
+        attribution = attr_method.attribute(image, target=target)
         attribution = attribution.sum(dim=1, keepdim=True)
     else:
         raise ValueError(f"Unknown attribution method: {attr_name}")
@@ -221,19 +210,24 @@ def gaussian_blur_3d(image, sigma=2.0, kernel_size=None):
         kernel_size = 2 * int(4 * sigma + 0.5) + 1
 
     ax = torch.arange(
-        -kernel_size // 2 + 1.0, kernel_size // 2 + 1.0, device=image.device
+        -kernel_size // 2 + 1.0,
+        kernel_size // 2 + 1.0,
+        device=image.device,
     )
     xx, yy, zz = torch.meshgrid(ax, ax, ax, indexing="ij")
     kernel = torch.exp(-(xx**2 + yy**2 + zz**2) / (2.0 * sigma**2))
     kernel = kernel / kernel.sum()
 
-    if image.dim() == 4:  # (C, D, H, W)
+    if image.dim() == 4:
         c = image.shape[0]
         kernel = kernel.view(1, 1, kernel_size, kernel_size, kernel_size)
         kernel = kernel.expand(c, 1, -1, -1, -1)
         padding = kernel_size // 2
         return conv3d(
-            image.unsqueeze(0), kernel, padding=padding, groups=c
+            image.unsqueeze(0),
+            kernel,
+            padding=padding,
+            groups=c,
         ).squeeze(0)
     else:  # (B, C, D, H, W)
         c = image.shape[1]
@@ -297,7 +291,9 @@ def read_sitk(path: str):
 
 
 def save_attribution_nifti(
-    attribution_np: np.ndarray, input_image: str, output_path: str
+    attribution_np: np.ndarray,
+    input_image: str,
+    output_path: str,
 ) -> None:
     """
     Save a numpy attribution volume as a NIfTI file.
@@ -318,6 +314,10 @@ def main(arguments):
             "dataset_json",
             "image_keys",
             "clinical_feature_keys",
+            "cat_confounder_keys",
+            "cont_confounder_keys",
+            "exclude_surrogate_variables",
+            "n_features_deconfounder",
             "adc_keys",
             "mask_key",
             "image_masking",
@@ -367,7 +367,7 @@ def main(arguments):
         param_dict = get_params(args.params_from)
         args = merge_args(args, param_dict, sys.argv[1:])
 
-    g, rng = get_generator_and_rng(args.seed)
+    _g, rng = get_generator_and_rng(args.seed)
 
     if args.clinical_feature_keys is None:
         clinical_feature_keys = []
@@ -375,9 +375,16 @@ def main(arguments):
         clinical_feature_keys = args.clinical_feature_keys
 
     data_dict = Dataset(args.dataset_json, rng=rng)
-    presence_keys = args.image_keys + clinical_feature_keys
+    presence_keys = list(args.image_keys)
     if args.mask_key is not None:
         presence_keys.append(args.mask_key)
+    if args.cat_confounder_keys is not None:
+        presence_keys.extend(args.cat_confounder_keys)
+    if args.cont_confounder_keys is not None:
+        presence_keys.extend(args.cont_confounder_keys)
+    if not use_deconfounding(args):
+        presence_keys.extend(clinical_feature_keys)
+
     data_dict.filter_dictionary(
         filters_presence=presence_keys,
         filters=args.filter_on_keys,
@@ -398,6 +405,10 @@ def main(arguments):
     if mask_key is not None:
         input_keys.append(mask_key)
 
+    cat_key, cont_key, cat_vars, cont_vars = extract_confounder_info(
+        args, data_dict
+    )
+
     if args.net_type == "unet":
         network_config, _ = parse_config_unet(
             args.config_file, len(keys), args.n_classes
@@ -405,7 +416,6 @@ def main(arguments):
     else:
         network_config = parse_config_cat(args.config_file)
 
-    # used for integrated gradients
     if args.batch_size is not None:
         batch_size = args.batch_size
     elif "batch_size" in network_config:
@@ -415,30 +425,16 @@ def main(arguments):
 
     network_config["batch_size"] = 1
 
-    transform_arguments = {
-        "keys": keys,
-        "mask_key": mask_key,
-        "image_masking": args.image_masking,
-        "image_crop_from_mask": args.image_crop_from_mask,
-        "clinical_feature_keys": clinical_feature_keys,
-        "adc_keys": adc_keys,
-        "target_spacing": args.target_spacing,
-        "crop_size": args.crop_size,
-        "pad_size": args.pad_size,
-    }
-
+    transform_arguments = create_transform_arguments(args)
     transforms_prediction = ClassificationTransforms(
         **transform_arguments,
     ).transforms()
 
-    if args.n_classes == 2:
-        network_config["loss_fn"] = torch.nn.BCEWithLogitsLoss()
-    elif args.net_type == "ord":
-        network_config["loss_fn"] = OrdinalSigmoidalLoss(
-            n_classes=args.n_classes
-        )
-    else:
-        network_config["loss_fn"] = torch.nn.CrossEntropyLoss()
+    configure_loss_fn(
+        network_config,
+        None if use_deconfounding(args) else args.net_type,
+        args.n_classes,
+    )
 
     if args.prediction_ids:
         prediction_ids = parse_ids(args.prediction_ids)
@@ -468,28 +464,28 @@ def main(arguments):
 
         for checkpoint in args.checkpoints:
             logger.info("Loading checkpoint %s", checkpoint)
-            network = get_classification_network(
-                net_type=args.net_type,
+            args.n_classes = args.n_classes
+            network = create_classification_network(
+                args=args,
                 network_config=network_config,
-                dropout_param=0,
-                seed=None,
-                n_classes=args.n_classes,
-                keys=input_keys,
+                input_keys=input_keys,
                 clinical_feature_keys=clinical_feature_keys,
+                cat_vars=cat_vars,
+                cont_vars=cont_vars,
+                cat_key=cat_key,
+                cont_key=cont_key,
                 train_loader_call=None,
                 max_epochs=None,
                 warmup_steps=None,
                 start_decay=None,
-                crop_size=args.crop_size,
                 clinical_feature_means=None,
                 clinical_feature_stds=None,
-                label_smoothing=None,
-                mixup_alpha=None,
-                partial_mixup=None,
             )
 
             load_checkpoint_to_model(
-                network, checkpoint, exclude_from_state_dict=["loss_fn.weight"]
+                network,
+                checkpoint,
+                exclude_from_state_dict=["loss_fn.weight"],
             )
             network = network.eval().to(args.dev)
 

@@ -13,7 +13,14 @@ from lightning.pytorch.callbacks import (
 from sklearn.model_selection import StratifiedKFold, train_test_split
 
 from adell_mri.entrypoints.assemble_args import Parser
-from adell_mri.modules.classification.losses import OrdinalSigmoidalLoss
+from adell_mri.entrypoints.classification._utils import (
+    configure_loss_fn,
+    create_classification_network,
+    create_transform_arguments,
+    extract_confounder_info,
+    resolve_n_classes_and_labels,
+    use_deconfounding,
+)
 from adell_mri.modules.config_parsing import parse_config_cat, parse_config_unet
 from adell_mri.transform_factory import (
     get_augmentations_class as get_augmentations,
@@ -21,7 +28,6 @@ from adell_mri.transform_factory import (
 from adell_mri.transform_factory.transforms import ClassificationTransforms
 from adell_mri.utils.dataset import Dataset
 from adell_mri.utils.logging import CSVLogger
-from adell_mri.utils.network_factories import get_classification_network
 from adell_mri.utils.parser import get_params, merge_args, parse_ids
 from adell_mri.utils.pl_callbacks import SpectralNorm
 from adell_mri.utils.pl_utils import (
@@ -45,7 +51,6 @@ def main(arguments):
     parser = Parser()
     logger = get_python_logger(__name__)
 
-    # params
     parser.add_argument_by_key(
         [
             ("classification_net_type", "net_type"),
@@ -59,6 +64,12 @@ def main(arguments):
             "image_crop_from_mask",
             "t2_keys",
             "adc_keys",
+            "cat_confounder_keys",
+            "cont_confounder_keys",
+            "exclude_surrogate_variables",
+            "fill_missing_with_placeholder",
+            "fill_conditional",
+            "n_features_deconfounder",
             "possible_labels",
             "positive_labels",
             "label_groups",
@@ -69,8 +80,6 @@ def main(arguments):
             "subsample_size",
             "subsample_training_data",
             "filter_on_keys",
-            "fill_missing_with_placeholder",
-            "fill_conditional",
             "val_from_train",
             "config_file",
             "dev",
@@ -146,39 +155,39 @@ def main(arguments):
     else:
         excluded_ids_from_training_data = []
 
-    presence_keys = args.image_keys + [args.label_keys] + clinical_feature_keys
+    presence_keys = args.image_keys + [args.label_keys]
     if args.mask_key is not None:
         presence_keys.append(args.mask_key)
+
+    if use_deconfounding(args):
+        if args.cat_confounder_keys is not None:
+            presence_keys.extend(args.cat_confounder_keys)
+        if args.cont_confounder_keys is not None:
+            presence_keys.extend(args.cont_confounder_keys)
+    else:
+        presence_keys.extend(clinical_feature_keys)
+
     data_dict.apply_filters(**vars(args), presence_keys=presence_keys)
-    data_dict.filter_dictionary(
-        filters=[f"{k}!=nan" for k in clinical_feature_keys]
+    if not use_deconfounding(args) and len(clinical_feature_keys) > 0:
+        data_dict.filter_dictionary(
+            filters=[f"{k}!=nan" for k in clinical_feature_keys]
+        )
+
+    cat_key, cont_key, cat_vars, cont_vars = extract_confounder_info(
+        args, data_dict
     )
 
-    all_classes = []
-    for k in data_dict:
-        C = data_dict[k][args.label_keys]
-        if isinstance(C, list):
-            C = max(C)
-        all_classes.append(str(C))
-
-    label_groups = None
-    positive_labels = args.positive_labels
-    if args.label_groups is not None:
-        n_classes = len(args.label_groups)
-        label_groups = [
-            label_group.split(",") for label_group in args.label_groups
-        ]
-        if len(label_groups) == 2:
-            positive_labels = label_groups[1]
-    elif args.positive_labels is None:
-        n_classes = len(args.possible_labels)
-    else:
-        n_classes = 2
+    (
+        n_classes,
+        label_groups,
+        positive_labels,
+        all_classes,
+    ) = resolve_n_classes_and_labels(args, data_dict)
 
     if len(data_dict) == 0:
         raise Exception(
-            "No data available for training \
-                (dataset={}; keys={}; labels={})".format(
+            "No data available for training "
+            "(dataset={}; keys={}; labels={})".format(
                 args.dataset_json, args.image_keys, args.label_keys
             )
         )
@@ -211,23 +220,13 @@ def main(arguments):
     all_pids = list(data_dict.keys())
 
     logger.info("Setting up transforms...")
-    label_mode = "binary" if n_classes == 2 and label_groups is None else "cat"
-    transform_arguments = {
-        "keys": keys,
-        "mask_key": mask_key,
-        "image_masking": args.image_masking,
-        "image_crop_from_mask": args.image_crop_from_mask,
-        "clinical_feature_keys": clinical_feature_keys,
-        "adc_keys": adc_keys,
-        "target_spacing": args.target_spacing,
-        "crop_size": args.crop_size,
-        "pad_size": args.pad_size,
-        "possible_labels": args.possible_labels,
-        "positive_labels": args.positive_labels,
-        "label_groups": label_groups,
-        "label_key": args.label_keys,
-        "label_mode": label_mode,
-    }
+    transform_arguments = create_transform_arguments(
+        args,
+        include_label_info=True,
+        positive_labels=positive_labels,
+        include_confounder_transforms=True,
+    )
+
     augment_arguments = {
         "augment": args.augment,
         "t2_keys": t2_keys,
@@ -236,12 +235,10 @@ def main(arguments):
     } | (eval(args.augment_args) if args.augment_args is not None else {})
 
     transform_factory = ClassificationTransforms(**transform_arguments)
-
     transforms_train = transform_factory.transforms(
         get_augmentations(**augment_arguments)
     )
     transforms_train.set_random_state(args.seed)
-
     transforms_val = transform_factory.transforms()
 
     if args.folds is None:
@@ -300,7 +297,6 @@ def main(arguments):
             ]
 
         train_pids = [all_pids[i] for i in train_idxs]
-
         val_pids = [all_pids[i] for i in val_idxs]
         if args.val_from_train is not None:
             n_train_val = int(len(train_pids) * args.val_from_train)
@@ -319,7 +315,7 @@ def main(arguments):
         logger.info("Train validation set size=%s", len(train_val_pids))
         logger.info("Validation set size=%s", len(val_idxs))
 
-        if len(clinical_feature_keys) > 0:
+        if not use_deconfounding(args) and len(clinical_feature_keys) > 0:
             clinical_feature_values = [
                 [train_sample[k] for train_sample in train_list]
                 for k in clinical_feature_keys
@@ -333,6 +329,21 @@ def main(arguments):
             clinical_feature_means = None
             clinical_feature_stds = None
 
+        ckpt_metadata = {
+            "train_pids": train_pids,
+            "val_pids": val_pids,
+            "transform_arguments": transform_arguments,
+        }
+        if use_deconfounding(args):
+            ckpt_metadata.update(
+                {
+                    "cat_vars": cat_vars,
+                    "cont_vars": cont_vars,
+                    "cat_key": cat_key,
+                    "cont_key": cont_key,
+                }
+            )
+
         ckpt_callback, ckpt_path, status = get_ckpt_callback(
             checkpoint_dir=args.checkpoint_dir,
             checkpoint_name=args.checkpoint_name,
@@ -340,11 +351,7 @@ def main(arguments):
             resume_from_last=args.resume_from_last,
             val_fold=val_fold,
             monitor=args.monitor,
-            metadata={
-                "train_pids": train_pids,
-                "val_pids": val_pids,
-                "transform_arguments": transform_arguments,
-            },
+            metadata=ckpt_metadata,
         )
         ckpt = ckpt_callback is not None
         if status == "finished":
@@ -397,10 +404,8 @@ def main(arguments):
         else:
             sampler = None
 
-        # PL needs a little hint to detect GPUs.
         torch.ones([1]).to("cuda" if "cuda" in args.dev else "cpu")
 
-        # get class weights if necessary
         class_weights = get_class_weights(
             args.class_weights,
             classes=classes,
@@ -417,16 +422,9 @@ def main(arguments):
             )
 
         logger.info("Initializing loss with class_weights: %s", class_weights)
-        if n_classes == 2:
-            network_config["loss_fn"] = torch.nn.BCEWithLogitsLoss(
-                class_weights
-            )
-        elif args.net_type == "ord":
-            network_config["loss_fn"] = OrdinalSigmoidalLoss(
-                n_classes, class_weights
-            )
-        else:
-            network_config["loss_fn"] = torch.nn.CrossEntropyLoss(class_weights)
+        configure_loss_fn(
+            network_config, args.net_type, n_classes, class_weights
+        )
 
         n_workers = args.n_workers // n_devices
         bs = network_config["batch_size"]
@@ -472,31 +470,30 @@ def main(arguments):
             collate_fn=safe_collate,
         )
 
-        network = get_classification_network(
-            net_type=args.net_type,
+        network = create_classification_network(
+            args=args,
             network_config=network_config,
-            dropout_param=args.dropout_param,
-            seed=args.seed,
-            n_classes=n_classes,
-            keys=input_keys,
+            input_keys=input_keys,
             clinical_feature_keys=clinical_feature_keys,
+            cat_vars=cat_vars,
+            cont_vars=cont_vars,
+            cat_key=cat_key,
+            cont_key=cont_key,
             train_loader_call=train_loader_call,
             max_epochs=args.max_epochs,
             warmup_steps=args.warmup_steps,
             start_decay=args.start_decay,
-            crop_size=args.crop_size,
             clinical_feature_means=clinical_feature_means,
             clinical_feature_stds=clinical_feature_stds,
-            label_smoothing=args.label_smoothing,
-            mixup_alpha=args.mixup_alpha,
-            partial_mixup=args.partial_mixup,
         )
 
+        checkpoint = None
         if args.checkpoint is not None:
             if len(args.checkpoint) > 1:
                 checkpoint = args.checkpoint[val_fold]
             else:
-                checkpoint = args.checkpoint
+                checkpoint = args.checkpoint[0]
+        if checkpoint is not None:
             load_checkpoint_to_model(
                 network, checkpoint, args.exclude_from_state_dict
             )
@@ -505,7 +502,6 @@ def main(arguments):
             network, args.freeze_regex, args.not_freeze_regex
         )
 
-        # instantiate callbacks and loggers
         callbacks = [RichProgressBar()]
         if args.early_stopping is not None:
             early_stopping = EarlyStopping(
@@ -571,7 +567,6 @@ def main(arguments):
             network, train_loader, train_val_loader, ckpt_path=ckpt_path
         )
 
-        # assessing performance on validation set
         ckpt_list = ["last", "best"] if ckpt is True else ["last"]
         for ckpt_key in ckpt_list:
             test_metrics = trainer.test(

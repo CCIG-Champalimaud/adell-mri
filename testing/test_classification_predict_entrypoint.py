@@ -12,9 +12,6 @@ import torch
 from adell_mri.entrypoints.classification import (
     predict as classification_predict,
 )
-from adell_mri.entrypoints.classification_deconfounder import (
-    predict as deconfounder_predict,
-)
 from adell_mri.entrypoints.classification_ensemble import (
     predict as ensemble_predict,
 )
@@ -60,7 +57,6 @@ MIL_CONFIG = (
 
 PREDICT_LOGGERS = [
     "adell_mri.entrypoints.classification.predict",
-    "adell_mri.entrypoints.classification_deconfounder.predict",
     "adell_mri.entrypoints.classification_ensemble.predict",
     "adell_mri.entrypoints.classification_mil.predict",
 ]
@@ -74,7 +70,7 @@ def predict_setup():
     sitk.WriteImage(sitk.GetImageFromArray(array), image_path)
     dataset_json_path = os.path.join(workdir, "dataset.json")
     with open(dataset_json_path, "w") as handle:
-        json.dump({"case0": {"image": image_path}}, handle)
+        json.dump({"case0": {"image": image_path, "conf_var": "A"}}, handle)
     cat_config_path = os.path.join(workdir, "config.yaml")
     with open(cat_config_path, "w") as handle:
         handle.write(CAT_CONFIG)
@@ -100,6 +96,7 @@ def predict_setup():
         "module_path": module_path,
         "image_key": "image",
         "case_id": "case0",
+        "confounder_key": "conf_var",
     }
     yield setup
     shutil.rmtree(workdir, ignore_errors=True)
@@ -260,6 +257,8 @@ def _deconfounder_base_args(setup, output_path):
         setup["dataset_json"],
         "--image_keys",
         setup["image_key"],
+        "--cat_confounder_keys",
+        setup["confounder_key"],
         "--n_classes",
         "2",
         "--config_file",
@@ -404,12 +403,12 @@ class TestClassificationPredict:
 
 
 class TestDeconfounderPredict:
-    LOGGER = "adell_mri.entrypoints.classification_deconfounder.predict"
+    LOGGER = "adell_mri.entrypoints.classification.predict"
 
     def test_no_checkpoint_warns(self, predict_setup, caplog):
         output_path = os.path.join(predict_setup["workdir"], "deconf_out.json")
         with caplog.at_level(logging.WARNING, logger=self.LOGGER):
-            deconfounder_predict.main(
+            classification_predict.main(
                 _deconfounder_base_args(predict_setup, output_path)
             )
         assert os.path.exists(output_path)
@@ -426,7 +425,7 @@ class TestDeconfounderPredict:
         output_path = os.path.join(
             predict_setup["workdir"], "deconf_out_ckpt.json"
         )
-        deconfounder_predict.main(
+        classification_predict.main(
             _deconfounder_base_args(predict_setup, output_path)
             + ["--checkpoints", checkpoint_path]
         )

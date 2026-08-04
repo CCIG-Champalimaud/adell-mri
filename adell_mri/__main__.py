@@ -6,7 +6,6 @@ logger = get_logger(__name__)
 
 supported_modes = [
     "classification",
-    "classification_deconfounder",
     "classification_mil",
     "classification_ensemble",
     "generative",
@@ -43,13 +42,6 @@ def main():
     elif arguments[0] == "classification":
         set_threading_env_vars(arguments)
         from adell_mri.entrypoints.classification.__main__ import main
-
-        main(arguments[1:])
-    elif arguments[0] == "classification_deconfounder":
-        set_threading_env_vars(arguments)
-        from adell_mri.entrypoints.classification_deconfounder.__main__ import (
-            main,
-        )
 
         main(arguments[1:])
     elif arguments[0] == "classification_mil":

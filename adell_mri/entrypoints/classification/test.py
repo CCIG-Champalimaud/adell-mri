@@ -7,13 +7,19 @@ import torch
 from lightning.pytorch import Trainer
 
 from adell_mri.entrypoints.assemble_args import Parser
-from adell_mri.modules.classification.losses import OrdinalSigmoidalLoss
+from adell_mri.entrypoints.classification._utils import (
+    configure_loss_fn,
+    create_classification_network,
+    create_transform_arguments,
+    extract_confounder_info,
+    resolve_n_classes_and_labels,
+    use_deconfounding,
+)
 from adell_mri.modules.classification.pl import AveragingEnsemblePL
 from adell_mri.modules.config_parsing import parse_config_cat, parse_config_unet
 from adell_mri.transform_factory.transforms import ClassificationTransforms
 from adell_mri.utils.bootstrap_metrics import bootstrap_metric
 from adell_mri.utils.dataset import Dataset
-from adell_mri.utils.network_factories import get_classification_network
 from adell_mri.utils.parser import get_params, merge_args, parse_ids
 from adell_mri.utils.pl_utils import get_devices
 from adell_mri.utils.python_logging import get_logger
@@ -39,6 +45,10 @@ def main(arguments):
             "adc_keys",
             "label_keys",
             "mask_key",
+            "cat_confounder_keys",
+            "cont_confounder_keys",
+            "exclude_surrogate_variables",
+            "n_features_deconfounder",
             "image_masking",
             "image_crop_from_mask",
             "filter_on_keys",
@@ -72,9 +82,9 @@ def main(arguments):
         param_dict = get_params(args.params_from)
         args = merge_args(args, param_dict, sys.argv[1:])
 
-    g, rng = get_generator_and_rng(args.seed)
+    _g, rng = get_generator_and_rng(args.seed)
 
-    accelerator, devices, strategy = get_devices(args.dev)
+    accelerator, devices, _strategy = get_devices(args.dev)
 
     output_file = open(args.metric_path, "w")
 
@@ -85,9 +95,16 @@ def main(arguments):
 
     data_dict = Dataset(args.dataset_json, rng=rng)
 
-    presence_keys = args.image_keys + [args.label_keys] + clinical_feature_keys
+    presence_keys = args.image_keys + [args.label_keys]
     if args.mask_key is not None:
         presence_keys.append(args.mask_key)
+    if args.cat_confounder_keys is not None:
+        presence_keys.extend(args.cat_confounder_keys)
+    if args.cont_confounder_keys is not None:
+        presence_keys.extend(args.cont_confounder_keys)
+    if not use_deconfounding(args):
+        presence_keys.extend(clinical_feature_keys)
+
     data_dict.filter_dictionary(
         filters_presence=presence_keys,
         possible_labels=args.possible_labels,
@@ -101,31 +118,14 @@ def main(arguments):
         strata_key=args.label_keys,
     )
 
-    all_classes = []
-    for k in data_dict:
-        C = data_dict[k][args.label_keys]
-        if isinstance(C, list):
-            C = max(C)
-        all_classes.append(str(C))
-
-    label_groups = None
-    positive_labels = args.positive_labels
-    if args.label_groups is not None:
-        n_classes = len(args.label_groups)
-        label_groups = [
-            label_group.split(",") for label_group in args.label_groups
-        ]
-        if len(label_groups) == 2:
-            positive_labels = label_groups[1]
-    elif positive_labels is None:
-        n_classes = len(args.possible_labels)
-    else:
-        n_classes = 2
+    n_classes, _label_groups, positive_labels, _ = resolve_n_classes_and_labels(
+        args, data_dict
+    )
 
     if len(data_dict) == 0:
         raise Exception(
-            "No data available for testing \
-                (dataset={}; keys={}; labels={})".format(
+            "No data available for testing "
+            "(dataset={}; keys={}; labels={})".format(
                 args.dataset_json, args.image_keys, args.label_keys
             )
         )
@@ -137,6 +137,10 @@ def main(arguments):
     if mask_key is not None:
         input_keys.append(mask_key)
     adc_keys = [k for k in adc_keys if k in keys]
+
+    cat_key, cont_key, cat_vars, cont_vars = extract_confounder_info(
+        args, data_dict
+    )
 
     if args.net_type == "unet":
         network_config, _ = parse_config_unet(
@@ -157,23 +161,12 @@ def main(arguments):
     all_pids = [k for k in data_dict]
 
     logger.info("Setting up transforms...")
-    label_mode = "binary" if n_classes == 2 and label_groups is None else "cat"
-    transform_arguments = {
-        "keys": keys,
-        "mask_key": mask_key,
-        "image_masking": args.image_masking,
-        "image_crop_from_mask": args.image_crop_from_mask,
-        "clinical_feature_keys": clinical_feature_keys,
-        "adc_keys": adc_keys,
-        "target_spacing": args.target_spacing,
-        "crop_size": args.crop_size,
-        "pad_size": args.pad_size,
-        "possible_labels": args.possible_labels,
-        "positive_labels": positive_labels,
-        "label_groups": label_groups,
-        "label_key": args.label_keys,
-        "label_mode": label_mode,
-    }
+    transform_arguments = create_transform_arguments(
+        args,
+        include_label_info=True,
+        positive_labels=positive_labels,
+        include_confounder_transforms=True,
+    )
 
     transforms_val = ClassificationTransforms(
         **transform_arguments
@@ -191,7 +184,8 @@ def main(arguments):
         logger.info("Testing fold %d", iteration)
         for u, c in zip(
             *np.unique(
-                [x[args.label_keys] for x in test_list], return_counts=True
+                [x[args.label_keys] for x in test_list],
+                return_counts=True,
             )
         ):
             logger.info("Cases(%s) = %s", u, c)
@@ -203,17 +197,9 @@ def main(arguments):
             cache_rate=args.cache_rate,
         )
 
-        # PL sometimes needs a little hint to detect GPUs.
         torch.ones([1]).to("cuda" if "cuda" in args.dev else "cpu")
 
-        if n_classes == 2:
-            network_config["loss_fn"] = torch.nn.BCEWithLogitsLoss()
-        elif args.net_type == "ord":
-            network_config["loss_fn"] = OrdinalSigmoidalLoss(
-                n_classes=n_classes
-            )
-        else:
-            network_config["loss_fn"] = torch.nn.CrossEntropyLoss()
+        configure_loss_fn(network_config, args.net_type, n_classes)
 
         test_loader = monai.data.ThreadDataLoader(
             test_dataset,
@@ -240,24 +226,22 @@ def main(arguments):
         else:
             exclude_from_state_dict = args.exclude_from_state_dict
         for checkpoint in checkpoint_list:
-            network = get_classification_network(
-                net_type=args.net_type,
+            args.n_classes = n_classes
+            network = create_classification_network(
+                args=args,
                 network_config=network_config,
-                dropout_param=0,
-                seed=None,
-                n_classes=n_classes,
-                keys=input_keys,
+                input_keys=input_keys,
                 clinical_feature_keys=clinical_feature_keys,
+                cat_vars=cat_vars,
+                cont_vars=cont_vars,
+                cat_key=cat_key,
+                cont_key=cont_key,
                 train_loader_call=None,
                 max_epochs=None,
                 warmup_steps=None,
                 start_decay=None,
-                crop_size=args.crop_size,
                 clinical_feature_means=None,
                 clinical_feature_stds=None,
-                label_smoothing=None,
-                mixup_alpha=None,
-                partial_mixup=None,
             )
             load_checkpoint_to_model(
                 network,
@@ -278,51 +262,71 @@ def main(arguments):
                 )[0]
                 for k in test_metrics:
                     out = test_metrics[k]
-                    try:
-                        value = float(out.detach().numpy())
-                    except Exception:
-                        value = float(out)
-                    if n_classes > 2:
-                        k = k.split("_")
-                        if k[-1].isdigit():
-                            k, idx = "_".join(k[:-1]), k[-1]
-                        else:
-                            k, idx = "_".join(k), 0
-                    else:
+                    if isinstance(out, float) or n_classes <= 2:
+                        try:
+                            value = float(out.detach().numpy())
+                        except Exception:
+                            value = float(out)
                         idx = 0
+                    else:
+                        if n_classes > 2:
+                            k_split = k.split("_")
+                            if k_split[-1].isdigit():
+                                k, idx = (
+                                    "_".join(k_split[:-1]),
+                                    k_split[-1],
+                                )
+                            else:
+                                k, idx = "_".join(k_split), 0
+                        else:
+                            idx = 0
+                        try:
+                            value = float(out.detach().numpy())
+                        except Exception:
+                            value = float(out)
                     x = "{},{},{},{},{}".format(
                         k, checkpoint, iteration, idx, value
                     )
                     output_file.write(x + "\n")
                     logger.info(x)
-                    # bootstrap AUC estimate
-                if "T_AUC" not in network.test_metrics:
-                    continue
-                mean, (upper, lower) = bootstrap_metric(
-                    network.test_metrics["T_AUC"], 100, 0.5
-                )
-                for idx, (m, u, low) in enumerate(
-                    zip(mean, upper, lower)
-                ):  # noqa
-                    x = "{},{},{},{},{}".format(
-                        "T_AUC_mean", checkpoint, iteration, idx, m
+                if "T_AUC" in network.test_metrics:
+                    mean, (upper, lower) = bootstrap_metric(
+                        network.test_metrics["T_AUC"], 100, 0.5
                     )
-                    output_file.write(x + "\n")
-                    logger.info(x)
-                    x = "{},{},{},{},{}".format(
-                        "T_AUC_lower", checkpoint, iteration, idx, u
-                    )
-                    output_file.write(x + "\n")
-                    logger.info(x)
-                    x = "{},{},{},{},{}".format(
-                        "T_AUC_upper", checkpoint, iteration, idx, low
-                    )
-                    output_file.write(x + "\n")
-                    logger.info(x)
+                    for idx, (m, u, low) in enumerate(zip(mean, upper, lower)):
+                        x = "{},{},{},{},{}".format(
+                            "T_AUC_mean",
+                            checkpoint,
+                            iteration,
+                            idx,
+                            m,
+                        )
+                        output_file.write(x + "\n")
+                        logger.info(x)
+                        x = "{},{},{},{},{}".format(
+                            "T_AUC_lower",
+                            checkpoint,
+                            iteration,
+                            idx,
+                            u,
+                        )
+                        output_file.write(x + "\n")
+                        logger.info(x)
+                        x = "{},{},{},{},{}".format(
+                            "T_AUC_upper",
+                            checkpoint,
+                            iteration,
+                            idx,
+                            low,
+                        )
+                        output_file.write(x + "\n")
+                        logger.info(x)
 
         else:
             ensemble_network = AveragingEnsemblePL(
-                networks=all_networks, n_classes=n_classes
+                networks=all_networks,
+                n_classes=n_classes,
+                idx=0,
             )
             ensemble_network = ensemble_network.eval()
             trainer = Trainer(accelerator=accelerator, devices=devices)
@@ -338,11 +342,14 @@ def main(arguments):
                 except Exception:
                     value = float(out)
                 if n_classes > 2:
-                    k = k.split("_")
-                    if k[-1].isdigit():
-                        k, idx = "_".join(k[:-1]), k[-1]
+                    k_split = k.split("_")
+                    if k_split[-1].isdigit():
+                        k, idx = (
+                            "_".join(k_split[:-1]),
+                            k_split[-1],
+                        )
                     else:
-                        k, idx = "_".join(k), 0
+                        k, idx = "_".join(k_split), 0
                 else:
                     idx = 0
                 x = "{},{},{},{},{}".format(
@@ -350,27 +357,33 @@ def main(arguments):
                 )
                 output_file.write(x + "\n")
                 logger.info(x)
-            # bootstrap AUC estimate
-            if "T_AUC" not in ensemble_network.test_metrics:
-                continue
-            mean, (upper, lower) = bootstrap_metric(
-                ensemble_network.test_metrics["T_AUC"],
-                samples=10000,
-                sample_size=0.5,
-            )
-            for idx, (m, u, l) in enumerate(zip(mean, upper, lower)):  # noqa
-                x = "{},{},{},{},{}".format(
-                    "T_AUC_mean", "ensemble", iteration, idx, m
+            if "T_AUC" in ensemble_network.test_metrics:
+                mean, (upper, lower) = bootstrap_metric(
+                    ensemble_network.test_metrics["T_AUC"],
+                    samples=10000,
+                    sample_size=0.5,
                 )
-                output_file.write(x + "\n")
-                logger.info(x)
-                x = "{},{},{},{},{}".format(
-                    "T_AUC_lower", "ensemble", iteration, idx, u
-                )
-                output_file.write(x + "\n")
-                logger.info(x)
-                x = "{},{},{},{},{}".format(
-                    "T_AUC_upper", "ensemble", iteration, idx, l
-                )
-                output_file.write(x + "\n")
-                logger.info(x)
+                for idx, (m, u, l) in enumerate(zip(mean, upper, lower)):
+                    x = "{},{},{},{},{}".format(
+                        "T_AUC_mean", "ensemble", iteration, idx, m
+                    )
+                    output_file.write(x + "\n")
+                    logger.info(x)
+                    x = "{},{},{},{},{}".format(
+                        "T_AUC_lower",
+                        "ensemble",
+                        iteration,
+                        idx,
+                        u,
+                    )
+                    output_file.write(x + "\n")
+                    logger.info(x)
+                    x = "{},{},{},{},{}".format(
+                        "T_AUC_upper",
+                        "ensemble",
+                        iteration,
+                        idx,
+                        l,
+                    )
+                    output_file.write(x + "\n")
+                    logger.info(x)
