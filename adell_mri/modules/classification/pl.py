@@ -189,6 +189,7 @@ class ClassPLABC(pl.LightningModule, ABC):
         self.raise_nan_loss = False
         self.calibrated = False
         self.gaussian_process = False
+        self.net_type = "cat"
 
     def calculate_loss(
         self,
