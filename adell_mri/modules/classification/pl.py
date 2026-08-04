@@ -504,6 +504,9 @@ class ClassPLABC(pl.LightningModule, ABC):
                 - predictive_mean: Mean of GP samples
                 - predictive_std: Standard deviation of GP samples
                 - epistemic_uncertainty: Model uncertainty from GP covariance
+                - predictive_std_proba: Std of GP samples in probability space
+                - epistemic_uncertainty_proba: Epistemic uncertainty in
+                  probability space
 
         Raises:
             RuntimeError: If GP is not enabled or not fitted
@@ -539,6 +542,25 @@ class ClassPLABC(pl.LightningModule, ABC):
 
         epistemic_uncertainty = torch.diagonal(gp_cov, dim1=-2, dim2=-1)
 
+        prob_samples = (
+            torch.sigmoid(gp_samples)
+            if self.n_classes == 2
+            else torch.softmax(gp_samples, dim=-1)
+        )
+        predictive_mean_proba = prob_samples.mean(dim=0)
+        predictive_std_proba = prob_samples.std(dim=0)
+
+        gp_mean_samples_dist = torch.distributions.MultivariateNormal(
+            gp_mean, gp_cov
+        )
+        gp_mean_samples = gp_mean_samples_dist.rsample([n_samples])
+        gp_mean_proba = (
+            torch.sigmoid(gp_mean_samples)
+            if self.n_classes == 2
+            else torch.softmax(gp_mean_samples, dim=-1)
+        )
+        epistemic_uncertainty_proba = gp_mean_proba.std(dim=0)
+
         return {
             "prediction": prediction,
             "gp_mean": gp_mean,
@@ -546,6 +568,8 @@ class ClassPLABC(pl.LightningModule, ABC):
             "predictive_mean": predictive_mean,
             "predictive_std": predictive_std,
             "epistemic_uncertainty": epistemic_uncertainty,
+            "predictive_std_proba": predictive_std_proba,
+            "epistemic_uncertainty_proba": epistemic_uncertainty_proba,
         }
 
     def predict_calibrated_step(self, batch, batch_idx, *args, **kwargs):
