@@ -395,7 +395,9 @@ class ClassPLABC(pl.LightningModule, ABC):
             torch.Tensor: Binary, multiclass, or ordinal probabilities.
         """
         if self.net_type == "ord":
-            logits = logits.repeat(1, self.n_classes - 1)
+            n_dims = [1 for _ in range(len(logits.shape))]
+            n_dims[-1] = self.n_classes - 1
+            logits = logits.repeat(*n_dims)
             logits = logits + (
                 self.network.ordinal_bias * self.network.ordinal_bias_scale
             )
@@ -403,6 +405,27 @@ class ClassPLABC(pl.LightningModule, ABC):
         if self.n_classes == 2:
             return torch.sigmoid(logits)
         return torch.softmax(logits, dim=1)
+
+    def calculate_pred_for_ordinal(self, proba: torch.Tensor) -> torch.Tensor:
+        """
+        Calculates a soft prediction for ordinal predictions while leaving
+        multiclass/binary identical. The soft prediction is given as the number
+        of classes where ``proba > 0.5`` with the addition of the following
+        probability.
+
+        Args:
+            proba (torch.Tensor): probability tensor (calculated using
+                ``self.classification_probabilities``).
+
+        Returns:
+            torch.Tensor: soft prediction for ordinal predictions, ``proba``
+                otherwise.
+        """
+        if self.net_type == "ord":
+            output = torch.cumsum(proba > 0.5, -1)[..., -1]
+            last_pred_index = output
+            output = output.to(proba.dtype) + proba[last_pred_index]
+        return proba
 
     def on_train_end(self):
         """
@@ -504,9 +527,12 @@ class ClassPLABC(pl.LightningModule, ABC):
                 - predictive_mean: Mean of GP samples
                 - predictive_std: Standard deviation of GP samples
                 - epistemic_uncertainty: Model uncertainty from GP covariance
-                - predictive_std_proba: Std of GP samples in probability space
-                - epistemic_uncertainty_proba: Epistemic uncertainty in
-                  probability space
+                - predictive_std_pred: Std of GP samples in probability space
+                    (for multiclass/binary predictions) and in soft-prediction
+                    space for ordinal samples.
+                - epistemic_uncertainty_pred: Epistemic uncertainty in
+                    probability space (for multiclass/binary predictions) and
+                    in soft-prediction space for ordinal samples.
 
         Raises:
             RuntimeError: If GP is not enabled or not fitted
@@ -542,24 +568,17 @@ class ClassPLABC(pl.LightningModule, ABC):
 
         epistemic_uncertainty = torch.diagonal(gp_cov, dim1=-2, dim2=-1)
 
-        prob_samples = (
-            torch.sigmoid(gp_samples)
-            if self.n_classes == 2
-            else torch.softmax(gp_samples, dim=-1)
-        )
-        predictive_mean_proba = prob_samples.mean(dim=0)
-        predictive_std_proba = prob_samples.std(dim=0)
+        prob_samples = self.classification_probabilities(gp_samples)
+        pred_estimate = self.calculate_pred_for_ordinal(prob_samples)
+        predictive_std_pred = pred_estimate.std(dim=0)
 
         gp_mean_samples_dist = torch.distributions.MultivariateNormal(
             gp_mean, gp_cov
         )
         gp_mean_samples = gp_mean_samples_dist.rsample([n_samples])
-        gp_mean_proba = (
-            torch.sigmoid(gp_mean_samples)
-            if self.n_classes == 2
-            else torch.softmax(gp_mean_samples, dim=-1)
-        )
-        epistemic_uncertainty_proba = gp_mean_proba.std(dim=0)
+        gp_mean_proba = self.classification_probabilities(gp_mean_samples)
+        gp_mean_prediction = self.calculate_pred_for_ordinal(gp_mean_proba)
+        epistemic_uncertainty_pred = gp_mean_prediction.std(dim=0)
 
         return {
             "prediction": prediction,
@@ -568,8 +587,8 @@ class ClassPLABC(pl.LightningModule, ABC):
             "predictive_mean": predictive_mean,
             "predictive_std": predictive_std,
             "epistemic_uncertainty": epistemic_uncertainty,
-            "predictive_std_proba": predictive_std_proba,
-            "epistemic_uncertainty_proba": epistemic_uncertainty_proba,
+            "predictive_std_pred": predictive_std_pred,
+            "epistemic_uncertainty_pred": epistemic_uncertainty_pred,
         }
 
     def predict_calibrated_step(self, batch, batch_idx, *args, **kwargs):
