@@ -29,6 +29,8 @@ supported_modes = {
     "remove_constant_masks": ".dataset.remove_constant_masks",
     "describe_sitk": ".dataset.describe_sitk",
     "describe_dicom_dataset": ".dataset.describe_dicom_dataset",
+    # postprocess
+    "postprocess_masks": ".postprocessing.postprocess_masks",
     # other
     "random_image_panel": ".other.random_image_panel",
     "test_traced_model": ".other.test_traced_model",

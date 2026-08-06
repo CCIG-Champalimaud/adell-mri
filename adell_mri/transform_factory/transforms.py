@@ -303,7 +303,9 @@ class DetectionTransforms(TransformMixin):
         if self.target_spacing is not None:
             transforms.append(
                 monai.transforms.Spacingd(
-                    self.image_keys, self.target_spacing, mode=self.spacing_mode
+                    self.image_keys,
+                    self.target_spacing,
+                    mode=self.spacing_mode,
                 )
             )
         if self.non_adc_keys:
