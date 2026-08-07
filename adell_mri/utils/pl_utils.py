@@ -18,6 +18,8 @@ from adell_mri.utils.python_logging import get_logger
 
 logger = get_logger(__name__)
 
+ADELL_PARALLEL_STRATEGY = os.env.get("ADELL_PARALLEL_STRATEGY", "ddp")
+
 
 class GPULock:
     """
@@ -420,7 +422,7 @@ def get_logger(
 
 
 def get_devices(
-    device_str: str, strategy: str = "ddp_find_unused_parameters_true"
+    device_str: str, strategy: str = None
 ) -> Tuple[str, Union[List[int], int], str]:
     """
     Takes a string with form "{device}:{device_ids}" where device_ids is a
@@ -430,7 +432,8 @@ def get_devices(
             device_str (str): device string. Can be "cpu" or "cuda" if no
                 parallelization is necessary or "cuda:0,1" if training is to be
                 distributed across GPUs 0 and 1, for instance.
-            strategy (str): parallelization strategy. Defaults to "ddp".
+            strategy (str): parallelization strategy. Defaults to None ("ddp" or
+                the environment variable "ADELL_PARALLEL_STRATEGY").
 
         Returns:
             Tuple[str,Union[List[int],int],str]: a tuple containing the accelerator
@@ -446,6 +449,8 @@ def get_devices(
         except Exception:
             devices = "auto"
         if len(devices) > 1:
+            if strategy is None:
+                strategy = ADELL_PARALLEL_STRATEGY
             strategy_out = strategy
     else:
         accelerator = "gpu" if "cuda" in device_str else "cpu"
