@@ -1,13 +1,13 @@
 import argparse
 
-import torch
-
 from adell_mri.utils.python_logging import get_logger
 
 desc = "Tests a jit-traced model with an input of a given shape"
 
 
 def main(arguments):
+    import torch
+
     logger = get_logger(__name__)
     parser = argparse.ArgumentParser(description=desc)
 

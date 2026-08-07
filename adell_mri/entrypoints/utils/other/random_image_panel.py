@@ -2,7 +2,6 @@ import argparse
 from pathlib import Path
 
 import numpy as np
-import torch
 from pydicom import dcmread
 from skimage.io import imsave
 from skimage.transform import resize
@@ -15,15 +14,15 @@ logger = get_logger(__name__)
 desc = "Generates a panel of random DICOM images in a folder"
 
 
-def normalize(x: np.ndarray | torch.Tensor) -> np.ndarray | torch.Tensor:
+def normalize(x: np.ndarray) -> np.ndarray:
     """
     Normalise array to range [0, 1].
 
     Args:
-        x (np.ndarray | torch.Tensor): array.
+        x (np.ndarray): array.
 
     Returns:
-        np.ndarray | torch.Tensor: normalised array.
+        np.ndarray: normalised array.
     """
     return (x - x.min()) / (x.max() - x.min())
 
