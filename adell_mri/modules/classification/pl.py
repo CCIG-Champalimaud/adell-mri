@@ -663,7 +663,10 @@ class ClassPLABC(pl.LightningModule, ABC):
                     body_decay.append(p)
             parameters = [
                 {"params": no_decay_params, "weight_decay": 0},
-                {"params": reduced_decay_params, "weight_decay": wd_body / 100},
+                {
+                    "params": reduced_decay_params,
+                    "weight_decay": wd_body / 100,
+                },
                 {"params": head_decay, "weight_decay": wd_head},
                 {"params": body_decay, "weight_decay": wd_body},
             ]
@@ -1389,7 +1392,11 @@ class SegCatNetPL(SegCatNet, pl.LightningModule):
             else None
         )
         prediction = self.forward(
-            x, *args, X_skip_layer=x_cond, X_feature_conditioning=x_fc, **kwargs
+            x,
+            *args,
+            X_skip_layer=x_cond,
+            X_feature_conditioning=x_fc,
+            **kwargs,
         )
         prediction = torch.squeeze(prediction, 1)
         return {"prediction": prediction}
