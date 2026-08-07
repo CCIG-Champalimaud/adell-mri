@@ -1,3 +1,4 @@
+import os
 from dataclasses import dataclass
 
 import monai
@@ -22,6 +23,9 @@ from adell_mri.utils.monai_transforms import (
 )
 
 ADC_FACTOR = -2 / 3
+IMAGE_INTERPOLATION = os.getenv("ADELL_IMAGE_INTERPOLATION", "bilinear")
+if IMAGE_INTERPOLATION in [str(x) for x in range(6)]:
+    IMAGE_INTERPOLATION = int(IMAGE_INTERPOLATION)
 
 
 def unbox(x):
@@ -284,8 +288,8 @@ class DetectionTransforms(TransformMixin):
             if self.mask_key is not None
             else self.keys
         )
-        self.spacing_mode = [
-            "bilinear" if k != self.mask_key else "nearest"
+        self.interpolation = [
+            IMAGE_INTERPOLATION if k != self.mask_key else "nearest"
             for k in self.image_keys
         ]
 
@@ -305,7 +309,7 @@ class DetectionTransforms(TransformMixin):
                 monai.transforms.Spacingd(
                     self.image_keys,
                     self.target_spacing,
-                    mode=self.spacing_mode,
+                    mode=self.interpolation,
                 )
             )
         if self.non_adc_keys:
@@ -387,7 +391,7 @@ class ClassificationTransforms(TransformMixin):
         if self.mask_key is not None:
             self.all_keys.append(self.mask_key)
         self.interpolation = [
-            "bilinear" if k != self.mask_key else "nearest"
+            IMAGE_INTERPOLATION if k != self.mask_key else "nearest"
             for k in self.all_keys
         ]
         if isinstance(self.positive_labels, int):
@@ -667,11 +671,9 @@ class SSLTransforms(TransformMixin):
         )
 
     def pre_transforms(self):
-        intp = []
         intp_resampling_augmentations = []
         for k in self.all_keys:
-            intp.append("area")
-            intp_resampling_augmentations.append("bilinear")
+            intp_resampling_augmentations.append(IMAGE_INTERPOLATION)
 
         transforms = [
             monai.transforms.LoadImaged(
@@ -697,7 +699,9 @@ class SSLTransforms(TransformMixin):
                 )
             )
         if self.target_spacing is not None:
-            intp_resampling_augmentations = ["bilinear" for _ in self.all_keys]
+            intp_resampling_augmentations = [
+                IMAGE_INTERPOLATION for _ in self.all_keys
+            ]
             transforms.append(
                 monai.transforms.Spacingd(
                     keys=self.all_keys,
