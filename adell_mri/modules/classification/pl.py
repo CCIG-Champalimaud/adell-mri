@@ -286,7 +286,7 @@ class ClassPLABC(pl.LightningModule, ABC):
 
         loss = self.calculate_loss(prediction, y, with_loss_params=True)
 
-        self.log("train_loss", loss, sync_dist=True, prog_bar=True)
+        self.log("train_loss", loss, prog_bar=True)
         return loss
 
     def validation_step(self, batch, batch_idx):
@@ -1072,8 +1072,8 @@ class OrdNetPL(ClassPLABC):
             with_loss_params=True,
         )
 
-        self.log("train_loss", loss, sync_dist=True, prog_bar=True)
-        self.log("train_roc_loss", roc_loss, sync_dist=True, prog_bar=True)
+        self.log("train_loss", loss.detach(), prog_bar=True)
+        self.log("train_roc_loss", roc_loss.detach(), prog_bar=True)
         return loss + roc_loss
 
     def validation_step(self, batch, batch_idx):
@@ -1286,7 +1286,7 @@ class SegCatNetPL(SegCatNet, pl.LightningModule):
 
         pred_final, loss = self.loss_wrapper(x, y, x_cond, x_fc)
 
-        self.log("train_loss", loss)
+        self.log("train_loss", loss.detach())
         return loss
 
     def validation_step(self, batch, batch_idx):
@@ -1565,7 +1565,7 @@ class GenericEnsemblePL(GenericEnsemble, ClassPLABC):
 
         loss = self.calculate_loss(prediction, y)
 
-        self.log("train_loss", loss)
+        self.log("train_loss", loss.detach())
         return loss
 
     def validation_step(self, batch, batch_idx):
@@ -1696,7 +1696,7 @@ class AveragingEnsemblePL(AveragingEnsemble, ClassPLABC):
 
         loss = self.calculate_loss(prediction, y)
 
-        self.log("train_loss", loss)
+        self.log("train_loss", loss.detach())
         return loss
 
     def validation_step(self, batch, batch_idx):
@@ -2182,7 +2182,7 @@ class HybridClassifierPL(HybridClassifier, ClassPLABC):
 
         loss = self.calculate_loss(prediction, y, with_loss_params=True)
 
-        self.log("train_loss", loss, sync_dist=True)
+        self.log("train_loss", loss.detach())
         return loss
 
     def validation_step(self, batch, batch_idx):
@@ -2423,7 +2423,7 @@ class DeconfoundedNetPL(DeconfoundedNetGeneric, ClassPLABC):
     def log_losses(self, losses: list[torch.Tensor], prefix: str):
         for loss_val, s in zip(losses, self.loss_str):
             if loss_val is not None:
-                self.log(f"{prefix}_{s}", loss_val, prog_bar=True)
+                self.log(f"{prefix}_{s}", loss_val.detach(), prog_bar=True)
 
     def training_step(
         self, batch: dict[str, torch.Tensor], batch_idx: int
