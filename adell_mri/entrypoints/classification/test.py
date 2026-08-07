@@ -118,7 +118,7 @@ def main(arguments):
         strata_key=args.label_keys,
     )
 
-    n_classes, _label_groups, positive_labels, _ = resolve_n_classes_and_labels(
+    n_classes, label_groups, positive_labels, _ = resolve_n_classes_and_labels(
         args, data_dict
     )
 
@@ -164,6 +164,8 @@ def main(arguments):
     transform_arguments = create_transform_arguments(
         args,
         include_label_info=True,
+        n_classes=n_classes,
+        label_groups=label_groups,
         positive_labels=positive_labels,
         include_confounder_transforms=True,
     )

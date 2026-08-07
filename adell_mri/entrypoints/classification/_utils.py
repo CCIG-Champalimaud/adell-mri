@@ -116,7 +116,9 @@ def resolve_n_classes_and_labels(args, data_dict):
 def create_transform_arguments(
     args,
     *,
+    n_classes: int | None = None,
     include_label_info: bool = False,
+    label_groups: list[list[str]] | None = None,
     positive_labels=None,
     include_confounder_transforms: bool = False,
 ) -> dict[str, Any]:
@@ -129,9 +131,12 @@ def create_transform_arguments(
 
     Args:
         args: Parsed CLI arguments.
+        n_classes (int, optional): Number of classes. Defaults to None.
         include_label_info (bool, optional): When ``True``, include
             ``possible_labels``, ``positive_labels``, ``label_groups``,
             ``label_key`` and ``label_mode``. Defaults to ``False``.
+        label_groups (list[list[str]], optional): Resolved label groups.
+            Defaults to None.
         positive_labels (list[str], optional): Resolved positive
             labels. Required when *include_label_info* is ``True``.
         include_confounder_transforms (bool, optional): When ``True``
@@ -171,24 +176,6 @@ def create_transform_arguments(
         transform_kwargs["cont_confounder_keys"] = args.cont_confounder_keys
 
     if include_label_info:
-        label_groups = None
-        p_labels = positive_labels
-        if args.label_groups is not None:
-            label_groups = [
-                label_group.split(",") for label_group in args.label_groups
-            ]
-            if len(label_groups) == 2:
-                p_labels = label_groups[1]
-
-        n_classes = (
-            2
-            if p_labels is not None and not args.label_groups
-            else (
-                len(args.label_groups)
-                if args.label_groups is not None
-                else len(args.possible_labels)
-            )
-        )
         label_mode = (
             "binary" if n_classes == 2 and label_groups is None else "cat"
         )
@@ -196,7 +183,7 @@ def create_transform_arguments(
         transform_kwargs.update(
             {
                 "possible_labels": args.possible_labels,
-                "positive_labels": p_labels,
+                "positive_labels": positive_labels,
                 "label_groups": label_groups,
                 "label_key": args.label_keys,
                 "label_mode": label_mode,
@@ -242,6 +229,7 @@ def create_classification_network(
     network_config: dict,
     input_keys: list[str],
     clinical_feature_keys: list[str],
+    n_classes: int | None = None,
     cat_vars: list[list[str]] | None = None,
     cont_vars: int | None = None,
     cat_key: str | None = None,
@@ -264,6 +252,8 @@ def create_classification_network(
         network_config (dict): Network configuration.
         input_keys (list[str]): Input image keys.
         clinical_feature_keys (list[str]): Clinical/tabular feature keys.
+        n_classes (int, optional): number of classes. Defaults to None
+            (retrieved from ``args``).
         cat_vars (list[list[str]], optional): Categorical variable
             cardinalities (deconfounder only).
         cont_vars (int, optional): Number of continuous variables
@@ -286,7 +276,7 @@ def create_classification_network(
     """
     dropout_param = getattr(args, "dropout_param", 0)
     seed = getattr(args, "seed", 42)
-    n_classes_val = getattr(args, "n_classes", 2)
+    n_classes_val = getattr(args, "n_classes", n_classes if n_classes else 2)
     net_type = getattr(args, "net_type", "cat")
     label_smoothing_val = getattr(args, "label_smoothing", None)
     mixup_alpha_val = getattr(args, "mixup_alpha", None)
@@ -297,7 +287,7 @@ def create_classification_network(
             network_config=network_config,
             dropout_param=dropout_param,
             seed=seed,
-            n_classes=n_classes_val,
+            n_classes=n_classes,
             keys=input_keys,
             cat_confounder_key=cat_key,
             cont_confounder_key=cont_key,

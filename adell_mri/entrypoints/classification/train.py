@@ -223,6 +223,8 @@ def main(arguments):
     transform_arguments = create_transform_arguments(
         args,
         include_label_info=True,
+        n_classes=n_classes,
+        label_groups=label_groups,
         positive_labels=positive_labels,
         include_confounder_transforms=True,
     )
@@ -475,6 +477,7 @@ def main(arguments):
             network_config=network_config,
             input_keys=input_keys,
             clinical_feature_keys=clinical_feature_keys,
+            n_classes=n_classes,
             cat_vars=cat_vars,
             cont_vars=cont_vars,
             cat_key=cat_key,
