@@ -783,7 +783,12 @@ def main(arguments: list[str] | None = None) -> None:
             relative_path = mask_path.relative_to(input_path)
             output_path_image = output_path / input_path.name / relative_path
             output_path_image.parent.mkdir(parents=True, exist_ok=True)
-            sitk.WriteImage(mask, str(output_path_image))
+            sitk.WriteImage(
+                mask,
+                str(output_path_image),
+                compressionLevel=9,
+                useCompression=True,
+            )
             pbar.set_description(f"Wrote mask to {output_path_image}")
 
 
