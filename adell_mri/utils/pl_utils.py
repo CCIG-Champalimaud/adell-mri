@@ -18,7 +18,7 @@ from adell_mri.utils.python_logging import get_logger
 
 logger = get_logger(__name__)
 
-ADELL_PARALLEL_STRATEGY = os.env.get("ADELL_PARALLEL_STRATEGY", "ddp")
+ADELL_PARALLEL_STRATEGY = os.environ.get("ADELL_PARALLEL_STRATEGY", "ddp")
 
 
 class GPULock:
