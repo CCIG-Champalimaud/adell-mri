@@ -273,7 +273,9 @@ def get_augmentations_class(
             for axis_to_flip in axes_to_flip:
                 flips.append(
                     monai.transforms.RandFlipd(
-                        all_keys_with_mask, prob=prob, spatial_axis=axis_to_flip
+                        all_keys_with_mask,
+                        prob=prob,
+                        spatial_axis=axis_to_flip,
                     )
                 )
         augments.append(monai.transforms.OneOf(flips))

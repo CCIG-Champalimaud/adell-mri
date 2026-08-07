@@ -11,7 +11,10 @@ from lightning.pytorch.callbacks.model_checkpoint import ModelCheckpoint
 from PIL import Image
 from torch.nn.utils.parametrizations import spectral_norm
 
+from adell_mri.utils.python_logging import get_logger
 from adell_mri.utils.utils import ExponentialMovingAverage
+
+logger = get_logger(__name__)
 
 
 def coerce_to_uint8(x: np.ndarray):
@@ -174,13 +177,15 @@ class SpectralNorm(pl.Callback):
             ]
         )
 
-    def on_train_start(
-        self, trainer: pl.Trainer, pl_module: pl.LightningModule
-    ) -> None:
+    def setup(self, trainer, pl_module, stage=None):
         """
         Recursively traverses the model and applies spectral normalization.
         """
-        self._apply_spectral_norm(pl_module)
+        if getattr(pl_module, "_spectral_norm_applied", False):
+            return
+        if stage == "fit" or stage is None:
+            logger.info("Applying spectral normalization")
+            self._apply_spectral_norm(pl_module)
 
     def _apply_spectral_norm(self, model: torch.nn.Module):
         """
@@ -211,6 +216,7 @@ class SpectralNorm(pl.Callback):
                             print(
                                 f"Skipping spectral norm on {module.__class__.__name__}.{param_name}: {e}"
                             )
+        model._spectral_norm_applied = True
 
     def on_save_checkpoint(self, trainer, pl_module, checkpoint) -> None:
         """
