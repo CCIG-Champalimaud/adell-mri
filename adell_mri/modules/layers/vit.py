@@ -965,13 +965,14 @@ class TransformerBlock(torch.nn.Module):
         """
         Initializes the MLP in the last step of the transformer."""
         if isinstance(self.mlp_structure, list):
-            struc = max(self.mlp_structure)
+            structure = self.mlp_structure
         else:
-            struc = self.mlp_structure
-        self.mlp = torch.nn.Sequential(
-            torch.nn.Linear(self.input_dim_primary, struc),
-            self.adn_fn(struc),
-            torch.nn.Linear(struc, self.input_dim_primary),
+            structure = [self.mlp_structure]
+        self.mlp = MLP(
+            input_dim=self.input_dim_primary,
+            output_dim=self.input_dim_primary,
+            structure=structure,
+            adn_fn=self.adn_fn,
         )
 
     def forward(
