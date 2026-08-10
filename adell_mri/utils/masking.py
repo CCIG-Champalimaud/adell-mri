@@ -3,12 +3,32 @@ Includes a class for masking transformer-style tensors.
 """
 
 from itertools import product
-from typing import List, Tuple, Union
+from typing import List, Sequence, Tuple, Union
 
 import numpy as np
 import torch
 
 Coords = Union[Tuple[int, int, int, int], Tuple[int, int, int, int, int, int]]
+
+
+def _check_patch_size(
+    image_dimensions: Sequence[int], max_patch_size: Sequence[int]
+):
+    """
+    Checks if the maximum patch size is always smaller than the image
+    dimensions.
+
+    Raises:
+        ValueError: when any value in ``max_patch_size`` is larger than its
+            corresponding value in ``image_dimensions``.
+    """
+    if any([m >= s for s, m in zip(image_dimensions, max_patch_size)]):
+        raise ValueError(
+            "max_patch_size must be strictly smaller than "
+            "image_dimensions in all dimensions. "
+            f"image_dimensions: {image_dimensions}; "
+            f"max_patch_size: {max_patch_size}"
+        )
 
 
 class TransformerMasker(torch.nn.Module):
@@ -50,6 +70,7 @@ class TransformerMasker(torch.nn.Module):
         self.n_dim = len(self.image_dimensions)
 
         assert self.n_dim in [2, 3]
+        _check_patch_size(self.image_dimensions, self.max_patch_size)
         self.initialize_positional_embedding_if_necessary()
 
     def sample_patch(self) -> Coords:
@@ -147,6 +168,7 @@ class TransformerMasker(torch.nn.Module):
         mask_vector: torch.Tensor = None,
         n_patches: int = None,
         patch_coords: List[Coords] = None,
+        skip_n: int = 0,  # for class tokens or registers
     ) -> Tuple[torch.Tensor, List[torch.Tensor]]:
         """
         Applies transformer masking.
@@ -159,6 +181,7 @@ class TransformerMasker(torch.nn.Module):
                 to None.
             patch_coords (List[Coords], optional): the patch coordinates. Defaults
                 to None.
+            skip_n (int, optional): the number of tokens to skip. Defaults to 0.
 
         Returns:
             Tuple[torch.Tensor, List[torch.Tensor]]: the masked tensor and the list
@@ -176,10 +199,12 @@ class TransformerMasker(torch.nn.Module):
             full_coords.append(long_coords)
         if mask_vector is not None:
             full_coords = np.unique(np.concatenate(full_coords))
-            X[:, full_coords, :] = mask_vector.to(X)
             if self.positional_embedding is not None:
                 p = self.positional_embedding[None, full_coords, :]
-                X[:, full_coords, :] = X[:, full_coords, :] + p.to(X)
+                X[:, full_coords + skip_n, :] = X[
+                    :, full_coords + skip_n, :
+                ] + p.to(X)
+            X[:, full_coords + skip_n, :] = mask_vector.to(X)
         return X, all_patches, patch_coords
 
 
@@ -225,6 +250,7 @@ class GenericTransformerMasker(torch.nn.Module):
         self.n_dim = len(self.image_dimensions)
 
         assert self.n_dim in [2, 3]
+        _check_patch_size(self.image_dimensions, self.max_patch_size)
 
     def sample_patch(self) -> Coords:
         """
@@ -361,6 +387,7 @@ class ConvolutionalMasker:
         self.n_dim = len(self.image_dimensions)
 
         assert self.n_dim in [2, 3]
+        _check_patch_size(self.image_dimensions, self.max_patch_size)
 
     def sample_patch(self) -> Coords:
         """
