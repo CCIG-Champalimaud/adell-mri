@@ -59,6 +59,8 @@ class BarlowTwinsPL(ResNet, pl.LightningModule):
 
         self.loss = BarlowTwinsLoss(moving=True, lam=self.loss_lam)
 
+        self.setup_metrics()
+
     def calculate_loss(self, y1, y2, update=True):
         loss = self.loss(y1, y2, update=True)
         return loss.mean()
