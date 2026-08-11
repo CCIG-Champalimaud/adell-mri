@@ -1,11 +1,7 @@
 import pytest
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
-from torch.utils.data import DataLoader, Dataset
 
 from adell_mri.modules.layers.regularization import L2NormalizationLayer
-from adell_mri.modules.self_supervised.pl import ViTMaskedAutoEncoderPL
 from adell_mri.utils import network_factories
 
 
@@ -234,7 +230,6 @@ def test_byol_network():
     with torch.no_grad():
         # Get the online and target features through the forward method
         online1 = net(dummy_input[net.aug_image_key_1])
-        online2 = net(dummy_input[net.aug_image_key_2])
 
         # Check shapes
         assert online1.shape[0] == batch_size
@@ -384,10 +379,6 @@ def test_mae_network():
     img_size = (224, 224)  # (height, width)
     patch_size = (16, 16)  # (ph, pw)
     mask_ratio = 0.75
-    in_channels = 1
-    # Ensure input_dim_size is divisible by num_heads (3)
-    input_dim_size = 96  # 96 is divisible by 3 (32 per head)
-    mlp_dim = 384  # 384 is divisible by 3 (128 per head)
 
     # Create a minimal config for MAE that matches get_ssl_network expectations
     config = minimal_network_config(ssl_method)

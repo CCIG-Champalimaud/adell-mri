@@ -272,7 +272,6 @@ class IJEPA(torch.nn.Module):
                 shape [B, n_target_tokens, encoder_dim] and targets have the
                 same shape.
         """
-        B = X.shape[0]
         embedded = self.encoder_.embedding(X)
         skip_n = self.extra_tokens
         spatial = embedded[:, skip_n:]
