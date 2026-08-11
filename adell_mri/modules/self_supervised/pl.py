@@ -144,13 +144,23 @@ class BarlowTwinsPL(ResNet, pl.LightningModule):
             "R": torchmetrics.PearsonCorrCoef,
             "CS": torchmetrics.CosineSimilarity,
         }
+        num_outputs = self.projection_head_args["structure"][-1]
         self.train_metrics = torch.nn.ModuleDict({})
         self.val_metrics = torch.nn.ModuleDict({})
         self.test_metrics = torch.nn.ModuleDict({})
         for k in metric_dict:
-            self.train_metrics[k] = metric_dict[k]()
-            self.val_metrics["V" + k] = metric_dict[k]()
-            self.test_metrics["T" + k] = metric_dict[k]()
+            if k == "CS":
+                self.train_metrics[k] = metric_dict[k]()
+                self.val_metrics["V" + k] = metric_dict[k]()
+                self.test_metrics["T" + k] = metric_dict[k]()
+            else:
+                self.train_metrics[k] = metric_dict[k](num_outputs=num_outputs)
+                self.val_metrics["V" + k] = metric_dict[k](
+                    num_outputs=num_outputs
+                )
+                self.test_metrics["T" + k] = metric_dict[k](
+                    num_outputs=num_outputs
+                )
 
 
 class SelfSLBasePL(pl.LightningModule, ABC):
