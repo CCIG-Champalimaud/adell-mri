@@ -61,6 +61,8 @@ class BarlowTwinsLoss(torch.nn.Module):
                 torch.sum(torch.square(x) + torch.square(y), 0, keepdim=True),
             )
             self.count += 2 * n
+        if self.moving is True:
+            self.calculate_average_std()
         return self.barlow_twins_loss(x, y)
 
     def barlow_twins_loss(
