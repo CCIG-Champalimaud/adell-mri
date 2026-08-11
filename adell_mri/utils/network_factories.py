@@ -57,6 +57,7 @@ from adell_mri.modules.self_supervised.pl import (
     DINOPL,
     IJEPA,
     IJEPAPL,
+    BarlowTwinsPL,
     ConvNeXt,
     ResNet,
     SelfSLConvNeXtPL,
@@ -729,6 +730,12 @@ def get_ssl_network(
         "batch_size": network_config.get("batch_size", 32),
     }
 
+    # pass the optimisation hyperparameters through when present in the
+    # configuration file (keeps the module-level defaults otherwise)
+    for key in ["learning_rate", "weight_decay"]:
+        if key in network_config:
+            common_params[key] = network_config[key]
+
     if ssl_method in ["simclr", "byol", "vicreg", "vicregl"]:
         # These methods use the standard ResNet architecture
         config = {
@@ -770,6 +777,10 @@ def get_ssl_network(
             ),
             "ssl_method": ssl_method,
             "stop_gradient": stop_gradient,
+            "temperature": network_config.get("temperature", 0.1),
+            "vic_reg_loss_params": network_config.get(
+                "vic_reg_loss_params", {}
+            ),
         }
         ssl = SelfSLResNetPL(**{**common_params, **config})
 
@@ -870,6 +881,10 @@ def get_ssl_network(
             "projection_head_args": projection_head_args,
             "out_dim": network_config.get("out_dim", 65536),
             "temperature": network_config.get("temperature", 0.1),
+            "centers_m": network_config.get("centers_m", 0.9),
+            "teacher_score_method": network_config.get(
+                "teacher_score_method", "center"
+            ),
             "stop_gradient": stop_gradient,
         }
         ssl = DINOPL(**{**common_params, **config})
@@ -916,9 +931,52 @@ def get_ssl_network(
             "min_patch_size": network_config.get("min_patch_size", [4, 4]),
             "max_patch_size": network_config.get("max_patch_size", [8, 8]),
             "temperature": network_config.get("temperature", 0.1),
+            "centers_m": network_config.get("centers_m", 0.9),
+            "teacher_score_method": network_config.get(
+                "teacher_score_method", "center"
+            ),
             "stop_gradient": stop_gradient,
         }
         ssl = iBOTPL(**{**common_params, **config})
+
+    elif ssl_method == "barlow":
+        # barlow twins-specific configuration (resnet backbone, projector
+        # head whose output is used directly in the cross-correlation loss)
+        backbone_args: dict = network_config.get(
+            "backbone_args",
+            {
+                "spatial_dim": 2,
+                "in_channels": 1,
+                "structure": [
+                    (64, 64, 3, 2),
+                    (128, 128, 3, 2),
+                    (256, 256, 3, 2),
+                    (512, 512, 3, 2),
+                ],
+                "maxpool_structure": [2, 2, 2, 2],
+                "adn_fn": torch.nn.Identity,
+                "res_type": "resnet",
+            },
+        )
+        projection_head_args: dict = network_config.get(
+            "projection_head_args",
+            {"in_channels": 512, "structure": [2048, 8192]},
+        )
+        config = {
+            "image_key": "augmented_image_1",
+            "augmented_image_key": "augmented_image_2",
+            "backbone_args": backbone_args,
+            "projection_head_args": projection_head_args,
+            "loss_lam": network_config.get("loss_lam", 0.005),
+        }
+        ssl = BarlowTwinsPL(
+            training_dataloader_call=train_loader_call,
+            learning_rate=network_config.get("learning_rate", 0.001),
+            weight_decay=network_config.get("weight_decay", 0.005),
+            batch_size=network_config.get("batch_size", 32),
+            **config,
+        )
+
     else:
         if ssl_method == "simclr":
             # simclr only uses a projection head, no prediction head
