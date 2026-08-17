@@ -88,11 +88,18 @@ class Discriminator(torch.nn.Module):
                 not present in ``self.backbone_conversion``.
         """
         self.network_kwargs["in_channels"] = self.in_channels
+        spatial_dim = self.network_kwargs.pop(
+            "spatial_dim", self.network_kwargs.pop("spatial_dimensions", 2)
+        )
         if isinstance(self.net_type, str):
             if self.net_type not in self.backbone_conversion:
                 raise NotImplementedError(
                     f"net_type should be one of {self.backbone_conversion}"
                 )
+            if self.net_type == "vgg":
+                self.network_kwargs["spatial_dimensions"] = spatial_dim
+            elif self.net_type in ["convnext", "resnet"]:
+                self.network_kwargs["spatial_dim"] = spatial_dim
             self.backbone = self.backbone_conversion[self.net_type](
                 *self.network_args, **self.network_kwargs
             )
