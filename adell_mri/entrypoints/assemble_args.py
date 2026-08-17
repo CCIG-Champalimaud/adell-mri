@@ -847,6 +847,26 @@ argument_factory = {
         nargs="+",
         help="Keys corresponding to conditional input images.",
     ),
+    "input_mask_keys": dict(
+        type=str,
+        default=None,
+        nargs="+",
+        help=(
+            "Keys corresponding to conditional input masks. Masks are one-hot "
+            "encoded (using --mask_classes) and concatenated to the "
+            "conditional input channels. Can be combined with "
+            "--input_image_keys."
+        ),
+    ),
+    "mask_classes": dict(
+        type=int,
+        default=None,
+        nargs="+",
+        help=(
+            "Number of classes for each key in --input_mask_keys (one entry "
+            "per mask key). Determines the number of one-hot encoded channels."
+        ),
+    ),
 }
 
 
