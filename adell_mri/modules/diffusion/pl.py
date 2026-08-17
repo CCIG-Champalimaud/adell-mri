@@ -27,6 +27,7 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
         image_key: str = "image",
         cat_condition_key: str = "cat_condition",
         num_condition_key: str = "num_condition",
+        concat_condition_key: str = None,
         uncondition_proba: float = 0.0,
         n_epochs: int = 100,
         warmup_steps: int = 0,
@@ -47,6 +48,7 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
         self.image_key = image_key
         self.cat_condition_key = cat_condition_key
         self.num_condition_key = num_condition_key
+        self.concat_condition_key = concat_condition_key
         self.uncondition_proba = uncondition_proba
         self.n_epochs = n_epochs
         self.warmup_steps = warmup_steps
@@ -124,6 +126,7 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
         x: torch.Tensor,
         timesteps: torch.Tensor = None,
         context: torch.Tensor = None,
+        concat_condition: torch.Tensor = None,
     ) -> torch.Tensor:
         """
         Computes the loss for a single step of the diffusion model.
@@ -135,6 +138,9 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
                 randomly. Defaults to None.
             context (torch.Tensor, optional): The conditioning context for the
                 diffusion model. Defaults to None.
+            concat_condition (torch.Tensor, optional): conditioning tensor
+                concatenated along the channel dimension of the noisy input.
+                Defaults to None.
 
         Returns:
             torch.Tensor: The mean loss for the current step.
@@ -145,19 +151,22 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
             timesteps = self.timesteps_like(x)
         else:
             timesteps = timesteps.long()
-        epsilon_pred = self.inferer(
-            inputs=x,
-            diffusion_model=self,
-            noise=epsilon,
-            timesteps=timesteps,
-            condition=context,
-        )
+        inferer_kwargs = {
+            "inputs": x,
+            "diffusion_model": self,
+            "noise": epsilon,
+            "timesteps": timesteps,
+            "condition": context,
+        }
+        if concat_condition is not None:
+            inferer_kwargs["concat_condition"] = concat_condition
+        epsilon_pred = self.inferer(**inferer_kwargs)
         loss = self.calculate_loss(epsilon_pred, epsilon)
         return loss
 
     def unpack_batch(
         self, batch: dict[str, torch.Tensor]
-    ) -> tuple[torch.Tensor, torch.Tensor | None]:
+    ) -> tuple[torch.Tensor, torch.Tensor | None, torch.Tensor | None]:
         """
         Convenience function to unpack a batch for model training.
 
@@ -165,14 +174,18 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
             batch (dict[str, torch.Tensor]): dictionary containing the correct
                 entries for each batch. Should have inputs corresponding to
                 ``self.image_key`` and to conditioning keys (i.e.
-                ``self.cat_condition_key`` and ``self.num_condition_key``) if
-                conditioning is required.
+                ``self.cat_condition_key``, ``self.num_condition_key`` and
+                ``self.concat_condition_key``) if conditioning is required.
 
         Returns:
-            tuple[torch.Tensor, torch.Tensor]: tensor with input image and
-                embedded condition (if provided).
+            tuple[torch.Tensor, torch.Tensor, torch.Tensor]: tensor with input
+                image, embedded condition (if provided) and concatenated
+                conditioning channels (if provided).
         """
         x = batch[self.image_key]
+        concat_condition = None
+        if self.concat_condition_key is not None:
+            concat_condition = batch[self.concat_condition_key]
         if self.with_conditioning is True:
             uncondition = (
                 "all" if self.rng.random() < self.uncondition_proba else None
@@ -197,7 +210,7 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
                 condition = condition.unsqueeze(1)
         else:
             condition = None
-        return x, condition
+        return x, condition, concat_condition
 
     def on_before_batch_transfer(
         self, batch: dict, dataloader_idx: int
@@ -225,8 +238,10 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
         Returns:
             torch.Tensor: loss value.
         """
-        x, condition = self.unpack_batch(batch)
-        loss = self.step(x, context=condition)
+        x, condition, concat_condition = self.unpack_batch(batch)
+        loss = self.step(
+            x, context=condition, concat_condition=concat_condition
+        )
         self.log("loss", loss, on_step=True, prog_bar=True)
         return loss
 
@@ -241,8 +256,10 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
         Returns:
             torch.Tensor: loss value.
         """
-        x, condition = self.unpack_batch(batch)
-        loss = self.step(x, context=condition)
+        x, condition, concat_condition = self.unpack_batch(batch)
+        loss = self.step(
+            x, context=condition, concat_condition=concat_condition
+        )
         self.log("val_loss", loss, on_epoch=True, prog_bar=True)
         return loss
 
@@ -257,8 +274,10 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
         Returns:
             torch.Tensor: loss value.
         """
-        x, condition = self.unpack_batch(batch)
-        loss = self.step(x, context=condition)
+        x, condition, concat_condition = self.unpack_batch(batch)
+        loss = self.step(
+            x, context=condition, concat_condition=concat_condition
+        )
         self.log("test_loss", loss)
         return loss
 
@@ -285,6 +304,7 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
         uncondition_cat_idx: int | list[int] | None = None,
         uncondition_num_idx: int | list[int] | None = None,
         guidance_strength: float = 1.0,
+        concat_condition: torch.Tensor = None,
     ) -> torch.Tensor:
         """
         Generates an image using the learned diffusion model. Can be used for:
@@ -295,6 +315,8 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
             part of the diffusion process in a way that only partially destroys
             the content and the rest of the process is recapitulated with
             standard DDPM)
+            - for image/mask-conditioned generation through channel
+            concatenation (if ``concat_condition`` is provided)
 
         Part of this support also involves using non-conditioned inputs through
         ``uncondition_cat_idx`` and ``uncondition_num_idx``. In theory, this
@@ -323,11 +345,16 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
                 Defaults to None.
             guidance_strength (float, optional): strength of the classifier
                 guidance. Defaults to 1.0.
+            concat_condition (torch.Tensor, optional): conditioning tensor
+                (e.g. concatenation of input images and one-hot encoded masks)
+                concatenated along the channel dimension of the sampled image.
+                Can be combined with ``cat_condition``/``num_condition`` for
+                mixed conditioning. Defaults to None.
 
         Returns:
             torch.Tensor: generated (or re-generated) sample.
         """
-        noise = torch.randn([n, self.in_channels, *size], device=self.device)
+        noise = torch.randn([n, self.out_channels, *size], device=self.device)
         if input_image is None:
             input_image = noise
         else:
@@ -338,6 +365,8 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
                     self.scheduler.num_train_timesteps - skip_steps
                 ),
             )
+        condition = None
+        uncondition = None
         if self.embedder is not None:
             condition = self.embedder(
                 X_cat=cat_condition,
@@ -345,25 +374,35 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
                 batch_size=n,
                 update_queues=False,
             )
+            uncondition_idx = {
+                "uncondition_cat_idx": (
+                    uncondition_cat_idx
+                    if uncondition_cat_idx is not None
+                    else "all"
+                ),
+                "uncondition_num_idx": (
+                    uncondition_num_idx
+                    if uncondition_num_idx is not None
+                    else "all"
+                ),
+            }
             uncondition = self.embedder(
                 X_cat=cat_condition,
                 X_num=num_condition,
                 batch_size=n,
                 update_queues=False,
-                uncondition_cat_idx="all",
-                uncondition_num_idx="all",
+                **uncondition_idx,
             )
             if len(condition.shape) < 3:
                 condition = condition.unsqueeze(1)
-            if len(uncondition.shape) < 3:
+            if uncondition is not None and len(uncondition.shape) < 3:
                 uncondition = uncondition.unsqueeze(1)
-        else:
-            condition, uncondition = None, None
         sample = self.inferer.sample(
             input_noise=input_image,
             diffusion_model=self,
             scheduler=self.scheduler,
             conditioning=condition,
+            concat_condition=concat_condition,
             unconditioning=uncondition,
             skip_steps=skip_steps,
             guidance_strength=guidance_strength,
