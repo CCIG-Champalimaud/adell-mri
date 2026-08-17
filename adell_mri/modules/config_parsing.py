@@ -176,6 +176,8 @@ def parse_config_gan(
     config_file: str,
     target_keys: list[str],
     input_keys: list[str] = None,
+    input_mask_keys: list[str] = None,
+    mask_classes: list[int] = None,
     spatial_dims: int = 2,
     **kwargs,
 ):
@@ -191,12 +193,22 @@ def parse_config_gan(
     del network_config["generator"]
     del network_config["discriminator"]
 
-    if input_keys is None:
+    conditioning_channels = 0
+    if input_keys is not None:
+        conditioning_channels += len(input_keys)
+    if input_mask_keys is not None:
+        if mask_classes is None or len(mask_classes) != len(input_mask_keys):
+            raise ValueError(
+                "--mask_classes must have one entry per --input_mask_keys key"
+            )
+        conditioning_channels += sum(mask_classes)
+
+    if conditioning_channels > 0:
+        generator_config["in_channels"] = conditioning_channels
+        disc_channels = len(target_keys) + conditioning_channels
+    else:
         generator_config["in_channels"] = len(target_keys)
         disc_channels = len(target_keys)
-    else:
-        generator_config["in_channels"] = len(input_keys)
-        disc_channels = len(target_keys) + len(input_keys)
     generator_config["out_channels"] = len(target_keys)
     generator_config["spatial_dims"] = spatial_dims
     discriminator_config["spatial_dim"] = spatial_dims
