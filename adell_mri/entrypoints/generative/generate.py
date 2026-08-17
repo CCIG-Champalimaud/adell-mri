@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any
 
 import monai
+import numpy as np
 import SimpleITK as sitk
 import torch
 from tqdm import tqdm
@@ -23,7 +24,7 @@ from adell_mri.utils.torch_utils import (
 from adell_mri.utils.utils import safe_collate
 
 
-def image_to_sitk_array(image: torch.Tensor) -> "numpy.ndarray":
+def image_to_sitk_array(image: torch.Tensor) -> np.ndarray:
     """
     Converts a channel-first tensor (from ``GenerationTransforms``) into the
     array layout expected by ``SimpleITK.GetImageFromArray`` (spatial dims in
