@@ -68,8 +68,6 @@ def fetch_specifications(state_dict: dict[str, Any]):
     transform_args = metadata["transform_arguments"]
     if ("pre" in transform_args) and ("post" in transform_args):
         transform_args = transform_args["pre"] | transform_args["post"]
-    if "image_keys" in transform_args:
-        del transform_args["image_keys"]
     spacing = metadata["transform_arguments"]["pre"]["target_spacing"]
     return network_config, cat_spec, num_spec, spacing, transform_args
 
@@ -174,6 +172,12 @@ def main(arguments):
             "beta_end": 0.0195,
         },
         uncondition_proba=0.0,
+        concat_condition_key=(
+            "conditioning"
+            if transform_args.get("input_image_keys") is not None
+            or transform_args.get("input_mask_keys") is not None
+            else None
+        ),
     )
 
     load_checkpoint_to_model(network, ckpt, [])
@@ -301,6 +305,11 @@ def main(arguments):
                 uncondition_cat_idx=args.uncondition_cat_idx,
                 uncondition_num_idx=args.uncondition_num_idx,
                 guidance_strength=args.guidance_strength,
+                concat_condition=(
+                    data["conditioning"].to(args.dev).to(inference_dtype)
+                    if "conditioning" in data
+                    else None
+                ),
             )
             outputs = outputs.detach().float().cpu()
             for image, output_path, output in zip(
@@ -328,6 +337,14 @@ def main(arguments):
         num_condition = torch.as_tensor(
             [num_condition], device=args.dev, dtype=inference_dtype
         )
+        concat_condition = None
+        n_cond_channels = network.in_channels - network.out_channels
+        if n_cond_channels > 0:
+            concat_condition = torch.zeros(
+                [1, n_cond_channels, *size],
+                device=args.dev,
+                dtype=inference_dtype,
+            )
         for i in range(args.n_samples_gen):
             output = network.generate_image(
                 size=size,
@@ -335,6 +352,7 @@ def main(arguments):
                 skip_steps=0,
                 cat_condition=cat_condition,
                 num_condition=num_condition,
+                concat_condition=concat_condition,
             )
             output = image_to_sitk_array(output.detach().cpu()[0])
             output = sitk.GetImageFromArray(output)

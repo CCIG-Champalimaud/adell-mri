@@ -74,6 +74,8 @@ def main(arguments):
             "params_from",
             "image_keys",
             "input_image_keys",
+            "input_mask_keys",
+            "mask_classes",
             "cat_condition_keys",
             "num_condition_keys",
             "uncondition_proba",
@@ -171,6 +173,15 @@ def main(arguments):
     if args.input_image_keys is not None:
         presence_keys.extend(args.input_image_keys)
 
+    if args.input_mask_keys is not None:
+        if args.mask_classes is None or len(args.mask_classes) != len(
+            args.input_mask_keys
+        ):
+            raise ValueError(
+                "--mask_classes must have one entry per --input_mask_keys key"
+            )
+        presence_keys.extend(args.input_mask_keys)
+
     data_dict.apply_filters(**vars(args), presence_keys=presence_keys)
 
     if len(data_dict) == 0:
@@ -191,11 +202,20 @@ def main(arguments):
         else [*args.image_keys]
     )
 
+    conditioning_channels = 0
+    if args.input_image_keys is not None:
+        conditioning_channels += len(args.input_image_keys)
+    if args.input_mask_keys is not None:
+        conditioning_channels += sum(args.mask_classes)
+    input_image_key = "conditioning" if conditioning_channels > 0 else None
+
     if args.model_type == "gan":
         network_config, gen_config, disc_config = parse_config_gan(
             args.config_file,
             args.image_keys,
             args.input_image_keys,
+            input_mask_keys=args.input_mask_keys,
+            mask_classes=args.mask_classes,
             spatial_dims=args.spatial_dims or 3,
             batch_size=args.batch_size,
             learning_rate=args.learning_rate,
@@ -212,7 +232,7 @@ def main(arguments):
         network_config["cross_attention_dim"] = (
             256 if with_conditioning else None
         )
-        network_config["in_channels"] = len(keys)
+        network_config["in_channels"] = len(keys) + conditioning_channels
         network_config["out_channels"] = len(keys)
 
     all_pids = [k for k in data_dict]
@@ -220,6 +240,10 @@ def main(arguments):
     logger.info("Setting up transforms...")
     transform_arguments = {
         "keys": all_image_keys,
+        "image_keys": keys,
+        "input_image_keys": args.input_image_keys,
+        "input_mask_keys": args.input_mask_keys,
+        "mask_classes": args.mask_classes,
         "target_spacing": args.target_spacing,
         "crop_size": args.crop_size,
         "pad_size": args.pad_size,
@@ -273,7 +297,10 @@ def main(arguments):
         else network_config["spatial_dims"]
     )
     if spatial_dims == 2:
-        transforms_train.append(RandomSlices(["image"], None, n=1))
+        slice_keys = ["image"]
+        if input_image_key is not None:
+            slice_keys.append("conditioning")
+        transforms_train.append(RandomSlices(slice_keys, None, n=1))
         collate_fn = collate_last_slice
     else:
         collate_fn = safe_collate
@@ -330,7 +357,7 @@ def main(arguments):
             categorical_specification=categorical_specification,
             numerical_specification=numerical_specification,
             numerical_moments=(means, stds),
-            input_image_key=args.input_image_keys,
+            input_image_key=input_image_key,
             max_epochs=args.max_epochs,
             steps_per_epoch=args.steps_per_epoch or 1,
             pct_start=args.warmup_steps,
@@ -351,6 +378,7 @@ def main(arguments):
             start_decay=args.start_decay,
             diffusion_steps=args.diffusion_steps,
             uncondition_proba=args.uncondition_proba,
+            concat_condition_key=input_image_key,
         )
 
     if args.checkpoint is not None:
@@ -405,7 +433,7 @@ def main(arguments):
             callbacks.append(
                 LogImageFromGAN(
                     n_images=5,
-                    size=[len(all_image_keys)] + size,
+                    size=[len(args.image_keys)] + size,
                 )
             )
         else:

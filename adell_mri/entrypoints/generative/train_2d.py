@@ -74,6 +74,8 @@ def main(arguments):
             "image_keys",
             "train_pids",
             "input_image_keys",
+            "input_mask_keys",
+            "mask_classes",
             "cat_condition_keys",
             "num_condition_keys",
             "augment",
@@ -142,11 +144,20 @@ def main(arguments):
 
     output_file = open(args.metric_path, "w")
 
-    all_keys = [x for x in args.image_keys]
-    all_image_keys = [x for x in args.image_keys]
+    all_keys = [*args.image_keys]
+    all_image_keys = [*args.image_keys]
     if args.input_image_keys is not None:
-        all_keys.append(args.input_image_keys)
-        all_image_keys.append(args.input_image_keys)
+        all_keys.extend(args.input_image_keys)
+        all_image_keys.extend(args.input_image_keys)
+
+    if args.input_mask_keys is not None:
+        if args.mask_classes is None or len(args.mask_classes) != len(
+            args.input_mask_keys
+        ):
+            raise ValueError(
+                "--mask_classes must have one entry per --input_mask_keys key"
+            )
+        all_keys.extend(args.input_mask_keys)
 
     data_dict = json.load(open(args.dataset_json, "r"))
     data_dict = filter_dicom_dict_on_presence(data_dict, all_keys=all_keys)
@@ -183,11 +194,20 @@ def main(arguments):
         )
         data_dict = {k: data_dict[k] for k in ss}
 
+    conditioning_channels = 0
+    if args.input_image_keys is not None:
+        conditioning_channels += len(args.input_image_keys)
+    if args.input_mask_keys is not None:
+        conditioning_channels += sum(args.mask_classes)
+    input_image_key = "conditioning" if conditioning_channels > 0 else None
+
     if args.model_type == "gan":
         network_config, gen_config, disc_config = parse_config_gan(
             args.config_file,
             args.image_keys,
             args.input_image_keys,
+            input_mask_keys=args.input_mask_keys,
+            mask_classes=args.mask_classes,
             batch_size=args.batch_size,
             learning_rate=args.learning_rate,
         )
@@ -204,11 +224,17 @@ def main(arguments):
         network_config["cross_attention_dim"] = (
             256 if with_conditioning else None
         )
-        network_config["in_channels"] = len(args.image_keys)
+        network_config["in_channels"] = (
+            len(args.image_keys) + conditioning_channels
+        )
         network_config["out_channels"] = len(args.image_keys)
 
     transform_arguments = {
         "keys": all_image_keys,
+        "image_keys": args.image_keys,
+        "input_image_keys": args.input_image_keys,
+        "input_mask_keys": args.input_mask_keys,
+        "mask_classes": args.mask_classes,
         "target_spacing": args.target_spacing,
         "crop_size": args.crop_size,
         "pad_size": args.pad_size,
@@ -219,7 +245,7 @@ def main(arguments):
 
     augmentation_args = {}
 
-    transforms = GenerationTransforms(**transform_arguments)
+    transform_factory = GenerationTransforms(**transform_arguments)
 
     if args.train_pids is not None:
         train_pids = {pid: "" for pid in args.train_pids}
@@ -234,7 +260,7 @@ def main(arguments):
 
     logger.info("Training set size: %s", len(train_list))
 
-    transforms = monai.transforms.Compose(transforms)
+    transforms = monai.transforms.Compose(transform_factory.transforms())
     transforms.set_random_state(args.seed)
 
     train_dataset = DICOMDataset(train_list, transforms)
@@ -287,7 +313,7 @@ def main(arguments):
             categorical_specification=categorical_specification,
             numerical_specification=numerical_specification,
             numerical_moments=(means, stds),
-            input_image_key=args.input_image_keys,
+            input_image_key=input_image_key,
             max_epochs=args.max_epochs,
             steps_per_epoch=steps_per_epoch,
             pct_start=args.warmup_steps,
@@ -308,6 +334,7 @@ def main(arguments):
             start_decay=args.start_decay,
             diffusion_steps=args.diffusion_steps,
             uncondition_proba=args.uncondition_proba,
+            concat_condition_key=input_image_key,
         )
 
     if args.checkpoint is not None:
@@ -381,7 +408,7 @@ def main(arguments):
             callbacks.append(
                 LogImageFromGAN(
                     n_images=5,
-                    size=[len(all_image_keys)] + size[:2],
+                    size=[len(args.image_keys)] + size[:2],
                 )
             )
         else:
