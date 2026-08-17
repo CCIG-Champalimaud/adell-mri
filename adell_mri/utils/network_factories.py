@@ -1056,6 +1056,7 @@ def get_generative_network(
     warmup_steps: int,
     start_decay: int,
     diffusion_steps: int,
+    concat_condition_key: str = None,
 ) -> LightningModule:
     """
     Returns a generative network.
@@ -1111,6 +1112,7 @@ def get_generative_network(
         "image_key": "image",
         "cat_condition_key": None,
         "num_condition_key": None,
+        "concat_condition_key": concat_condition_key,
         "n_epochs": max_epochs,
         "warmup_steps": warmup_steps,
         "start_decay": start_decay,
