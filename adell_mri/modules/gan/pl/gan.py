@@ -412,13 +412,19 @@ class GANPL(pl.LightningModule):
                     sync_dist=True,
                     batch_size=self.batch_size,
                 )
+        if len(all_losses) == 0:
+            raise ValueError("No losses to backpropagate in optimization step.")
         reduced_losses = mean(
             [all_losses[k] for k in all_losses if len(all_losses[k].shape) == 0]
         )
         unreduced_losses = mean(
-            [all_losses[k] for k in all_losses if len(all_losses[k].shape) > 0]
+            [
+                all_losses[k].mean()
+                for k in all_losses
+                if len(all_losses[k].shape) > 0
+            ]
         )
-        loss_sum = reduced_losses + unreduced_losses.mean()
+        loss_sum = reduced_losses + unreduced_losses
         self.manual_backward(loss_sum)
         self.step_zero_grad_optimizers(optimizers)
         self.untoggle_optimizers(optimizers)
