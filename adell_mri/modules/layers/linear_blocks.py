@@ -9,6 +9,7 @@ from typing import List
 
 import numpy as np
 import torch
+import torch.nn.functional as F
 
 from adell_mri.custom_types import Size2dOr3d
 
@@ -385,18 +386,32 @@ class MultiHeadSelfAttention(torch.nn.Module):
         )
         Q = self.q_norm(Q)
         K = self.k_norm(K)
-        S = Q @ torch.transpose(K, -1, -2)
-        S = S / self.reg_const
+        # build the additive attention mask (relative position bias and/or
+        # an explicit mask), broadcastable to [*b, n_heads, t, t]
+        attn_mask = None
         if self.window_size:
             relative_position_bias = self.relative_position_bias_table[
                 self.relative_position_index.clone()[:t, :t].reshape(-1)
-            ].reshape(-1, t, t)
-            S = S + relative_position_bias
+            ].reshape(self.n_heads, t, t)
+            attn_mask = relative_position_bias
         if mask is not None:
-            mask = mask.to(S)
-            S = S + mask.unsqueeze(1).unsqueeze(0)
-        S = self.drop_op(self.sm(S))
-        V_tilde = S @ V
-        V_tilde = V_tilde.transpose(1, 2).reshape(*b, t, self.hidden_dim)
+            mask = mask.to(Q)
+            if mask.ndim == 3:
+                # per-window masks [n_windows, t, t] -> [n_windows, 1, t, t]
+                mask = mask.unsqueeze(1)
+            if attn_mask is None:
+                attn_mask = mask
+            else:
+                # [1, n_heads, t, t] + [*, *, t, t] -> [*, n_heads, t, t]
+                attn_mask = attn_mask.unsqueeze(0) + mask
+        V_tilde = F.scaled_dot_product_attention(
+            Q,
+            K,
+            V,
+            attn_mask=attn_mask,
+            dropout_p=self.dropout_rate if self.training else 0.0,
+            is_causal=False,
+        )
+        V_tilde = V_tilde.transpose(-3, -2).reshape(*b, t, self.hidden_dim)
         output = self.output_layer(V_tilde)
         return output

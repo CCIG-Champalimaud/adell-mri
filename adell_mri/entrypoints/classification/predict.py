@@ -196,11 +196,11 @@ def main(arguments):
         for checkpoint in checkpoint_list:
             if checkpoint is not None:
                 logger.info("Predicting for %s", checkpoint)
-            args.n_classes = args.n_classes
             network = create_classification_network(
                 args=args,
                 network_config=network_config,
                 input_keys=input_keys,
+                n_classes=args.n_classes,
                 clinical_feature_keys=clinical_feature_keys,
                 cat_vars=cat_vars,
                 cont_vars=cont_vars,

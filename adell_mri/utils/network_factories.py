@@ -57,6 +57,7 @@ from adell_mri.modules.self_supervised.pl import (
     DINOPL,
     IJEPA,
     IJEPAPL,
+    BarlowTwinsPL,
     ConvNeXt,
     ResNet,
     SelfSLConvNeXtPL,
@@ -729,6 +730,12 @@ def get_ssl_network(
         "batch_size": network_config.get("batch_size", 32),
     }
 
+    # pass the optimisation hyperparameters through when present in the
+    # configuration file (keeps the module-level defaults otherwise)
+    for key in ["learning_rate", "weight_decay"]:
+        if key in network_config:
+            common_params[key] = network_config[key]
+
     if ssl_method in ["simclr", "byol", "vicreg", "vicregl"]:
         # These methods use the standard ResNet architecture
         config = {
@@ -770,30 +777,60 @@ def get_ssl_network(
             ),
             "ssl_method": ssl_method,
             "stop_gradient": stop_gradient,
+            "temperature": network_config.get("temperature", 0.1),
+            "vic_reg_loss_params": network_config.get(
+                "vic_reg_loss_params", {}
+            ),
         }
         ssl = SelfSLResNetPL(**{**common_params, **config})
 
     elif ssl_method == "ijepa":
-        # IJEPA specific configuration
-        backbone_args: dict = network_config.get("backbone_args", {})
+        # IJEPA specific configuration (ViT backbone + transformer predictor)
+        if net_type != "vit":
+            raise TypeError(
+                "IJEPA only supports net_type='vit', got %s" % net_type
+            )
+        backbone_args: dict = network_config.get(
+            "backbone_args",
+            {
+                "image_size": [224, 224],
+                "patch_size": [16, 16],
+                "in_channels": 1,
+                "number_of_blocks": 4,
+                "attention_dim": 96,
+                "embedding_size": 96,
+                "n_heads": 3,
+            },
+        )
+        feature_map_dimensions = [
+            s // p
+            for s, p in zip(
+                backbone_args["image_size"], backbone_args["patch_size"]
+            )
+        ]
+        n_encoder_features = backbone_args.get(
+            "embedding_size", backbone_args["attention_dim"]
+        )
+        predictor_head_args: dict = network_config.get(
+            "projection_head_args",
+            {
+                "number_of_blocks": 2,
+                "attention_dim": n_encoder_features,
+                "hidden_dim": n_encoder_features,
+                "n_heads": 3,
+            },
+        )
         config = {
             "image_key": "image",
-            "backbone_args": {
-                "in_channels": backbone_args.get("in_channels", 1),
-                "patch_size": backbone_args.get("patch_size", (16, 16)),
-                "img_size": backbone_args.get("img_size", (224, 224)),
-                "embed_dim": backbone_args.get("embed_dim", 96),
-                "depth": backbone_args.get("depth", 4),
-                "num_heads": backbone_args.get("num_heads", 3),
-                "mlp_ratio": backbone_args.get("mlp_ratio", 4.0),
-                "qkv_bias": backbone_args.get("qkv_bias", True),
-                "norm_layer": backbone_args.get(
-                    "norm_layer", torch.nn.LayerNorm
-                ),
-            },
-            "feature_map_dimensions": network_config.get(
-                "feature_map_dimensions", [14, 14]
-            ),
+            "backbone_args": backbone_args,
+            "projection_head_args": predictor_head_args,
+            "feature_map_dimensions": feature_map_dimensions,
+            "n_encoder_features": n_encoder_features,
+            "min_patch_size": network_config.get("min_patch_size", [4, 4]),
+            "max_patch_size": network_config.get("max_patch_size", [8, 8]),
+            "n_patches": network_config.get("n_patches", 1),
+            "n_masked_patches": network_config.get("n_masked_patches", 4),
+            "predictor_dim": network_config.get("predictor_dim", None),
             "stop_gradient": stop_gradient,
         }
         ssl = IJEPAPL(**{**common_params, **config})
@@ -816,65 +853,130 @@ def get_ssl_network(
         ssl = ViTMaskedAutoEncoderPL(**{**common_params, **config})
 
     elif ssl_method == "dino":
-        # DINO specific configuration
+        # DINO specific configuration (ViT backbone + MLP projection head)
+        if net_type != "vit":
+            raise TypeError(
+                "DINO only supports net_type='vit', got %s" % net_type
+            )
+        backbone_args: dict = network_config.get(
+            "backbone_args",
+            {
+                "image_size": [224, 224],
+                "patch_size": [16, 16],
+                "in_channels": 1,
+                "number_of_blocks": 4,
+                "attention_dim": 96,
+                "embedding_size": 96,
+                "n_heads": 3,
+            },
+        )
+        projection_head_args: dict = network_config.get(
+            "projection_head_args",
+            {"structure": [512, 256, 128]},
+        )
         config = {
             "aug_image_key_1": "augmented_image_1",
             "aug_image_key_2": "augmented_image_2",
-            "backbone_args": {
-                "in_channels": 1,
-                "patch_size": (16, 16),
-                "img_size": (224, 224),
-                "embed_dim": 96,
-                "depth": 4,
-                "num_heads": 3,
-                "mlp_ratio": 4.0,
-                "qkv_bias": True,
-                "norm_layer": torch.nn.LayerNorm,
-            },
-            "projection_head_args": {
-                "in_dim": 96
-                * 14
-                * 14,  # embed_dim * (img_size // patch_size) ** 2
-                "hidden_dim": 512,
-                "out_dim": 128,
-                "num_layers": 3,
-            },
-            "temperature": 0.1,
+            "backbone_args": backbone_args,
+            "projection_head_args": projection_head_args,
+            "out_dim": network_config.get("out_dim", 65536),
+            "temperature": network_config.get("temperature", 0.1),
+            "centers_m": network_config.get("centers_m", 0.9),
+            "teacher_score_method": network_config.get(
+                "teacher_score_method", "center"
+            ),
             "stop_gradient": stop_gradient,
         }
         ssl = DINOPL(**{**common_params, **config})
 
     elif ssl_method == "ibot":
-        # iBOT specific configuration
+        # iBOT specific configuration (ViT backbone + MLP projection head)
+        if net_type != "vit":
+            raise TypeError(
+                "iBOT only supports net_type='vit', got %s" % net_type
+            )
+        backbone_args: dict = network_config.get(
+            "backbone_args",
+            {
+                "image_size": [224, 224],
+                "patch_size": [16, 16],
+                "in_channels": 1,
+                "number_of_blocks": 4,
+                "attention_dim": 96,
+                "embedding_size": 96,
+                "n_heads": 3,
+            },
+        )
+        feature_map_dimensions = [
+            s // p
+            for s, p in zip(
+                backbone_args["image_size"], backbone_args["patch_size"]
+            )
+        ]
+        n_encoder_features = backbone_args.get(
+            "embedding_size", backbone_args["attention_dim"]
+        )
+        projection_head_args: dict = network_config.get(
+            "projection_head_args",
+            {"structure": [512, 256, 128]},
+        )
         config = {
             "aug_image_key_1": "augmented_image_1",
             "aug_image_key_2": "augmented_image_2",
-            "backbone_args": {
-                "in_channels": 1,
-                "patch_size": (16, 16),
-                "img_size": (224, 224),
-                "embed_dim": 96,
-                "depth": 4,
-                "num_heads": 3,
-                "mlp_ratio": 4.0,
-                "qkv_bias": True,
-                "norm_layer": torch.nn.LayerNorm,
-            },
-            "projection_head_args": {
-                # embed_dim * (img_size // patch_size) ** 2
-                "in_dim": 96 * 14 * 14,
-                "hidden_dim": 512,
-                "out_dim": 128,
-                "num_layers": 3,
-            },
-            "feature_map_dimensions": [14, 14],
-            "n_encoder_features": 96,
-            "min_patch_size": 2,
-            "max_patch_size": 8,
-            "temperature": 0.1,
+            "backbone_args": backbone_args,
+            "projection_head_args": projection_head_args,
+            "out_dim": network_config.get("out_dim", 65536),
+            "feature_map_dimensions": feature_map_dimensions,
+            "n_encoder_features": n_encoder_features,
+            "min_patch_size": network_config.get("min_patch_size", [4, 4]),
+            "max_patch_size": network_config.get("max_patch_size", [8, 8]),
+            "temperature": network_config.get("temperature", 0.1),
+            "centers_m": network_config.get("centers_m", 0.9),
+            "teacher_score_method": network_config.get(
+                "teacher_score_method", "center"
+            ),
             "stop_gradient": stop_gradient,
         }
         ssl = iBOTPL(**{**common_params, **config})
+
+    elif ssl_method == "barlow":
+        # barlow twins-specific configuration (resnet backbone, projector
+        # head whose output is used directly in the cross-correlation loss)
+        backbone_args: dict = network_config.get(
+            "backbone_args",
+            {
+                "spatial_dim": 2,
+                "in_channels": 1,
+                "structure": [
+                    (64, 64, 3, 2),
+                    (128, 128, 3, 2),
+                    (256, 256, 3, 2),
+                    (512, 512, 3, 2),
+                ],
+                "maxpool_structure": [2, 2, 2, 2],
+                "adn_fn": torch.nn.Identity,
+                "res_type": "resnet",
+            },
+        )
+        projection_head_args: dict = network_config.get(
+            "projection_head_args",
+            {"in_channels": 512, "structure": [2048, 8192]},
+        )
+        config = {
+            "image_key": "augmented_image_1",
+            "augmented_image_key": "augmented_image_2",
+            "backbone_args": backbone_args,
+            "projection_head_args": projection_head_args,
+            "loss_lam": network_config.get("loss_lam", 0.005),
+        }
+        ssl = BarlowTwinsPL(
+            training_dataloader_call=train_loader_call,
+            learning_rate=network_config.get("learning_rate", 0.001),
+            weight_decay=network_config.get("weight_decay", 0.005),
+            batch_size=network_config.get("batch_size", 32),
+            **config,
+        )
+
     else:
         if ssl_method == "simclr":
             # simclr only uses a projection head, no prediction head

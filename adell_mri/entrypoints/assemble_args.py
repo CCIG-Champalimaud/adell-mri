@@ -699,6 +699,7 @@ argument_factory = {
             "mae",
             "dino",
             "ibot",
+            "barlow",
         ],
         help="SSL method",
     ),

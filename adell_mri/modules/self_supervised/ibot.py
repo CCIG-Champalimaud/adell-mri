@@ -87,14 +87,16 @@ class iBOT(torch.nn.Module):
             raise KeyError(
                 "`structure` must be specified in `projection_head_args`."
             )
-        self.mlp_out_dim = self.projection_head_args["structure"][-1]
-        self.projection_head_args["structure"] = self.projection_head_args[
-            "structure"
-        ][:-1]
+        structure = list(self.projection_head_args["structure"])
+        self.mlp_out_dim = structure[-1]
+        projection_head_args = {
+            **self.projection_head_args,
+            "structure": structure[:-1],
+        }
         self.projection_ = MLP(
             input_dim=self.encoder_.attention_dim,
             output_dim=self.mlp_out_dim,
-            **self.projection_head_args,
+            **projection_head_args,
         )
 
     def initialize_last_layer(self):

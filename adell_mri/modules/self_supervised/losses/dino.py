@@ -61,7 +61,7 @@ class DinoLoss(torch.nn.Module):
         self.t2 = self.temperatures[1]
 
         self.register_buffer("centers", torch.zeros([self.n_features]))
-        self.updated = False
+        self.updated = True
         self.reduce_handle = None
         self.len_teacher_output = None
         self.async_batch_center = None
@@ -80,6 +80,9 @@ class DinoLoss(torch.nn.Module):
         Applies center update.
         """
         if self.updated is False:
+            if self.async_batch_center is None:
+                # no center update has been computed yet; nothing to apply
+                return
             world_size = self.world_size
 
             if self.reduce_handle is not None:
@@ -134,7 +137,7 @@ class DinoLoss(torch.nn.Module):
         """
         if self.teacher_score_method == "center":
             self.apply_center_update()
-            return torch.softmax(x - self.centers / self.t2, dim=-1)
+            return torch.softmax((x - self.centers) / self.t2, dim=-1)
         elif self.teacher_score_method == "sk":
             return self.sinkhorn_knopp_teacher(x)
 

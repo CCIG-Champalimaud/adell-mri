@@ -1,11 +1,7 @@
 import pytest
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
-from torch.utils.data import DataLoader, Dataset
 
 from adell_mri.modules.layers.regularization import L2NormalizationLayer
-from adell_mri.modules.self_supervised.pl import ViTMaskedAutoEncoderPL
 from adell_mri.utils import network_factories
 
 
@@ -64,78 +60,60 @@ def minimal_network_config(ssl_method):
         # Minimal valid config for IJEPA
         return {
             "backbone_args": {
-                "patch_size": (16, 16),
-                "img_size": (224, 224),
+                "image_size": [32, 32],
+                "patch_size": [4, 4],
                 "in_channels": 1,
-                "embed_dim": 96,
-                "depth": 4,
-                "num_heads": 3,
-                "mlp_ratio": 4.0,
-                "qkv_bias": True,
-                "norm_layer": torch.nn.LayerNorm,
+                "number_of_blocks": 2,
+                "attention_dim": 64,
+                "embedding_size": 64,
+                "n_heads": 4,
             },
             "projection_head_args": {
-                "in_channels": 96,
-                "structure": [96, 48],
-                "adn_fn": torch.nn.Identity,
+                "number_of_blocks": 2,
+                "attention_dim": 64,
+                "hidden_dim": 64,
+                "n_heads": 4,
             },
-            "feature_map_dimensions": [14, 14],
-            "n_encoder_features": 96,
-            "min_patch_size": [8, 8],
-            "max_patch_size": [16, 16],
-            # Add missing required parameters
-            "n_patches": 4,
-            "n_masked_patches": 1,
-            "encoder_architecture": "vit",
-            "predictor_architecture": "vit",
-            "reduce_fn": "mean",
-            "seed": 42,
+            "min_patch_size": [2, 2],
+            "max_patch_size": [3, 3],
+            "n_patches": 1,
+            "n_masked_patches": 2,
         }
     elif ssl_method == "dino":
         # Minimal valid config for DINO
         return {
             "backbone_args": {
-                "patch_size": (16, 16),
-                "img_size": (224, 224),
+                "image_size": [32, 32],
+                "patch_size": [4, 4],
                 "in_channels": 1,
-                "embed_dim": 96,
-                "depth": 4,
-                "num_heads": 3,
-                "mlp_ratio": 4.0,
-                "qkv_bias": True,
-                "norm_layer": torch.nn.LayerNorm,
+                "number_of_blocks": 2,
+                "attention_dim": 64,
+                "embedding_size": 64,
+                "n_heads": 4,
             },
             "projection_head_args": {
-                "in_channels": 96,
-                "structure": [96, 48],
-                "adn_fn": torch.nn.Identity,
+                "structure": [64, 32],
             },
-            "out_dim": 48,
+            "out_dim": 32,
         }
     elif ssl_method == "ibot":
         # Minimal valid config for iBOT
         return {
             "backbone_args": {
-                "patch_size": (16, 16),
-                "img_size": (224, 224),
+                "image_size": [32, 32],
+                "patch_size": [4, 4],
                 "in_channels": 1,
-                "embed_dim": 96,
-                "depth": 4,
-                "num_heads": 3,
-                "mlp_ratio": 4.0,
-                "qkv_bias": True,
-                "norm_layer": torch.nn.LayerNorm,
+                "number_of_blocks": 2,
+                "attention_dim": 64,
+                "embedding_size": 64,
+                "n_heads": 4,
             },
             "projection_head_args": {
-                "in_channels": 96,
-                "structure": [96, 48],
-                "adn_fn": torch.nn.Identity,
+                "structure": [64, 32],
             },
-            "out_dim": 48,
-            "feature_map_dimensions": [14, 14],
-            "n_encoder_features": 96,
-            "min_patch_size": [8, 8],
-            "max_patch_size": [16, 16],
+            "out_dim": 32,
+            "min_patch_size": [2, 2],
+            "max_patch_size": [3, 3],
         }
     elif ssl_method == "mae":
         # Minimal valid config for ViTMaskedAutoEncoderPL
@@ -252,7 +230,6 @@ def test_byol_network():
     with torch.no_grad():
         # Get the online and target features through the forward method
         online1 = net(dummy_input[net.aug_image_key_1])
-        online2 = net(dummy_input[net.aug_image_key_2])
 
         # Check shapes
         assert online1.shape[0] == batch_size
@@ -402,10 +379,6 @@ def test_mae_network():
     img_size = (224, 224)  # (height, width)
     patch_size = (16, 16)  # (ph, pw)
     mask_ratio = 0.75
-    in_channels = 1
-    # Ensure input_dim_size is divisible by num_heads (3)
-    input_dim_size = 96  # 96 is divisible by 3 (32 per head)
-    mlp_dim = 384  # 384 is divisible by 3 (128 per head)
 
     # Create a minimal config for MAE that matches get_ssl_network expectations
     config = minimal_network_config(ssl_method)

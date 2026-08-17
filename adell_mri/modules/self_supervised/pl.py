@@ -59,6 +59,8 @@ class BarlowTwinsPL(ResNet, pl.LightningModule):
 
         self.loss = BarlowTwinsLoss(moving=True, lam=self.loss_lam)
 
+        self.setup_metrics()
+
     def calculate_loss(self, y1, y2, update=True):
         loss = self.loss(y1, y2, update=True)
         return loss.mean()
@@ -82,7 +84,7 @@ class BarlowTwinsPL(ResNet, pl.LightningModule):
 
         loss = self.calculate_loss(y1, y2)
 
-        self.log("train_loss", loss, prob_bar=True)
+        self.log("train_loss", loss, prog_bar=True)
         self.update_metrics(y1, y2, self.train_metrics)
         return loss
 
@@ -92,7 +94,7 @@ class BarlowTwinsPL(ResNet, pl.LightningModule):
 
         loss = self.calculate_loss(y1, y2, False)
 
-        self.log("val_loss", loss, prob_bar=True, sync_dist=True)
+        self.log("val_loss", loss, prog_bar=True, sync_dist=True)
         self.update_metrics(y1, y2, self.val_metrics)
         return loss
 
@@ -102,7 +104,7 @@ class BarlowTwinsPL(ResNet, pl.LightningModule):
 
         loss = self.calculate_loss(y1, y2, False)
 
-        self.log("test_loss", loss, prob_bar=True)
+        self.log("test_loss", loss, prog_bar=True)
         self.update_metrics(y1, y2, self.test_metrics)
         return loss
 
@@ -142,13 +144,23 @@ class BarlowTwinsPL(ResNet, pl.LightningModule):
             "R": torchmetrics.PearsonCorrCoef,
             "CS": torchmetrics.CosineSimilarity,
         }
+        num_outputs = self.projection_head_args["structure"][-1]
         self.train_metrics = torch.nn.ModuleDict({})
         self.val_metrics = torch.nn.ModuleDict({})
         self.test_metrics = torch.nn.ModuleDict({})
         for k in metric_dict:
-            self.train_metrics[k] = metric_dict[k]()
-            self.val_metrics["V" + k] = metric_dict[k]()
-            self.test_metrics["T" + k] = metric_dict[k]()
+            if k == "CS":
+                self.train_metrics[k] = metric_dict[k]()
+                self.val_metrics["V" + k] = metric_dict[k]()
+                self.test_metrics["T" + k] = metric_dict[k]()
+            else:
+                self.train_metrics[k] = metric_dict[k](num_outputs=num_outputs)
+                self.val_metrics["V" + k] = metric_dict[k](
+                    num_outputs=num_outputs
+                )
+                self.test_metrics["T" + k] = metric_dict[k](
+                    num_outputs=num_outputs
+                )
 
 
 class SelfSLBasePL(pl.LightningModule, ABC):
@@ -285,7 +297,7 @@ class SelfSLBasePL(pl.LightningModule, ABC):
         parameter_dict = {
             k: float(parameter_dict[k])
             for k in parameter_dict
-            if isinstance(k, (int, float, bool))
+            if isinstance(parameter_dict[k], (int, float, bool))
         }
         self.log_dict(parameter_dict, sync_dist=True)
 
@@ -1039,36 +1051,38 @@ class IJEPAPL(IJEPA, SelfSLBasePL):
 
         self.ema = ema
 
+        if self.ema is None:
+            raise ValueError(
+                "I-JEPA requires an EMA (teacher) copy of the network "
+                "(`ema` must be an ExponentialMovingAverage module)."
+            )
+
         self.init_loss()
-        if self.ema is not None:
-            self.ema.update(self)
-        else:
-            self.ema = None
+        self.ema.update(self)
 
         self.save_hyperparameters()
         self.setup_metrics()
-        self.init_loss()
 
     def init_loss(self):
-        self.loss = torch.nn.MSELoss()
+        self.loss = torch.nn.SmoothL1Loss()
 
-    def calculate_loss(self, y, patches, *args):
-        loss = sum([self.loss(y, patch) for patch in patches]) / len(patches)
+    def calculate_loss(self, predictions, targets, *args):
+        loss = torch.stack(
+            [self.loss(p, t) for p, t in zip(predictions, targets)]
+        ).mean()
         return loss
 
     def step(self, batch, loss_str: str, train=False):
         x = batch[self.image_key]
         if self.channels_to_batch is True:
             x = x.reshape(-1, 1, *x.shape[2:])
-        x, patches = self.forward_training(x, self.ema)
-        loss = self.calculate_loss(x, patches)
-        if self.ema is not None and train is True:
+        predictions, targets = self.forward_training(x, self.ema)
+        loss = self.calculate_loss(predictions, targets)
+        if train is True:
             self.ema.update(self)
-        # loss is rescaled for logging because values are typically too small
-        # to be easily tracked from progress bar.
         self.log(
             loss_str,
-            loss * 1e3,
+            loss,
             batch_size=x.shape[0],
             on_epoch=True,
             on_step=False,
@@ -1140,7 +1154,7 @@ class DINOPL(DINO, SelfSLBasePL):
         n_steps: int = None,
         warmup_steps: int = 0,
         start_decay: int = 0,
-        temperature: float = 1.0,
+        temperature: float = 0.1,
         stop_gradient: bool = True,
         channels_to_batch: bool = False,
         ema: torch.nn.Module = None,
@@ -1149,7 +1163,6 @@ class DINOPL(DINO, SelfSLBasePL):
         *args,
         **kwargs,
     ):
-        super().__init__(*args, **kwargs)
         self.aug_image_key_1 = aug_image_key_1
         self.aug_image_key_2 = aug_image_key_2
         self.learning_rate = learning_rate
@@ -1163,30 +1176,33 @@ class DINOPL(DINO, SelfSLBasePL):
         self.temperature = temperature
         self.stop_gradient = stop_gradient
         self.channels_to_batch = channels_to_batch
-        self.ema = ema
         self.centers_m = centers_m
         self.teacher_score_method = teacher_score_method
 
         self.ssl_method = "dino"
 
         if channels_to_batch is True:
-            kwargs["in_channels"] = 1
+            kwargs["backbone_args"]["in_channels"] = 1
 
         super().__init__(*args, **kwargs)
+
+        self.ema = ema
+
+        if self.ema is None:
+            raise ValueError(
+                "DINO requires an EMA (teacher) copy of the network "
+                "(`ema` must be an ExponentialMovingAverage module)."
+            )
 
         self.save_hyperparameters()
         self.setup_metrics()
         self.init_loss()
 
-        self.ema = ema
-        if self.ema is not None:
-            self.ema.update(self, exclude_keys=["centers"])
-        else:
-            self.ema = None
+        self.ema.update(self, exclude_keys=["centers"])
 
     def init_loss(self):
         self.loss = DinoLoss(
-            temperatures=(0.1, 0.1),
+            temperatures=(self.temperature, self.temperature),
             n_features=self.out_dim,
             center_m=self.centers_m,
             teacher_score_method=self.teacher_score_method,
@@ -1224,7 +1240,7 @@ class DINOPL(DINO, SelfSLBasePL):
         )
         if self.ema is not None and train is True:
             self.ema.update(self, exclude_keys=["centers"])
-        self.update_centers(torch.cat([t_1, t_2]))
+        self.loss.update_centers(torch.cat([t_1, t_2]))
         return loss_value
 
     def training_step(self, batch, batch_idx):
@@ -1253,7 +1269,7 @@ class iBOTPL(iBOT, SelfSLBasePL):
         n_steps: int = None,
         warmup_steps: int = 0,
         start_decay: int = 0,
-        temperature: float = 1.0,
+        temperature: float = 0.1,
         stop_gradient: bool = True,
         channels_to_batch: bool = False,
         ema: torch.nn.Module = None,
@@ -1262,7 +1278,6 @@ class iBOTPL(iBOT, SelfSLBasePL):
         *args,
         **kwargs,
     ):
-        super().__init__(*args, **kwargs)
         self.aug_image_key_1 = aug_image_key_1
         self.aug_image_key_2 = aug_image_key_2
         self.learning_rate = learning_rate
@@ -1276,36 +1291,39 @@ class iBOTPL(iBOT, SelfSLBasePL):
         self.temperature = temperature
         self.stop_gradient = stop_gradient
         self.channels_to_batch = channels_to_batch
-        self.ema = ema
         self.centers_m = centers_m
         self.teacher_score_method = teacher_score_method
 
-        self.ssl_method = "dino"
+        self.ssl_method = "ibot"
 
         if channels_to_batch is True:
-            kwargs["in_channels"] = 1
+            kwargs["backbone_args"]["in_channels"] = 1
 
         super().__init__(*args, **kwargs)
 
-        # self.save_hyperparameters()
+        self.ema = ema
+
+        if self.ema is None:
+            raise ValueError(
+                "iBOT requires an EMA (teacher) copy of the network "
+                "(`ema` must be an ExponentialMovingAverage module)."
+            )
+
+        self.save_hyperparameters()
         self.setup_metrics()
         self.init_loss()
 
-        self.ema = ema
-        if self.ema is not None:
-            self.ema.update(self, exclude_keys=["centers"])
-        else:
-            self.ema = None
+        self.ema.update(self, exclude_keys=["centers"])
 
     def init_loss(self):
         self.loss_mask = DinoLoss(
-            temperatures=(0.1, 0.1),
+            temperatures=(self.temperature, self.temperature),
             n_features=self.out_dim,
             center_m=self.centers_m,
             teacher_score_method=self.teacher_score_method,
         )
         self.loss_global = DinoLoss(
-            temperatures=(0.1, 0.1),
+            temperatures=(self.temperature, self.temperature),
             n_features=self.out_dim,
             center_m=self.centers_m,
             teacher_score_method=self.teacher_score_method,
