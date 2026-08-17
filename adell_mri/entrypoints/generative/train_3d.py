@@ -1,22 +1,28 @@
 import sys
 
 import monai
+import numpy as np
 import torch
 from lightning.pytorch import Trainer
 from lightning.pytorch.callbacks import RichProgressBar
 
 from adell_mri.entrypoints.assemble_args import Parser
+from adell_mri.modules.config_parsing import parse_config_gan
 from adell_mri.transform_factory import GenerationTransforms
 from adell_mri.transform_factory import (
     get_augmentations_class as get_augmentations,
 )
 from adell_mri.utils.dataset import Dataset
 from adell_mri.utils.monai_transforms import RandomSlices
-from adell_mri.utils.network_factories import get_generative_network
+from adell_mri.utils.network_factories import (
+    get_gan_network,
+    get_generative_network,
+)
 from adell_mri.utils.parser import compose, get_params, merge_args
 from adell_mri.utils.pl_callbacks import (
     EMACallback,
     LogImageFromDiffusionProcess,
+    LogImageFromGAN,
     SpectralNorm,
 )
 from adell_mri.utils.pl_utils import get_ckpt_callback, get_devices, get_logger
@@ -39,6 +45,19 @@ def get_conditional_specification(d: dict, cond_key: str):
     return possible_values
 
 
+def get_mean_and_std(d: dict, regression_keys: list[str]):
+    if regression_keys is None:
+        return None, None
+    values = {k: [] for k in regression_keys}
+    for study_uid in d:
+        for k in values:
+            if k in d[study_uid]:
+                values[k].append(d[study_uid][k])
+    means = [np.mean(values[k]) for k in values]
+    stds = [np.std(values[k]) for k in values]
+    return means, stds
+
+
 def return_first_not_none(*size_list):
     for size in size_list:
         if size is not None:
@@ -54,6 +73,7 @@ def main(arguments):
             "dataset_json",
             "params_from",
             "image_keys",
+            "input_image_keys",
             "cat_condition_keys",
             "num_condition_keys",
             "uncondition_proba",
@@ -69,6 +89,8 @@ def main(arguments):
             "crop_size",
             "config_file",
             "overrides",
+            "model_type",
+            "spatial_dims",
             "warmup_steps",
             "start_decay",
             "dev",
@@ -112,6 +134,12 @@ def main(arguments):
         param_dict = get_params(args.params_from)
         args = merge_args(args, param_dict, sys.argv[1:])
 
+    if args.model_type not in ["diffusion", "gan"]:
+        raise ValueError(
+            f"--model_type must be one of ['diffusion', 'gan'], got "
+            f"'{args.model_type}'"
+        )
+
     g, rng = get_generator_and_rng(args.seed)
 
     accelerator, devices, strategy = get_devices(args.dev)
@@ -140,35 +168,58 @@ def main(arguments):
         presence_keys.extend(args.num_condition_keys)
         with_conditioning = True
 
+    if args.input_image_keys is not None:
+        presence_keys.extend(args.input_image_keys)
+
     data_dict.apply_filters(**vars(args), presence_keys=presence_keys)
 
     if len(data_dict) == 0:
         raise Exception(
             "No data available for training \
-                (dataset={}; keys={}; labels={})".format(
-                args.dataset_json, args.image_keys, args.label_keys
+                (dataset={}; keys={})".format(
+                args.dataset_json, args.image_keys
             )
         )
 
     keys = args.image_keys
+    all_image_keys = (
+        [
+            *args.image_keys,
+            *args.input_image_keys,
+        ]
+        if args.input_image_keys is not None
+        else [*args.image_keys]
+    )
 
-    network_config = compose(args.config_file, "diffusion", args.overrides)
-    network_config["batch_size"] = return_first_not_none(
-        args.batch_size, network_config.get("batch_size")
-    )
-    network_config["learning_rate"] = return_first_not_none(
-        args.learning_rate, network_config.get("learning_rate")
-    )
-    network_config["with_conditioning"] = with_conditioning
-    network_config["cross_attention_dim"] = 256 if with_conditioning else None
-    network_config["in_channels"] = len(keys)
-    network_config["out_channels"] = len(keys)
+    if args.model_type == "gan":
+        network_config, gen_config, disc_config = parse_config_gan(
+            args.config_file,
+            args.image_keys,
+            args.input_image_keys,
+            spatial_dims=args.spatial_dims or 3,
+            batch_size=args.batch_size,
+            learning_rate=args.learning_rate,
+        )
+    else:
+        network_config = compose(args.config_file, "diffusion", args.overrides)
+        network_config["batch_size"] = return_first_not_none(
+            args.batch_size, network_config.get("batch_size")
+        )
+        network_config["learning_rate"] = return_first_not_none(
+            args.learning_rate, network_config.get("learning_rate")
+        )
+        network_config["with_conditioning"] = with_conditioning
+        network_config["cross_attention_dim"] = (
+            256 if with_conditioning else None
+        )
+        network_config["in_channels"] = len(keys)
+        network_config["out_channels"] = len(keys)
 
     all_pids = [k for k in data_dict]
 
     logger.info("Setting up transforms...")
     transform_arguments = {
-        "keys": keys,
+        "keys": all_image_keys,
         "target_spacing": args.target_spacing,
         "crop_size": args.crop_size,
         "pad_size": args.pad_size,
@@ -177,9 +228,9 @@ def main(arguments):
     }
     augmentation_args = {
         "augment": args.augment,
-        "image_keys": keys,
+        "image_keys": all_image_keys,
         "mask_key": None,
-        "t2_keys": keys,
+        "t2_keys": all_image_keys,
         "flip_axis": [0],
     } | (eval(args.augment_args) if args.augment_args is not None else {})
 
@@ -216,7 +267,12 @@ def main(arguments):
     # PL needs a little hint to detect GPUs.
     torch.ones([1]).to("cuda" if "cuda" in args.dev else "cpu")
 
-    if network_config["spatial_dims"] == 2:
+    spatial_dims = (
+        gen_config["spatial_dims"]
+        if args.model_type == "gan"
+        else network_config["spatial_dims"]
+    )
+    if spatial_dims == 2:
         transforms_train.append(RandomSlices(["image"], None, n=1))
         collate_fn = collate_last_slice
     else:
@@ -244,10 +300,10 @@ def main(arguments):
         bs = new_bs
         real_bs = bs * n_devices
 
-    def train_loader_call():
+    def train_loader_call(batch_size):
         return monai.data.ThreadDataLoader(
             train_dataset,
-            batch_size=bs,
+            batch_size=batch_size,
             num_workers=n_workers,
             collate_fn=collate_fn,
             pin_memory=True,
@@ -256,30 +312,46 @@ def main(arguments):
             sampler=torch.utils.data.RandomSampler(
                 train_dataset,
                 replacement=False,
-                num_samples=args.steps_per_epoch * bs,
+                num_samples=args.steps_per_epoch * batch_size,
                 generator=g,
             ),
             prefetch_factor=8,
         )
 
-    train_loader = train_loader_call()
+    train_loader = train_loader_call(bs)
 
-    network = get_generative_network(
-        network_config=network_config,
-        scheduler_config={
-            "schedule": "scaled_linear_beta",
-            "beta_start": 0.0005,
-            "beta_end": 0.0195,
-        },
-        categorical_specification=categorical_specification,
-        numerical_specification=numerical_specification,
-        train_loader_call=train_loader_call,
-        max_epochs=args.max_epochs,
-        warmup_steps=args.warmup_steps,
-        start_decay=args.start_decay,
-        diffusion_steps=args.diffusion_steps,
-        uncondition_proba=args.uncondition_proba,
-    )
+    if args.model_type == "gan":
+        means, stds = get_mean_and_std(data_dict, args.num_condition_keys)
+        network = get_gan_network(
+            network_config=network_config,
+            generator_config=gen_config,
+            discriminator_config=disc_config,
+            training_dataloader_call=train_loader_call,
+            categorical_specification=categorical_specification,
+            numerical_specification=numerical_specification,
+            numerical_moments=(means, stds),
+            input_image_key=args.input_image_keys,
+            max_epochs=args.max_epochs,
+            steps_per_epoch=args.steps_per_epoch or 1,
+            pct_start=args.warmup_steps,
+        )
+    else:
+        network = get_generative_network(
+            network_config=network_config,
+            scheduler_config={
+                "schedule": "scaled_linear_beta",
+                "beta_start": 0.0005,
+                "beta_end": 0.0195,
+            },
+            categorical_specification=categorical_specification,
+            numerical_specification=numerical_specification,
+            train_loader_call=train_loader_call,
+            max_epochs=args.max_epochs,
+            warmup_steps=args.warmup_steps,
+            start_decay=args.start_decay,
+            diffusion_steps=args.diffusion_steps,
+            uncondition_proba=args.uncondition_proba,
+        )
 
     if args.checkpoint is not None:
         checkpoint = args.checkpoint
@@ -328,12 +400,18 @@ def main(arguments):
 
     if pl_logger is not None:
         size = return_first_not_none(args.pad_size, args.crop_size)
-        callbacks.append(
-            LogImageFromDiffusionProcess(
-                n_images=1,
-                size=[int(x) for x in size][: network_config["spatial_dims"]],
+        size = [int(x) for x in size][:spatial_dims]
+        if args.model_type == "gan":
+            callbacks.append(
+                LogImageFromGAN(
+                    n_images=5,
+                    size=[len(all_image_keys)] + size,
+                )
             )
-        )
+        else:
+            callbacks.append(
+                LogImageFromDiffusionProcess(n_images=1, size=size)
+            )
 
     trainer = Trainer(
         accelerator=accelerator,

@@ -9,7 +9,7 @@ import torch
 from tqdm import tqdm
 
 from adell_mri.entrypoints.assemble_args import Parser
-from adell_mri.entrypoints.generative.train import return_first_not_none
+from adell_mri.entrypoints.generative.train_3d import return_first_not_none
 from adell_mri.transform_factory import GenerationTransforms
 from adell_mri.utils.dataset import Dataset
 from adell_mri.utils.network_factories import get_generative_network
@@ -21,6 +21,31 @@ from adell_mri.utils.torch_utils import (
     load_checkpoint_to_model,
 )
 from adell_mri.utils.utils import safe_collate
+
+
+def image_to_sitk_array(image: torch.Tensor) -> "numpy.ndarray":
+    """
+    Converts a channel-first tensor (from ``GenerationTransforms``) into the
+    array layout expected by ``SimpleITK.GetImageFromArray`` (spatial dims in
+    x, y, [z] order with the channel dimension moved last).
+
+    Args:
+        image (torch.Tensor): channel-first image tensor with shape
+            [C, H, W] (2D) or [C, H, W, D] (3D).
+
+    Returns:
+        numpy.ndarray: array with shape [H, W, C] or [D, H, W, C].
+    """
+    if image.ndim == 4:
+        perm = (3, 1, 2, 0)
+    elif image.ndim == 3:
+        perm = (1, 2, 0)
+    else:
+        raise ValueError(
+            f"Expected a channel-first 2D or 3D tensor, got shape "
+            f"{list(image.shape)}"
+        )
+    return image.permute(perm).numpy()
 
 
 def fetch_specifications(state_dict: dict[str, Any]):
@@ -281,15 +306,14 @@ def main(arguments):
             for image, output_path, output in zip(
                 images, output_paths, outputs
             ):
-                output = sitk.GetImageFromArray(
-                    output.permute(3, 1, 2, 0).numpy()
-                )
+                output = sitk.GetImageFromArray(image_to_sitk_array(output))
                 output.SetSpacing(spacing)
                 output.SetMetaData("checkpoint", args.checkpoint[0])
                 sitk.WriteImage(output, output_path, useCompression=True)
                 if args.keep_original:
-                    image = image.detach().cpu().permute(3, 1, 2, 0).numpy()
-                    image = sitk.GetImageFromArray(image)
+                    image = sitk.GetImageFromArray(
+                        image_to_sitk_array(image.detach().cpu())
+                    )
                     image.SetSpacing(spacing)
                     image_path = output_path.replace("_gen.mha", "_orig.mha")
                     sitk.WriteImage(image, image_path, useCompression=True)
@@ -312,7 +336,7 @@ def main(arguments):
                 cat_condition=cat_condition,
                 num_condition=num_condition,
             )
-            output = output.detach().cpu()[0].permute(3, 1, 2, 0).numpy()
+            output = image_to_sitk_array(output.detach().cpu()[0])
             output = sitk.GetImageFromArray(output)
             output.SetSpacing(spacing)
             output.SetMetaData("checkpoint", args.checkpoint[0])

@@ -12,12 +12,21 @@ from adell_mri.modules.config_parsing import parse_config_gan
 from adell_mri.transform_factory import GenerationTransforms
 from adell_mri.utils.dicom_dataset import filter_dicom_dict_on_presence
 from adell_mri.utils.dicom_loader import DICOMDataset, SliceSampler
-from adell_mri.utils.network_factories import get_gan_network
-from adell_mri.utils.parser import get_params, merge_args
-from adell_mri.utils.pl_callbacks import LogImageFromGAN, SpectralNorm
+from adell_mri.utils.network_factories import (
+    get_gan_network,
+    get_generative_network,
+)
+from adell_mri.utils.parser import compose, get_params, merge_args
+from adell_mri.utils.pl_callbacks import (
+    EMACallback,
+    LogImageFromDiffusionProcess,
+    LogImageFromGAN,
+    SpectralNorm,
+)
 from adell_mri.utils.pl_utils import get_ckpt_callback, get_devices, get_logger
 from adell_mri.utils.python_logging import get_logger as get_python_logger
 from adell_mri.utils.torch_utils import (
+    conditional_parameter_freezing,
     get_generator_and_rng,
     load_checkpoint_to_model,
 )
@@ -74,7 +83,10 @@ def main(arguments):
             "pad_size",
             "crop_size",
             "config_file",
+            "overrides",
+            "model_type",
             "warmup_steps",
+            "start_decay",
             "dev",
             "n_workers",
             "seed",
@@ -89,6 +101,8 @@ def main(arguments):
             "checkpoint",
             "resume_from_last",
             "exclude_from_state_dict",
+            "freeze_regex",
+            "not_freeze_regex",
             "logger_type",
             "project_name",
             "log_model",
@@ -102,6 +116,9 @@ def main(arguments):
             "resume",
             "batch_size",
             "learning_rate",
+            "diffusion_steps",
+            "ema_decay",
+            "uncondition_proba",
         ]
     )
 
@@ -110,6 +127,12 @@ def main(arguments):
     if args.params_from is not None:
         param_dict = get_params(args.params_from)
         args = merge_args(args, param_dict, sys.argv[1:])
+
+    if args.model_type not in ["diffusion", "gan"]:
+        raise ValueError(
+            f"--model_type must be one of ['diffusion', 'gan'], got "
+            f"'{args.model_type}'"
+        )
 
     g, rng = get_generator_and_rng(args.seed)
 
@@ -130,15 +153,18 @@ def main(arguments):
 
     categorical_specification = None
     numerical_specification = None
+    with_conditioning = False
     if args.cat_condition_keys is not None:
         categorical_specification = [
             get_conditional_specification(data_dict, k)
             for k in args.cat_condition_keys
         ]
         all_keys.extend(args.cat_condition_keys)
+        with_conditioning = True
     if args.num_condition_keys is not None:
         numerical_specification = len(args.num_condition_keys)
         all_keys.extend(args.num_condition_keys)
+        with_conditioning = True
 
     means, stds = get_mean_and_std(data_dict, args.num_condition_keys)
 
@@ -157,13 +183,29 @@ def main(arguments):
         )
         data_dict = {k: data_dict[k] for k in ss}
 
-    network_config, gen_config, disc_config = parse_config_gan(
-        args.config_file,
-        args.image_keys,
-        args.input_image_keys,
-        batch_size=args.batch_size,
-        learning_rate=args.learning_rate,
-    )
+    if args.model_type == "gan":
+        network_config, gen_config, disc_config = parse_config_gan(
+            args.config_file,
+            args.image_keys,
+            args.input_image_keys,
+            batch_size=args.batch_size,
+            learning_rate=args.learning_rate,
+        )
+    else:
+        network_config = compose(args.config_file, "diffusion", args.overrides)
+        network_config["spatial_dims"] = 2
+        network_config["batch_size"] = return_first_not_none(
+            args.batch_size, network_config.get("batch_size")
+        )
+        network_config["learning_rate"] = return_first_not_none(
+            args.learning_rate, network_config.get("learning_rate")
+        )
+        network_config["with_conditioning"] = with_conditioning
+        network_config["cross_attention_dim"] = (
+            256 if with_conditioning else None
+        )
+        network_config["in_channels"] = len(args.image_keys)
+        network_config["out_channels"] = len(args.image_keys)
 
     transform_arguments = {
         "keys": all_image_keys,
@@ -236,22 +278,45 @@ def main(arguments):
     agb = args.accumulate_grad_batches
     steps_per_epoch = len(train_loader) // agb // n_devices
 
-    model = get_gan_network(
-        network_config=network_config,
-        generator_config=gen_config,
-        discriminator_config=disc_config,
-        training_dataloader_call=train_loader_call,
-        categorical_specification=categorical_specification,
-        numerical_specification=numerical_specification,
-        numerical_moments=(means, stds),
-        input_image_key=args.input_image_keys,
-        max_epochs=args.max_epochs,
-        steps_per_epoch=steps_per_epoch,
-        pct_start=args.warmup_steps,
-    )
+    if args.model_type == "gan":
+        model = get_gan_network(
+            network_config=network_config,
+            generator_config=gen_config,
+            discriminator_config=disc_config,
+            training_dataloader_call=train_loader_call,
+            categorical_specification=categorical_specification,
+            numerical_specification=numerical_specification,
+            numerical_moments=(means, stds),
+            input_image_key=args.input_image_keys,
+            max_epochs=args.max_epochs,
+            steps_per_epoch=steps_per_epoch,
+            pct_start=args.warmup_steps,
+        )
+    else:
+        model = get_generative_network(
+            network_config=network_config,
+            scheduler_config={
+                "schedule": "scaled_linear_beta",
+                "beta_start": 0.0005,
+                "beta_end": 0.0195,
+            },
+            categorical_specification=categorical_specification,
+            numerical_specification=numerical_specification,
+            train_loader_call=train_loader_call,
+            max_epochs=args.max_epochs,
+            warmup_steps=args.warmup_steps,
+            start_decay=args.start_decay,
+            diffusion_steps=args.diffusion_steps,
+            uncondition_proba=args.uncondition_proba,
+        )
 
-    load_checkpoint_to_model(
-        model, args.checkpoint, args.exclude_from_state_dict
+    if args.checkpoint is not None:
+        load_checkpoint_to_model(
+            model, args.checkpoint, args.exclude_from_state_dict
+        )
+
+    conditional_parameter_freezing(
+        model, args.freeze_regex, args.not_freeze_regex
     )
 
     callbacks = [RichProgressBar()]
@@ -262,7 +327,7 @@ def main(arguments):
         max_epochs=args.max_epochs,
         resume_from_last=args.resume_from_last,
         val_fold=None,
-        monitor="val_loss",
+        monitor=args.monitor,
         metadata={
             "train_pids": train_pids,
             "network_config": network_config,
@@ -280,6 +345,11 @@ def main(arguments):
             n_power_iterations=args.spectral_norm_power_iterations
         )
         callbacks.append(spectral_norm)
+
+    if args.ema_decay is not None:
+        callbacks.append(
+            EMACallback(decay=args.ema_decay, use_ema_weights=True)
+        )
 
     ckpt = ckpt_callback is not None
     if status == "finished":
@@ -306,13 +376,21 @@ def main(arguments):
 
     if pl_logger is not None:
         size = return_first_not_none(args.pad_size, args.crop_size)
-        callbacks.append(
-            LogImageFromGAN(
-                n_images=5,
-                size=[len(all_image_keys)]
-                + [int(x) for x in size][: gen_config["spatial_dims"]],
+        size = [int(x) for x in size]
+        if args.model_type == "gan":
+            callbacks.append(
+                LogImageFromGAN(
+                    n_images=5,
+                    size=[len(all_image_keys)] + size[:2],
+                )
             )
-        )
+        else:
+            callbacks.append(
+                LogImageFromDiffusionProcess(
+                    n_images=1,
+                    size=size[:2],
+                )
+            )
 
     precision = args.precision
 
