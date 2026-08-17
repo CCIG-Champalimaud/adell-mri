@@ -560,6 +560,10 @@ class ClassificationTransforms(TransformMixin):
 @dataclass
 class GenerationTransforms(TransformMixin):
     keys: tuple[str]
+    image_keys: tuple[str] = None
+    input_image_keys: tuple[str] = None
+    input_mask_keys: tuple[str] = None
+    mask_classes: tuple[int] = None
     target_spacing: tuple[int] | None = None
     crop_size: tuple[int] | None = None
     pad_size: tuple[int] | None = None
@@ -567,36 +571,67 @@ class GenerationTransforms(TransformMixin):
     cat_keys: tuple[str] | None = None
     num_keys: tuple[str] | None = None
 
+    def __post_init__(self):
+        if self.image_keys is None:
+            self.image_keys = self.keys
+        self.load_keys = [*self.keys]
+        if self.input_mask_keys is not None:
+            self.load_keys = [*self.load_keys, *self.input_mask_keys]
+        if self.input_image_keys is not None:
+            for k in self.input_image_keys:
+                if k not in self.load_keys:
+                    self.load_keys.append(k)
+        self.conditioning_keys = []
+        if self.input_image_keys is not None:
+            self.conditioning_keys.extend(self.input_image_keys)
+        if self.input_mask_keys is not None:
+            self.conditioning_keys.extend(self.input_mask_keys)
+        if self.mask_classes is not None:
+            if self.input_mask_keys is None:
+                raise ValueError("--mask_classes requires --input_mask_keys")
+            if len(self.mask_classes) != len(self.input_mask_keys):
+                raise ValueError(
+                    "--mask_classes must have one entry per "
+                    "--input_mask_keys key"
+                )
+
     def pre_transforms(self):
         transforms = [
             monai.transforms.LoadImaged(
-                self.keys, ensure_channel_first=True, image_only=True
+                self.load_keys, ensure_channel_first=True, image_only=True
             )
         ]
         if self.n_dim == 2:
             transforms.extend(
                 [
-                    SampleChannelDimd(self.keys, 1, 3),
+                    SampleChannelDimd(self.load_keys, 1, 3),
                     monai.transforms.SqueezeDimd(
-                        self.keys, -1, update_meta=False
+                        self.load_keys, -1, update_meta=False
                     ),
                 ]
             )
         if self.n_dim == 3:
             transforms.append(
                 monai.transforms.Orientationd(
-                    self.keys,
+                    self.load_keys,
                     "RAS",
                     labels=(("L", "R"), ("P", "A"), ("I", "S")),
                 )
             )
 
         if self.target_spacing is not None:
+            mode = [IMAGE_INTERPOLATION for _ in self.load_keys]
+            if self.input_mask_keys is not None:
+                n_images = len(self.load_keys) - len(self.input_mask_keys)
+                mode = [IMAGE_INTERPOLATION] * n_images + [
+                    "nearest" for _ in self.input_mask_keys
+                ]
             transforms.extend(
                 [
                     monai.transforms.Spacingd(
-                        self.keys,
+                        self.load_keys,
                         pixdim=self.target_spacing,
+                        mode=mode,
                         dtype=torch.float32,
                     ),
                 ]
@@ -607,27 +642,52 @@ class GenerationTransforms(TransformMixin):
         if self.pad_size is not None:
             transforms.append(
                 monai.transforms.SpatialPadd(
-                    self.keys, [int(j) for j in self.pad_size]
+                    self.load_keys, [int(j) for j in self.pad_size]
                 )
             )
         if self.crop_size is not None:
             transforms.append(
                 monai.transforms.CenterSpatialCropd(
-                    self.keys, [int(j) + 16 for j in self.crop_size]
+                    self.load_keys, [int(j) + 16 for j in self.crop_size]
                 )
             )
-        transforms.append(monai.transforms.EnsureTyped(self.keys))
+        transforms.append(monai.transforms.EnsureTyped(self.load_keys))
         return transforms
 
     def post_transforms(self):
         transforms = []
-        transforms.append(monai.transforms.ConcatItemsd(self.keys, "image"))
+        transforms.append(
+            monai.transforms.ConcatItemsd(self.image_keys, "image")
+        )
         if self.crop_size is not None:
             transforms.append(
                 monai.transforms.CenterSpatialCropd(
                     "image", [int(j) for j in self.crop_size]
                 )
             )
+        if self.input_mask_keys is not None:
+            transforms.append(
+                monai.transforms.AsDiscreted(
+                    self.input_mask_keys, to_onehot=list(self.mask_classes)
+                )
+            )
+            transforms.append(
+                monai.transforms.ToTensord(
+                    self.input_mask_keys, dtype=torch.float32
+                )
+            )
+        if len(self.conditioning_keys) > 0:
+            transforms.append(
+                monai.transforms.ConcatItemsd(
+                    self.conditioning_keys, "cat_conditioning"
+                )
+            )
+            if self.crop_size is not None:
+                transforms.append(
+                    monai.transforms.CenterSpatialCropd(
+                        "cat_conditioning", [int(j) for j in self.crop_size]
+                    )
+                )
         if self.cat_keys is not None:
             transforms.append(
                 monai.transforms.Lambdad(self.cat_keys, box, track_meta=False)

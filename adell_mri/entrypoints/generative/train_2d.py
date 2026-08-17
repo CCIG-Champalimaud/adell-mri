@@ -199,7 +199,7 @@ def main(arguments):
         conditioning_channels += len(args.input_image_keys)
     if args.input_mask_keys is not None:
         conditioning_channels += sum(args.mask_classes)
-    input_image_key = "conditioning" if conditioning_channels > 0 else None
+    input_image_key = "cat_conditioning" if conditioning_channels > 0 else None
 
     if args.model_type == "gan":
         network_config, gen_config, disc_config = parse_config_gan(

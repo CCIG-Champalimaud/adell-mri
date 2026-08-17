@@ -173,7 +173,7 @@ def main(arguments):
         },
         uncondition_proba=0.0,
         concat_condition_key=(
-            "conditioning"
+            "cat_conditioning"
             if transform_args.get("input_image_keys") is not None
             or transform_args.get("input_mask_keys") is not None
             else None
@@ -306,8 +306,8 @@ def main(arguments):
                 uncondition_num_idx=args.uncondition_num_idx,
                 guidance_strength=args.guidance_strength,
                 concat_condition=(
-                    data["conditioning"].to(args.dev).to(inference_dtype)
-                    if "conditioning" in data
+                    data["cat_conditioning"].to(args.dev).to(inference_dtype)
+                    if "cat_conditioning" in data
                     else None
                 ),
             )
