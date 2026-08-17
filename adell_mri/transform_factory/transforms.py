@@ -602,7 +602,7 @@ class GenerationTransforms(TransformMixin):
                 ]
             )
         transforms.append(
-            monai.transforms.ScaleIntensityd(self.keys, minv=0.0, maxv=1.0)
+            monai.transforms.ScaleIntensityd(self.keys, minv=-1.0, maxv=1.0)
         )
         if self.pad_size is not None:
             transforms.append(
