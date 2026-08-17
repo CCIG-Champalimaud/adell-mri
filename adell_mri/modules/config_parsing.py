@@ -176,6 +176,7 @@ def parse_config_gan(
     config_file: str,
     target_keys: list[str],
     input_keys: list[str] = None,
+    spatial_dims: int = 2,
     **kwargs,
 ):
     with open(config_file, "r") as o:
@@ -197,8 +198,8 @@ def parse_config_gan(
         generator_config["in_channels"] = len(input_keys)
         disc_channels = len(target_keys) + len(input_keys)
     generator_config["out_channels"] = len(target_keys)
-    generator_config["spatial_dims"] = 2
-    discriminator_config["spatial_dim"] = 2
+    generator_config["spatial_dims"] = spatial_dims
+    discriminator_config["spatial_dim"] = spatial_dims
     discriminator_config["in_channels"] = disc_channels
 
     for k in kwargs:
