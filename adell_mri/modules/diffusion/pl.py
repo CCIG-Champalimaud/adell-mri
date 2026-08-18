@@ -76,13 +76,11 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
         Removes parameters that are never used during training so that
         DDP can be used without ``find_unused_parameters=True``.
 
-        This is all because ``DiffusionModelUNet`` gets always instantiated with
-        ``unconditioned_embeddings`` and ``proj_attn``, which are unncessary
-        when training with and without conditioning, respectively.
+        This is all because ``DiffusionModelUNet`` always gets instatiated with
+        ``proj_attn``, which is unncessary when training without conditioning.
         """
         if self.with_conditioning:
-            if self.embedder is not None and self.uncondition_proba == 0.0:
-                del self.embedder.unconditioned_embeddings
+            pass
         else:
             for module in self.modules():
                 if isinstance(module, AttentionBlock):
