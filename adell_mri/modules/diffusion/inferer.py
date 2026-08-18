@@ -2,6 +2,7 @@ from typing import Callable, Iterator
 
 import torch
 from generative.inferers import DiffusionInferer
+from rich.progress import track
 from tqdm import tqdm
 
 
@@ -170,12 +171,11 @@ class DiffusionInfererSkipSteps(DiffusionInferer):
             scheduler = self.scheduler
         image = input_noise
         if verbose:
-            progress_bar = tqdm(
+            progress_bar = track(
                 scheduler.timesteps[skip_steps:],
-                leave=False,
-                ncols=80,
-                mininterval=1,
-                position=0,
+                description="Generating...",
+                refresh_per_second=1,
+                show_speed=True,
             )
         else:
             progress_bar = iter(scheduler.timesteps[skip_steps:])
