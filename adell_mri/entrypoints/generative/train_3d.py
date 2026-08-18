@@ -28,6 +28,7 @@ from adell_mri.utils.pl_callbacks import (
 )
 from adell_mri.utils.pl_utils import get_ckpt_callback, get_devices, get_logger
 from adell_mri.utils.python_logging import get_logger as get_python_logger
+from adell_mri.utils.samplers import DistributedRandomSampler
 from adell_mri.utils.torch_utils import (
     conditional_parameter_freezing,
     get_generator_and_rng,
@@ -329,6 +330,21 @@ def main(arguments):
         real_bs = bs * n_devices
 
     def train_loader_call(batch_size):
+        num_samples = args.steps_per_epoch * real_bs
+        if n_devices > 1:
+            sampler = DistributedRandomSampler(
+                train_dataset,
+                num_samples=num_samples,
+                num_replicas=n_devices,
+                seed=args.seed,
+            )
+        else:
+            sampler = torch.utils.data.RandomSampler(
+                train_dataset,
+                replacement=False,
+                num_samples=args.steps_per_epoch * real_bs,
+                generator=g,
+            )
         return monai.data.ThreadDataLoader(
             train_dataset,
             batch_size=batch_size,
@@ -337,12 +353,7 @@ def main(arguments):
             pin_memory=True,
             persistent_workers=args.n_workers > 0,
             drop_last=True,
-            sampler=torch.utils.data.RandomSampler(
-                train_dataset,
-                replacement=False,
-                num_samples=args.steps_per_epoch * real_bs,
-                generator=g,
-            ),
+            sampler=sampler,
             prefetch_factor=8,
         )
 

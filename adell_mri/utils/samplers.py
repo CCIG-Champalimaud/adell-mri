@@ -1,7 +1,9 @@
+import math
 from typing import Iterable, List
 
 import numpy as np
 import torch
+import torch.distributed as dist
 
 
 class PartiallyRandomSampler(torch.utils.data.Sampler):
@@ -97,3 +99,69 @@ class PartiallyRandomSampler(torch.utils.data.Sampler):
             int: number of iterations.
         """
         return self.n
+
+
+class DistributedRandomSampler(torch.utils.data.Sampler):
+    """
+    Replicates the inner workings of ``torch.utils.data.RandomSampler`` but
+    keeping local rank awareness.
+    """
+
+    def __init__(
+        self,
+        dataset,
+        num_samples=None,
+        replacement=False,
+        num_replicas=None,
+        rank=None,
+        seed=0,
+    ):
+        if num_replicas is None:
+            num_replicas = dist.get_world_size() if dist.is_initialized() else 1
+        if rank is None:
+            rank = dist.get_rank() if dist.is_initialized() else 0
+
+        self.dataset = dataset
+        self.num_replicas = num_replicas
+        self.rank = rank
+        self.epoch = 0
+        self.seed = seed
+        self.replacement = replacement
+
+        self.total_num_samples = (
+            num_samples if num_samples is not None else len(dataset)
+        )
+
+        self.num_samples = int(
+            math.ceil(self.total_num_samples / self.num_replicas)
+        )
+        self.total_size = self.num_samples * self.num_replicas
+
+    def __iter__(self):
+        g = torch.Generator()
+        g.manual_seed(self.seed + self.epoch)
+
+        base_sampler = torch.utils.data.RandomSampler(
+            self.dataset,
+            replacement=self.replacement,
+            num_samples=self.total_num_samples,
+            generator=g,
+        )
+        indices = list(base_sampler)
+
+        padding_size = self.total_size - len(indices)
+        if padding_size <= len(indices):
+            indices += indices[:padding_size]
+        else:
+            indices += (indices * math.ceil(padding_size / len(indices)))[
+                :padding_size
+            ]
+
+        indices = indices[self.rank : self.total_size : self.num_replicas]
+        return iter(indices)
+
+    def __len__(self):
+        return self.num_samples
+
+    def set_epoch(self, epoch: int):
+        self.epoch = epoch
