@@ -11,6 +11,7 @@ import numpy as np
 import torch
 from generative.inferers import DiffusionInferer
 from generative.networks.nets import DiffusionModelUNet
+from generative.networks.nets.diffusion_model_unet import AttentionBlock
 from generative.networks.schedulers import DDPMScheduler
 
 from adell_mri.modules.classification.pl import meta_tensors_to_tensors
@@ -67,6 +68,25 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
         self.rng = np.random.default_rng(self.seed)
         self.noise_steps = self.scheduler.num_train_timesteps
         self.loss_fn = torch.nn.MSELoss()
+
+        self._prune_unused_parameters()
+
+    def _prune_unused_parameters(self):
+        """
+        Removes parameters that are never used during training so that
+        DDP can be used without ``find_unused_parameters=True``.
+
+        This is all because ``DiffusionModelUNet`` gets always instantiated with
+        ``unconditioned_embeddings`` and ``proj_attn``, which are unncessary
+        when training with and without conditioning, respectively.
+        """
+        if self.with_conditioning:
+            if self.embedder is not None and self.uncondition_proba == 0.0:
+                del self.embedder.unconditioned_embeddings
+        else:
+            for module in self.modules():
+                if isinstance(module, AttentionBlock):
+                    del module.proj_attn
 
     def calculate_loss(
         self, prediction: torch.Tensor, epsilon: torch.Tensor
@@ -425,7 +445,8 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
     def configure_optimizers(
         self,
     ) -> dict[
-        str, torch.optim.Optimizer | torch.optim.lr_scheduler._LRScheduler | str
+        str,
+        torch.optim.Optimizer | torch.optim.lr_scheduler._LRScheduler | str,
     ]:
         """
         Lightning hook for optimizer configuration.
