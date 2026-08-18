@@ -175,6 +175,7 @@ class DiffusionInfererSkipSteps(DiffusionInferer):
                 leave=False,
                 ncols=80,
                 mininterval=1,
+                position=0,
             )
         else:
             progress_bar = iter(scheduler.timesteps[skip_steps:])
