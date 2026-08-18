@@ -334,7 +334,9 @@ def main(arguments):
         if n_devices > 1:
             sampler = DistributedRandomSampler(
                 train_dataset,
-                num_samples=num_samples,
+                # this gets divided by num_replicas (as expected), so if we want
+                # to keep the same number of steps we have to multiply it again
+                num_samples=num_samples * real_bs,
                 num_replicas=n_devices,
                 seed=args.seed,
             )
@@ -342,7 +344,7 @@ def main(arguments):
             sampler = torch.utils.data.RandomSampler(
                 train_dataset,
                 replacement=False,
-                num_samples=args.steps_per_epoch * real_bs,
+                num_samples=num_samples,
                 generator=g,
             )
         return monai.data.ThreadDataLoader(
