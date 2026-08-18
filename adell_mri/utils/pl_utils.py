@@ -454,5 +454,5 @@ def get_devices(
             strategy_out = strategy
     else:
         accelerator = "gpu" if "cuda" in device_str else "cpu"
-        devices = 1
+        devices = [0]
     return accelerator, devices, strategy_out

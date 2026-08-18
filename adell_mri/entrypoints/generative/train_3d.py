@@ -147,8 +147,7 @@ def main(arguments):
     g, rng = get_generator_and_rng(args.seed)
 
     accelerator, devices, strategy = get_devices(args.dev)
-    n_devices = len(devices) if isinstance(devices, list) else devices
-    n_devices = 1 if isinstance(devices, str) else n_devices
+    n_devices = len(devices) if isinstance(devices, list) else 1
 
     output_file = open(args.metric_path, "w")
 
@@ -341,7 +340,7 @@ def main(arguments):
             sampler=torch.utils.data.RandomSampler(
                 train_dataset,
                 replacement=False,
-                num_samples=args.steps_per_epoch * batch_size,
+                num_samples=args.steps_per_epoch * real_bs,
                 generator=g,
             ),
             prefetch_factor=8,
