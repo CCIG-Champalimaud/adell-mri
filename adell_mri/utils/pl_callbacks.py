@@ -371,6 +371,8 @@ class LogImageFromDiffusionProcess(Callback):
     ) -> None:
         ep = pl_module.current_epoch
         if ep % self.every_n_epochs == 0 and ep > 0:
+            was_training = pl_module.training
+            pl_module.eval()
             with torch.inference_mode():
                 generate_kwargs = {}
                 n_cond_channels = pl_module.in_channels - pl_module.out_channels
@@ -386,6 +388,8 @@ class LogImageFromDiffusionProcess(Callback):
                 images = pl_module.generate_image(
                     size=self.size, n=self.n_images, **generate_kwargs
                 )
+            if was_training:
+                pl_module.train()
             log_image(
                 trainer,
                 key="Generated images",
