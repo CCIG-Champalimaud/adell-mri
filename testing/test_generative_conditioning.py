@@ -279,6 +279,55 @@ def test_diffusioninfererskipsteps_mixed_with_guidance():
     assert torch.isfinite(out).all()
 
 
+def test_diffusioninfererskipsteps_cfg_formula():
+    model = _mixed_diffusion_model().eval()
+    inferer = model.inferer
+    b = 2
+    image = torch.randn([b, 1, 16, 16])
+    concat = torch.rand([b, 2, 16, 16])
+    conditioning = torch.rand([b, 1, 16])
+    unconditioning = torch.rand([b, 1, 16])
+    timestep = torch.tensor((5,))
+    guidance_strength = 2.0
+    out = inferer._predict(
+        model,
+        image,
+        timestep,
+        conditioning=conditioning,
+        concat_condition=concat,
+        unconditioning=unconditioning,
+        guidance_strength=guidance_strength,
+    )
+    model_input = torch.cat([image, concat], dim=1)
+    cond_output = model(x=model_input, timesteps=timestep, context=conditioning)
+    uncond_output = model(
+        x=model_input, timesteps=timestep, context=unconditioning
+    )
+    expected = (
+        1.0 + guidance_strength
+    ) * cond_output - guidance_strength * uncond_output
+    torch.testing.assert_close(out, expected)
+
+
+def test_generate_image_cfg_with_embedder():
+    from adell_mri.modules.diffusion.embedder import Embedder
+
+    embedder = Embedder([2], embedding_size=16)
+    model = _mixed_diffusion_model(embedder=embedder).eval()
+    concat = torch.zeros([2, 2, 16, 16])
+    cat_condition = torch.zeros(2, 1, dtype=torch.long)
+    out = model.generate_image(
+        size=[16, 16],
+        n=2,
+        concat_condition=concat,
+        cat_condition=cat_condition,
+        uncondition_cat_idx="all",
+        guidance_strength=2.0,
+    )
+    assert list(out.shape) == [2, 1, 16, 16]
+    assert torch.isfinite(out).all()
+
+
 def test_generative_network_factory_concat():
     network_config = {
         "spatial_dims": 2,

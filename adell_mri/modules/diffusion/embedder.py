@@ -387,6 +387,11 @@ class Embedder(torch.nn.Module):
         categorical_embeddings, converted_class_X = self.cat_embedder(
             X, return_X=True
         )
+        mask = torch.ones(
+            categorical_embeddings.shape[-1],
+            device=categorical_embeddings.device,
+            dtype=categorical_embeddings.dtype,
+        )
         if uncondition_idx is not None:
             if uncondition_idx == "all":
                 uncondition_idx = range(
@@ -397,10 +402,14 @@ class Embedder(torch.nn.Module):
             for idx in uncondition_idx:
                 ncf = self.cat_embedder.embedding_size
                 start_idx, stop_idx = ncf * idx, ncf * (idx + 1)
-                categorical_embeddings[
-                    :, :, start_idx:stop_idx
-                ] = self.unconditional_like(categorical_embeddings)[:, None]
-
+                mask[start_idx:stop_idx] = 0.0
+        unconditioned = self.unconditional_like(categorical_embeddings)[:, None]
+        unconditioned = unconditioned.repeat(
+            1, 1, categorical_embeddings.shape[-1] // self.embedding_size
+        )
+        categorical_embeddings = (
+            mask * categorical_embeddings + (1 - mask) * unconditioned
+        )
         return categorical_embeddings, converted_class_X
 
     def embed_numerical(
@@ -423,15 +432,20 @@ class Embedder(torch.nn.Module):
             self.num_embedder[i](X_norm[:, i].unsqueeze(1))
             for i in range(self.n_num_feat)
         ]
+        mask = torch.ones(self.n_num_feat, device=X.device, dtype=X_norm.dtype)
         if uncondition_idx is not None:
             if uncondition_idx == "all":
                 uncondition_idx = range(len(numerical_embeddings))
             elif isinstance(uncondition_idx, int):
                 uncondition_idx = [uncondition_idx]
             for idx in uncondition_idx:
-                numerical_embeddings[idx] = self.unconditional_like(X)
-
+                mask[idx] = 0.0
         numerical_embeddings = torch.stack(numerical_embeddings, dim=0)
+        unconditioned = self.unconditional_like(X).repeat(self.n_num_feat, 1, 1)
+        numerical_embeddings = (
+            mask[:, None, None] * numerical_embeddings
+            + (1 - mask[:, None, None]) * unconditioned
+        )
         numerical_embeddings = numerical_embeddings.sum(0)
         return numerical_embeddings, X_norm
 
