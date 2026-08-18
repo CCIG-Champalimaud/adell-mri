@@ -29,6 +29,7 @@ from adell_mri.modules.self_supervised.losses import (
     byol_loss,
     simsiam_loss,
 )
+from adell_mri.utils.optimizer_factory import OPTIMIZER_EPS_DEFAULT
 from adell_mri.utils.python_logging import get_logger
 
 logger = get_logger(__name__)
@@ -44,6 +45,7 @@ class BarlowTwinsPL(ResNet, pl.LightningModule):
         weight_decay: float = 0.005,
         training_dataloader_call: Callable = None,
         loss_lam: float = 0.02,
+        optimizer_eps: float = OPTIMIZER_EPS_DEFAULT,
         *args,
         **kwargs,
     ) -> torch.nn.Module:
@@ -54,6 +56,7 @@ class BarlowTwinsPL(ResNet, pl.LightningModule):
         self.learning_rate = learning_rate
         self.batch_size = batch_size
         self.weight_decay = weight_decay
+        self.optimizer_eps = optimizer_eps
         self.train_dataloader_call = training_dataloader_call
         self.loss_lam = loss_lam
 
@@ -111,11 +114,12 @@ class BarlowTwinsPL(ResNet, pl.LightningModule):
     def train_dataloader(self) -> torch.utils.data.DataLoader:
         return self.training_dataloader_call(self.batch_size)
 
-    def configure_optimizers(self):
-        optimizer = torch.optim.Adam(
+    def configure_optimizers(self) -> dict:
+        optimizer = torch.optim.AdamW(
             self.parameters(),
             lr=self.learning_rate,
             weight_decay=self.weight_decay,
+            eps=self.optimizer_eps,
         )
         lr_schedulers = torch.optim.lr_scheduler.ReduceLROnPlateau(
             optimizer,
@@ -173,6 +177,8 @@ class SelfSLBasePL(pl.LightningModule, ABC):
     def __init__(self):
         super().__init__()
 
+        self.optimizer_eps = OPTIMIZER_EPS_DEFAULT
+
     def train_dataloader(self) -> torch.utils.data.DataLoader:
         return self.training_dataloader_call(self.batch_size)
 
@@ -222,7 +228,7 @@ class SelfSLBasePL(pl.LightningModule, ABC):
         else:
             return sum(X)
 
-    def configure_optimizers(self):
+    def configure_optimizers(self) -> dict:
         if self.n_steps is not None:
             interval = "step"
             n = self.n_steps
@@ -240,6 +246,7 @@ class SelfSLBasePL(pl.LightningModule, ABC):
             params_decay + params_no_decay,
             lr=self.learning_rate,
             weight_decay=self.weight_decay,
+            eps=self.optimizer_eps,
         )
         lr_schedulers = lr_schedulers = CosineAnnealingWithWarmupLR(
             optimizer,
@@ -337,6 +344,7 @@ class SelfSLResNetPL(ResNet, SelfSLBasePL):
         vic_reg_loss_params: dict = {},
         stop_gradient: bool = True,
         channels_to_batch: bool = False,
+        optimizer_eps: float = OPTIMIZER_EPS_DEFAULT,
         *args,
         **kwargs,
     ):
@@ -378,6 +386,8 @@ class SelfSLResNetPL(ResNet, SelfSLBasePL):
             stop_gradient (bool, optional): stops gradients when calculating
                 losses. Useful for VICReg. Defaults to True.
             channels_to_batch (bool, optional): resizes the input such that
+            optimizer_eps (float, optional): epsilon term used by the optimizer
+                for numerical stability. Defaults to the AdamW default (1e-8).
                 each channel becomes an element of the batch. Defaults to
                 False.
         """
@@ -398,6 +408,7 @@ class SelfSLResNetPL(ResNet, SelfSLBasePL):
         self.vic_reg_loss_params = vic_reg_loss_params
         self.stop_gradient = stop_gradient
         self.channels_to_batch = channels_to_batch
+        self.optimizer_eps = optimizer_eps
 
         if channels_to_batch is True:
             kwargs["backbone_args"]["in_channels"] = 1
@@ -559,6 +570,7 @@ class SelfSLUNetPL(UNet, SelfSLBasePL):
         vic_reg_loss_params: dict = {},
         stop_gradient: bool = True,
         channels_to_batch: bool = False,
+        optimizer_eps: float = OPTIMIZER_EPS_DEFAULT,
         *args,
         **kwargs,
     ):
@@ -600,6 +612,8 @@ class SelfSLUNetPL(UNet, SelfSLBasePL):
             stop_gradient (bool, optional): stops gradients when calculating
                 losses. Useful for VICReg. Defaults to True.
             channels_to_batch (bool, optional): resizes the input such that
+            optimizer_eps (float, optional): epsilon term used by the optimizer
+                for numerical stability. Defaults to the AdamW default (1e-8).
                 each channel becomes an element of the batch. Defaults to
                 False.
         """
@@ -621,6 +635,7 @@ class SelfSLUNetPL(UNet, SelfSLBasePL):
         self.vic_reg_loss_params = vic_reg_loss_params
         self.stop_gradient = stop_gradient
         self.channels_to_batch = channels_to_batch
+        self.optimizer_eps = optimizer_eps
 
         if channels_to_batch is True:
             kwargs["in_channels"] = 1
@@ -776,6 +791,7 @@ class SelfSLConvNeXtPL(ConvNeXt, SelfSLBasePL):
         vic_reg_loss_params: dict = {},
         stop_gradient: bool = True,
         channels_to_batch: bool = False,
+        optimizer_eps: float = OPTIMIZER_EPS_DEFAULT,
         *args,
         **kwargs,
     ):
@@ -817,6 +833,8 @@ class SelfSLConvNeXtPL(ConvNeXt, SelfSLBasePL):
             stop_gradient (bool, optional): stops gradients when calculating
                 losses. Useful for VICReg. Defaults to True.
             channels_to_batch (bool, optional): resizes the input such that
+            optimizer_eps (float, optional): epsilon term used by the optimizer
+                for numerical stability. Defaults to the AdamW default (1e-8).
                 each channel becomes an element of the batch. Defaults to
                 False.
         """
@@ -837,6 +855,7 @@ class SelfSLConvNeXtPL(ConvNeXt, SelfSLBasePL):
         self.vic_reg_loss_params = vic_reg_loss_params
         self.stop_gradient = stop_gradient
         self.channels_to_batch = channels_to_batch
+        self.optimizer_eps = optimizer_eps
 
         if channels_to_batch is True:
             kwargs["backbone_args"]["in_channels"] = 1
@@ -987,6 +1006,7 @@ class IJEPAPL(IJEPA, SelfSLBasePL):
         vic_reg_loss_params: dict = {},
         stop_gradient: bool = True,
         channels_to_batch: bool = False,
+        optimizer_eps: float = OPTIMIZER_EPS_DEFAULT,
         *args,
         **kwargs,
     ):
@@ -1025,6 +1045,8 @@ class IJEPAPL(IJEPA, SelfSLBasePL):
             stop_gradient (bool, optional): stops gradients when calculating
                 losses. Useful for VICReg. Defaults to True.
             channels_to_batch (bool, optional): resizes the input such that
+            optimizer_eps (float, optional): epsilon term used by the optimizer
+                for numerical stability. Defaults to the AdamW default (1e-8).
                 each channel becomes an element of the batch. Defaults to
                 False.
         """
@@ -1041,6 +1063,7 @@ class IJEPAPL(IJEPA, SelfSLBasePL):
         self.vic_reg_loss_params = vic_reg_loss_params
         self.stop_gradient = stop_gradient
         self.channels_to_batch = channels_to_batch
+        self.optimizer_eps = optimizer_eps
 
         self.ssl_method = "ijepa"
 
@@ -1103,7 +1126,7 @@ class IJEPAPL(IJEPA, SelfSLBasePL):
         loss = self.step(batch, "test_loss")
         return loss
 
-    def configure_optimizers(self):
+    def configure_optimizers(self) -> dict:
         if self.n_steps is not None:
             interval = "step"
             n = self.n_steps
@@ -1121,6 +1144,7 @@ class IJEPAPL(IJEPA, SelfSLBasePL):
             params_decay + params_no_decay,
             lr=self.learning_rate,
             weight_decay=self.weight_decay,
+            eps=self.optimizer_eps,
         )
         lr_schedulers = lr_schedulers = CosineAnnealingWithWarmupLR(
             optimizer,
@@ -1157,6 +1181,7 @@ class DINOPL(DINO, SelfSLBasePL):
         temperature: float = 0.1,
         stop_gradient: bool = True,
         channels_to_batch: bool = False,
+        optimizer_eps: float = OPTIMIZER_EPS_DEFAULT,
         ema: torch.nn.Module = None,
         centers_m: float = 0.9,
         teacher_score_method: str = "center",
@@ -1176,6 +1201,7 @@ class DINOPL(DINO, SelfSLBasePL):
         self.temperature = temperature
         self.stop_gradient = stop_gradient
         self.channels_to_batch = channels_to_batch
+        self.optimizer_eps = optimizer_eps
         self.centers_m = centers_m
         self.teacher_score_method = teacher_score_method
 
@@ -1272,6 +1298,7 @@ class iBOTPL(iBOT, SelfSLBasePL):
         temperature: float = 0.1,
         stop_gradient: bool = True,
         channels_to_batch: bool = False,
+        optimizer_eps: float = OPTIMIZER_EPS_DEFAULT,
         ema: torch.nn.Module = None,
         centers_m: float = 0.9,
         teacher_score_method: str = "center",
@@ -1291,6 +1318,7 @@ class iBOTPL(iBOT, SelfSLBasePL):
         self.temperature = temperature
         self.stop_gradient = stop_gradient
         self.channels_to_batch = channels_to_batch
+        self.optimizer_eps = optimizer_eps
         self.centers_m = centers_m
         self.teacher_score_method = teacher_score_method
 
@@ -1428,6 +1456,7 @@ class ViTMaskedAutoEncoderPL(pl.LightningModule):
         warmup_steps: int = 0,
         start_decay: int = 0,
         training_dataloader_call: Callable | None = None,
+        optimizer_eps: float = OPTIMIZER_EPS_DEFAULT,
     ):
         """
         Args:
@@ -1449,6 +1478,8 @@ class ViTMaskedAutoEncoderPL(pl.LightningModule):
             warmup_steps (int): Number of warmup steps. Defaults to 0.
             start_decay (int): Number of steps before decay. Defaults to 0.
             training_dataloader_call (Callable | None): Function to get training dataloader. Defaults to None.
+            optimizer_eps (float, optional): epsilon term used by the optimizer
+                for numerical stability. Defaults to the AdamW default (1e-8).
         """
         super().__init__()
         self.save_hyperparameters()
@@ -1478,6 +1509,7 @@ class ViTMaskedAutoEncoderPL(pl.LightningModule):
         self.n_steps = n_steps
         self.n_epochs = n_epochs
         self.start_decay = start_decay
+        self.optimizer_eps = optimizer_eps
 
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """
@@ -1545,6 +1577,7 @@ class ViTMaskedAutoEncoderPL(pl.LightningModule):
             lr=initial_lr,  # Will be updated by the scheduler
             weight_decay=self.weight_decay,
             betas=(0.9, 0.95),
+            eps=self.optimizer_eps,
         )
 
         if self.warmup_steps > 0:

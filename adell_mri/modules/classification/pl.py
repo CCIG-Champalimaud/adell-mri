@@ -48,6 +48,7 @@ from adell_mri.modules.classification.classification import (
 from adell_mri.modules.conformal_prediction import AdaptivePredictionSets
 from adell_mri.modules.layers.gaussian_process import GaussianProcessLayer
 from adell_mri.modules.learning_rate import CosineAnnealingWithWarmupLR
+from adell_mri.utils.optimizer_factory import OPTIMIZER_EPS_DEFAULT
 from adell_mri.utils.python_logging import get_logger
 
 logger = get_logger(__name__)
@@ -190,6 +191,7 @@ class ClassPLABC(pl.LightningModule, ABC):
         self.calibrated = False
         self.gaussian_process = False
         self.net_type = "cat"
+        self.optimizer_eps = OPTIMIZER_EPS_DEFAULT
 
     def calculate_loss(
         self,
@@ -618,7 +620,7 @@ class ClassPLABC(pl.LightningModule, ABC):
     def train_dataloader(self) -> torch.utils.data.DataLoader:
         return self.training_dataloader_call()
 
-    def configure_optimizers(self):
+    def configure_optimizers(self) -> dict:
         """
         Configures the optimizer for the model. If weight decay is a list,
         decouples body and head weight decay.
@@ -681,7 +683,10 @@ class ClassPLABC(pl.LightningModule, ABC):
             base_wd = wd / 100
 
         optimizer = torch.optim.AdamW(
-            parameters, lr=self.learning_rate, weight_decay=base_wd
+            parameters,
+            lr=self.learning_rate,
+            weight_decay=base_wd,
+            eps=self.optimizer_eps,
         )
         lr_schedulers = CosineAnnealingWithWarmupLR(
             optimizer,
@@ -795,6 +800,7 @@ class ClassNetPL(ClassPLABC):
         warmup_steps: int = 0,
         start_decay: int = None,
         training_batch_preproc: Callable = None,
+        optimizer_eps: float = OPTIMIZER_EPS_DEFAULT,
         *args,
         **kwargs,
     ) -> torch.nn.Module:
@@ -823,6 +829,8 @@ class ClassNetPL(ClassPLABC):
                 entire batch before feeding it to the model during training.
                 Can contain transformations such as mixup, which require access
                 to the entire training batch.
+            optimizer_eps (float, optional): epsilon term used by the optimizer
+                for numerical stability. Defaults to the AdamW default (1e-8).
             args: arguments for classification network class.
             kwargs: keyword arguments for classification network class.
 
@@ -845,6 +853,7 @@ class ClassNetPL(ClassPLABC):
         self.warmup_steps = warmup_steps
         self.start_decay = start_decay
         self.training_batch_preproc = training_batch_preproc
+        self.optimizer_eps = optimizer_eps
         self.args = args
         self.kwargs = kwargs
 
@@ -938,6 +947,7 @@ class OrdNetPL(ClassPLABC):
         warmup_steps: int = 0,
         start_decay: int = None,
         training_batch_preproc: Callable = None,
+        optimizer_eps: float = OPTIMIZER_EPS_DEFAULT,
         *args,
         **kwargs,
     ) -> torch.nn.Module:
@@ -966,6 +976,8 @@ class OrdNetPL(ClassPLABC):
                 entire batch before feeding it to the model during training.
                 Can contain transformations such as mixup, which require access
                 to the entire training batch.
+            optimizer_eps (float, optional): epsilon term used by the optimizer
+                for numerical stability. Defaults to the AdamW default (1e-8).
             args: arguments for classification network class.
             kwargs: keyword arguments for classification network class.
 
@@ -988,6 +1000,7 @@ class OrdNetPL(ClassPLABC):
         self.warmup_steps = warmup_steps
         self.start_decay = start_decay
         self.training_batch_preproc = training_batch_preproc
+        self.optimizer_eps = optimizer_eps
         self.args = args
         self.kwargs = kwargs
 
@@ -1422,6 +1435,7 @@ class UNetEncoderPL(UNetEncoder, ClassPLABC):
         warmup_steps: int = 0,
         start_decay: int = None,
         training_batch_preproc: Callable = None,
+        optimizer_eps: float = OPTIMIZER_EPS_DEFAULT,
         *args,
         **kwargs,
     ) -> torch.nn.Module:
@@ -1450,6 +1464,8 @@ class UNetEncoderPL(UNetEncoder, ClassPLABC):
                 entire batch before feeding it to the model during training.
                 Can contain transformations such as mixup, which require access
                 to the entire training batch.
+            optimizer_eps (float, optional): epsilon term used by the optimizer
+                for numerical stability. Defaults to the AdamW default (1e-8).
             args: arguments for classification network class.
             kwargs: keyword arguments for classification network class.
 
@@ -1471,6 +1487,7 @@ class UNetEncoderPL(UNetEncoder, ClassPLABC):
         self.warmup_steps = warmup_steps
         self.start_decay = start_decay
         self.training_batch_preproc = training_batch_preproc
+        self.optimizer_eps = optimizer_eps
         self.args = args
         self.kwargs = kwargs
 
@@ -1762,6 +1779,7 @@ class ViTClassifierPL(ViTClassifier, ClassPLABC):
         warmup_steps: int = 0,
         start_decay: int = None,
         training_batch_preproc: Callable = None,
+        optimizer_eps: float = OPTIMIZER_EPS_DEFAULT,
         *args,
         **kwargs,
     ) -> torch.nn.Module:
@@ -1790,6 +1808,8 @@ class ViTClassifierPL(ViTClassifier, ClassPLABC):
                 entire batch before feeding it to the model during training.
                 Can contain transformations such as mixup, which require access
                 to the entire training batch.
+            optimizer_eps (float, optional): epsilon term used by the optimizer
+                for numerical stability. Defaults to the AdamW default (1e-8).
             args: arguments for classification network class.
             kwargs: keyword arguments for classification network class.
 
@@ -1810,6 +1830,7 @@ class ViTClassifierPL(ViTClassifier, ClassPLABC):
         self.n_epochs = n_epochs
         self.warmup_steps = warmup_steps
         self.start_decay = start_decay
+        self.optimizer_eps = optimizer_eps
         self.training_batch_preproc = training_batch_preproc
         self.args = args
         self.kwargs = kwargs
@@ -1844,6 +1865,7 @@ class FactorizedViTClassifierPL(FactorizedViTClassifier, ClassPLABC):
         warmup_steps: int = 0,
         start_decay: int = None,
         training_batch_preproc: Callable = None,
+        optimizer_eps: float = OPTIMIZER_EPS_DEFAULT,
         *args,
         **kwargs,
     ) -> torch.nn.Module:
@@ -1872,6 +1894,8 @@ class FactorizedViTClassifierPL(FactorizedViTClassifier, ClassPLABC):
                 entire batch before feeding it to the model during training.
                 Can contain transformations such as mixup, which require access
                 to the entire training batch.
+            optimizer_eps (float, optional): epsilon term used by the optimizer
+                for numerical stability. Defaults to the AdamW default (1e-8).
             args: arguments for classification network class.
             kwargs: keyword arguments for classification network class.
 
@@ -1891,6 +1915,7 @@ class FactorizedViTClassifierPL(FactorizedViTClassifier, ClassPLABC):
         self.loss_params = loss_params
         self.n_epochs = n_epochs
         self.warmup_steps = warmup_steps
+        self.optimizer_eps = optimizer_eps
         self.start_decay = start_decay
         self.training_batch_preproc = training_batch_preproc
         self.args = args
@@ -2106,6 +2131,7 @@ class HybridClassifierPL(HybridClassifier, ClassPLABC):
         warmup_steps: int = 0,
         start_decay: int = None,
         training_batch_preproc: Callable = None,
+        optimizer_eps: float = OPTIMIZER_EPS_DEFAULT,
         *args,
         **kwargs,
     ) -> torch.nn.Module:
@@ -2136,6 +2162,8 @@ class HybridClassifierPL(HybridClassifier, ClassPLABC):
                 entire batch before feeding it to the model during training.
                 Can contain transformations such as mixup, which require access
                 to the entire training batch.
+            optimizer_eps (float, optional): epsilon term used by the optimizer
+                for numerical stability. Defaults to the AdamW default (1e-8).
             args: arguments for classification network class.
             kwargs: keyword arguments for classification network class.
 
@@ -2155,6 +2183,7 @@ class HybridClassifierPL(HybridClassifier, ClassPLABC):
         self.loss_fn = loss_fn
         self.loss_params = loss_params
         self.n_epochs = n_epochs
+        self.optimizer_eps = optimizer_eps
         self.warmup_steps = warmup_steps
         self.start_decay = start_decay
         self.training_batch_preproc = training_batch_preproc
@@ -2265,6 +2294,7 @@ class DeconfoundedNetPL(DeconfoundedNetGeneric, ClassPLABC):
         warmup_steps: int = 0,
         start_decay: int = None,
         training_batch_preproc: Callable = None,
+        optimizer_eps: float = OPTIMIZER_EPS_DEFAULT,
         *args,
         **kwargs,
     ) -> torch.nn.Module:
@@ -2300,6 +2330,8 @@ class DeconfoundedNetPL(DeconfoundedNetGeneric, ClassPLABC):
                 entire batch before feeding it to the model during training.
                 Can contain transformations such as mixup, which require access
                 to the entire training batch.
+            optimizer_eps (float, optional): epsilon term used by the optimizer
+                for numerical stability. Defaults to the AdamW default (1e-8).
             args: arguments for classification network class.
             kwargs: keyword arguments for classification network class.
 
@@ -2320,6 +2352,7 @@ class DeconfoundedNetPL(DeconfoundedNetGeneric, ClassPLABC):
         self.training_dataloader_call = training_dataloader_call
         self.loss_fn = loss_fn
         self.loss_params = loss_params
+        self.optimizer_eps = optimizer_eps
         self.n_epochs = n_epochs
         self.warmup_steps = warmup_steps
         self.start_decay = start_decay
@@ -2512,7 +2545,11 @@ class DeconfoundedNetPL(DeconfoundedNetGeneric, ClassPLABC):
                 "weight_decay": self.weight_decay,
             },
         ]
-        optimizer = torch.optim.Adam(parameters, lr=self.learning_rate)
+        optimizer = torch.optim.Adam(
+            parameters,
+            lr=self.learning_rate,
+            eps=self.optimizer_eps,
+        )
         lr_schedulers = CosineAnnealingWithWarmupLR(
             optimizer,
             T_max=self.n_epochs,

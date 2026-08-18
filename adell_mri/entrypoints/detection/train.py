@@ -21,6 +21,7 @@ from adell_mri.utils.dataset_filters import (
 )
 from adell_mri.utils.detection import anchors_from_nested_list
 from adell_mri.utils.network_factories import get_detection_network
+from adell_mri.utils.optimizer_factory import optimizer_eps_from_precision
 from adell_mri.utils.pl_callbacks import SpectralNorm
 from adell_mri.utils.pl_utils import get_ckpt_callback, get_devices, get_logger
 from adell_mri.utils.python_logging import get_logger as get_python_logger
@@ -295,6 +296,7 @@ def main(arguments):
             box_class_key=box_class_key,
             n_classes=args.n_classes,
             dev=devices,
+            optimizer_eps=optimizer_eps_from_precision(args.precision),
         )
 
         callbacks = [RichProgressBar()]

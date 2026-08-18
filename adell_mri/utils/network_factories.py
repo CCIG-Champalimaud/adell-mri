@@ -76,6 +76,7 @@ from adell_mri.modules.semi_supervised_segmentation.pl import (
     UNetContrastiveSemiSL,
 )
 from adell_mri.utils.batch_preprocessing import BatchPreprocessing
+from adell_mri.utils.optimizer_factory import OPTIMIZER_EPS_DEFAULT
 from adell_mri.utils.python_logging import get_logger
 from adell_mri.utils.utils import (
     ExponentialMovingAverage,
@@ -147,9 +148,10 @@ def get_classification_network(
     crop_size: int,
     clinical_feature_means: torch.Tensor = None,
     clinical_feature_stds: torch.Tensor = None,
-    label_smoothing=None,
-    mixup_alpha=None,
-    partial_mixup=None,
+    label_smoothing: float | None = None,
+    mixup_alpha: float | None = None,
+    partial_mixup: float | None = None,
+    optimizer_eps: float = OPTIMIZER_EPS_DEFAULT,
 ) -> LightningModule:
     """
     Returns a classification network.
@@ -209,6 +211,7 @@ def get_classification_network(
         "warmup_steps": warmup_steps,
         "training_batch_preproc": batch_preprocessing,
         "start_decay": start_decay,
+        "optimizer_eps": optimizer_eps,
     }
     if net_type == "unet":
         depth_val = network_config["depth"]
@@ -279,6 +282,7 @@ def get_classification_network(
             "warmup_steps": warmup_steps,
             "training_batch_preproc": batch_preprocessing,
             "start_decay": start_decay,
+            "optimizer_eps": optimizer_eps,
         }
 
         for k in ["learning_rate", "batch_size", "loss_fn", "loss_params"]:
@@ -318,9 +322,10 @@ def get_deconfounded_classification_network(
     start_decay: int,
     n_features_deconfounder: int = 64,
     exclude_surrogate_variables: bool = False,
-    label_smoothing=None,
-    mixup_alpha=None,
-    partial_mixup=None,
+    label_smoothing: float | None = None,
+    mixup_alpha: float | None = None,
+    partial_mixup: float | None = None,
+    optimizer_eps: float = OPTIMIZER_EPS_DEFAULT,
 ) -> LightningModule:
     """
     Returns a deconfounded classification network.
@@ -376,6 +381,7 @@ def get_deconfounded_classification_network(
         "warmup_steps": warmup_steps,
         "training_batch_preproc": batch_preprocessing,
         "start_decay": start_decay,
+        "optimizer_eps": optimizer_eps,
     }
     n_cat_deconfounder = (
         [len(x) for x in cat_vars] if cat_vars is not None else None
@@ -412,6 +418,7 @@ def get_detection_network(
     boxes_key: str,
     box_class_key: str,
     dev: str,
+    optimizer_eps: float = OPTIMIZER_EPS_DEFAULT,
 ) -> LightningModule:
     if "activation_fn" in network_config:
         act_fn = network_config["activation_fn"]
@@ -475,6 +482,7 @@ def get_detection_network(
         n_epochs=n_epochs,
         warmup_steps=warmup_steps,
         n_classes=n_classes,
+        optimizer_eps=optimizer_eps,
         **net_cfg,
     )
 
@@ -501,6 +509,7 @@ def get_segmentation_network(
     n_classes: int,
     keys: list[str],
     optimizer_str: str = "sgd",
+    optimizer_eps: float = OPTIMIZER_EPS_DEFAULT,
     start_decay: float | int = 1.0,
     warmup_steps: float | int = 0.0,
     train_loader_call: Callable = None,
@@ -587,6 +596,7 @@ def get_segmentation_network(
         start_decay=start_decay,
         warmup_steps=warmup_steps,
         optimizer_str=optimizer_str,
+        optimizer_eps=optimizer_eps,
     )
 
     if net_type == "unet" and semi_supervised is True:
@@ -702,6 +712,7 @@ def get_ssl_network(
     net_type: str,
     network_config: dict[str, Any],
     stop_gradient: bool,
+    optimizer_eps: float = OPTIMIZER_EPS_DEFAULT,
 ) -> LightningModule:
     """
     Returns a SSL network.
@@ -728,6 +739,7 @@ def get_ssl_network(
         "warmup_steps": warmup_steps,
         "ema": ema,
         "batch_size": network_config.get("batch_size", 32),
+        "optimizer_eps": optimizer_eps,
     }
 
     # pass the optimisation hyperparameters through when present in the
@@ -832,6 +844,7 @@ def get_ssl_network(
             "n_masked_patches": network_config.get("n_masked_patches", 4),
             "predictor_dim": network_config.get("predictor_dim", None),
             "stop_gradient": stop_gradient,
+            "optimizer_eps": optimizer_eps,
         }
         ssl = IJEPAPL(**{**common_params, **config})
 
@@ -848,6 +861,7 @@ def get_ssl_network(
             "encoder_args": encoder_args,
             "decoder_args": decoder_args,
             "mask_fraction": network_config.get("mask_fraction", 0.75),
+            "optimizer_eps": optimizer_eps,
         }
         del common_params["ema"]
         ssl = ViTMaskedAutoEncoderPL(**{**common_params, **config})
@@ -886,6 +900,7 @@ def get_ssl_network(
                 "teacher_score_method", "center"
             ),
             "stop_gradient": stop_gradient,
+            "optimizer_eps": optimizer_eps,
         }
         ssl = DINOPL(**{**common_params, **config})
 
@@ -936,6 +951,7 @@ def get_ssl_network(
                 "teacher_score_method", "center"
             ),
             "stop_gradient": stop_gradient,
+            "optimizer_eps": optimizer_eps,
         }
         ssl = iBOTPL(**{**common_params, **config})
 
@@ -968,6 +984,7 @@ def get_ssl_network(
             "backbone_args": backbone_args,
             "projection_head_args": projection_head_args,
             "loss_lam": network_config.get("loss_lam", 0.005),
+            "optimizer_eps": optimizer_eps,
         }
         ssl = BarlowTwinsPL(
             training_dataloader_call=train_loader_call,
@@ -994,6 +1011,7 @@ def get_ssl_network(
             "ema": ema,
             "stop_gradient": stop_gradient,
             "temperature": 0.1,
+            "optimizer_eps": optimizer_eps,
         }
         if net_type == "unet_encoder":
             ssl = SelfSLUNetPL(**boilerplate, **network_config)
@@ -1057,6 +1075,7 @@ def get_generative_network(
     start_decay: int,
     diffusion_steps: int,
     concat_condition_key: str = None,
+    optimizer_eps: float = OPTIMIZER_EPS_DEFAULT,
 ) -> LightningModule:
     """
     Returns a generative network.
@@ -1077,11 +1096,12 @@ def get_generative_network(
         A :class:`LightningModule` generative network.
     """
     try:
+        from generative.networks.schedulers import DDPMScheduler
+
         from adell_mri.modules.diffusion.inferer import (
             DiffusionInfererSkipSteps,
         )
         from adell_mri.modules.diffusion.pl import DiffusionUNetPL
-        from generative.networks.schedulers import DDPMScheduler
     except ImportError:
         raise ImportError(
             "Please install the generative package to diffusion models"
@@ -1117,6 +1137,7 @@ def get_generative_network(
         "warmup_steps": warmup_steps,
         "start_decay": start_decay,
         "uncondition_proba": uncondition_proba,
+        "optimizer_eps": optimizer_eps,
     }
 
     if categorical_specification is not None:
@@ -1148,6 +1169,7 @@ def get_gan_network(
     max_epochs: int,
     steps_per_epoch: int,
     pct_start: int,
+    optimizer_eps: float = OPTIMIZER_EPS_DEFAULT,
 ) -> LightningModule:
     """
     Returns a GAN network.
@@ -1188,6 +1210,7 @@ def get_gan_network(
         "class_target_specification": categorical_specification,
         "reg_target_specification": numerical_specification,
         "numerical_moments": numerical_moments,
+        "optimizer_eps": optimizer_eps,
     }
 
     for key in [

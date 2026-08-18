@@ -10,6 +10,7 @@ import torch
 from adell_mri.custom_types import TensorDict, TensorList
 from adell_mri.modules.segmentation.pl import UNetBasePL, update_metrics
 from adell_mri.modules.semi_supervised_segmentation.unet import UNetSemiSL
+from adell_mri.utils.optimizer_factory import OPTIMIZER_EPS_DEFAULT
 
 
 class UNetContrastiveSemiSL(UNetSemiSL, UNetBasePL):
@@ -27,6 +28,7 @@ class UNetContrastiveSemiSL(UNetSemiSL, UNetBasePL):
         skip_conditioning_key: str = None,
         feature_conditioning_key: str = None,
         optimizer_str: str = "sgd",
+        optimizer_eps: float = OPTIMIZER_EPS_DEFAULT,
         learning_rate: float = 0.001,
         lr_encoder: float = None,
         start_decay: float | int = 1.0,
@@ -61,6 +63,9 @@ class UNetContrastiveSemiSL(UNetSemiSL, UNetBasePL):
                 conditioning.
             optimizer_str (str, optional): specifies the optimizer using
                 `get_optimizer`. Defaults to "sgd".
+            optimizer_eps (float, optional): epsilon term used by the optimizer
+                for numerical stability (Adam/AdamW only). Defaults to the
+                AdamW default (1e-8).
             learning_rate (float, optional): learning rate. Defaults to 0.001.
             lr_encoder (float, optional): encoder learning rate. Defaults to None
                 (same as learning_rate).
@@ -102,6 +107,7 @@ class UNetContrastiveSemiSL(UNetSemiSL, UNetBasePL):
         self.skip_conditioning_key = skip_conditioning_key
         self.feature_conditioning_key = feature_conditioning_key
         self.optimizer_str = optimizer_str
+        self.optimizer_eps = optimizer_eps
         self.learning_rate = learning_rate
         self.lr_encoder = lr_encoder
         self.start_decay = start_decay

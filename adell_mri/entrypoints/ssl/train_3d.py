@@ -11,6 +11,7 @@ from adell_mri.modules.config_parsing import parse_config_ssl, parse_config_unet
 from adell_mri.transform_factory import SSLTransforms, get_augmentations_ssl
 from adell_mri.utils.dataset import Dataset
 from adell_mri.utils.network_factories import get_ssl_network
+from adell_mri.utils.optimizer_factory import optimizer_eps_from_precision
 from adell_mri.utils.pl_callbacks import SpectralNorm
 from adell_mri.utils.pl_utils import get_ckpt_callback, get_devices, get_logger
 from adell_mri.utils.python_logging import get_logger as get_python_logger
@@ -269,6 +270,7 @@ def main(arguments):
         net_type=args.net_type,
         network_config=network_config_correct,
         stop_gradient=args.stop_gradient,
+        optimizer_eps=optimizer_eps_from_precision(args.precision),
     )
 
     if args.checkpoint is not None:

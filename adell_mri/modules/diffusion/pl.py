@@ -9,13 +9,14 @@ from typing import Callable, List
 import lightning.pytorch as pl
 import numpy as np
 import torch
+from generative.inferers import DiffusionInferer
+from generative.networks.nets import DiffusionModelUNet
+from generative.networks.schedulers import DDPMScheduler
 
 from adell_mri.modules.classification.pl import meta_tensors_to_tensors
 from adell_mri.modules.diffusion.embedder import Embedder
 from adell_mri.modules.learning_rate import CosineAnnealingWithWarmupLR
-from generative.inferers import DiffusionInferer
-from generative.networks.nets import DiffusionModelUNet
-from generative.networks.schedulers import DDPMScheduler
+from adell_mri.utils.optimizer_factory import OPTIMIZER_EPS_DEFAULT
 
 
 class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
@@ -37,6 +38,7 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
         learning_rate: float = 0.001,
         weight_decay: float = 0.0,
         seed: int = 42,
+        optimizer_eps: float = OPTIMIZER_EPS_DEFAULT,
         *args,
         **kwargs,
     ):
@@ -58,6 +60,7 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
         self.learning_rate = learning_rate
         self.weight_decay = weight_decay
         self.seed = seed
+        self.optimizer_eps = optimizer_eps
 
         self.g = torch.Generator()
         self.g.manual_seed(self.seed)
@@ -435,6 +438,7 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
             self.parameters(),
             lr=self.learning_rate,
             weight_decay=self.weight_decay,
+            eps=self.optimizer_eps,
         )
         lr_schedulers = CosineAnnealingWithWarmupLR(
             optimizer,

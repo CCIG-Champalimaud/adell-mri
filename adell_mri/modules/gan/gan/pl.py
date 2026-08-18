@@ -13,6 +13,7 @@ import torch.nn.functional as F
 
 from adell_mri.modules.gan.gan.loss_functions import compute_gradient_penalty_r1
 from adell_mri.utils.logging import make_grid
+from adell_mri.utils.optimizer_factory import OPTIMIZER_EPS_DEFAULT
 
 logger = logging.getLogger("GAN")
 logger.setLevel(logging.INFO)
@@ -63,6 +64,7 @@ class ProGANPL(pl.LightningModule):
         discriminator_step_every: int = 1,
         minibatch_diversity_lambda: float = 0.0,
         drift_lambda: float = 0.001,
+        optimizer_eps: float = OPTIMIZER_EPS_DEFAULT,
     ):
         super().__init__()
         self.generator = generator
@@ -80,6 +82,7 @@ class ProGANPL(pl.LightningModule):
         self.discriminator_step_every = discriminator_step_every
         self.minibatch_diversity_lambda = minibatch_diversity_lambda
         self.drift_lambda = drift_lambda
+        self.optimizer_eps = optimizer_eps
 
         assert self.generator.n_levels == self.discriminator.n_levels
         self.n_levels = self.generator.n_levels
@@ -126,12 +129,14 @@ class ProGANPL(pl.LightningModule):
             self.generator.parameters(),
             lr=self.learning_rate,
             betas=(self.momentum_beta1, self.momentum_beta2),
+            eps=self.optimizer_eps,
         )
         logger.info("Setting discriminator optimizer")
-        discriminator_optimizer = torch.optim.Adam(
+        discriminator_optimizer = torch.optim.AdamW(
             self.discriminator.parameters(),
             lr=self.learning_rate,
             betas=(self.momentum_beta1, self.momentum_beta2),
+            eps=self.optimizer_eps,
         )
         optimizers = [generator_optimizer, discriminator_optimizer]
 

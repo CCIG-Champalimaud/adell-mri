@@ -23,6 +23,7 @@ from adell_mri.transform_factory.transforms import ClassificationTransforms
 from adell_mri.utils.dataset import Dataset
 from adell_mri.utils.logging import CSVLogger
 from adell_mri.utils.network_factories import get_classification_network
+from adell_mri.utils.optimizer_factory import optimizer_eps_from_precision
 from adell_mri.utils.parser import get_params, merge_args, parse_ids
 from adell_mri.utils.pl_callbacks import SpectralNorm
 from adell_mri.utils.pl_utils import (
@@ -507,6 +508,7 @@ def main(arguments):
                     label_smoothing=args.label_smoothing,
                     mixup_alpha=args.mixup_alpha,
                     partial_mixup=args.partial_mixup,
+                    optimizer_eps=optimizer_eps_from_precision(args.precision),
                 )
                 for net_type, network_config in zip(
                     args.net_types, network_configs

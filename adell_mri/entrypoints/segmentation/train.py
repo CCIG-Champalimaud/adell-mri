@@ -27,6 +27,7 @@ from adell_mri.utils.monai_transforms import (
     SlicesToFirst,
 )
 from adell_mri.utils.network_factories import get_segmentation_network
+from adell_mri.utils.optimizer_factory import optimizer_eps_from_precision
 from adell_mri.utils.parser import parse_ids
 from adell_mri.utils.pl_callbacks import SpectralNorm
 from adell_mri.utils.pl_utils import get_ckpt_callback, get_devices, get_logger
@@ -755,6 +756,7 @@ def main(arguments):
             resize_size=args.resize_size,
             semi_supervised=args.semi_supervised,
             max_steps_optim=max_steps_optim,
+            optimizer_eps=optimizer_eps_from_precision(args.precision),
         )
 
         if args.early_stopping is not None:

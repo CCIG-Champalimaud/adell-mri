@@ -18,6 +18,7 @@ from adell_mri.utils.network_factories import (
     get_gan_network,
     get_generative_network,
 )
+from adell_mri.utils.optimizer_factory import optimizer_eps_from_precision
 from adell_mri.utils.parser import compose, get_params, merge_args
 from adell_mri.utils.pl_callbacks import (
     EMACallback,
@@ -361,6 +362,7 @@ def main(arguments):
             max_epochs=args.max_epochs,
             steps_per_epoch=args.steps_per_epoch or 1,
             pct_start=args.warmup_steps,
+            optimizer_eps=optimizer_eps_from_precision(args.precision),
         )
     else:
         network = get_generative_network(
@@ -379,6 +381,7 @@ def main(arguments):
             diffusion_steps=args.diffusion_steps,
             uncondition_proba=args.uncondition_proba,
             concat_condition_key=input_image_key,
+            optimizer_eps=optimizer_eps_from_precision(args.precision),
         )
 
     if args.checkpoint is not None:

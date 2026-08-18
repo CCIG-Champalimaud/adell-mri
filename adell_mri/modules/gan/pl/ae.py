@@ -10,6 +10,7 @@ import torch
 from adell_mri.modules.gan.ae import AutoEncoder
 from adell_mri.modules.gan.losses import GaussianKLLoss
 from adell_mri.modules.gan.vae import VariationalAutoEncoder
+from adell_mri.utils.optimizer_factory import OPTIMIZER_EPS_DEFAULT
 
 
 class AutoEncoderPL(AutoEncoder, pl.LightningModule):
@@ -23,6 +24,7 @@ class AutoEncoderPL(AutoEncoder, pl.LightningModule):
         learning_rate: float = 0.0002,
         momentum_beta1: float = 0.5,
         momentum_beta2: float = 0.99,
+        optimizer_eps: float = OPTIMIZER_EPS_DEFAULT,
         *args,
         **kwargs,
     ):
@@ -35,12 +37,15 @@ class AutoEncoderPL(AutoEncoder, pl.LightningModule):
                 optimizer. Defaults to 0.5.
             momentum_beta2 (float, optional): second beta momentum for Adam
                 optimizer. Defaults to 0.99.
+            optimizer_eps (float, optional): epsilon term used by the optimizer
+                for numerical stability. Defaults to the AdamW default (1e-8).
         """
         super().__init__(*args, **kwargs)
         self.input_image_key = input_image_key
         self.learning_rate = learning_rate
         self.momentum_beta1 = momentum_beta1
         self.momentum_beta2 = momentum_beta2
+        self.optimizer_eps = optimizer_eps
 
         self.loss_fn = torch.nn.MSELoss()
         self.init_routine()
@@ -140,10 +145,11 @@ class AutoEncoderPL(AutoEncoder, pl.LightningModule):
         Returns:
             torch.optim.Optimizer: Adam optimizer.
         """
-        return torch.optim.Adam(
+        return torch.optim.AdamW(
             self.parameters(),
             lr=self.learning_rate,
             betas=(self.momentum_beta1, self.momentum_beta2),
+            eps=self.optimizer_eps,
         )
 
 
@@ -159,6 +165,7 @@ class VariationalAutoEncoderPL(VariationalAutoEncoder, pl.LightningModule):
         momentum_beta1: float = 0.5,
         momentum_beta2: float = 0.99,
         var_loss_mult: float = 1.0,
+        optimizer_eps: float = OPTIMIZER_EPS_DEFAULT,
         *args,
         **kwargs,
     ):
@@ -173,6 +180,8 @@ class VariationalAutoEncoderPL(VariationalAutoEncoder, pl.LightningModule):
                 optimizer. Defaults to 0.99.
             var_loss_mult (float, optional): multiplier for the variational
                 loss. Defaults to 1.0.
+            optimizer_eps (float, optional): epsilon term used by the optimizer
+                for numerical stability. Defaults to the AdamW default (1e-8).
         """
         super().__init__(*args, **kwargs)
         self.input_image_key = input_image_key
@@ -180,6 +189,7 @@ class VariationalAutoEncoderPL(VariationalAutoEncoder, pl.LightningModule):
         self.momentum_beta1 = momentum_beta1
         self.momentum_beta2 = momentum_beta2
         self.var_loss_mult = var_loss_mult
+        self.optimizer_eps = optimizer_eps
 
         self.loss_fn = torch.nn.MSELoss()
         self.variational_loss_fn = GaussianKLLoss()
@@ -282,8 +292,9 @@ class VariationalAutoEncoderPL(VariationalAutoEncoder, pl.LightningModule):
         Returns:
             torch.optim.Optimizer: Adam optimizer.
         """
-        return torch.optim.Adam(
+        return torch.optim.AdamW(
             self.parameters(),
             lr=self.learning_rate,
             betas=(self.momentum_beta1, self.momentum_beta2),
+            eps=self.optimizer_eps,
         )

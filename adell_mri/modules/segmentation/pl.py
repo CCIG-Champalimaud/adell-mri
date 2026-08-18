@@ -27,7 +27,10 @@ from adell_mri.modules.segmentation.unetr import (
     MonaiUNETR,
     SWINUNet,
 )
-from adell_mri.utils.optimizer_factory import get_optimizer
+from adell_mri.utils.optimizer_factory import (
+    OPTIMIZER_EPS_DEFAULT,
+    get_optimizer,
+)
 from adell_mri.utils.python_logging import get_logger
 
 logger = get_logger(__name__)
@@ -523,7 +526,7 @@ class UNetBasePL(pl.LightningModule, ABC):
     def train_dataloader(self) -> torch.utils.data.DataLoader:
         return self.training_dataloader_call(self.batch_size)
 
-    def configure_optimizers(self):
+    def configure_optimizers(self) -> dict:
         encoder_params = []
         rest_of_params = []
         for k, p in self.named_parameters():
@@ -547,6 +550,8 @@ class UNetBasePL(pl.LightningModule, ABC):
                 optimizer_params = {"momentum": 0.99, "nesterov": True}
             else:
                 optimizer_params = {}
+            if self.optimizer_str != "sgd":
+                optimizer_params["eps"] = self.optimizer_eps
             optimizer = get_optimizer(
                 self.optimizer_str,
                 parameters,
@@ -679,6 +684,7 @@ class UNetPL(UNet, UNetBasePL):
         skip_conditioning_key: str = None,
         feature_conditioning_key: str = None,
         optimizer_str: str = "sgd",
+        optimizer_eps: float = OPTIMIZER_EPS_DEFAULT,
         learning_rate: float = 0.001,
         lr_encoder: float = None,
         start_decay: float | int = 1.0,
@@ -705,6 +711,8 @@ class UNetPL(UNet, UNetBasePL):
                 conditioning.
             optimizer_str (str, optional): specifies the optimizer using
                 `get_optimizer`. Defaults to "sgd".
+            optimizer_eps (float, optional): epsilon term used by the optimizer for numerical
+                stability (Adam/AdamW only). Defaults to the AdamW default (1e-8).
             learning_rate (float, optional): learning rate. Defaults to 0.001.
             lr_encoder (float, optional): encoder learning rate. Defaults to None
                 (same as learning_rate).
@@ -733,6 +741,7 @@ class UNetPL(UNet, UNetBasePL):
         self.skip_conditioning_key = skip_conditioning_key
         self.feature_conditioning_key = feature_conditioning_key
         self.optimizer_str = optimizer_str
+        self.optimizer_eps = optimizer_eps
         self.learning_rate = learning_rate
         self.lr_encoder = lr_encoder
         self.start_decay = start_decay
@@ -765,6 +774,7 @@ class UNETRPL(UNETR, UNetBasePL):
         skip_conditioning_key: str = None,
         feature_conditioning_key: str = None,
         optimizer_str: str = "sgd",
+        optimizer_eps: float = OPTIMIZER_EPS_DEFAULT,
         learning_rate: float = 0.001,
         lr_encoder: float = None,
         start_decay: float | int = 1.0,
@@ -791,6 +801,8 @@ class UNETRPL(UNETR, UNetBasePL):
                 conditioning.
             optimizer_str (str, optional): specifies the optimizer using
                 `get_optimizer`. Defaults to "sgd".
+            optimizer_eps (float, optional): epsilon term used by the optimizer for numerical
+                stability (Adam/AdamW only). Defaults to the AdamW default (1e-8).
             learning_rate (float, optional): learning rate. Defaults to 0.001.
             lr_encoder (float, optional): encoder learning rate. Defaults to None
                 (same as learning_rate).
@@ -817,6 +829,7 @@ class UNETRPL(UNETR, UNetBasePL):
         self.skip_conditioning_key = skip_conditioning_key
         self.feature_conditioning_key = feature_conditioning_key
         self.optimizer_str = optimizer_str
+        self.optimizer_eps = optimizer_eps
         self.learning_rate = learning_rate
         self.lr_encoder = lr_encoder
         self.start_decay = start_decay
@@ -849,6 +862,7 @@ class SWINUNetPL(SWINUNet, UNetBasePL):
         skip_conditioning_key: str = None,
         feature_conditioning_key: str = None,
         optimizer_str: str = "sgd",
+        optimizer_eps: float = OPTIMIZER_EPS_DEFAULT,
         learning_rate: float = 0.001,
         lr_encoder: float = None,
         start_decay: float | int = 1.0,
@@ -875,6 +889,8 @@ class SWINUNetPL(SWINUNet, UNetBasePL):
                 conditioning.
             optimizer_str (str, optional): specifies the optimizer using
                 `get_optimizer`. Defaults to "sgd".
+            optimizer_eps (float, optional): epsilon term used by the optimizer for numerical
+                stability (Adam/AdamW only). Defaults to the AdamW default (1e-8).
             learning_rate (float, optional): learning rate. Defaults to 0.001.
             lr_encoder (float, optional): encoder learning rate. Defaults to None
                 (same as learning_rate).
@@ -902,6 +918,7 @@ class SWINUNetPL(SWINUNet, UNetBasePL):
         self.skip_conditioning_key = skip_conditioning_key
         self.feature_conditioning_key = feature_conditioning_key
         self.optimizer_str = optimizer_str
+        self.optimizer_eps = optimizer_eps
         self.learning_rate = learning_rate
         self.lr_encoder = lr_encoder
         self.start_decay = start_decay
@@ -934,6 +951,7 @@ class MonaiSWINUNetPL(MonaiSWINUNet, UNetBasePL):
         skip_conditioning_key: str = None,
         feature_conditioning_key: str = None,
         optimizer_str: str = "sgd",
+        optimizer_eps: float = OPTIMIZER_EPS_DEFAULT,
         learning_rate: float = 0.001,
         lr_encoder: float = None,
         start_decay: float | int = 1.0,
@@ -960,6 +978,8 @@ class MonaiSWINUNetPL(MonaiSWINUNet, UNetBasePL):
                 conditioning.
             optimizer_str (str, optional): specifies the optimizer using
                 `get_optimizer`. Defaults to "sgd".
+            optimizer_eps (float, optional): epsilon term used by the optimizer for numerical
+                stability (Adam/AdamW only). Defaults to the AdamW default (1e-8).
             learning_rate (float, optional): learning rate. Defaults to 0.001.
             lr_encoder (float, optional): encoder learning rate. Defaults to None
                 (same as learning_rate).
@@ -987,6 +1007,7 @@ class MonaiSWINUNetPL(MonaiSWINUNet, UNetBasePL):
         self.skip_conditioning_key = skip_conditioning_key
         self.feature_conditioning_key = feature_conditioning_key
         self.optimizer_str = optimizer_str
+        self.optimizer_eps = optimizer_eps
         self.learning_rate = learning_rate
         self.lr_encoder = lr_encoder
         self.start_decay = start_decay
@@ -1019,6 +1040,7 @@ class MonaiUNETRPL(MonaiUNETR, UNetBasePL):
         skip_conditioning_key: str = None,
         feature_conditioning_key: str = None,
         optimizer_str: str = "sgd",
+        optimizer_eps: float = OPTIMIZER_EPS_DEFAULT,
         learning_rate: float = 0.001,
         lr_encoder: float = None,
         start_decay: float | int = 1.0,
@@ -1045,6 +1067,8 @@ class MonaiUNETRPL(MonaiUNETR, UNetBasePL):
                 conditioning.
             optimizer_str (str, optional): specifies the optimizer using
                 `get_optimizer`. Defaults to "sgd".
+            optimizer_eps (float, optional): epsilon term used by the optimizer for numerical
+                stability (Adam/AdamW only). Defaults to the AdamW default (1e-8).
             learning_rate (float, optional): learning rate. Defaults to 0.001.
             lr_encoder (float, optional): encoder learning rate. Defaults to None
                 (same as learning_rate).
@@ -1072,6 +1096,7 @@ class MonaiUNETRPL(MonaiUNETR, UNetBasePL):
         self.skip_conditioning_key = skip_conditioning_key
         self.feature_conditioning_key = feature_conditioning_key
         self.optimizer_str = optimizer_str
+        self.optimizer_eps = optimizer_eps
         self.learning_rate = learning_rate
         self.lr_encoder = lr_encoder
         self.start_decay = start_decay
@@ -1101,6 +1126,7 @@ class UNetPlusPlusPL(UNetPlusPlus, UNetBasePL):
         skip_conditioning_key: str = None,
         feature_conditioning_key: str = None,
         optimizer_str: str = "sgd",
+        optimizer_eps: float = OPTIMIZER_EPS_DEFAULT,
         learning_rate: float = 0.001,
         lr_encoder: float = None,
         start_decay: float | int = 1.0,
@@ -1129,6 +1155,8 @@ class UNetPlusPlusPL(UNetPlusPlus, UNetBasePL):
                 conditioning.
             optimizer_str (str, optional): specifies the optimizer using
                 `get_optimizer`. Defaults to "sgd".
+            optimizer_eps (float, optional): epsilon term used by the optimizer for numerical
+                stability (Adam/AdamW only). Defaults to the AdamW default (1e-8).
             learning_rate (float, optional): learning rate. Defaults to 0.001.
             lr_encoder (float, optional): encoder learning rate.
             batch_size (int, optional): batch size. Defaults to 4.
@@ -1157,6 +1185,7 @@ class UNetPlusPlusPL(UNetPlusPlus, UNetBasePL):
         self.skip_conditioning_key = skip_conditioning_key
         self.feature_conditioning_key = feature_conditioning_key
         self.optimizer_str = optimizer_str
+        self.optimizer_eps = optimizer_eps
         self.learning_rate = learning_rate
         self.lr_encoder = lr_encoder
         self.start_decay = start_decay
@@ -1189,6 +1218,7 @@ class MIMUNetPL(MIMUNet, UNetBasePL):
         image_key: str = "image",
         label_key: str = "label",
         optimizer_str: str = "sgd",
+        optimizer_eps: float = OPTIMIZER_EPS_DEFAULT,
         learning_rate: float = 0.001,
         lr_encoder: float = None,
         start_decay: float | int = 1.0,
@@ -1210,6 +1240,8 @@ class MIMUNetPL(MIMUNet, UNetBasePL):
                 dataloader.
             optimizer_str (str, optional): specifies the optimizer using
                 `get_optimizer`. Defaults to "sgd".
+            optimizer_eps (float, optional): epsilon term used by the optimizer for numerical
+                stability (Adam/AdamW only). Defaults to the AdamW default (1e-8).
             learning_rate (float, optional): learning rate. Defaults to 0.001.
             lr_encoder (float, optional): encoder learning rate.
             batch_size (int, optional): batch size. Defaults to 4.
@@ -1236,6 +1268,7 @@ class MIMUNetPL(MIMUNet, UNetBasePL):
         self.image_key = image_key
         self.label_key = label_key
         self.optimizer_str = optimizer_str
+        self.optimizer_eps = optimizer_eps
         self.learning_rate = learning_rate
         self.lr_encoder = lr_encoder
         self.start_decay = start_decay
@@ -1296,6 +1329,7 @@ class BrUNetPL(BrUNet, UNetBasePL):
         skip_conditioning_key: str = None,
         feature_conditioning_key: str = None,
         optimizer_str: str = "sgd",
+        optimizer_eps: float = OPTIMIZER_EPS_DEFAULT,
         learning_rate: float = 0.001,
         lr_encoder: float = None,
         start_decay: float | int = 1.0,
@@ -1324,6 +1358,8 @@ class BrUNetPL(BrUNet, UNetBasePL):
                 conditioning.
             optimizer_str (str, optional): specifies the optimizer using
                 `get_optimizer`. Defaults to "sgd".
+            optimizer_eps (float, optional): epsilon term used by the optimizer for numerical
+                stability (Adam/AdamW only). Defaults to the AdamW default (1e-8).
             learning_rate (float, optional): learning rate. Defaults to 0.001.
             lr_encoder (float, optional): encoder learning rate.
             batch_size (int, optional): batch size. Defaults to 4.
@@ -1352,6 +1388,7 @@ class BrUNetPL(BrUNet, UNetBasePL):
         self.skip_conditioning_key = skip_conditioning_key
         self.feature_conditioning_key = feature_conditioning_key
         self.optimizer_str = optimizer_str
+        self.optimizer_eps = optimizer_eps
         self.learning_rate = learning_rate
         self.lr_encoder = lr_encoder
         self.start_decay = start_decay

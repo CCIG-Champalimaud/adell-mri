@@ -20,6 +20,7 @@ from adell_mri.modules.gan.losses import (
     SemiSLRelativisticGANLoss,
     SemiSLWGANGPLoss,
 )
+from adell_mri.utils.optimizer_factory import OPTIMIZER_EPS_DEFAULT
 
 
 def mean(x: list[torch.Tensor]) -> torch.Tensor:
@@ -166,6 +167,7 @@ class GANPL(pl.LightningModule):
         steps_per_epoch: int | None = None,
         pct_start: float = 0.3,
         training_dataloader_call: Callable = None,
+        optimizer_eps: float = OPTIMIZER_EPS_DEFAULT,
         *args,
         **kwargs,
     ):
@@ -240,6 +242,8 @@ class GANPL(pl.LightningModule):
                 Defaults to 0.3.
             training_dataloader_call (Callable, optional): call for the
                 training dataloader. Defaults to None.
+            optimizer_eps (float, optional): epsilon term used by the optimizer
+                for numerical stability. Defaults to the AdamW default (1e-8).
         """
         super().__init__(*args, **kwargs)
         self.generator = generator
@@ -270,6 +274,7 @@ class GANPL(pl.LightningModule):
         self.steps_per_epoch = steps_per_epoch
         self.pct_start = pct_start
         self.training_dataloader_call = training_dataloader_call
+        self.optimizer_eps = optimizer_eps
 
         if self.lambda_gp > 0.0:
             self.adversarial_loss = SemiSLWGANGPLoss(lambda_gp=self.lambda_gp)
@@ -1235,11 +1240,13 @@ class GANPL(pl.LightningModule):
             chain(self.generator.parameters(), emb_pars),
             lr=self.learning_rate,
             betas=(self.momentum_beta1, self.momentum_beta2),
+            eps=self.optimizer_eps,
         )
         opt_disc = torch.optim.Adam(
             chain(self.discriminator.parameters()),
             lr=self.learning_rate,
             betas=(self.momentum_beta1, self.momentum_beta2),
+            eps=self.optimizer_eps,
         )
         optimizers = [opt_gen, opt_disc]
         if self.cycle_consistency is True:
@@ -1247,11 +1254,13 @@ class GANPL(pl.LightningModule):
                 chain(self.generator_cycle.parameters(), emb_pars),
                 lr=self.learning_rate,
                 betas=(self.momentum_beta1, self.momentum_beta2),
+                eps=self.optimizer_eps,
             )
             opt_disc_cycle = torch.optim.Adam(
                 chain(self.discriminator_cycle.parameters()),
                 lr=self.learning_rate,
                 betas=(self.momentum_beta1, self.momentum_beta2),
+                eps=self.optimizer_eps,
             )
             optimizers.extend([opt_gen_cycle, opt_disc_cycle])
 

@@ -16,6 +16,7 @@ from adell_mri.utils.network_factories import (
     get_classification_network,
     get_deconfounded_classification_network,
 )
+from adell_mri.utils.optimizer_factory import optimizer_eps_from_precision
 
 
 def use_deconfounding(args) -> bool:
@@ -281,6 +282,9 @@ def create_classification_network(
     label_smoothing_val = getattr(args, "label_smoothing", None)
     mixup_alpha_val = getattr(args, "mixup_alpha", None)
     partial_mixup_val = getattr(args, "partial_mixup", None)
+    optimizer_eps = optimizer_eps_from_precision(
+        getattr(args, "precision", None)
+    )
 
     if cat_key is not None or cont_key is not None:
         return get_deconfounded_classification_network(
@@ -306,6 +310,7 @@ def create_classification_network(
             label_smoothing=label_smoothing_val,
             mixup_alpha=mixup_alpha_val,
             partial_mixup=partial_mixup_val,
+            optimizer_eps=optimizer_eps,
         )
     else:
         return get_classification_network(
@@ -326,4 +331,5 @@ def create_classification_network(
             label_smoothing=label_smoothing_val,
             mixup_alpha=mixup_alpha_val,
             partial_mixup=partial_mixup_val,
+            optimizer_eps=optimizer_eps,
         )

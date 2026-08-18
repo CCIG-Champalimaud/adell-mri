@@ -10,6 +10,7 @@ from adell_mri.modules.classification.pl import meta_tensors_to_tensors
 from adell_mri.modules.learning_rate import CosineAnnealingWithWarmupLR
 from adell_mri.modules.object_detection.map import mAP
 from adell_mri.modules.object_detection.nets import CoarseDetector3d, YOLONet3d
+from adell_mri.utils.optimizer_factory import OPTIMIZER_EPS_DEFAULT
 
 
 def real_boxes_from_centres_sizes(
@@ -55,6 +56,7 @@ class YOLONet3dPL(YOLONet3d, pl.LightningModule):
         n_epochs: int = 100,
         warmup_steps: Union[int, float] = 0,
         start_decay: int = None,
+        optimizer_eps: float = OPTIMIZER_EPS_DEFAULT,
         *args,
         **kwargs,
     ) -> torch.nn.Module:
@@ -85,6 +87,8 @@ class YOLONet3dPL(YOLONet3d, pl.LightningModule):
             classification_loss_params (dict, optional): classification
             loss parameters. Defaults to {}.
             object_loss_params (dict, optional): object loss parameters.
+            optimizer_eps (float, optional): epsilon term used by the optimizer
+                for numerical stability. Defaults to the AdamW default (1e-8).
             Defaults to {}.
             args: arguments for UNet class.
             kwargs: keyword arguments for UNet class.
@@ -113,6 +117,7 @@ class YOLONet3dPL(YOLONet3d, pl.LightningModule):
         self.n_epochs = n_epochs
         self.warmup_steps = warmup_steps
         self.start_decay = start_decay
+        self.optimizer_eps = optimizer_eps
 
         self.object_idxs = np.array([0])
         self.center_idxs = np.array([1, 2, 3])
@@ -341,12 +346,13 @@ class YOLONet3dPL(YOLONet3d, pl.LightningModule):
     def train_dataloader(self) -> torch.utils.data.DataLoader:
         return self.training_dataloader_call()
 
-    def configure_optimizers(self):
+    def configure_optimizers(self) -> dict:
         optimizer = torch.optim.AdamW(
             self.parameters(),
             lr=self.learning_rate,
             weight_decay=self.weight_decay,
             amsgrad=True,
+            eps=self.optimizer_eps,
         )
         lr_schedulers = CosineAnnealingWithWarmupLR(
             optimizer,
@@ -440,6 +446,7 @@ class CoarseDetector3dPL(CoarseDetector3d, pl.LightningModule):
         positive_weight: float = 1.0,
         object_loss_params: dict = {},
         iou_threshold: float = 0.5,
+        optimizer_eps: float = OPTIMIZER_EPS_DEFAULT,
         *args,
         **kwargs,
     ) -> torch.nn.Module:
@@ -462,6 +469,8 @@ class CoarseDetector3dPL(CoarseDetector3d, pl.LightningModule):
                     positive_weight (float, optional): weight for positive object
                     prediction. Defaults to 1.0.
                     object_loss_params (dict, optional): object loss parameters.
+                    optimizer_eps (float, optional): epsilon term used by the optimizer
+                        for numerical stability. Defaults to the AdamW default (1e-8).
                     Defaults to {}.
                     args: arguments for CoarseDetector3d class.
                     kwargs: keyword arguments for CoarseDetector3d class.
@@ -483,6 +492,7 @@ class CoarseDetector3dPL(CoarseDetector3d, pl.LightningModule):
         self.positive_weight = positive_weight
         self.object_loss_params = object_loss_params
         self.iou_threshold = iou_threshold
+        self.optimizer_eps = optimizer_eps
 
         self.object_idxs = np.array([0])
 
@@ -595,12 +605,13 @@ class CoarseDetector3dPL(CoarseDetector3d, pl.LightningModule):
     def train_dataloader(self) -> torch.utils.data.DataLoader:
         return self.training_dataloader_call()
 
-    def configure_optimizers(self):
+    def configure_optimizers(self) -> dict:
         optimizer = torch.optim.AdamW(
             self.parameters(),
             lr=self.learning_rate,
             weight_decay=self.weight_decay,
             amsgrad=True,
+            eps=self.optimizer_eps,
         )
         lr_schedulers = torch.optim.lr_scheduler.ReduceLROnPlateau(
             optimizer, patience=10, min_lr=1e-6, factor=0.3
