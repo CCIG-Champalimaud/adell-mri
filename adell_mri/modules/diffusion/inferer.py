@@ -1,9 +1,8 @@
 from typing import Callable, Iterator
 
 import torch
-from tqdm import tqdm
-
 from generative.inferers import DiffusionInferer
+from tqdm import tqdm
 
 
 class DiffusionInfererSkipSteps(DiffusionInferer):
@@ -171,7 +170,12 @@ class DiffusionInfererSkipSteps(DiffusionInferer):
             scheduler = self.scheduler
         image = input_noise
         if verbose:
-            progress_bar = tqdm(scheduler.timesteps[skip_steps:], leave=True)
+            progress_bar = tqdm(
+                scheduler.timesteps[skip_steps:],
+                leave=False,
+                ncols=80,
+                mininterval=1,
+            )
         else:
             progress_bar = iter(scheduler.timesteps[skip_steps:])
         intermediates = []
