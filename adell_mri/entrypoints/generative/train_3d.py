@@ -336,7 +336,8 @@ def main(arguments):
                 train_dataset,
                 # this gets divided by num_replicas (as expected), so if we want
                 # to keep the same number of steps we have to multiply it again
-                num_samples=num_samples * real_bs,
+                # by n_devices
+                num_samples=num_samples * n_devices,
                 num_replicas=n_devices,
                 seed=args.seed,
             )
