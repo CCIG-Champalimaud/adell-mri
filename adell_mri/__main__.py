@@ -9,7 +9,6 @@ supported_modes = [
     "classification_mil",
     "classification_ensemble",
     "generative",
-    "generative_gan",
     "segmentation",
     "segmentation_from_2d_module",
     "ssl",
@@ -59,13 +58,6 @@ def main():
     elif arguments[0] == "generative":
         set_threading_env_vars(arguments)
         from adell_mri.entrypoints.generative.__main__ import main
-
-        main(arguments[1:])
-
-    # generation modes
-    elif arguments[0] == "generative_gan":
-        set_threading_env_vars(arguments)
-        from adell_mri.entrypoints.generative_gan.__main__ import main
 
         main(arguments[1:])
 

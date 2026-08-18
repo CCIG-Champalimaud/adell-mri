@@ -725,6 +725,18 @@ argument_factory = {
     "steps_per_epoch": dict(
         default=None, type=int, help="Number of steps per epoch"
     ),
+    # generative model
+    "model_type": dict(
+        type=str,
+        default=None,
+        choices=["diffusion", "gan"],
+        help="Type of generative model to train",
+    ),
+    "spatial_dims": dict(
+        type=int,
+        default=None,
+        help="Spatial dimensions of the data (2 or 3).",
+    ),
     # diffusion-specific
     "diffusion_steps": dict(
         type=int, default=1000, help="Number of diffusion steps"
@@ -834,6 +846,26 @@ argument_factory = {
         default=None,
         nargs="+",
         help="Keys corresponding to conditional input images.",
+    ),
+    "input_mask_keys": dict(
+        type=str,
+        default=None,
+        nargs="+",
+        help=(
+            "Keys corresponding to conditional input masks. Masks are one-hot "
+            "encoded (using --mask_classes) and concatenated to the "
+            "conditional input channels. Can be combined with "
+            "--input_image_keys."
+        ),
+    ),
+    "mask_classes": dict(
+        type=int,
+        default=None,
+        nargs="+",
+        help=(
+            "Number of classes for each key in --input_mask_keys (one entry "
+            "per mask key). Determines the number of one-hot encoded channels."
+        ),
     ),
 }
 

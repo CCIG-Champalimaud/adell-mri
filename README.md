@@ -186,13 +186,18 @@ Self-supervised pre-training.
 #### `generative`
 
 ```
-adell_mri generative {train,generate}
+adell_mri generative {train_2d,train_3d,generate}
 ```
 
-Conditional / unconditional diffusion-based image generation.
+Conditional / unconditional generative image synthesis with diffusion models and GANs. Both `train_2d` and `train_3d` accept `--model_type {diffusion,gan}`.
 
-- **`train`** – Trains a generative diffusion model. Supports categorical (`--cat_condition_keys`) and numerical (`--num_condition_keys`) conditioning with classifier-free guidance (controlled via `--uncondition_proba`). Uses an EMA callback and logs sample images during training.
+- **`train_2d`** – Trains a generative model on 2D DICOM slices (sampled on-the-fly with `SliceSampler`). Supports diffusion and GAN models, plus categorical (`--cat_condition_keys`) and numerical (`--num_condition_keys`) conditioning. For GANs, `--input_image_keys` enables conditional (image-to-image) generation.
+- **`train_3d`** – Trains a generative model on volumetric NIfTI data (via a dataset JSON). Supports diffusion and GAN models with the same conditioning options. If `spatial_dims == 2` (or `--spatial_dims 2` for GANs), 2D slices are sampled from the 3D volumes.
 - **`generate`** – Runs reverse diffusion from a checkpoint to produce synthetic MRI volumes. Conditioning specifications and transform parameters are automatically recovered from the checkpoint metadata.
+
+Both diffusion and GAN training accept channel-concatenation conditioning through `--input_image_keys` and `--input_mask_keys`. `--input_image_keys` treats the keys as extra conditioning image channels; `--input_mask_keys` one-hot encodes the masks (using one `--mask_classes` value per mask key) and concatenates them to the conditioning channels. Both can be combined and work with the diffusion and GAN model types. For diffusion models the conditioning is concatenated to the noisy target (concat conditioning mode); for GANs the generator receives the conditioning as input and the discriminator sees the concatenation of target and conditioning channels.
+
+Both diffusion and GAN training log sample images during training (via a Lightning logger with image support) and support weight averaging through an EMA callback (`--ema_decay`). Diffusion training additionally uses classifier-free guidance (controlled via `--uncondition_proba`).
 
 ---
 

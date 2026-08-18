@@ -1056,6 +1056,7 @@ def get_generative_network(
     warmup_steps: int,
     start_decay: int,
     diffusion_steps: int,
+    concat_condition_key: str = None,
 ) -> LightningModule:
     """
     Returns a generative network.
@@ -1111,6 +1112,7 @@ def get_generative_network(
         "image_key": "image",
         "cat_condition_key": None,
         "num_condition_key": None,
+        "concat_condition_key": concat_condition_key,
         "n_epochs": max_epochs,
         "warmup_steps": warmup_steps,
         "start_decay": start_decay,
@@ -1188,26 +1190,6 @@ def get_gan_network(
         "numerical_moments": numerical_moments,
     }
 
-    if network_config.get("cycle_consistency", False) is True:
-        if network_config.get("cycle_symmetry", False) is True:
-            boilerplate_args = {
-                **boilerplate_args,
-                "generator_cycle": boilerplate_args["generator"],
-                "discriminator_cycle": boilerplate_args["discriminator"],
-                "cycle_consistency": True,
-                "cycle_symmetry": True,
-            }
-        else:
-            cycle_gen_conf = {k: generator_config[k] for k in generator_config}
-            cycle_gen_conf["in_channels"] = generator_config["out_channels"]
-            cycle_gen_conf["out_channels"] = generator_config["in_channels"]
-            boilerplate_args = {
-                **boilerplate_args,
-                "generator_cycle": Generator(**cycle_gen_conf),
-                "discriminator_cycle": Discriminator(**discriminator_config),
-                "cycle_consistency": True,
-            }
-
     for key in [
         "lambda_gp",
         "lambda_feature_matching",
@@ -1238,6 +1220,26 @@ def get_gan_network(
 
     boilerplate_args["generator"] = Generator(**generator_config)
     boilerplate_args["discriminator"] = Discriminator(**discriminator_config)
+
+    if network_config.get("cycle_consistency", False) is True:
+        if network_config.get("cycle_symmetry", False) is True:
+            boilerplate_args = {
+                **boilerplate_args,
+                "generator_cycle": boilerplate_args["generator"],
+                "discriminator_cycle": boilerplate_args["discriminator"],
+                "cycle_consistency": True,
+                "cycle_symmetry": True,
+            }
+        else:
+            cycle_gen_conf = {k: generator_config[k] for k in generator_config}
+            cycle_gen_conf["in_channels"] = generator_config["out_channels"]
+            cycle_gen_conf["out_channels"] = generator_config["in_channels"]
+            boilerplate_args = {
+                **boilerplate_args,
+                "generator_cycle": Generator(**cycle_gen_conf),
+                "discriminator_cycle": Discriminator(**discriminator_config),
+                "cycle_consistency": True,
+            }
 
     network = GANPL(**boilerplate_args)
 

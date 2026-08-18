@@ -284,7 +284,10 @@ class Diffusion:
         x_predict_x0 = torch.divide(
             x - torch.sqrt(1 - alpha_bar) * epsilon, torch.sqrt(alpha_bar)
         )
-        direction_to_xt = torch.sqrt(1 - alpha_bar_prev - var) * epsilon
+        direction_to_xt = (
+            torch.sqrt(torch.clamp(1 - alpha_bar_prev - var**2, min=0))
+            * epsilon
+        )
         random_noise = torch.randn_like(epsilon) * var
         output = torch.add(
             torch.sqrt(alpha_bar_prev) * x_predict_x0,
@@ -295,7 +298,13 @@ class Diffusion:
     def alpha_deblending_step(
         self, x: torch.Tensor, epsilon: torch.Tensor, t: int, eta: float = None
     ):
-        return x + (self.alpha_bar[t] - self.alpha_bar[t - 1]) * epsilon
+        sh = self.get_shape(x)
+        alpha_bar = self.alpha_bar[t].reshape(sh)
+        if t > 0:
+            alpha_bar_prev = self.alpha_bar[t - 1].reshape(sh)
+        else:
+            alpha_bar_prev = torch.ones_like(alpha_bar)
+        return x + (alpha_bar - alpha_bar_prev) * epsilon
 
     def step(
         self, x: torch.Tensor, epsilon: torch.Tensor, t: int, eta: float = 1.0
@@ -333,9 +342,11 @@ class Diffusion:
                 conditioning. Should be an int tensor with shape [batch_size].
                 Defaults to None.
             classification_scale (float, optional): classification scale for
-                classification guidance (unconditioned and conditioned outputs
-                are linearly interpolated using this value as a weight for the
-                conditioned ouptuts). Defaults to 3.0.
+                classification guidance. The unconditioned noise prediction is
+                shifted towards the conditioned prediction by
+                ``classification_scale``, i.e.
+                ``p = p_uncond + classification_scale * (p_cond - p_uncond)``.
+                Defaults to 3.0.
             start_from (int, optional): starts the time sampling from this value.
                 This allows using partially diffused images as input for input
                 conditioning (helpful in artefact detection). Defaults to None.
@@ -347,7 +358,7 @@ class Diffusion:
         if classification is not None:
             n = classification.shape[0]
         if x is not None:
-            n = x.shape[:2]
+            n = x.shape[0]
         else:
             # fetch a model parameter to retrieve parameter
             device = next(model.parameters()).device
@@ -358,7 +369,7 @@ class Diffusion:
         model.eval()
         logger.info("Generating...")
         final_t = self.noise_steps if start_from is None else start_from
-        t_range = reversed(range(0, final_t))
+        t_range = reversed(range(1, final_t))
         if self.track_progress is True:
             t_range = tqdm(
                 t_range,
@@ -370,12 +381,12 @@ class Diffusion:
         for i in t_range:
             t = torch.as_tensor([i], device=x.device)
             predicted_noise = model(x, t / self.noise_steps, classification)
-            if classification_scale > 0:
+            if classification is not None and classification_scale > 0:
                 nonconditional_predicted_noise = model(x, t / self.noise_steps)
-                predicted_noise = torch.lerp(
-                    input=nonconditional_predicted_noise,
-                    end=predicted_noise,
-                    weight=classification_scale,
+                predicted_noise = (
+                    nonconditional_predicted_noise
+                    + classification_scale
+                    * (predicted_noise - nonconditional_predicted_noise)
                 )
             x = self.step(x=x, epsilon=predicted_noise, t=t)
         model.train()

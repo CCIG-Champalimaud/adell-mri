@@ -13,7 +13,7 @@ class AutoEncoder(Generator):
     ):
         if self.no_skip_connection is False:
             raise NotImplementedError(
-                f"no_skip_connection must be False for {self} generation"
+                f"no_skip_connection must be True for {self} generation"
             )
         class_emb = self.get_class_embeddings(h, class_labels)
         for upsample_block in self.up_blocks:

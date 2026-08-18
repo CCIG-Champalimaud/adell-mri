@@ -3,7 +3,7 @@ import sys
 from adell_mri.entrypoints.cli_utils import run_main
 
 package_name = "adell_mri.entrypoints.generative"
-supported_modes = ["train", "generate"]
+supported_modes = ["train_2d", "train_3d", "generate"]
 
 
 def main(arguments):
