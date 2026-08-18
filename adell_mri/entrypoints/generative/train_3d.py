@@ -127,6 +127,7 @@ def main(arguments):
             "diffusion_steps",
             "ema_decay",
             "fill_missing_with_placeholder",
+            "fill_conditional",
             "spectral_norm_power_iterations",
         ]
     )
