@@ -687,12 +687,11 @@ class EMACallback(Callback):
         if self.use_ema_weights:
             self.copy_to(self.ema.parameters(), pl_module.parameters())
 
-    def on_save_checkpoint(self, trainer, pl_module, checkpoint):
+    def on_save_checkpoint(self, checkpoint):
         """
         Saves EMA weights.
         """
-        if self.ema is not None:
-            return {"state_dict_ema": self.state_dict()}
+        checkpoint["state_dict_ema"] = self.state_dict()
 
     def on_load_checkpoint(self, trainer, pl_module, checkpoint):
         """
