@@ -691,7 +691,7 @@ class EMACallback(Callback):
         """
         Saves EMA weights.
         """
-        checkpoint["state_dict_ema"] = self.state_dict()
+        checkpoint["state_dict_ema"] = self.ema.state_dict()
 
     def on_load_checkpoint(self, trainer, pl_module, checkpoint):
         """
