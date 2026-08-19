@@ -687,7 +687,7 @@ class EMACallback(Callback):
         if self.use_ema_weights:
             self.copy_to(self.ema.parameters(), pl_module.parameters())
 
-    def on_save_checkpoint(self, checkpoint):
+    def on_save_checkpoint(self, trainer, pl_module, checkpoint):
         """
         Saves EMA weights.
         """
