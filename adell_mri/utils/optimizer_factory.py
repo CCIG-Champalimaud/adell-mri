@@ -32,9 +32,10 @@ def get_optimizer(optimizer_str: str, *args, **kwargs) -> torch.optim.Optimizer:
 
 def optimizer_eps_from_precision(precision: str) -> float:
     """
-    Infers the optimizer epsilon from the training precision.
+    Infers the optimizer epsilon from the training precision. Returns
+    ``1e-4`` when the ``precision == 16-true`` and ``1e-8`` otherwise.
 
-    When training in 16-bit (float16) precision, gradients and optimizer
+    When training in pure 16-bit (float16) precision, gradients and optimizer
     states are stored in low precision, which can lead to underflow with the
     default ``1e-8`` epsilon. In that case a larger epsilon of ``1e-4`` is
     recommended. Bfloat16 (``bf16``) and 32-bit precision keep the default.
@@ -50,6 +51,6 @@ def optimizer_eps_from_precision(precision: str) -> float:
     if precision is None:
         return OPTIMIZER_EPS_DEFAULT
     p = str(precision).lower()
-    if "16" in p and "bf16" not in p:
+    if p == "16-true":
         return 1e-4
     return OPTIMIZER_EPS_DEFAULT
