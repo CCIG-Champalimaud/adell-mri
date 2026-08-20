@@ -2,9 +2,9 @@
 Semi-supervised learning loss modules.
 """
 
+from collections.abc import Sequence
 from math import prod
 from queue import Queue
-from typing import Sequence
 
 import numpy as np
 import torch
@@ -42,9 +42,11 @@ def derangement(
     """
     if rng is None:
         rng = np.random.default_rng(seed)
+    if n < 2:
+        raise ValueError("A derangement requires at least 2 elements (n >= 2)")
     xs = [i for i in range(n)]
     for a in range(1, n):
-        b = rng.choice(range(0, a))
+        b = rng.choice(range(a))
         swap(xs, a, b)
     return xs
 
@@ -111,12 +113,17 @@ class AnatomicalContrastiveLoss(torch.nn.Module):
         self.ema_theta = ema_theta
         self.tau = tau
 
-        self.average_representations = torch.zeros(
-            [1, self.n_classes, self.n_features]
+        self.register_buffer(
+            "average_representations",
+            torch.zeros([1, self.n_classes, self.n_features]),
         )
 
-        self.hard_examples = torch.zeros([batch_size, self.top_k, n_features])
-        self.hard_example_class = torch.zeros([batch_size, self.top_k, 1])
+        self.register_buffer(
+            "hard_examples", torch.zeros([batch_size, self.top_k, n_features])
+        )
+        self.register_buffer(
+            "hard_example_class", torch.zeros([batch_size, self.top_k, 1])
+        )
 
     def update_average_class_representation(
         self,
@@ -152,7 +159,7 @@ class AnatomicalContrastiveLoss(torch.nn.Module):
     ):
         """
         Updates the hard example list. ``proba``, ``embeddings`` and ``labels``
-        are expected to have shame shape (excluding the number of channels).
+        are expected to have the same shape (excluding the number of channels).
 
         Args:
             proba (torch.Tensor): probability tensor.
@@ -161,11 +168,14 @@ class AnatomicalContrastiveLoss(torch.nn.Module):
         """
         weights = proba.prod(1)
         for i in range(self.batch_size):
-            top_k = weights[i].topk(self.top_k)
-            self.hard_examples[i] = embeddings[i, :, top_k.indices].permute(
+            k = min(self.top_k, weights[i].numel())
+            top_k = weights[i].topk(k)
+            self.hard_examples[i, :k] = embeddings[i, :, top_k.indices].permute(
                 1, 0
             )
-            self.hard_example_class[i] = labels[i, top_k.indices].unsqueeze(-1)
+            self.hard_example_class[i, :k] = labels[i, top_k.indices].unsqueeze(
+                -1
+            )
 
     def delete(self, X: torch.Tensor, idx: int) -> torch.Tensor:
         """
@@ -310,23 +320,26 @@ class NearestNeighbourLoss(torch.nn.Module):
             if n_elements > 0:
                 self.q[cl].put(elements.detach())
 
-    def get_from_class(self, n: int, cl: int) -> torch.Tensor:
+    def get_from_class(self, n: int, cl: int) -> list[torch.Tensor]:
         """
         Retrieves ``n`` elements from queue with class ``cl``.
-
 
         Args:
             n (int): number of elements to be retrieved.
             cl (int): class.
 
         Returns:
-            torch.Tensor: ``n`` elements from class ``c``.
+            list[torch.Tensor]: up to ``n`` elements from class ``c`` (an
+                empty list if the queue for that class is empty).
         """
         q = self.q[cl]
         n_elements = q.qsize()
+        if n_elements == 0 or n <= 0:
+            return []
+        n = min(n, n_elements)
         return [q.get() for _ in self.rng.choice(n_elements, n)]
 
-    def get(self, n: int, cl: int | None = None) -> None:
+    def get(self, n: int, cl: int | None = None) -> torch.Tensor:
         """
         Gets a set of elements from the queue. If ``cl`` is specified, retrieves
         elements from each class, otherwise retrieves a random set of elements.
@@ -337,7 +350,7 @@ class NearestNeighbourLoss(torch.nn.Module):
 
         Returns:
             torch.Tensor: ``n`` elements from class ``c`` or ``n`` random
-                elements.
+                elements (empty if no elements are available).
         """
         if cl is not None:
             output = self.get_from_class(n, cl)
@@ -345,8 +358,10 @@ class NearestNeighbourLoss(torch.nn.Module):
             output = []
             sample = self.rng.choice(self.n_classes, size=n)
             un, count = np.unique(sample, return_counts=True)
-            for cl, n in zip(un, count):
-                output.append(self.get_from_class(n, cl))
+            for c, cnt in zip(un, count):
+                output.extend(self.get_from_class(cnt, c))
+        if len(output) == 0:
+            return torch.empty(0)
         return torch.cat(output, 0)
 
     def __len__(self) -> int:
@@ -379,20 +394,21 @@ class NearestNeighbourLoss(torch.nn.Module):
         past_samples = [
             self.get(n, cl) for cl, n in zip(range(self.n_classes), n_samples)
         ]
+        non_empty = [
+            (cl, ps) for cl, ps in enumerate(past_samples) if ps.shape[0] > 0
+        ]
+        if len(non_empty) == 0:
+            return torch.empty(0, device=device), torch.empty(
+                0, self.n_classes, device=device
+            )
         past_sample_labels = torch.as_tensor(
             np.concatenate(
-                [
-                    np.repeat(cl, past_sample.shape[0])
-                    for cl, past_sample in zip(
-                        range(self.n_classes), past_samples
-                    )
-                ],
-                0,
+                [np.repeat(cl, ps.shape[0]) for cl, ps in non_empty], 0
             ),
             device=device,
         )
         past_sample_labels = F.one_hot(past_sample_labels, self.n_classes)
-        past_samples = torch.cat(past_samples)
+        past_samples = torch.cat([ps for _, ps in non_empty])
         return past_samples, past_sample_labels
 
     def forward(self, X: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
@@ -408,8 +424,9 @@ class NearestNeighbourLoss(torch.nn.Module):
         """
         X = X.flatten(start_dim=2).permute(0, 2, 1)
         y = y.flatten(start_dim=2).permute(0, 2, 1)
-        b, c, v = torch.where(y > 0)
         past_samples, past_sample_labels = self.get_past_samples(X.device)
+        if past_samples.shape[0] == 0:
+            return torch.zeros([], device=X.device)
         distances = 1 - F.cosine_similarity(
             X[:, :, None], past_samples[None, None, :], -1
         )
@@ -526,22 +543,6 @@ class LocalContrastiveLossWithAnchors(torch.nn.Module):
         self.seed = seed
         self.rng = np.random.default_rng(seed)
         self.eps = torch.as_tensor(1e-8)
-
-    def anchors_from_derangement(self, X: torch.Tensor) -> torch.Tensor:
-        """
-        Generates anchors from derangement of X.
-
-        Args:
-            X (torch.Tensor): tensor.
-
-        Returns:
-            torch.Tensor: deranged X.
-        """
-        anchors = []
-        for idx in derangement(X.shape[0], rng=self.rng):
-            anchors.append(X[idx])
-        anchors = torch.stack(anchors)
-        return anchors
 
     def forward(
         self,
