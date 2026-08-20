@@ -1,3 +1,4 @@
+import os
 import random
 import re
 from multiprocessing import Pool
@@ -37,7 +38,11 @@ def calculate_sn_weights(state_dict: dict) -> dict:
     logger.debug(f"Found {len(sn_keys)} parameters with spectral normalization")
     for key in sn_keys:
         out_name = key.replace(".parametrizations", "")
-        orig_key, u_key, v_key = f"{key}.original", f"{key}.0._u", f"{key}.0._v"
+        orig_key, u_key, v_key = (
+            f"{key}.original",
+            f"{key}.0._u",
+            f"{key}.0._v",
+        )
         orig_w = state_dict[orig_key]
         u = state_dict[u_key]
         v = state_dict[v_key]
@@ -297,11 +302,39 @@ def get_segmentation_sample_weights(
     return cl, adaptive_weights, adaptive_pixel_weights
 
 
+def get_global_rank() -> int:
+    """
+    Returns the rank of the current process.
+
+    The rank is read from the environment variables set by the process launcher
+    (``RANK``, ``LOCAL_RANK``, ``SLURM_PROCID``, ``SLURM_LOCALID``), falling
+    back to ``torch.distributed`` when it is already initialized. Returns 0 for
+    single-process runs.
+
+    Returns:
+        int: the global rank of the current process.
+    """
+    for var in ("RANK", "LOCAL_RANK", "SLURM_PROCID", "SLURM_LOCALID"):
+        value = os.environ.get(var)
+        if value is not None:
+            return int(value)
+    if torch.distributed.is_available() and torch.distributed.is_initialized():
+        return torch.distributed.get_rank()
+    return 0
+
+
 def get_generator_and_rng(
     seed: int,
 ) -> tuple[torch.Generator, np.random.Generator]:
     """
     Returns a torch generator and a numpy RNG.
+
+    The torch generator is seeded with ``seed + global rank`` so that, in
+    multi-GPU training, each process draws a different sequence of samples
+    (data order, weighted sampling, shuffling) instead of every GPU training on
+    the exact same batches. The numpy RNG and the global torch/random/numpy
+    seeds are kept identical across processes so that dataset construction and
+    fold assignments stay consistent between ranks.
 
     Args:
         seed (int): seed to use.
@@ -315,7 +348,7 @@ def get_generator_and_rng(
     random.seed(seed)
     np.random.seed(seed)
     g = torch.Generator()
-    g.manual_seed(seed)
+    g.manual_seed(seed + get_global_rank())
     rng = np.random.default_rng(seed)
 
     return g, rng
