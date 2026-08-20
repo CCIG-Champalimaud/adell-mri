@@ -22,10 +22,7 @@ from adell_mri.modules.config_parsing import (
     parse_config_unet,
 )
 from adell_mri.transform_factory.transforms import ClassificationTransforms
-from adell_mri.utils.dataset_filters import (
-    filter_dictionary_with_filters,
-    filter_dictionary_with_presence,
-)
+from adell_mri.utils.dataset import Dataset
 from adell_mri.utils.network_factories import get_classification_network
 from adell_mri.utils.parser import get_params, merge_args, parse_ids
 from adell_mri.utils.python_logging import get_logger
@@ -73,7 +70,7 @@ def main(arguments):
         param_dict = get_params(args.params_from)
         args = merge_args(args, param_dict, sys.argv[1:])
 
-    data_dict = json.load(open(args.dataset_json, "r"))
+    data_dict = Dataset(args.dataset_json)
 
     if args.clinical_feature_keys is None:
         clinical_feature_keys = []
@@ -84,23 +81,18 @@ def main(arguments):
         args.excluded_ids = parse_ids(args.excluded_ids, output_format="list")
         logger.info("Removing IDs specified in --excluded_ids")
         prev_len = len(data_dict)
-        data_dict = {
-            k: data_dict[k] for k in data_dict if k not in args.excluded_ids
-        }
+        data_dict.subsample_dataset(excluded_key_list=args.excluded_ids)
         logger.info("Removed %s IDs", prev_len - len(data_dict))
-    if len(args.filter_on_keys) > 0:
-        data_dict = filter_dictionary_with_filters(
-            data_dict, args.filter_on_keys
-        )
     presence_keys = args.image_keys + clinical_feature_keys
     if args.mask_key is not None:
         presence_keys.append(args.mask_key)
-    data_dict = filter_dictionary_with_presence(
-        data_dict, args.image_keys + clinical_feature_keys
+    data_dict.filter_dictionary(
+        filters=args.filter_on_keys,
+        filters_presence=presence_keys,
     )
     if len(clinical_feature_keys) > 0:
-        data_dict = filter_dictionary_with_filters(
-            data_dict, [f"{k}!=nan" for k in clinical_feature_keys]
+        data_dict.filter_dictionary(
+            filters=[f"{k}!=nan" for k in clinical_feature_keys]
         )
 
     if len(data_dict) == 0:
@@ -114,7 +106,6 @@ def main(arguments):
     keys = args.image_keys
     adc_keys = args.adc_keys if args.adc_keys is not None else []
     adc_keys = [k for k in adc_keys if k in keys]
-    mask_key = args.mask_key
     input_keys = deepcopy(keys)
     if args.mask_key is not None:
         input_keys.append(args.mask_key)
@@ -150,7 +141,7 @@ def main(arguments):
     label_mode = "binary" if args.n_classes == 2 else "cat"
     transform_arguments = {
         "keys": keys,
-        "mask_key": mask_key,
+        "mask_key": args.mask_key,
         "clinical_feature_keys": clinical_feature_keys,
         "adc_keys": adc_keys,
         "target_spacing": args.target_spacing,

@@ -50,10 +50,6 @@ def if_none_else(x, obj):
     return x
 
 
-def inter_size(a, b):
-    return len(set.intersection(set(a), set(b)))
-
-
 def get_first(*lists):
     for ll in lists:
         if ll is not None:
@@ -182,18 +178,7 @@ def main(arguments):
 
     data_dict = Dataset(args.dataset_json, rng=rng)
     if args.missing_to_empty is None:
-        data_dict.dataset = {
-            k: data_dict.dataset[k]
-            for k in data_dict.dataset
-            if inter_size(data_dict[k], set(all_keys_t)) == len(all_keys_t)
-        }
-    else:
-        if "mask" in args.missing_to_empty:
-            data_dict.dataset = {
-                k: data_dict.dataset[k]
-                for k in data_dict.dataset
-                if inter_size(data_dict[k], set(mask_image_keys)) >= 0
-            }
+        data_dict.filter_dictionary(filters_presence=all_keys_t)
 
     data_dict.apply_filters(**vars(args))
 

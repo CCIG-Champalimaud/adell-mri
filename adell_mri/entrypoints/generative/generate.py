@@ -213,18 +213,15 @@ def main(arguments):
         transforms = GenerationTransforms(**transform_args).transforms()
         transforms.set_random_state(args.seed)
         data_dict = Dataset(args.dataset_json, rng=rng)
-        data_dict.dataset = {
-            k: {**v, "key": k} for k, v in data_dict.dataset.items()
-        }
+        for k in list(data_dict.keys()):
+            data_dict[k] = {**data_dict[k], "key": k}
         if args.excluded_ids is not None:
             args.excluded_ids = parse_ids(
                 args.excluded_ids, output_format="list"
             )
             logger.info("Removing IDs specified in --excluded_ids")
             prev_len = len(data_dict)
-            data_dict = {
-                k: data_dict[k] for k in data_dict if k not in args.excluded_ids
-            }
+            data_dict.subsample_dataset(excluded_key_list=args.excluded_ids)
             logger.info("Removed %s IDs", prev_len - len(data_dict))
         data_dict.filter_dictionary(
             filters_presence=presence_keys,

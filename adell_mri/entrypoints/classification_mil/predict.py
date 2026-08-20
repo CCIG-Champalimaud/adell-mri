@@ -89,9 +89,7 @@ def main(arguments):
     if args.excluded_ids is not None:
         excluded_ids = parse_ids(args.excluded_ids, output_format="list")
         a = len(data_dict)
-        data_dict = {
-            k: data_dict[k] for k in data_dict if k not in excluded_ids
-        }
+        data_dict.subsample_dataset(excluded_key_list=excluded_ids)
         logger.info("Excluded %s cases with --excluded_ids", a - len(data_dict))
 
     data_dict.filter_dictionary(

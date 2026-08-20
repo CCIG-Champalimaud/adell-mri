@@ -128,7 +128,7 @@ def main(arguments):
     if args.resize_size is not None:
         args.resize_size = [round(x) for x in args.resize_size]
 
-    data_dict = Dataset(args.dataset_json, "r")
+    data_dict = Dataset(args.dataset_json)
     data_dict.filter_dictionary(
         filters_presence=args.image_keys,
         possible_labels=None,
@@ -140,38 +140,20 @@ def main(arguments):
         data_dict.subsample_dataset(excluded_key_list=args.excluded_ids)
 
     if args.missing_to_empty is None:
-        data_dict = {
-            k: data_dict[k]
-            for k in data_dict
-            if inter_size(data_dict[k], set(all_keys_t)) == len(all_keys_t)
-        }
-    else:
-        if "image" in args.missing_to_empty:
-            obl_keys = [*aux_keys, *aux_mask_keys, *feature_keys]
-            opt_keys = keys
-            data_dict = {
-                k: data_dict[k]
-                for k in data_dict
-                if inter_size(data_dict[k], obl_keys) == len(obl_keys)
-            }
-            data_dict = {
-                k: data_dict[k]
-                for k in data_dict
-                if inter_size(data_dict[k], opt_keys) > 0
-            }
-        if "mask" in args.missing_to_empty:
-            data_dict = {
-                k: data_dict[k]
-                for k in data_dict
-                if inter_size(data_dict[k], set(mask_image_keys)) >= 0
-            }
+        data_dict.filter_dictionary(filters_presence=all_keys_t)
+    elif "image" in args.missing_to_empty:
+        obl_keys = [*aux_keys, *aux_mask_keys, *feature_keys]
+        opt_keys = keys
+        data_dict.filter_dictionary(filters_presence=obl_keys)
+        keep_ids = [
+            k for k in data_dict if inter_size(data_dict[k], set(opt_keys)) > 0
+        ]
+        data_dict.subsample_dataset(key_list=keep_ids)
 
-    for kk in feature_keys:
-        data_dict.dataset = {
-            k: data_dict[k]
-            for k in data_dict
-            if np.isnan(data_dict[k][kk]) == False  # noqa
-        }
+    if len(feature_keys) > 0:
+        data_dict.filter_dictionary(
+            filters=[f"{kk}!=nan" for kk in feature_keys]
+        )
 
     network_config, loss_key = parse_config_unet(
         args.config_file, len(keys), n_classes
@@ -306,7 +288,7 @@ def main(arguments):
     pred_mode = args.prediction_mode
     for pred_idx in range(n_data):
         pred_ids = [k for k in args.prediction_ids[pred_idx] if k in data_dict]
-        curr_dict = {k: data_dict[k] for k in pred_ids}
+        curr_dict = data_dict[pred_ids]
 
         transform_input = transforms[0]
         transforms_preprocess = transforms[1:]
