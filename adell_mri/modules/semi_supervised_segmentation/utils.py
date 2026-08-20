@@ -3,11 +3,11 @@ Some minor utilities for semi-supervied learning modules.
 """
 
 from itertools import product
-from typing import Any, Dict, List
+from typing import Any
 
 
 def convert_arguments_pre(
-    transform_arguments: Dict[str, Any], image_keys: List[str]
+    transform_arguments: dict[str, Any], image_keys: list[str]
 ):
     """
     Converts the transform arguments dictionary for use in semi-supervised learning.
@@ -25,9 +25,7 @@ def convert_arguments_pre(
     Returns:
         A new dict with modified arguments for semi-supervised learning.
     """
-    transform_arguments_semi_sl = {
-        k: transform_arguments[k] for k in transform_arguments
-    }
+    transform_arguments_semi_sl = dict(transform_arguments)
     transform_arguments_semi_sl["label_keys"] = None
     transform_arguments_semi_sl["all_keys"] = image_keys
     transform_arguments_semi_sl["image_keys"] = image_keys
@@ -43,7 +41,7 @@ def convert_arguments_pre(
 
 
 def convert_arguments_post(
-    transform_arguments: Dict[str, Any], idx: int, image_keys: List[str]
+    transform_arguments: dict[str, Any], idx: int, image_keys: list[str]
 ):
     """
     Converts the transform arguments dictionary for use in semi-supervised learning.
@@ -63,9 +61,7 @@ def convert_arguments_post(
         A new dict with modified arguments for semi-supervised learning.
     """
 
-    transform_arguments_semi_sl = {
-        k: transform_arguments[k] for k in transform_arguments
-    }
+    transform_arguments_semi_sl = dict(transform_arguments)
     transform_arguments_semi_sl["label_keys"] = None
     transform_arguments_semi_sl["all_keys"] = image_keys
     transform_arguments_semi_sl["track_meta"] = True
@@ -77,7 +73,7 @@ def convert_arguments_post(
 
 
 def convert_arguments_augment_all(
-    augment_arguments: Dict[str, Any], image_keys: List[str]
+    augment_arguments: dict[str, Any], image_keys: list[str]
 ):
     """
     Converts the augmentation transform arguments dictionary for use in semi-
@@ -87,6 +83,9 @@ def convert_arguments_augment_all(
     for use in semi-supervised learning, where unlabeled images will be
     augmented. It removes the label keys, sets a new output image key,
     tracks metadata, and sets new image keys for the augmented images.
+    The ``augment`` list is fixed to the geometric augmentations
+    (``["affine", "shear", "flip"]``) which are applied jointly to both
+    views, ignoring the user-provided augmentation specification.
 
     Args:
         transform_arguments: The original transform arguments dict.
@@ -96,9 +95,7 @@ def convert_arguments_augment_all(
     Returns:
         A new dict with modified arguments for semi-supervised learning.
     """
-    augment_arguments_semi_sl = {
-        k: augment_arguments[k] for k in augment_arguments
-    }
+    augment_arguments_semi_sl = dict(augment_arguments)
     augment_arguments_semi_sl["augment"] = [
         "affine",
         "shear",
@@ -115,7 +112,7 @@ def convert_arguments_augment_all(
 
 
 def convert_arguments_augment_individual(
-    augment_arguments: Dict[str, Any], idx: int, image_keys: List[str]
+    augment_arguments: dict[str, Any], idx: int, image_keys: list[str]
 ):
     """
     Converts the augmentation transform arguments dictionary for use in semi-
@@ -125,6 +122,10 @@ def convert_arguments_augment_individual(
     for use in semi-supervised learning, where unlabeled images will be
     augmented. It removes the label keys, sets a new output image key,
     tracks metadata, and sets new image keys for the augmented images.
+    The ``augment`` list is fixed to the intensity-based augmentations
+    (``["intensity", "noise", "rbf", "blur", "trivial"]``) which are applied
+    independently to each view, ignoring the user-provided augmentation
+    specification.
 
     Args:
         transform_arguments (dict[str, Any]): The original transform arguments
@@ -136,9 +137,7 @@ def convert_arguments_augment_individual(
     Returns:
         A new dict with modified arguments for semi-supervised learning.
     """
-    augment_arguments_semi_sl = {
-        k: augment_arguments[k] for k in augment_arguments
-    }
+    augment_arguments_semi_sl = dict(augment_arguments)
     augment_arguments_semi_sl["augment"] = [
         "intensity",
         "noise",
