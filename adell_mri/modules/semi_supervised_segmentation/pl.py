@@ -2,12 +2,12 @@
 Lightning modules of semi-supervised learning methods.
 """
 
-from typing import Callable
+from collections.abc import Callable
 
 import numpy as np
 import torch
 
-from adell_mri.custom_types import TensorDict, TensorList
+from adell_mri.custom_types import TensorDict
 from adell_mri.modules.segmentation.pl import UNetBasePL, update_metrics
 from adell_mri.modules.semi_supervised_segmentation.unet import UNetSemiSL
 from adell_mri.utils.optimizer_factory import OPTIMIZER_EPS_DEFAULT
@@ -25,20 +25,20 @@ class UNetContrastiveSemiSL(UNetSemiSL, UNetBasePL):
         semi_sl_image_key_1: str = "semi_sl_image_1",
         semi_sl_image_key_2: str = "semi_sl_image_2",
         label_key: str = "label",
-        skip_conditioning_key: str = None,
-        feature_conditioning_key: str = None,
+        skip_conditioning_key: str | None = None,
+        feature_conditioning_key: str | None = None,
         optimizer_str: str = "sgd",
         optimizer_eps: float = OPTIMIZER_EPS_DEFAULT,
         learning_rate: float = 0.001,
-        lr_encoder: float = None,
+        lr_encoder: float | None = None,
         start_decay: float | int = 1.0,
         warmup_steps: float | int = 0,
         batch_size: int = 4,
         n_epochs: int = 100,
         weight_decay: float = 0.005,
-        training_dataloader_call: Callable = None,
+        training_dataloader_call: Callable | None = None,
         loss_fn: Callable = torch.nn.functional.binary_cross_entropy,
-        loss_params: dict = {},
+        loss_params: dict | None = None,
         loss_fn_semi_sl: Callable = torch.nn.functional.mse_loss,
         ema: torch.nn.Module = None,
         stop_gradient: bool = True,
@@ -52,8 +52,8 @@ class UNetContrastiveSemiSL(UNetSemiSL, UNetBasePL):
                 dataloader.
             semi_sl_image_key_1 (str, optional): key corresponding to augmented
                 image 1 with no annotations. Defaults to "semi_sl_image_1".
-            semi_sl_image_key_1 (str, optional): key corresponding to augmented
-                image 2 with no annotations. Defaults to "semi_sl_image_1".
+            semi_sl_image_key_2 (str, optional): key corresponding to augmented
+                image 2 with no annotations. Defaults to "semi_sl_image_2".
             label_key (str): key corresponding to the label map from the train
                 dataloader.
             skip_conditioning_key (str, optional): key corresponding to
@@ -91,7 +91,7 @@ class UNetContrastiveSemiSL(UNetSemiSL, UNetBasePL):
                 (EMA) for teacher. Must have an update method that takes model
                 as input and updates the weights based on this. Defaults to None.
             stop_gradient (bool, optional): stops gradients when calculating
-                losses. Defaults to False.
+                losses. Defaults to True.
             picai_eval (bool, optional): evaluates network using PI-CAI
                 metrics as well (can be a bit long).
             args: arguments for UNet class.
@@ -166,7 +166,12 @@ class UNetContrastiveSemiSL(UNetSemiSL, UNetBasePL):
 
     def unpack_batch_semi_sl(
         self, batch: dict[str, TensorDict] | TensorDict
-    ) -> TensorDict:
+    ) -> tuple[
+        torch.Tensor | None,
+        torch.Tensor | None,
+        torch.Tensor | None,
+        torch.Tensor | None,
+    ]:
         """
         Unpacks batch for semi-supervised learning.
 
@@ -212,18 +217,21 @@ class UNetContrastiveSemiSL(UNetSemiSL, UNetBasePL):
         else:
             return op(**kwargs)
 
-    def coherce_batch_size(self, *tensors: TensorList) -> TensorList:
+    def coerce_batch_size(
+        self, *tensors: torch.Tensor | None
+    ) -> list[torch.Tensor | None]:
         """
         Ensures that all tensors have at most min(batch size) elements.
 
         Args:
-            *tensors (TensorList): list of tensors.
+            *tensors (torch.Tensor | None): list of tensors.
 
         Returns:
-            TensorList: list of tensors with at most min(batch_size) elements.
+            list[torch.Tensor | None]: list of tensors with at most
+                min(batch_size) elements.
         """
         batch_sizes = [x.shape[0] if x is not None else np.inf for x in tensors]
-        min_batch_size = min(batch_sizes)
+        min_batch_size = int(min(batch_sizes))
         tensors = [
             x[:min_batch_size] if x is not None else None
             for x, bs in zip(tensors, batch_sizes)
@@ -296,7 +304,7 @@ class UNetContrastiveSemiSL(UNetSemiSL, UNetBasePL):
             torch.Tensor: loss for self-supervised learning step.
         """
 
-        x, x_1, x_2, x_cond, x_fc = self.coherce_batch_size(
+        x, x_1, x_2, x_cond, x_fc = self.coerce_batch_size(
             x, x_1, x_2, x_cond, x_fc
         )
         with torch.no_grad():
@@ -377,8 +385,17 @@ class UNetContrastiveSemiSL(UNetSemiSL, UNetBasePL):
         Returns:
             torch.Tensor: loss value.
         """
+        x, y, pred_final, pred_class, y_class, class_loss = (
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        output_loss = torch.as_tensor(0.0, device=self.device)
+
         # supervised bit
-        x = None
         if self.label_key is not None:
             x, x_cond, x_fc, y, y_class = self.unpack_batch(batch)
             pred_final, pred_class, loss, class_loss = self.step(
@@ -388,6 +405,13 @@ class UNetContrastiveSemiSL(UNetSemiSL, UNetBasePL):
                 loss.mean() if class_loss is None else loss.mean() + class_loss
             )
             self.log_loss("train_loss", loss, batch_size=y.shape[0])
+            if class_loss is not None:
+                self.log(
+                    "train_cl_loss",
+                    class_loss,
+                    batch_size=y.shape[0],
+                    sync_dist=True,
+                )
 
         # self-supervised bit
         if (
@@ -399,7 +423,7 @@ class UNetContrastiveSemiSL(UNetSemiSL, UNetBasePL):
             self.log(
                 "train_self_sl_loss",
                 self_sl_loss,
-                batch_size=y.shape[0],
+                batch_size=y.shape[0] if y is not None else x_1.shape[0],
                 prog_bar=True,
                 sync_dist=True,
             )
@@ -407,29 +431,22 @@ class UNetContrastiveSemiSL(UNetSemiSL, UNetBasePL):
             if self.ema is not None:
                 self.ema.update(self)
 
-        if class_loss is not None:
-            self.log(
-                "train_cl_loss",
-                class_loss,
-                batch_size=y.shape[0],
-                sync_dist=True,
+        if y is not None:
+            self.check_loss(x, y, pred_final, output_loss)
+
+            update_metrics(
+                self,
+                self.train_metrics,
+                pred_final,
+                y,
+                pred_class,
+                y_class,
+                on_epoch=True,
+                on_step=False,
+                prog_bar=True,
             )
 
-        self.check_loss(x, y, pred_final, output_loss)
-
-        update_metrics(
-            self,
-            self.train_metrics,
-            pred_final,
-            y,
-            pred_class,
-            y_class,
-            on_epoch=True,
-            on_step=False,
-            prog_bar=True,
-        )
-
-        self.train_batch_size = x.shape[0]
+            self.train_batch_size = x.shape[0]
 
         return output_loss
 
@@ -446,6 +463,7 @@ class UNetContrastiveSemiSL(UNetSemiSL, UNetBasePL):
         """
 
         output_loss = torch.as_tensor(0.0).to(self.device)
+        y = None
         if self.label_key is not None:
             x, x_cond, x_fc, y, y_class = self.unpack_batch(batch)
 
@@ -506,12 +524,12 @@ class UNetContrastiveSemiSL(UNetSemiSL, UNetBasePL):
                 "val_self_sl_loss",
                 self_sl_loss,
                 prog_bar=True,
-                batch_size=y.shape[0],
+                batch_size=y.shape[0] if y is not None else x_1.shape[0],
                 sync_dist=True,
                 on_epoch=True,
                 on_step=False,
             )
-            output_loss = output_loss + self_sl_loss.mean()
+            output_loss = output_loss + self_sl_loss
         return output_loss
 
     def test_step(self, batch, batch_idx):
@@ -527,6 +545,8 @@ class UNetContrastiveSemiSL(UNetSemiSL, UNetBasePL):
         """
 
         output_loss = torch.as_tensor(0.0).to(self.device)
+        if self.label_key is None:
+            return output_loss
         x, x_cond, x_fc, y, y_class = self.unpack_batch(batch)
 
         bs = x.shape[0]
@@ -551,7 +571,7 @@ class UNetContrastiveSemiSL(UNetSemiSL, UNetBasePL):
             if self.picai_eval is True:
                 for s_p, s_y in zip(
                     pred_final.squeeze(1).detach().cpu().numpy(),
-                    y.squeeze(1).detach().cpu().numpy(),
+                    y[m:M].squeeze(1).detach().cpu().numpy(),
                 ):
                     self.all_pred.append(s_p)
                     self.all_true.append(s_y)
