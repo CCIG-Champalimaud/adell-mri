@@ -39,6 +39,7 @@ from adell_mri.utils.sitk_utils import (
 )
 from adell_mri.utils.torch_utils import (
     get_generator_and_rng,
+    get_global_rank,
     get_segmentation_sample_weights,
 )
 from adell_mri.utils.utils import (
@@ -541,10 +542,14 @@ def main(arguments):
             )
             if args.constant_ratio is not None:
                 sampler = PartiallyRandomSampler(
-                    cl, non_keep_ratio=args.constant_ratio, seed=args.seed
+                    cl,
+                    non_keep_ratio=args.constant_ratio,
+                    seed=args.seed + get_global_rank(),
                 )
                 val_sampler = PartiallyRandomSampler(
-                    cl_val, non_keep_ratio=args.constant_ratio, seed=args.seed
+                    cl_val,
+                    non_keep_ratio=args.constant_ratio,
+                    seed=args.seed + get_global_rank(),
                 )
                 if args.samples_per_epoch is not None:
                     sampler.set_n_samples(args.samples_per_epoch)

@@ -6,6 +6,7 @@ import torch
 import torch.nn.functional as F
 
 from adell_mri.utils.monai_transforms.image_ops import Dropout
+from adell_mri.utils.torch_utils import get_global_rank
 
 
 class RandomAffined(monai.transforms.RandomizableTransform):
@@ -153,6 +154,8 @@ class RandomSlices(monai.transforms.RandomizableTransform):
         self.g = torch.Generator()
         if self.seed is not None:
             self.g.manual_seed(self.seed)
+        else:
+            self.g.manual_seed(get_global_rank())
         self.is_multiclass = None
         self.M = 0
 

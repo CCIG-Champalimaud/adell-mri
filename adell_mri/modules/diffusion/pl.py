@@ -18,6 +18,7 @@ from adell_mri.modules.classification.pl import meta_tensors_to_tensors
 from adell_mri.modules.diffusion.embedder import Embedder
 from adell_mri.modules.learning_rate import CosineAnnealingWithWarmupLR
 from adell_mri.utils.optimizer_factory import OPTIMIZER_EPS_DEFAULT
+from adell_mri.utils.torch_utils import get_global_rank
 
 
 class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
@@ -64,8 +65,8 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
         self.optimizer_eps = optimizer_eps
 
         self.g = torch.Generator()
-        self.g.manual_seed(self.seed)
-        self.rng = np.random.default_rng(self.seed)
+        self.g.manual_seed(self.seed + get_global_rank())
+        self.rng = np.random.default_rng(self.seed + get_global_rank())
         self.noise_steps = self.scheduler.num_train_timesteps
         self.loss_fn = torch.nn.MSELoss()
 

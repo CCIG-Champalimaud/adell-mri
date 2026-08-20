@@ -33,7 +33,7 @@ from adell_mri.utils.sitk_utils import (
     get_spacing_quantile,
     spacing_values_from_dataset_json,
 )
-from adell_mri.utils.torch_utils import get_generator_and_rng
+from adell_mri.utils.torch_utils import get_generator_and_rng, get_global_rank
 from adell_mri.utils.utils import (
     collate_last_slice,
     get_loss_param_dict,
@@ -415,7 +415,9 @@ def main(arguments):
             adaptive_pixel_weights = total_pixel_sum / pos_pixel_sum
             if args.constant_ratio is not None:
                 sampler = PartiallyRandomSampler(
-                    cl, non_keep_ratio=args.constant_ratio, seed=args.seed
+                    cl,
+                    non_keep_ratio=args.constant_ratio,
+                    seed=args.seed + get_global_rank(),
                 )
                 if args.class_weights[0] == "adaptive":
                     adaptive_weights = 1 + args.constant_ratio

@@ -139,7 +139,7 @@ class DistributedRandomSampler(torch.utils.data.Sampler):
 
     def __iter__(self):
         g = torch.Generator()
-        g.manual_seed(self.seed + self.epoch)
+        g.manual_seed(self.seed + self.epoch + self.rank)
 
         base_sampler = torch.utils.data.RandomSampler(
             self.dataset,

@@ -20,6 +20,7 @@ from sklearn.cluster import DBSCAN
 
 from adell_mri.custom_types import NDArrayOrTensor, Size2dOr3d, TensorDict
 from adell_mri.utils.python_logging import get_logger
+from adell_mri.utils.torch_utils import get_global_rank
 
 logger = get_logger(__name__)
 
@@ -440,6 +441,8 @@ class RandomSlices(monai.transforms.RandomizableTransform):
         self.g = torch.Generator()
         if self.seed is not None:
             self.g.manual_seed(self.seed)
+        else:
+            self.g.manual_seed(get_global_rank())
         self.is_multiclass = None
         self.M = 0
 

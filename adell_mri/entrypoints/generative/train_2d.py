@@ -29,6 +29,7 @@ from adell_mri.utils.python_logging import get_logger as get_python_logger
 from adell_mri.utils.torch_utils import (
     conditional_parameter_freezing,
     get_generator_and_rng,
+    get_global_rank,
     load_checkpoint_to_model,
 )
 from adell_mri.utils.utils import safe_collate
@@ -270,7 +271,10 @@ def main(arguments):
     else:
         n_samples = None
     sampler = SliceSampler(
-        train_list, n_iterations=args.n_series_iterations, n_samples=n_samples
+        train_list,
+        n_iterations=args.n_series_iterations,
+        n_samples=n_samples,
+        seed=args.seed + get_global_rank(),
     )
 
     if isinstance(devices, list):
