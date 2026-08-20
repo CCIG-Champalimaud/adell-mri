@@ -69,7 +69,7 @@ def fetch_specifications(state_dict: dict[str, Any]):
     transform_args = metadata["transform_arguments"]
     if ("pre" in transform_args) and ("post" in transform_args):
         transform_args = transform_args["pre"] | transform_args["post"]
-    spacing = metadata["transform_arguments"]["pre"]["target_spacing"]
+    spacing = metadata["transform_arguments"]["target_spacing"]
     return network_config, cat_spec, num_spec, spacing, transform_args
 
 
@@ -210,7 +210,7 @@ def main(arguments):
     network = network.to(dtype=inference_dtype)
     if args.dataset_json is not None:
         logger.info("Setting up transforms...")
-        transforms = GenerationTransforms(transform_args).transforms()
+        transforms = GenerationTransforms(**transform_args).transforms()
         transforms.set_random_state(args.seed)
         data_dict = Dataset(args.dataset_json, rng=rng)
         data_dict.dataset = {
@@ -255,7 +255,7 @@ def main(arguments):
         )
         dataloader = torch.utils.data.DataLoader(
             dataset,
-            batch_size=args.batch_size,
+            batch_size=network_config["batch_size"],
             shuffle=False,
             num_workers=args.n_workers,
             pin_memory=True,
