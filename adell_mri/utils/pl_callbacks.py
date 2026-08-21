@@ -326,7 +326,7 @@ class LogImage(Callback):
                 for idx in self.output_idxs:
                     log_image(
                         trainer,
-                        key,
+                        f"output.{idx}",
                         outputs[idx],
                         slice_dim=self.slice_dim,
                         n_slices_out=self.n_slices,
