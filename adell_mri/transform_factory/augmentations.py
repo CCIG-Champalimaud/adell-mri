@@ -225,6 +225,9 @@ def get_augmentations_class(
                 monai.transforms.RandStdShiftIntensityd(
                     image_keys, factors=0.1, prob=prob
                 ),
+                monai.transforms.RandShiftIntensityd(
+                    image_keys, offsets=0.1, prob=prob
+                ),
             ]
         )
 
@@ -247,21 +250,6 @@ def get_augmentations_class(
                 zoom_range=[0.8, 1.2],
                 prob=prob,
             )
-        )
-
-    if "intensity" in augment:
-        augments.extend(
-            [
-                monai.transforms.RandAdjustContrastd(
-                    image_keys, gamma=(0.5, 1.5), prob=prob
-                ),
-                monai.transforms.RandStdShiftIntensityd(
-                    image_keys, factors=0.1, prob=prob
-                ),
-                monai.transforms.RandShiftIntensityd(
-                    image_keys, offsets=0.1, prob=prob
-                ),
-            ]
         )
 
     if "flip" in augment:
