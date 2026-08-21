@@ -59,11 +59,11 @@ def calculate_sn_weights(state_dict: dict) -> dict:
 def load_checkpoint_to_model(
     model: torch.nn.Module,
     checkpoint: str | dict[str, torch.Tensor],
-    exclude_from_state_dict: list[str] = [],
+    exclude_from_state_dict: list[str] | None = None,
     weights_only: bool = False,
     *args,
     **kwargs,
-) -> torch.nn.Module:
+) -> None:
     """
     Loads a checkpoint into a PyTorch model.
 
@@ -76,10 +76,10 @@ def load_checkpoint_to_model(
         checkpoint (str | dict[str, torch.Tensor]): Checkpoint file path or
             dict containing state dict.
         exclude_from_state_dict (list[str], optional): List of regex patterns to
-            exclude from state dict. Defaults to [].
+            exclude from state dict. Defaults to None.
 
     Returns:
-      Model with loaded state dict.
+        None: the model is updated in place.
 
     Raises:
       Exception: If state dict contains keys not in model.
@@ -96,7 +96,7 @@ def load_checkpoint_to_model(
 
     sd = calculate_sn_weights(sd)
 
-    if exclude_from_state_dict:
+    if exclude_from_state_dict is not None:
         for pattern in exclude_from_state_dict:
             n = len(sd)
             sd = {k: sd[k] for k in sd if re.search(pattern, k) is None}

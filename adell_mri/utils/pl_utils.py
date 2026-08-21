@@ -265,7 +265,7 @@ def get_ckpt_callback(
     monitor: str = "val_loss",
     n_best_ckpts: int = 1,
     metadata: dict = None,
-) -> ModelCheckpoint:
+) -> tuple[ModelCheckpoint, str, str]:
     """
     Gets a checkpoint callback for PyTorch Lightning. The format for
         for the last and 2 best checkpoints, respectively is:
