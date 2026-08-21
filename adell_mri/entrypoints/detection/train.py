@@ -89,6 +89,7 @@ def main(arguments):
             "subsample_size",
             "dropout_param",
             "iou_threshold",
+            "precision",
             "spectral_norm_power_iterations",
         ]
     )
@@ -248,7 +249,7 @@ def main(arguments):
         class_weights = class_weights.to(args.dev)
 
         def train_loader_call():
-            monai.data.ThreadDataLoader(
+            return monai.data.ThreadDataLoader(
                 train_dataset,
                 batch_size=network_config["batch_size"],
                 shuffle=True,
@@ -259,7 +260,6 @@ def main(arguments):
                 persistent_workers=args.n_workers > 0,
             )
 
-        train_loader = train_loader_call()
         train_val_loader = monai.data.ThreadDataLoader(
             train_dataset_val,
             batch_size=network_config["batch_size"],
@@ -287,7 +287,7 @@ def main(arguments):
             loss_gamma=args.loss_gamma,
             loss_comb=args.loss_comb,
             class_weights=class_weights,
-            train_loader_call=train_loader,
+            train_loader_call=train_loader_call,
             iou_threshold=args.iou_threshold,
             anchor_array=anchor_array,
             n_epochs=args.max_epochs,
