@@ -128,6 +128,7 @@ def main(arguments):
             "metric_path",
             "early_stopping",
             ("class_weights", "class_weights", {"default": [1.0]}),
+            "cosine_decay",
             "spectral_norm_power_iterations",
         ]
     )
