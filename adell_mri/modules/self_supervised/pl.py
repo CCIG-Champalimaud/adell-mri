@@ -3,7 +3,7 @@ Implements Lightning-based training utilities.
 """
 
 import warnings
-from abc import ABC
+from abc import ABC, abstractmethod
 from typing import Any
 
 import lightning.pytorch as pl
@@ -228,6 +228,136 @@ class SelfSLBasePL(pl.LightningModule, ABC):
         else:
             return sum(X)
 
+    def forward_ema_stop_grad(self, x, ret=None):
+        """
+        Runs the forward pass through the EMA teacher (if any) or the
+        network itself, optionally stopping gradients.
+
+        Args:
+            x (torch.Tensor): input tensor.
+            ret (str, optional): return specifier forwarded to networks that
+                support multiple outputs. Defaults to None.
+
+        Returns:
+            torch.Tensor: network output.
+        """
+        if self.ema is not None:
+            op = self.ema.shadow.forward
+        else:
+            op = self.forward
+        kwargs = {} if ret is None else {"ret": ret}
+        if self.stop_gradient is True:
+            with torch.no_grad():
+                return op(x, **kwargs)
+        else:
+            return op(x, **kwargs)
+
+    @abstractmethod
+    def _forward_representation(self, x, ret):
+        """
+        Runs the network forward pass with an optional return specifier.
+        Must be implemented by subclasses whose ``forward`` signatures
+        differ.
+        """
+
+    @abstractmethod
+    def _get_ret_strings(self, batch) -> tuple:
+        """
+        Returns the return specifiers and additional loss arguments for a
+        given batch. Must be implemented by subclasses.
+        """
+
+    def _log_sub_losses(self, losses, loss_str, batch_size):
+        """
+        Logs sub-losses for VICReg/VICRegL if applicable.
+
+        Args:
+            losses (torch.Tensor | list[torch.Tensor]): individual loss terms.
+            loss_str (str): the main loss string used as prefix.
+            batch_size (int): current batch size.
+        """
+        if self.ssl_method == "vicregl":
+            loss_str_list = self.loss_str_dict["vicregl"]
+        elif self.ssl_method == "vicreg":
+            loss_str_list = self.loss_str_dict["vicreg"]
+        else:
+            return
+        for s, loss_value in zip(loss_str_list, losses):
+            if s is not None:
+                sub_loss_str = "{}:{}".format(loss_str, s)
+            else:
+                sub_loss_str = loss_str
+            self.log(
+                sub_loss_str,
+                loss_value,
+                batch_size=batch_size,
+                on_epoch=True,
+                on_step=False,
+                prog_bar=True,
+                sync_dist=True,
+            )
+
+    def step(self, batch, loss_str: str, metrics: dict, train=False):
+        """
+        Performs a single training/validation/test step.
+
+        Args:
+            batch (dict): batch containing the two augmented views.
+            loss_str (str): string under which the loss is logged.
+            metrics (dict): metric dictionary to update.
+            train (bool, optional): whether this is a training step (triggers
+                EMA updates). Defaults to False.
+
+        Returns:
+            torch.Tensor: total loss.
+        """
+        ret_string_1, ret_string_2, other_args = self._get_ret_strings(batch)
+
+        x1, x2 = batch[self.aug_image_key_1], batch[self.aug_image_key_2]
+        if self.channels_to_batch is True:
+            x1 = x1.reshape(-1, 1, *x1.shape[2:])
+            x2 = x2.reshape(-1, 1, *x2.shape[2:])
+        y1 = self._forward_representation(x1, ret_string_1)
+        y2 = self.forward_ema_stop_grad(x2, ret=ret_string_2)
+
+        losses = self.calculate_loss(y1, y2, *other_args)
+        self.update_metrics(y1, y2, metrics)
+
+        # loss is already symmetrised for VICReg, VICRegL and SimCLR
+        if self.ssl_method not in ["vicreg", "vicregl", "simclr"]:
+            y1_ = self.forward_ema_stop_grad(x1, ret=ret_string_1)
+            y2_ = self._forward_representation(x2, ret_string_2)
+            losses = losses + self.calculate_loss(y2_, y1_, *other_args)
+            self.update_metrics(y2_, y1_, metrics)
+
+        if self.ema is not None and train is True:
+            self.ema.update(self)
+
+        loss = self.safe_sum(losses)
+        self.log(
+            loss_str,
+            loss,
+            batch_size=x1.shape[0],
+            on_epoch=True,
+            on_step=False,
+            prog_bar=True,
+            sync_dist=True,
+        )
+        self._log_sub_losses(losses, loss_str, x1.shape[0])
+        return loss
+
+    def training_step(self, batch, batch_idx):
+        loss = self.step(batch, "loss", self.train_metrics, train=True)
+        return loss
+
+    def validation_step(self, batch, batch_idx):
+        loss = self.step(batch, "val_loss", self.val_metrics)
+        return loss
+
+    def test_step(self, batch, batch_idx):
+        loss = self.step(batch, "test_loss", self.test_metrics)
+        return loss
+
     def configure_optimizers(self) -> dict:
         if self.n_steps is not None:
             interval = "step"
@@ -442,18 +572,10 @@ class SelfSLResNetPL(ResNet, SelfSLBasePL):
         self.save_hyperparameters()
         self.setup_metrics()
 
-    def forward_ema_stop_grad(self, x, ret):
-        if self.ema is not None:
-            op = self.ema.shadow.forward
-        else:
-            op = self.forward
-        if self.stop_gradient is True:
-            with torch.no_grad():
-                return op(x, ret)
-        else:
-            return op(x, ret)
+    def _forward_representation(self, x, ret):
+        return self.forward(x, ret=ret)
 
-    def step(self, batch, loss_str: str, metrics: dict, train=False):
+    def _get_ret_strings(self, batch) -> tuple:
         if self.ssl_method == "simclr":
             ret_string_1 = "projection"
             ret_string_2 = "projection"
@@ -468,59 +590,7 @@ class SelfSLResNetPL(ResNet, SelfSLBasePL):
             box_1 = batch[self.box_key_1]
             box_2 = batch[self.box_key_2]
             other_args = [box_1, box_2]
-
-        x1, x2 = batch[self.aug_image_key_1], batch[self.aug_image_key_2]
-        if self.channels_to_batch is True:
-            x1 = x1.reshape(-1, 1, *x1.shape[2:])
-            x2 = x2.reshape(-1, 1, *x2.shape[2:])
-        y1 = self.forward(x1, ret=ret_string_1)
-        y2 = self.forward_ema_stop_grad(x2, ret=ret_string_2)
-
-        losses = self.calculate_loss(y1, y2, *other_args)
-        self.update_metrics(y1, y2, metrics)
-
-        # loss is already symmetrised for VICReg, VICRegL and SimCLR
-        if self.ssl_method not in ["vicreg", "vicregl", "simclr"]:
-            y1_ = self.forward_ema_stop_grad(x1, ret=ret_string_1)
-            y2_ = self.forward(x2, ret=ret_string_2)
-            losses = losses + self.calculate_loss(y2_, y1_, *other_args)
-            self.update_metrics(y2_, y1_, metrics)
-
-        if self.ema is not None and train is True:
-            self.ema.update(self)
-
-        loss = self.safe_sum(losses)
-        self.log(
-            loss_str,
-            loss,
-            batch_size=x1.shape[0],
-            on_epoch=True,
-            on_step=False,
-            prog_bar=True,
-            sync_dist=True,
-        )
-
-        if self.ssl_method == "vicregl":
-            loss_str_list = self.loss_str_dict["vicregl"]
-        elif self.ssl_method == "vicreg":
-            loss_str_list = self.loss_str_dict["vicreg"]
-        else:
-            return loss
-        for loss_s, loss_val in zip(loss_str_list, losses):
-            if loss_s is not None:
-                sub_loss_str = "{}:{}".format(loss_str, loss_s)
-            else:
-                sub_loss_str = loss_str
-            self.log(
-                sub_loss_str,
-                loss_val,
-                batch_size=x1.shape[0],
-                on_epoch=True,
-                on_step=False,
-                prog_bar=True,
-                sync_dist=True,
-            )
-        return loss
+        return ret_string_1, ret_string_2, other_args
 
     def training_step(self, batch, batch_idx):
         loss = self.step(batch, "loss", self.train_metrics, train=True)
@@ -669,79 +739,17 @@ class SelfSLUNetPL(UNet, SelfSLBasePL):
         self.save_hyperparameters()
         self.setup_metrics()
 
-    def forward_ema_stop_grad(self, x):
-        if self.ema is not None:
-            op = self.ema.shadow.forward
-        else:
-            op = self.forward
-        if self.stop_gradient is True:
-            with torch.no_grad():
-                return op(x)
-        else:
-            return op(x)
+    def _forward_representation(self, x, ret):
+        return self.forward(x)
 
-    def step(self, batch, loss_str: str, metrics: dict, train=False):
+    def _get_ret_strings(self, batch) -> tuple:
         if self.ssl_method != "vicregl":
             other_args = []
         else:
             box_1 = batch[self.box_key_1]
             box_2 = batch[self.box_key_2]
             other_args = [box_1, box_2]
-
-        x1, x2 = batch[self.aug_image_key_1], batch[self.aug_image_key_2]
-        if self.channels_to_batch is True:
-            x1 = x1.reshape(-1, 1, *x1.shape[2:])
-            x2 = x2.reshape(-1, 1, *x2.shape[2:])
-        y1 = self.forward(x1)
-        y2 = self.forward_ema_stop_grad(x2)
-
-        losses = self.calculate_loss(y1, y2, *other_args)
-        self.update_metrics(y1, y2, metrics)
-
-        # loss is already symmetrised for VICReg and VICRegL
-        if self.ssl_method not in ["vicreg", "vicregl", "simclr"]:
-            y1_ = self.forward_ema_stop_grad(x1)
-            y2_ = self.forward(x2)
-            losses = losses + self.calculate_loss(y2_, y1_, *other_args)
-            self.update_metrics(y2_, y1_, metrics)
-
-        if self.ema is not None and train is True:
-            self.ema.update(self)
-
-        loss = self.safe_sum(losses)
-        self.log(
-            loss_str,
-            loss,
-            batch_size=x1.shape[0],
-            on_epoch=True,
-            on_step=False,
-            prog_bar=True,
-            sync_dist=True,
-        )
-
-        if self.ssl_method == "vicregl":
-            loss_str_list = self.loss_str_dict["vicregl"]
-        if self.ssl_method == "vicreg":
-            loss_str_list = self.loss_str_dict["vicreg"]
-        else:
-            return loss
-
-        for s, loss_value in zip(loss_str_list, losses):
-            if s is not None:
-                sub_loss_str = "{}:{}".format(loss_str, s)
-            else:
-                sub_loss_str = loss_str
-            self.log(
-                sub_loss_str,
-                loss_value,
-                batch_size=x1.shape[0],
-                on_epoch=True,
-                on_step=False,
-                prog_bar=True,
-                sync_dist=True,
-            )
-
-        return loss
+        return None, None, other_args
 
     def training_step(self, batch, batch_idx):
         loss = self.step(batch, "loss", self.train_metrics, train=True)
@@ -890,18 +898,10 @@ class SelfSLConvNeXtPL(ConvNeXt, SelfSLBasePL):
         self.save_hyperparameters()
         self.setup_metrics()
 
-    def forward_ema_stop_grad(self, x, ret):
-        if self.ema is not None:
-            op = self.ema.shadow.forward
-        else:
-            op = self.forward
-        if self.stop_gradient is True:
-            with torch.no_grad():
-                return op(x, ret)
-        else:
-            return op(x, ret)
+    def _forward_representation(self, x, ret):
+        return self.forward(x, ret=ret)
 
-    def step(self, batch, loss_str: str, metrics: dict, train=False):
+    def _get_ret_strings(self, batch) -> tuple:
         if self.ssl_method == "simclr":
             ret_string_1 = "projection"
             ret_string_2 = "projection"
@@ -916,72 +916,7 @@ class SelfSLConvNeXtPL(ConvNeXt, SelfSLBasePL):
             box_1 = batch[self.box_key_1]
             box_2 = batch[self.box_key_2]
             other_args = [box_1, box_2]
-
-        x1, x2 = batch[self.aug_image_key_1], batch[self.aug_image_key_2]
-
-        if self.channels_to_batch is True:
-            x1 = x1.reshape(-1, 1, *x1.shape[2:])
-            x2 = x2.reshape(-1, 1, *x2.shape[2:])
-        y1 = self.forward(x1, ret=ret_string_1)
-        y2 = self.forward_ema_stop_grad(x2, ret=ret_string_2)
-
-        losses = self.calculate_loss(y1, y2, *other_args)
-        self.update_metrics(y1, y2, metrics)
-
-        # loss is already symmetrised for VICReg, VICRegL and SimCLR
-        if self.ssl_method not in ["vicreg", "vicregl", "simclr"]:
-            y1_ = self.forward_ema_stop_grad(x1, ret=ret_string_1)
-            y2_ = self.forward(x2, ret=ret_string_2)
-            losses = losses + self.calculate_loss(y2_, y1_, *other_args)
-            self.update_metrics(y2_, y1_, metrics)
-
-        if self.ema is not None and train is True:
-            self.ema.update(self)
-
-        loss = self.safe_sum(losses)
-        self.log(
-            loss_str,
-            loss,
-            batch_size=x1.shape[0],
-            on_epoch=True,
-            on_step=False,
-            prog_bar=True,
-            sync_dist=True,
-        )
-
-        if self.ssl_method == "vicregl":
-            loss_str_list = self.loss_str_dict["vicregl"]
-        elif self.ssl_method == "vicreg":
-            loss_str_list = self.loss_str_dict["vicreg"]
-        else:
-            return loss
-        for s, loss_value in zip(loss_str_list, losses):
-            if s is not None:
-                sub_loss_str = "{}:{}".format(loss_str, s)
-            else:
-                sub_loss_str = loss_str
-            self.log(
-                sub_loss_str,
-                loss_value,
-                batch_size=x1.shape[0],
-                on_epoch=True,
-                on_step=False,
-                prog_bar=True,
-                sync_dist=True,
-            )
-        return loss
-
-    def training_step(self, batch, batch_idx):
-        loss = self.step(batch, "loss", self.train_metrics, train=True)
-        return loss
-
-    def validation_step(self, batch, batch_idx):
-        loss = self.step(batch, "val_loss", self.val_metrics)
-        return loss
-
-    def test_step(self, batch, batch_idx):
-        loss = self.step(batch, "test_loss", self.test_metrics)
-        return loss
+        return ret_string_1, ret_string_2, other_args
 
 
 class IJEPAPL(IJEPA, SelfSLBasePL):
