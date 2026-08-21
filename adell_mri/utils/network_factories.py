@@ -738,6 +738,53 @@ def get_segmentation_network(
     return unet
 
 
+def _vit_backbone_defaults() -> dict[str, Any]:
+    """
+    Returns the default ViT backbone arguments for the SSL methods that
+    require a ViT backbone (IJEPA, DINO, iBOT).
+
+    Returns:
+        dict[str, Any]: default backbone arguments.
+    """
+    return {
+        "image_size": [224, 224],
+        "patch_size": [16, 16],
+        "in_channels": 1,
+        "number_of_blocks": 4,
+        "attention_dim": 96,
+        "embedding_size": 96,
+        "n_heads": 3,
+    }
+
+
+def _compute_vit_dims(
+    backbone_args: dict[str, Any],
+) -> tuple[list[int], int]:
+    """
+    Computes the feature map dimensions and the number of encoder features
+    from ViT backbone arguments.
+
+    Args:
+        backbone_args (dict[str, Any]): ViT backbone arguments containing
+            ``image_size``, ``patch_size`` and either ``embedding_size`` or
+            ``attention_dim``.
+
+    Returns:
+        tuple[list[int], int]: feature map dimensions (image size divided by
+            patch size, element-wise) and the number of encoder features.
+    """
+    feature_map_dimensions = [
+        s // p
+        for s, p in zip(
+            backbone_args["image_size"], backbone_args["patch_size"]
+        )
+    ]
+    n_encoder_features = backbone_args.get(
+        "embedding_size", backbone_args["attention_dim"]
+    )
+    return feature_map_dimensions, n_encoder_features
+
+
 @compile_if_necessary
 def get_ssl_network(
     train_loader_call: Callable,
@@ -840,25 +887,10 @@ def get_ssl_network(
                 "IJEPA only supports net_type='vit', got %s" % net_type
             )
         backbone_args: dict = network_config.get(
-            "backbone_args",
-            {
-                "image_size": [224, 224],
-                "patch_size": [16, 16],
-                "in_channels": 1,
-                "number_of_blocks": 4,
-                "attention_dim": 96,
-                "embedding_size": 96,
-                "n_heads": 3,
-            },
+            "backbone_args", _vit_backbone_defaults()
         )
-        feature_map_dimensions = [
-            s // p
-            for s, p in zip(
-                backbone_args["image_size"], backbone_args["patch_size"]
-            )
-        ]
-        n_encoder_features = backbone_args.get(
-            "embedding_size", backbone_args["attention_dim"]
+        feature_map_dimensions, n_encoder_features = _compute_vit_dims(
+            backbone_args
         )
         predictor_head_args: dict = network_config.get(
             "projection_head_args",
@@ -910,16 +942,7 @@ def get_ssl_network(
                 "DINO only supports net_type='vit', got %s" % net_type
             )
         backbone_args: dict = network_config.get(
-            "backbone_args",
-            {
-                "image_size": [224, 224],
-                "patch_size": [16, 16],
-                "in_channels": 1,
-                "number_of_blocks": 4,
-                "attention_dim": 96,
-                "embedding_size": 96,
-                "n_heads": 3,
-            },
+            "backbone_args", _vit_backbone_defaults()
         )
         projection_head_args: dict = network_config.get(
             "projection_head_args",
@@ -948,25 +971,10 @@ def get_ssl_network(
                 "iBOT only supports net_type='vit', got %s" % net_type
             )
         backbone_args: dict = network_config.get(
-            "backbone_args",
-            {
-                "image_size": [224, 224],
-                "patch_size": [16, 16],
-                "in_channels": 1,
-                "number_of_blocks": 4,
-                "attention_dim": 96,
-                "embedding_size": 96,
-                "n_heads": 3,
-            },
+            "backbone_args", _vit_backbone_defaults()
         )
-        feature_map_dimensions = [
-            s // p
-            for s, p in zip(
-                backbone_args["image_size"], backbone_args["patch_size"]
-            )
-        ]
-        n_encoder_features = backbone_args.get(
-            "embedding_size", backbone_args["attention_dim"]
+        feature_map_dimensions, n_encoder_features = _compute_vit_dims(
+            backbone_args
         )
         projection_head_args: dict = network_config.get(
             "projection_head_args",
@@ -1032,9 +1040,6 @@ def get_ssl_network(
         )
 
     else:
-        if ssl_method == "simclr":
-            # simclr only uses a projection head, no prediction head
-            del network_config["prediction_head_args"]
         boilerplate = {
             "training_dataloader_call": train_loader_call,
             "aug_image_key_1": "augmented_image_1",
