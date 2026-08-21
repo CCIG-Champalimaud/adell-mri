@@ -171,24 +171,7 @@ def multi_format_cat(
     Returns:
         Concatenated multi-format input matching X's format.
     """
-    if isinstance(X[0], (np.ndarray, torch.Tensor)):
-        return cat_array(X, *args, **kwargs)
-    elif isinstance(X[0], dict):
-        output = {k: [] for k in X[0]}
-        for x in X:
-            for k in x:
-                output[k].append(x[k])
-        return {k: cat_array(output[k]) for k in output}
-    elif isinstance(X[0], (tuple, list)):
-        output = [[] for _ in X[0]]
-        for x in X:
-            for i in range(len(x)):
-                output[i].append(x[i])
-        return [cat_array(o) for o in output]
-    else:
-        raise NotImplementedError(
-            "Supported inputs are np.ndarray, dict, tuple, list"
-        )
+    return _multi_format_reduce(X, cat_array, *args, **kwargs)
 
 
 def multi_format_stack(
@@ -209,20 +192,44 @@ def multi_format_stack(
     Returns:
         Stacked multi-format input matching X's format.
     """
+    return _multi_format_reduce(X, stack_array, *args, **kwargs)
+
+
+def _multi_format_reduce(
+    X: List[MultiFormatInput],
+    reduce_fn: Callable[[List[TensorOrArray]], TensorOrArray],
+    *args,
+    **kwargs,
+) -> MultiFormatInput:
+    """
+    Applies a reduction function to a list of multi-format inputs
+    (np.ndarray, torch.Tensor, dict, tuple, list).
+
+    Dicts are reduced by key, tuples/lists are reduced by index.
+
+    Args:
+        X: List of multi-format inputs to reduce.
+        reduce_fn: the reduction function (e.g. `cat_array` or `stack_array`).
+        *args: Additional args to pass to reduce_fn.
+        **kwargs: Additional kwargs to pass to reduce_fn.
+
+    Returns:
+        Reduced multi-format input matching X's format.
+    """
     if isinstance(X[0], (np.ndarray, torch.Tensor)):
-        return stack_array(X, *args, **kwargs)
+        return reduce_fn(X, *args, **kwargs)
     elif isinstance(X[0], dict):
         output = {k: [] for k in X[0]}
         for x in X:
             for k in x:
                 output[k].append(x[k])
-        return {k: stack_array(output[k]) for k in output}
+        return {k: reduce_fn(output[k]) for k in output}
     elif isinstance(X[0], (tuple, list)):
         output = [[] for _ in X[0]]
         for x in X:
             for i in range(len(x)):
                 output[i].append(x[i])
-        return [stack_array(o) for o in output]
+        return [reduce_fn(o) for o in output]
     else:
         raise NotImplementedError(
             "Supported inputs are np.ndarray, dict, tuple, list"
@@ -723,6 +730,47 @@ class SlidingWindowSegmentation:
             output_denominator[..., x1:x2, y1:y2, z1:z2] += 1.0
         return output_array, output_denominator
 
+    def _flush_batch(
+        self,
+        batch: List[MultiFormatInput],
+        batch_coords: List[Coords],
+        output_array: TensorOrArray,
+        output_denominator: TensorOrArray,
+        split_fn: Callable,
+        *args,
+        **kwargs,
+    ) -> tuple[TensorOrArray, TensorOrArray]:
+        """
+        Runs the inference function on the accumulated batch and updates
+        the output array/denominator with each patch prediction.
+
+        Args:
+            batch (List[MultiFormatInput]): list of input patches.
+            batch_coords (List[Coords]): coordinates of each patch.
+            output_array (TensorOrArray): array/tensor storing the sum of all
+                patch predictions.
+            output_denominator (TensorOrArray): array/tensor storing the
+                denominator for all patches.
+            split_fn (Callable): function used to split the batched output
+                back into individual patch outputs.
+            args, kwargs: arguments and keyword arguments for
+                inference_function.
+
+        Returns:
+            Tuple[TensorOrArray,TensorOrArray]: updated output_array and
+                output_denominator.
+        """
+        original_batch_size = output_array.shape[0]
+        batch = multi_format_stack_or_cat(batch, self.ndim)
+        with torch.no_grad():
+            batch_out = self.inference_function(batch, *args, **kwargs)
+        batch_out = split_fn(batch_out, original_batch_size, 0)
+        for out, coords in zip(batch_out, batch_coords):
+            output_array, output_denominator = self.update_output(
+                output_array, output_denominator, out, coords
+            )
+        return output_array, output_denominator
+
     def __call__(self, X: MultiFormatInput, *args, **kwargs) -> TensorOrArray:
         """
         Extracts patches for a given input tensor/array X, predicts the
@@ -759,27 +807,27 @@ class SlidingWindowSegmentation:
             batch.append(cropped_input)
             batch_coords.append(coords)
             if len(batch) == self.inference_batch_size:
-                original_batch_size = output_size[0]
-                batch = multi_format_stack_or_cat(batch, self.ndim)
-                with torch.no_grad():
-                    batch_out = self.inference_function(batch, *args, **kwargs)
-                batch_out = split_fn(batch_out, original_batch_size, 0)
-                for out, coords in zip(batch_out, batch_coords):
-                    output_array, output_denominator = self.update_output(
-                        output_array, output_denominator, out, coords
-                    )
+                output_array, output_denominator = self._flush_batch(
+                    batch,
+                    batch_coords,
+                    output_array,
+                    output_denominator,
+                    split_fn,
+                    *args,
+                    **kwargs,
+                )
                 batch = []
                 batch_coords = []
         if len(batch) > 0:
-            original_batch_size = output_size[0]
-            batch = multi_format_stack_or_cat(batch, self.ndim)
-            with torch.no_grad():
-                batch_out = self.inference_function(batch, *args, **kwargs)
-            batch_out = split_fn(batch_out, original_batch_size, 0)
-            for out, coords in zip(batch_out, batch_coords):
-                output_array, output_denominator = self.update_output(
-                    output_array, output_denominator, out, coords
-                )
+            output_array, output_denominator = self._flush_batch(
+                batch,
+                batch_coords,
+                output_array,
+                output_denominator,
+                split_fn,
+                *args,
+                **kwargs,
+            )
         output_array = output_array / output_denominator
         return output_array
 
@@ -857,56 +905,41 @@ class SegmentationInference:
         """
         if base_inference_function is None:
             return
-        inference_function = base_inference_function
-        if isinstance(inference_function, (list, tuple)):
-            if self.sliding_window_size is not None:
-                if isinstance(self.stride, float):
-                    self.stride = [
-                        int(x * self.stride) for x in self.sliding_window_size
-                    ]
-                inference_function = [
-                    SlidingWindowSegmentation(
-                        inference_function=fn,
-                        sliding_window_size=self.sliding_window_size,
-                        n_classes=self.n_classes if self.n_classes > 2 else 1,
-                        stride=self.stride,
-                        inference_batch_size=self.inference_batch_size,
-                    )
-                    for fn in inference_function
+        is_single = not isinstance(base_inference_function, (list, tuple))
+        inference_functions = (
+            [base_inference_function]
+            if is_single
+            else list(base_inference_function)
+        )
+        if self.sliding_window_size is not None:
+            if isinstance(self.stride, float):
+                self.stride = [
+                    int(x * self.stride) for x in self.sliding_window_size
                 ]
-            if self.flip is True:
-                inference_function = [
-                    FlippedInference(
-                        inference_function=fn,
-                        flips=self.flips,
-                        flip_keys=self.flip_keys,
-                        ndim=self.ndim,
-                        inference_batch_size=self.inference_batch_size,
-                    )
-                    for fn in inference_function
-                ]
-        else:
-            if self.sliding_window_size is not None:
-                if isinstance(self.stride, float):
-                    self.stride = [
-                        int(x * self.stride) for x in self.sliding_window_size
-                    ]
-                inference_function = SlidingWindowSegmentation(
+            inference_functions = [
+                SlidingWindowSegmentation(
+                    inference_function=fn,
                     sliding_window_size=self.sliding_window_size,
-                    inference_function=inference_function,
                     n_classes=self.n_classes if self.n_classes > 2 else 1,
                     stride=self.stride,
                     inference_batch_size=self.inference_batch_size,
                 )
-            if self.flip is True:
-                inference_function = FlippedInference(
-                    inference_function=inference_function,
+                for fn in inference_functions
+            ]
+        if self.flip is True:
+            inference_functions = [
+                FlippedInference(
+                    inference_function=fn,
                     flips=self.flips,
                     flip_keys=self.flip_keys,
                     ndim=self.ndim,
                     inference_batch_size=self.inference_batch_size,
                 )
-        self.inference_function = inference_function
+                for fn in inference_functions
+            ]
+        self.inference_function = (
+            inference_functions[0] if is_single else inference_functions
+        )
 
     def call_regular(
         self, X: MultiFormatInput, *args, **kwargs
