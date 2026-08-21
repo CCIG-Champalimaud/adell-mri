@@ -35,6 +35,9 @@ from adell_mri.modules.segmentation.losses import (
     unified_focal_loss,
     weighted_mse,
 )
+from adell_mri.utils.python_logging import get_logger
+
+logger = get_logger(__name__)
 
 loss_factory = {
     "binary": {
@@ -289,8 +292,9 @@ def collate_last_slice(X: list[TensorIterable]) -> TensorIterable:
         try:
             o = torch.cat([swap(y) for y in x])
             return o
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error("Failed to collate tensors: %s", e)
+            raise
 
     example = X[0]
     if isinstance(example, list):

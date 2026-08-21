@@ -52,16 +52,16 @@ class SitkWriter:
                 source_image_original = deepcopy(source_image)
                 if isinstance(source_image, str):
                     source_image = sitk.ReadImage(source_image)
-                image = copy_information_nd(image, source_image)
-                # checks for differences in size
-                if isinstance(image, str):
+                try:
+                    image = copy_information_nd(image, source_image)
+                except Exception as e:
                     logger.error(
                         "error for image %s and source_image %s: %s",
                         path,
                         source_image_original,
-                        image,
+                        e,
                     )
-                    return
+                    continue
             Path(path).parent.mkdir(parents=True, exist_ok=True)
             sitk.WriteImage(image, path)
 
