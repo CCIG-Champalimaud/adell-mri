@@ -458,8 +458,14 @@ def get_detection_network(
     if (loss_gamma is None) or (loss_comb is None) or (class_weights is None):
         object_loss_params = {}
     else:
+        if "object_loss_fn" not in network_config:
+            object_loss_key = "cross_entropy"
         object_loss_params = get_loss_param_dict(
-            1.0, loss_gamma, loss_comb, 0.5
+            loss_key=object_loss_key,
+            weight=1.0,
+            gamma=loss_gamma,
+            comb=loss_comb,
+            scale=0.5,
         )[object_loss_key]
 
     adn_fn = get_adn_fn(
