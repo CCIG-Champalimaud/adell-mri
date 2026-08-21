@@ -30,6 +30,27 @@ def move_axis(X: torch.Tensor, axis1: int, axis2: int) -> torch.Tensor:
     return X.permute(tuple(axes))
 
 
+def expand_and_check(x: Union[List[int], int], n: int) -> List[int]:
+    """
+    Expands a scalar to a list of length n or checks that a list has
+    length n.
+
+    Args:
+        x (Union[List[int],int]): integer or list of integers.
+        n (int): expected number of elements.
+
+    Returns:
+        List[int]: list of integers with length n.
+
+    Raises:
+        AssertionError: if x is a list whose length differs from n.
+    """
+    if isinstance(x, list) is False:
+        return [x for _ in range(n)]
+    assert len(x) == n
+    return x
+
+
 def einops_rescale(X: torch.Tensor, scale: int = 1) -> torch.Tensor:
     sh = X.shape
     b, c, inner = sh[0], sh[1], sh[2:]
@@ -1308,12 +1329,7 @@ class TransformerBlockStack(torch.nn.Module):
                 Returns:
                     List[int]: list of integers.
         """
-        if isinstance(x, list) is False:
-            x = [x for _ in range(self.number_of_blocks)]
-        else:
-            x = x
-        self.check_if_consistent(x)
-        return x
+        return expand_and_check(x, self.number_of_blocks)
 
     def check_if_consistent(self, x: Sequence):
         """
@@ -1513,10 +1529,7 @@ class SWINTransformerBlockStack(torch.nn.Module):
                 Returns:
                     List[int]: list of integers.
         """
-        if isinstance(x, list) is False:
-            return [x for _ in self.shift_sizes]
-        else:
-            return self.check_if_consistent(x)
+        return expand_and_check(x, len(self.shift_sizes))
 
     def check_if_consistent(self, x: Sequence):
         """
@@ -1954,6 +1967,5 @@ class FactorizedViT(torch.nn.Module):
             embeded_X = torch.concat([class_token, embeded_X], 1)
         else:
             embeded_X = embeded_X.mean(-2)
-            embeded_X = embeded_X
         embeded_X, _ = self.transformer_block_between(embeded_X)
         return embeded_X
