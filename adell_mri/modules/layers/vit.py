@@ -1225,36 +1225,6 @@ class SWINTransformerBlock(torch.nn.Module):
             X = einops_rescale(X, scale)
         return X
 
-    def forward_old(
-        self, X: torch.Tensor, scale: int = None
-    ) -> Tuple[torch.Tensor, TensorList]:
-        """
-        Forward pass.
-
-                Args:
-                    X (torch.Tensor): tensor of shape
-                        [-1,self.in_channels,*self.image_size]
-                    scale (int): downsampling scale for output. Defaults to None
-                        (returns the non-rearranged output).
-
-                Returns:
-                    torch.Tensor: tensor of shape [...,self.input_dim_primary]
-                    List[torch.Tensor]: list of intermediary tensors corresponding to
-                        the ith transformer outputs, where i is contained in return_at.
-                        Same shape as the final output.
-        """
-        if self.shift_size > 0:
-            attention = self.apply_shift_and_attention(X)
-            X = self.embedding(X)
-        else:
-            X = self.embedding(X)
-            attention = self.mha(self.norm_op_1(X), mask=None)
-        X = X + self.drop_op_1(attention)
-        X = X + self.drop_op_2(self.mlp(self.norm_op_2(X)))
-
-        X = self.embedding.rearrange_rescale(X, scale)
-        return X
-
 
 class TransformerBlockStack(torch.nn.Module):
     """
