@@ -436,11 +436,12 @@ def main(arguments):
 
         # get loss function parameters
         loss_params = get_loss_param_dict(
-            weights=weights,
+            loss_key=loss_key,
+            weight=weights,
             gamma=args.loss_gamma,
             comb=args.loss_comb,
             scale=args.loss_scale,
-        )[loss_key]
+        )
         if "eps" in loss_params and args.precision != "32":
             if loss_params["eps"] < 1e-4:
                 loss_params["eps"] = 1e-4

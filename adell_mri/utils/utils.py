@@ -172,9 +172,9 @@ def get_loss_param_dict(
             will be appended.
 
     Returns:
-        dict[str,dict[str,Union[float,torch.Tensor]]]: dictionary where each
-        key refers to a loss function and each value is keyword dictionary for
-        different losses.
+        dict[str,Union[float,torch.Tensor]]: flat keyword dictionary for the
+        loss corresponding to `loss_key`. The `weight` keyword argument is
+        renamed according to the loss family (`alpha` for focal-type losses).
     """
 
     def invert_weights(w: torch.Tensor) -> torch.Tensor:

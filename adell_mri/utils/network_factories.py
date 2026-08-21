@@ -466,7 +466,7 @@ def get_detection_network(
             gamma=loss_gamma,
             comb=loss_comb,
             scale=0.5,
-        )[object_loss_key]
+        )
 
     adn_fn = get_adn_fn(
         3, norm_fn="batch", act_fn=act_fn, dropout_param=dropout_param
