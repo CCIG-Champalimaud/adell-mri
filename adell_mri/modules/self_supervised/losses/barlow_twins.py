@@ -83,8 +83,9 @@ class BarlowTwinsLoss(torch.nn.Module):
 
     def reset(self):
         self.count = 0.0
-        self.sum[()] = 0
-        self.sum_of_squares[()] = 0
+        if self.sum is not None:
+            self.sum[()] = 0
+            self.sum_of_squares[()] = 0
 
     def forward(self, X1: torch.Tensor, X2: torch.Tensor, update: bool = True):
         loss = self.calculate_loss(X1, X2, update)
