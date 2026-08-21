@@ -345,7 +345,7 @@ def get_ckpt_callback(
     return ckpt_callback, ckpt_path, status
 
 
-def get_logger(
+def get_pl_logger(
     summary_name: str,
     summary_dir: str,
     project_name: str,
@@ -420,6 +420,9 @@ def get_logger(
                 log_model=log_model,
             )
     return logger
+
+
+get_logger = get_pl_logger
 
 
 def get_devices(
