@@ -1,4 +1,3 @@
-import pytest
 import torch
 
 from adell_mri.utils.network_factories import get_classification_network

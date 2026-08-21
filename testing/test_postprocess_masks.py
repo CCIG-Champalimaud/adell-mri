@@ -7,7 +7,7 @@ import SimpleITK as sitk
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
-from adell_mri.entrypoints.utils.postprocessing.postprocess_masks import (  # noqa: E402
+from adell_mri.entrypoints.utils.postprocessing.postprocess_masks import (
     exclude_touching_border,
     exclude_with_distance,
     exclude_with_size,

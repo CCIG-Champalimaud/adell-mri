@@ -14,6 +14,10 @@ def test_ah_net_decoder():
     a = AHNetDecoder3d(c)
     o = a(i)
 
-    assert list(o.shape) == [1, c, h, w, d], "output shape is not {}".format(
-        [1, c, h, w, d]
-    )
+    assert list(o.shape) == [
+        1,
+        c,
+        h,
+        w,
+        d,
+    ], f"output shape is not {[1, c, h, w, d]}"
