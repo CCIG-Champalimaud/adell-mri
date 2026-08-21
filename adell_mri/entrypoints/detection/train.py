@@ -1,3 +1,4 @@
+import ast
 import json
 import random
 
@@ -193,7 +194,11 @@ def main(arguments):
             "image_keys": keys,
             "box_keys": [box_key],
             "t2_keys": t2_keys,
-        } | (eval(args.augment_args) if args.augment_args is not None else {})
+        } | (
+            ast.literal_eval(args.augment_args)
+            if args.augment_args is not None
+            else {}
+        )
 
         transform_factory = DetectionTransforms(**transform_arguments)
 

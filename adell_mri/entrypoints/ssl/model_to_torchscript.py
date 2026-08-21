@@ -159,7 +159,7 @@ def main(arguments):
     )
 
     logger.info("Using function: ssl.%s", args.forward_method_name)
-    ssl.forward = eval(f"ssl.{args.forward_method_name}")
+    ssl.forward = getattr(ssl, args.forward_method_name)
     example = torch.rand(1, *args.input_shape).to(args.dev)
     logger.info("For input shape: %s", example.shape)
     logger.info("Expected output shape: %s", unpack_shape(ssl(example)))
