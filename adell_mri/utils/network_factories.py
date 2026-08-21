@@ -422,6 +422,35 @@ def get_detection_network(
     dev: str,
     optimizer_eps: float = OPTIMIZER_EPS_DEFAULT,
 ) -> LightningModule:
+    """
+    Builds a YOLO-based 3D detection network wrapped in a LightningModule.
+
+    Args:
+        network_config (dict[str, Any]): network configuration. May include
+            ``activation_fn``, ``classification_loss_fn`` and
+            ``object_loss_fn`` keys (the latter two index ``loss_factory``).
+        dropout_param (float): dropout parameter for the activation/ADN blocks.
+        loss_gamma (float): focusing parameter for the object loss.
+        loss_comb (float): combination parameter for the object loss.
+        class_weights (torch.Tensor): class weights.
+        train_loader_call (Callable): callable returning the training dataloader.
+        iou_threshold (float): IoU threshold used for anchor matching.
+        n_classes (int): number of box classes.
+        anchor_array (np.ndarray): array of anchor sizes.
+        n_epochs (int): number of training epochs.
+        warmup_steps (int): number of LR warmup steps.
+        boxes_key (str): key corresponding to the boxes in the batch.
+        box_class_key (str): key corresponding to the box classes in the batch.
+        dev (str): device string.
+        optimizer_eps (float, optional): optimizer epsilon. Defaults to
+            `OPTIMIZER_EPS_DEFAULT`.
+
+    Returns:
+        LightningModule: the detection LightningModule.
+
+    Raises:
+        ValueError: if an unknown loss or optimizer key is supplied.
+    """
     if "activation_fn" in network_config:
         act_fn = network_config["activation_fn"]
     else:
