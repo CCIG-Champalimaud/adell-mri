@@ -209,8 +209,9 @@ def get_loss_param_dict(
             return {"weight": weights, **kwargs}
         else:
             return kwargs
-    elif loss_key in "tversky_focal":
+    elif loss_key == "tversky_focal":
         if "weight" in kwargs:
+            weights = kwargs["weight"]
             inverted_weights = invert_weights(weights)
             s = weights + inverted_weights
             weights_tv = weights / s
