@@ -15,6 +15,8 @@ import torch
 import torch.nn.functional as F
 from lightning.pytorch import LightningModule
 
+from adell_mri.constants import DEFAULT_SEED
+
 # classification
 from adell_mri.modules.classification.classification import TabularClassifier
 from adell_mri.modules.classification.classification.deconfounded_classification import (
@@ -525,7 +527,7 @@ def get_segmentation_network(
     resize_size: list[int] = None,
     semi_supervised: bool = False,
     max_steps_optim: int = None,
-    seed: int = 42,
+    seed: int = DEFAULT_SEED,
 ) -> LightningModule:
     """
     Returns a segmentation network.

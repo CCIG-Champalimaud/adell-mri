@@ -8,6 +8,7 @@ import numpy as np
 from sklearn.cluster import KMeans
 from tqdm import tqdm
 
+from adell_mri.constants import DEFAULT_SEED
 from adell_mri.custom_types import NDArrayOrTensor
 from adell_mri.utils.python_logging import get_logger
 
@@ -54,7 +55,7 @@ def anchors_from_nested_list(
     up.set_description("Determining the ideal anchor size")
     while cont is True:
         up.update()
-        km = KMeans(i, random_state=42)
+        km = KMeans(i, random_state=DEFAULT_SEED)
         km = km.fit(all_sizes)
         centers = km.cluster_centers_
         iou = []

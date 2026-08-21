@@ -19,6 +19,7 @@ from adell_mri.utils.python_logging import get_logger
 logger = get_logger(__name__)
 
 ADELL_PARALLEL_STRATEGY = os.environ.get("ADELL_PARALLEL_STRATEGY", "ddp")
+VAL_CHECK_EPOCHS = 5
 
 
 class GPULock:
@@ -232,7 +233,7 @@ def get_step_information(
         max_steps_optim = max_epochs * steps_per_epoch_optim
         warmup_steps = warmup_epochs * steps_per_epoch_optim
         check_val_every_n_epoch = None
-        val_check_interval = 5 * steps_per_epoch
+        val_check_interval = VAL_CHECK_EPOCHS * steps_per_epoch
     else:
         bs = batch_size
         steps_per_epoch = n_images // (bs * n_devices)
@@ -240,7 +241,7 @@ def get_step_information(
         max_steps = -1
         max_steps_optim = max_epochs * steps_per_epoch
         warmup_steps = warmup_epochs * steps_per_epoch
-        check_val_every_n_epoch = 5
+        check_val_every_n_epoch = VAL_CHECK_EPOCHS
         val_check_interval = None
 
     warmup_steps = int(warmup_steps)

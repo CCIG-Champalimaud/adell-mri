@@ -19,6 +19,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
+from adell_mri.constants import DEFAULT_SEED
 from adell_mri.modules.layers.vit import TransformerBlockStack, ViT
 from adell_mri.utils.masking import get_masker
 
@@ -125,7 +126,7 @@ class IJEPA(torch.nn.Module):
         encoder_architecture: str = "vit",
         predictor_architecture: str = "vit",
         reduce_fn: str = "mean",
-        seed: int = 42,
+        seed: int = DEFAULT_SEED,
     ):
         """
         Args:

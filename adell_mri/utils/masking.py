@@ -8,6 +8,8 @@ from typing import List, Sequence, Tuple, Union
 import numpy as np
 import torch
 
+from adell_mri.constants import DEFAULT_SEED
+
 Coords = Union[Tuple[int, int, int, int], Tuple[int, int, int, int, int, int]]
 
 
@@ -46,7 +48,7 @@ class TransformerMasker(torch.nn.Module):
         max_patch_size: List[int],
         n_features: int = None,
         n_patches: int = 4,
-        seed: int = 42,
+        seed: int = DEFAULT_SEED,
     ):
         """
         Args:
@@ -226,7 +228,7 @@ class GenericTransformerMasker(torch.nn.Module):
         max_patch_size: List[int],
         n_features: int = None,
         n_patches: int = 4,
-        seed: int = 42,
+        seed: int = DEFAULT_SEED,
     ):
         """
         Args:
@@ -367,7 +369,7 @@ class ConvolutionalMasker:
         min_patch_size: List[int],
         max_patch_size: List[int],
         n_patches: int = 4,
-        seed: int = 42,
+        seed: int = DEFAULT_SEED,
     ):
         """
         Args:

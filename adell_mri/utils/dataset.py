@@ -10,6 +10,7 @@ from typing import Any, Iterator
 import numpy as np
 import yaml
 
+from adell_mri.constants import DEFAULT_SEED
 from adell_mri.custom_types import DatasetDict
 from adell_mri.utils.dataset_filters import (
     fill_conditional,
@@ -85,7 +86,7 @@ class Dataset:
 
     path: str | list[str]
     rng: np.random.Generator = None
-    seed: int = 42
+    seed: int = DEFAULT_SEED
     dataset_name: str = "dataset"
 
     def __post_init__(self):

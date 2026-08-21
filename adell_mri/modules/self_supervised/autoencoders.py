@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Tuple
 import numpy as np
 import torch
 
+from adell_mri.constants import DEFAULT_SEED
 from adell_mri.custom_types import Size2dOr3d
 from adell_mri.modules.layers.conv_next import ConvNeXtV2Backbone
 from adell_mri.modules.layers.vit import LinearEmbedding, TransformerBlockStack
@@ -293,7 +294,7 @@ class ViTMaskedAutoEncoder(ViTAutoEncoder):
         dropout_rate: float = 0.0,
         decoder_pred_ratio: float = 4.0,
         mask_fraction: float = 0.3,
-        seed: int = 42,
+        seed: int = DEFAULT_SEED,
     ):
         """
         Args:
