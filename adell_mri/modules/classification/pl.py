@@ -60,6 +60,9 @@ try:
 except ModuleNotFoundError:
     has_monai = False
 
+# re-exported for backwards compatibility
+from adell_mri.utils.torch_utils import meta_tensors_to_tensors
+
 
 def get_ordinal_metric_dict(
     nc: int,
@@ -158,25 +161,6 @@ def get_metric_dict(
         if k in md:
             metric_dict[prefix + k] = md[k]()
     return metric_dict
-
-
-def meta_tensors_to_tensors(batch):
-    """
-    Converts any MetaTensor instances in a batch to regular PyTorch tensors.
-
-    Args:
-        batch (dict): A dictionary containing tensors, where some values may be
-            MONAI MetaTensor instances.
-
-    Returns:
-        dict: The input batch with all MetaTensor instances converted to regular
-            PyTorch tensors.
-    """
-    if has_monai is True:
-        for key in batch:
-            if isinstance(batch[key], monai.data.MetaTensor):
-                batch[key] = batch[key].as_tensor()
-    return batch
 
 
 class ClassPLABC(pl.LightningModule, ABC):
