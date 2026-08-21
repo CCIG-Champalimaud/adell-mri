@@ -33,7 +33,69 @@ def _check_patch_size(
         )
 
 
-class TransformerMasker(torch.nn.Module):
+class BaseTransformerMasker(torch.nn.Module):
+    """
+    Base class for transformer-style maskers. Holds the patch sampling
+    logic shared between the different masker implementations.
+    """
+
+    def __init__(
+        self,
+        image_dimensions: List[int],
+        min_patch_size: List[int],
+        max_patch_size: List[int],
+        n_features: int = None,
+        n_patches: int = 4,
+        seed: int = DEFAULT_SEED,
+    ):
+        """
+        Args:
+            image_dimensions (List[int]): Image dimensions.
+            min_patch_size (List[int]): Minimum size of each patch side.
+            max_patch_size (List[int]): Maximum size of each patch side.
+            n_features (int, optional): Number of features. Defaults to None.
+            n_patches (int, optional): Number of patches to sample. Defaults to
+                4.
+            seed (int, optional): Random seed. Defaults to DEFAULT_SEED.
+        """
+        super().__init__()
+        self.image_dimensions = image_dimensions
+        self.min_patch_size = min_patch_size
+        self.max_patch_size = max_patch_size
+        self.n_features = n_features
+        self.n_patches = n_patches
+        self.seed = seed
+
+        self.rng = np.random.default_rng(seed)
+        self.n_dim = len(self.image_dimensions)
+
+        assert self.n_dim in [2, 3]
+        _check_patch_size(self.image_dimensions, self.max_patch_size)
+
+    def sample_patch(self) -> Coords:
+        """
+        Samples a patch.
+        """
+        upper_sampling_bound = [
+            size - patch_size
+            for size, patch_size in zip(
+                self.image_dimensions, self.max_patch_size
+            )
+        ]
+        lower_bound = np.array(
+            [self.rng.integers(0, i) for i in upper_sampling_bound]
+        )
+        patch_size = np.array(
+            [
+                self.rng.integers(m, M)
+                for m, M in zip(self.min_patch_size, self.max_patch_size)
+            ]
+        )
+        upper_bound = lower_bound + patch_size
+        return [*lower_bound, *upper_bound]
+
+
+class TransformerMasker(BaseTransformerMasker):
     """
     Masks a transformer-style tensor ([batch, n_tokens, embedding_size])
     such that the output for each token is conditionally replaced by 0
@@ -58,44 +120,17 @@ class TransformerMasker(torch.nn.Module):
             n_features (int, optional): Number of features. Defaults to None.
             n_patches (int, optional): Number of patches to sample. Defaults to
                 4.
-            seed (int, optional): Random seed. Defaults to 42.
+            seed (int, optional): Random seed. Defaults to DEFAULT_SEED.
         """
-        super().__init__()
-        self.image_dimensions = image_dimensions
-        self.min_patch_size = min_patch_size
-        self.max_patch_size = max_patch_size
-        self.n_features = n_features
-        self.n_patches = n_patches
-        self.seed = seed
-
-        self.rng = np.random.default_rng(seed)
-        self.n_dim = len(self.image_dimensions)
-
-        assert self.n_dim in [2, 3]
-        _check_patch_size(self.image_dimensions, self.max_patch_size)
+        super().__init__(
+            image_dimensions,
+            min_patch_size,
+            max_patch_size,
+            n_features,
+            n_patches,
+            seed,
+        )
         self.initialize_positional_embedding_if_necessary()
-
-    def sample_patch(self) -> Coords:
-        """
-        Samples a patch.
-        """
-        upper_sampling_bound = [
-            size - patch_size
-            for size, patch_size in zip(
-                self.image_dimensions, self.max_patch_size
-            )
-        ]
-        lower_bound = np.array(
-            [self.rng.integers(0, i) for i in upper_sampling_bound]
-        )
-        patch_size = np.array(
-            [
-                self.rng.integers(m, M)
-                for m, M in zip(self.min_patch_size, self.max_patch_size)
-            ]
-        )
-        upper_bound = lower_bound + patch_size
-        return [*lower_bound, *upper_bound]
 
     def initialize_positional_embedding_if_necessary(self) -> None:
         """
@@ -210,7 +245,7 @@ class TransformerMasker(torch.nn.Module):
         return X, all_patches, patch_coords
 
 
-class GenericTransformerMasker(torch.nn.Module):
+class GenericTransformerMasker(BaseTransformerMasker):
     """
     Masks a transformer-style tensor ([batch, n_tokens, embedding_size])
     such that the output for each token is conditionally replaced by 0
@@ -238,43 +273,16 @@ class GenericTransformerMasker(torch.nn.Module):
             n_features (int, optional): Number of features. Defaults to None.
             n_patches (int, optional): Number of patches to sample. Defaults to
                 4.
-            seed (int, optional): Random seed. Defaults to 42.
+            seed (int, optional): Random seed. Defaults to DEFAULT_SEED.
         """
-        super().__init__()
-        self.image_dimensions = image_dimensions
-        self.min_patch_size = min_patch_size
-        self.max_patch_size = max_patch_size
-        self.n_features = n_features
-        self.n_patches = n_patches
-        self.seed = seed
-
-        self.rng = np.random.default_rng(seed)
-        self.n_dim = len(self.image_dimensions)
-
-        assert self.n_dim in [2, 3]
-        _check_patch_size(self.image_dimensions, self.max_patch_size)
-
-    def sample_patch(self) -> Coords:
-        """
-        Samples a patch.
-        """
-        upper_sampling_bound = [
-            size - patch_size
-            for size, patch_size in zip(
-                self.image_dimensions, self.max_patch_size
-            )
-        ]
-        lower_bound = np.array(
-            [self.rng.integers(0, i) for i in upper_sampling_bound]
+        super().__init__(
+            image_dimensions,
+            min_patch_size,
+            max_patch_size,
+            n_features,
+            n_patches,
+            seed,
         )
-        patch_size = np.array(
-            [
-                self.rng.integers(m, M)
-                for m, M in zip(self.min_patch_size, self.max_patch_size)
-            ]
-        )
-        upper_bound = lower_bound + patch_size
-        return [*lower_bound, *upper_bound]
 
     def sample_patches(self, n_patches: int) -> List[Coords]:
         """
