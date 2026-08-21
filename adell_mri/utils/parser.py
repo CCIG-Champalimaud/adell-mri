@@ -39,7 +39,7 @@ def get_dvc_params(path: str = None) -> Dict[str, any]:
     import dvc.api
 
     if ":" in path:
-        keys = ":".split(path)
+        keys = path.split(":")
     else:
         keys = []
     params = dvc.api.params_show()
@@ -63,11 +63,12 @@ def read_param_file(path: str) -> Dict[str, Any]:
             Dict[str,Any]: parameter dictionary.
     """
     if ":" in path:
-        out = ":".split(path)
+        out = path.split(":")
         path, keys = out[0], out[1:]
     else:
         keys = []
-    params = yaml.load(path)
+    with open(path) as f:
+        params = yaml.safe_load(f)
     for k in keys:
         params = params[k]
     return params
