@@ -590,3 +590,15 @@ class RandRotateWithBoxesd(monai.transforms.RandomizableTransform):
             for k in self.box_keys:
                 X[k] = self.affine_box(X[k] - center_rep, affine) + center_rep
         return X
+
+
+__all__ = [
+    "BBToAdjustedAnchors",
+    "BBToAdjustedAnchorsd",
+    "MasksToBB",
+    "MasksToBBd",
+    "RandomFlipWithBoxes",
+    "RandomFlipWithBoxesd",
+    "RandAffineWithBoxesd",
+    "RandRotateWithBoxesd",
+]
