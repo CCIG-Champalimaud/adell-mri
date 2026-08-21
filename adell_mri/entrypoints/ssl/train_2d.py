@@ -116,6 +116,8 @@ def main(arguments):
     copied_keys = [k + "_copy" for k in keys]
     if args.adc_keys is None:
         adc_image_keys = []
+    else:
+        adc_image_keys = args.adc_keys
     adc_image_keys = [k for k in adc_image_keys if k in keys]
     non_adc_keys = [k for k in keys if k not in adc_image_keys]
     all_keys = [*keys]
