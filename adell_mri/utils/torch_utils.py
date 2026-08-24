@@ -15,6 +15,19 @@ from adell_mri.utils.utils import return_classes
 logger = get_logger(__name__)
 
 
+def force_cudnn_initialization():
+    """
+    Convenience function to initialise CuDNN (and avoid the lazy loading
+    from PyTorch).
+    """
+    s = 16
+    dev = torch.device("cuda")
+    torch.nn.functional.conv2d(
+        torch.zeros(s, s, s, s, device=dev),
+        torch.zeros(s, s, s, s, device=dev),
+    )
+
+
 def meta_tensors_to_tensors(batch: dict) -> dict:
     """
     Converts any MetaTensor instances in a batch to regular PyTorch tensors.

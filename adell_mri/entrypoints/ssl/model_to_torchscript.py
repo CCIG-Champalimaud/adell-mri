@@ -7,6 +7,7 @@ import torch
 from adell_mri.modules.config_parsing import parse_config_ssl, parse_config_unet
 from adell_mri.utils.network_factories import get_ssl_network_no_pl
 from adell_mri.utils.python_logging import get_logger
+from adell_mri.utils.torch_utils import force_cudnn_initialization
 
 torch.backends.cudnn.benchmark = True
 
@@ -16,19 +17,6 @@ def unpack_shape(X):
         return X.shape
     else:
         return [unpack_shape(x) for x in X]
-
-
-def force_cudnn_initialization():
-    """
-    Convenience function to initialise CuDNN (and avoid the lazy loading
-    from PyTorch).
-    """
-    s = 16
-    dev = torch.device("cuda")
-    torch.nn.functional.conv2d(
-        torch.zeros(s, s, s, s, device=dev),
-        torch.zeros(s, s, s, s, device=dev),
-    )
 
 
 def main(arguments):
