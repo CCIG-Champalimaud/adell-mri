@@ -1,3 +1,10 @@
+"""
+Parses network configuration files (YAML) into keyword dictionaries that
+can be passed to the network factories.
+"""
+
+from typing import Any
+
 import yaml
 
 from adell_mri.modules.activations import activation_factory
@@ -5,31 +12,37 @@ from adell_mri.modules.layers import get_adn_fn
 from adell_mri.modules.losses import CompoundLoss
 from adell_mri.utils.utils import loss_factory
 
-unet_args = [
-    "spatial_dimensions",
-    "encoding_operations",
-    "conv_type",
-    "link_type",
-    "upscale_type",
-    "interpolation",
-    "norm_type",
-    "dropout_type",
-    "padding",
-    "dropout_param",
-    "activation_fn",
-    "in_channels",
-    "n_classes",
-    "depth",
-    "kernel_sizes",
-    "strides",
-    "bottleneck_classification",
-    "skip_conditioning",
-]
+
+def _load_yaml(config_file: str) -> dict[str, Any]:
+    """
+    Loads a YAML configuration file into a dictionary.
+
+    Args:
+        config_file (str): path to the YAML file.
+
+    Returns:
+        dict[str, Any]: parsed configuration.
+    """
+    with open(config_file, "r") as o:
+        return yaml.safe_load(o)
 
 
 def parse_config_unet(config_file, n_keys, n_classes):
-    with open(config_file, "r") as o:
-        network_config = yaml.safe_load(o)
+    """
+    Parses a segmentation network configuration file.
+
+    Args:
+        config_file (str): path to the YAML configuration file.
+        n_keys (int): number of input image keys (used to compute the total
+            number of input channels).
+        n_classes (int): number of classes (selects binary vs categorical
+            losses).
+
+    Returns:
+        tuple[dict[str, Any], list[str]]: the network configuration (with
+            losses wrapped in a `CompoundLoss`) and the list of loss keys.
+    """
+    network_config = _load_yaml(config_file)
 
     if "activation_fn" in network_config:
         network_config["activation_fn"] = activation_factory[
@@ -59,9 +72,16 @@ def parse_config_unet(config_file, n_keys, n_classes):
 
 
 def parse_config_cat(config_file):
-    with open(config_file, "r") as o:
-        network_config = yaml.safe_load(o)
-    return network_config
+    """
+    Parses a classification network configuration file.
+
+    Args:
+        config_file (str): path to the YAML configuration file.
+
+    Returns:
+        dict[str, Any]: parsed configuration.
+    """
+    return _load_yaml(config_file)
 
 
 def parse_config_ensemble(config_file: str, n_classes: int):
