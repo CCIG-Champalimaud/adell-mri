@@ -653,7 +653,11 @@ class UNetBasePL(pl.LightningModule, ABC):
         self.log("lr", last_lr, prog_bar=True, sync_dist=True)
         gc.collect()
 
-    def on_validation_epoch_end(self):
+    def _run_picai_eval(self):
+        """
+        Runs the PI-CAI evaluation on the accumulated predictions and logs
+        the AP, R and AUC metrics. Clears the accumulated predictions.
+        """
         if self.picai_eval:
             picai_eval_metrics = evaluate(
                 y_det=self.all_pred,
@@ -676,28 +680,11 @@ class UNetBasePL(pl.LightningModule, ABC):
             self.all_pred = []
             self.all_true = []
 
+    def on_validation_epoch_end(self):
+        self._run_picai_eval()
+
     def on_test_epoch_end(self):
-        if self.picai_eval:
-            picai_eval_metrics = evaluate(
-                y_det=self.all_pred,
-                y_true=self.all_true,
-                y_det_postprocess_func=get_lesions,
-                num_parallel_calls=8,
-            )
-            self.log(
-                "V_AP", picai_eval_metrics.AP, prog_bar=True, sync_dist=True
-            )
-            self.log(
-                "V_R", picai_eval_metrics.score, prog_bar=True, sync_dist=True
-            )
-            self.log(
-                "V_AUC",
-                picai_eval_metrics.auroc,
-                prog_bar=True,
-                sync_dist=True,
-            )
-            self.all_pred = []
-            self.all_true = []
+        self._run_picai_eval()
 
     def setup_metrics(self):
         self.train_metrics = get_metric_dict(
