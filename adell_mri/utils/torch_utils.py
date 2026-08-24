@@ -4,6 +4,7 @@ import re
 from multiprocessing import Pool
 from typing import Any
 
+import monai
 import numpy as np
 import torch
 from tqdm import tqdm
@@ -12,6 +13,43 @@ from adell_mri.utils.python_logging import get_logger
 from adell_mri.utils.utils import return_classes
 
 logger = get_logger(__name__)
+
+
+def meta_tensors_to_tensors(batch: dict) -> dict:
+    """
+    Converts any MetaTensor instances in a batch to regular PyTorch tensors.
+
+    Args:
+        batch (dict): A dictionary containing tensors, where some values may be
+            MONAI MetaTensor instances.
+
+    Returns:
+        dict: The input batch with all MetaTensor instances converted to regular
+            PyTorch tensors.
+    """
+    for key in batch:
+        if isinstance(batch[key], monai.data.MetaTensor):
+            batch[key] = batch[key].as_tensor()
+    return batch
+
+
+def log_current_lr(module, key: str = "lr", sync_dist: bool = False) -> None:
+    """
+    Logs the current learning rate taken from the module's active LR
+    scheduler (falls back to ``module.learning_rate`` when unavailable).
+
+    Args:
+        module (pl.LightningModule): Lightning module with configured
+            schedulers.
+        key (str, optional): string under which the learning rate is logged.
+            Defaults to "lr".
+        sync_dist (bool, optional): whether to sync the logged value across
+            processes. Defaults to False.
+    """
+    sch = module.lr_schedulers().state_dict()
+    lr = module.learning_rate
+    last_lr = sch["_last_lr"][0] if "_last_lr" in sch else lr
+    module.log(key, last_lr, sync_dist=sync_dist)
 
 
 def calculate_sn_weights(state_dict: dict) -> dict:
