@@ -291,7 +291,8 @@ def main(arguments):
     )
     ckpt = ckpt_callback is not None
     if status == "finished":
-        exit()
+        logger.info("Training has finished")
+        sys.exit(0)
 
     logger.info("Number of cases: %s", len(train_list))
 

@@ -1,3 +1,4 @@
+import sys
 from copy import deepcopy
 
 import monai
@@ -7,6 +8,7 @@ from lightning.pytorch import Trainer
 from lightning.pytorch.callbacks import RichProgressBar
 
 from adell_mri.entrypoints.assemble_args import Parser
+from adell_mri.entrypoints.cli_utils import fail
 from adell_mri.modules.config_parsing import parse_config_ssl, parse_config_unet
 from adell_mri.transform_factory import SSLTransforms, get_augmentations_ssl
 from adell_mri.utils.dataset import Dataset
@@ -104,8 +106,7 @@ def main(arguments):
     data_dict.apply_filters(**vars(args), presence_keys=all_keys)
 
     if len(data_dict) == 0:
-        logger.error("No data in dataset JSON")
-        exit()
+        fail("No data in dataset JSON")
 
     for k in data_dict:
         data_dict[k]["pid"] = k
@@ -309,7 +310,7 @@ def main(arguments):
     ckpt = ckpt_callback is not None
     if status == "finished":
         logger.info("Training has finished")
-        exit()
+        sys.exit(0)
 
     pl_logger = get_logger(
         summary_name=args.summary_name,
