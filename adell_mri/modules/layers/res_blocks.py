@@ -10,194 +10,119 @@ from adell_mri.modules.layers.regularization import GRN
 from adell_mri.modules.layers.utils import crop_to_size, split_int_into_n
 
 
-class ResidualBlock2d(torch.nn.Module):
+class ResidualBlock(torch.nn.Module):
+    """
+    Base class for residual blocks. Subclasses select the convolution
+    operator for the desired number of spatial dimensions via the ``Conv``
+    attribute.
+    """
+
+    Conv: type = None
+
+    def __init__(
+        self,
+        in_channels: int,
+        kernel_size: int,
+        inter_channels: int = None,
+        out_channels: int = None,
+        adn_fn: torch.nn.Module = torch.nn.Identity,
+        skip_activation: bool = None,
+    ):
+        """
+        Args:
+            in_channels (int): number of input channels.
+            kernel_size (int): kernel size.
+            inter_channels (int): number of intermediary channels. Defaults
+                to None.
+            out_channels (int): number of output channels. Defaults to None.
+            adn_fn (torch.nn.Module, optional): the activation-dropout-normalization
+                module used. Defaults to torch.nn.Identity.
+            skip_activation (bool, optional): skips final activation during forward
+                pass. Defaults to None (False).
+        """
+        super().__init__()
+        self.in_channels = in_channels
+        self.kernel_size = kernel_size
+        self.inter_channels = inter_channels
+        if out_channels is not None:
+            self.out_channels = out_channels
+        else:
+            self.out_channels = self.in_channels
+        self.adn_fn = adn_fn
+        self.skip_activation = skip_activation
+
+        self.init_layers()
+
+    def init_layers(self):
+        if self.inter_channels is not None:
+            self.op = torch.nn.Sequential(
+                self.Conv(self.in_channels, self.inter_channels, 1),
+                self.adn_fn(self.inter_channels),
+                self.Conv(
+                    self.inter_channels,
+                    self.inter_channels,
+                    self.kernel_size,
+                    padding="same",
+                ),
+                self.adn_fn(self.inter_channels),
+                self.Conv(self.inter_channels, self.in_channels, 1),
+            )
+        else:
+            self.op = torch.nn.Sequential(
+                self.Conv(
+                    self.in_channels,
+                    self.in_channels,
+                    self.kernel_size,
+                    padding="same",
+                ),
+                self.adn_fn(self.in_channels),
+                self.Conv(
+                    self.in_channels,
+                    self.in_channels,
+                    self.kernel_size,
+                    padding="same",
+                ),
+            )
+
+        # convolve residual connection to match possible difference in
+        # output channels
+        if self.in_channels != self.out_channels:
+            self.final_op = self.Conv(self.in_channels, self.out_channels, 1)
+        else:
+            self.final_op = torch.nn.Identity()
+
+        self.adn_op = self.adn_fn(self.out_channels)
+
+    def forward(self, X: torch.Tensor, skip_activation: bool = None):
+        out = self.final_op(self.op(X) + X)
+        skip_activation = (
+            skip_activation
+            if skip_activation is not None
+            else self.skip_activation
+        )
+        if skip_activation is not True:
+            out = self.adn_op(out)
+        return out
+
+
+class ResidualBlock2d(ResidualBlock):
     """
     Default residual block in 2 dimensions. If `out_channels`
     is different from `in_channels` then a convolution is applied to
     the skip connection to match the number of `out_channels`.
     """
 
-    def __init__(
-        self,
-        in_channels: int,
-        kernel_size: int,
-        inter_channels: int = None,
-        out_channels: int = None,
-        adn_fn: torch.nn.Module = torch.nn.Identity,
-        skip_activation: bool = None,
-    ):
-        """
-        Args:
-            in_channels (int): number of input channels.
-            kernel_size (int): kernel size.
-            inter_channels (int): number of intermediary channels. Defaults
-                to None.
-            out_channels (int): number of output channels. Defaults to None.
-            adn_fn (torch.nn.Module, optional): the activation-dropout-normalization
-                module used. Defaults to torch.nn.Identity.
-            skip_activation (bool, optional): skips final activation during forward
-                pass. Defaults to None (False).
-        """
-        super().__init__()
-        self.in_channels = in_channels
-        self.kernel_size = kernel_size
-        self.inter_channels = inter_channels
-        if out_channels is not None:
-            self.out_channels = out_channels
-        else:
-            self.out_channels = self.in_channels
-        self.adn_fn = adn_fn
-        self.skip_activation = skip_activation
-
-        self.init_layers()
-
-    def init_layers(self):
-        if self.inter_channels is not None:
-            self.op = torch.nn.Sequential(
-                torch.nn.Conv2d(self.in_channels, self.inter_channels, 1),
-                self.adn_fn(self.inter_channels),
-                torch.nn.Conv2d(
-                    self.inter_channels,
-                    self.inter_channels,
-                    self.kernel_size,
-                    padding="same",
-                ),
-                self.adn_fn(self.inter_channels),
-                torch.nn.Conv2d(self.inter_channels, self.in_channels, 1),
-            )
-        else:
-            self.op = torch.nn.Sequential(
-                torch.nn.Conv2d(
-                    self.in_channels,
-                    self.in_channels,
-                    self.kernel_size,
-                    padding="same",
-                ),
-                self.adn_fn(self.in_channels),
-                torch.nn.Conv2d(
-                    self.in_channels,
-                    self.in_channels,
-                    self.kernel_size,
-                    padding="same",
-                ),
-            )
-
-        # convolve residual connection to match possible difference in
-        # output channels
-        if self.in_channels != self.out_channels:
-            self.final_op = torch.nn.Conv2d(
-                self.in_channels, self.out_channels, 1
-            )
-        else:
-            self.final_op = torch.nn.Identity()
-
-        self.adn_op = self.adn_fn(self.out_channels)
-
-    def forward(self, X: torch.Tensor, skip_activation: bool = None):
-        out = self.final_op(self.op(X) + X)
-        skip_activation = (
-            skip_activation
-            if skip_activation is not None
-            else self.skip_activation
-        )
-        if skip_activation is not True:
-            out = self.adn_op(out)
-        return out
+    Conv = torch.nn.Conv2d
 
 
-class ResidualBlock3d(torch.nn.Module):
+class ResidualBlock3d(ResidualBlock):
     """
     Default residual block in 3 dimensions. If `out_channels`
     is different from `in_channels` then a convolution is applied to
     the skip connection to match the number of `out_channels`.
     """
 
-    def __init__(
-        self,
-        in_channels: int,
-        kernel_size: int,
-        inter_channels: int = None,
-        out_channels: int = None,
-        adn_fn: torch.nn.Module = torch.nn.Identity,
-        skip_activation: bool = None,
-    ):
-        """
-        Args:
-            in_channels (int): number of input channels.
-            kernel_size (int): kernel size.
-            inter_channels (int): number of intermediary channels. Defaults
-                to None.
-            out_channels (int): number of output channels. Defaults to None.
-            adn_fn (torch.nn.Module, optional): the activation-dropout-normalization
-                module used. Defaults to torch.nn.Identity.
-            skip_activation (bool, optional): skips final activation during forward
-                pass. Defaults to None (False).
-        """
-        super().__init__()
-        self.in_channels = in_channels
-        self.kernel_size = kernel_size
-        self.inter_channels = inter_channels
-        if out_channels is not None:
-            self.out_channels = out_channels
-        else:
-            self.out_channels = self.in_channels
-        self.adn_fn = adn_fn
-        self.skip_activation = skip_activation
-
-        self.init_layers()
-
-    def init_layers(self):
-        if self.inter_channels is not None:
-            self.op = torch.nn.Sequential(
-                torch.nn.Conv3d(self.in_channels, self.inter_channels, 1),
-                self.adn_fn(self.inter_channels),
-                torch.nn.Conv3d(
-                    self.inter_channels,
-                    self.inter_channels,
-                    self.kernel_size,
-                    padding="same",
-                ),
-                self.adn_fn(self.inter_channels),
-                torch.nn.Conv3d(self.inter_channels, self.in_channels, 1),
-            )
-        else:
-            self.op = torch.nn.Sequential(
-                torch.nn.Conv3d(
-                    self.in_channels,
-                    self.in_channels,
-                    self.kernel_size,
-                    padding="same",
-                ),
-                self.adn_fn(self.in_channels),
-                torch.nn.Conv3d(
-                    self.in_channels,
-                    self.in_channels,
-                    self.kernel_size,
-                    padding="same",
-                ),
-            )
-
-        # convolve residual connection to match possible difference in
-        # output channels
-        if self.in_channels != self.out_channels:
-            self.final_op = torch.nn.Conv3d(
-                self.in_channels, self.out_channels, 1
-            )
-        else:
-            self.final_op = torch.nn.Identity()
-
-        self.adn_op = self.adn_fn(self.out_channels)
-
-    def forward(self, X: torch.Tensor, skip_activation: bool = None):
-        out = self.final_op(self.op(X) + X)
-        skip_activation = (
-            skip_activation
-            if skip_activation is not None
-            else self.skip_activation
-        )
-        if skip_activation is not True:
-            out = self.adn_op(out)
-        return out
+    Conv = torch.nn.Conv3d
 
 
 class ParallelOperationsAndSum(torch.nn.Module):
@@ -248,182 +173,118 @@ class ParallelOperationsAndSum(torch.nn.Module):
         return output
 
 
-class ResNeXtBlock2d(torch.nn.Module):
+class ResNeXtBlock(torch.nn.Module):
+    """
+    Base class for ResNeXt blocks. Subclasses select the convolution
+    operator for the desired number of spatial dimensions via the ``Conv``
+    attribute and set ``default_n_splits``.
+    """
+
+    Conv: type = None
+    default_n_splits = 16
+
+    def __init__(
+        self,
+        in_channels: int,
+        kernel_size: int,
+        inter_channels: int = None,
+        out_channels: int = None,
+        adn_fn: torch.nn.Module = torch.nn.Identity,
+        n_splits: int = None,
+        skip_activation: bool = None,
+    ):
+        """
+        Args:
+            in_channels (int): number of input channels.
+            inter_channels (int): number of intermediary channels. Defaults
+                to None (same as `out_channels`).
+            out_channels (int): number of output channels. Defaults to None
+                (same as `in_channels`).
+            kernel_size (int): kernel size.
+            adn_fn (torch.nn.Module, optional): the activation-dropout-normalization
+                module used. Defaults to torch.nn.Identity.
+            n_splits (int, optional): number of branches in intermediate step
+                of the ResNeXt module. Defaults to the subclass-specific
+                ``default_n_splits`` (16 for 2d, 32 for 3d).
+            skip_activation (bool, optional): skips final activation during forward
+                pass. Defaults to None (False).
+        """
+        super().__init__()
+        self.in_channels = in_channels
+        self.kernel_size = kernel_size
+        self.inter_channels = inter_channels
+        if out_channels is not None:
+            self.out_channels = out_channels
+        else:
+            self.out_channels = self.in_channels
+        self.adn_fn = adn_fn
+        self.n_splits = self.default_n_splits if n_splits is None else n_splits
+        self.skip_activation = skip_activation
+
+        self.init_layers()
+
+    def init_layers(self):
+        if self.inter_channels is None:
+            self.inter_channels = self.out_channels
+        self.in_channels_splits = split_int_into_n(
+            self.inter_channels, n=self.n_splits
+        )
+        self.ops = torch.nn.ModuleList([])
+        for in_channels in self.in_channels_splits:
+            op = torch.nn.Sequential(
+                self.Conv(self.in_channels, in_channels, 1),
+                self.adn_fn(in_channels),
+                self.Conv(
+                    in_channels, in_channels, self.kernel_size, padding="same"
+                ),
+                self.adn_fn(in_channels),
+                self.Conv(in_channels, self.out_channels, 1),
+            )
+            self.ops.append(op)
+
+        self.op = ParallelOperationsAndSum(self.ops)
+
+        # convolve residual connection to match possible difference in
+        # output channels
+        if self.in_channels != self.out_channels:
+            self.skip_op = self.Conv(self.in_channels, self.out_channels, 1)
+        else:
+            self.skip_op = torch.nn.Identity()
+
+        self.final_op = self.adn_fn(self.out_channels)
+
+    def forward(self, X: torch.Tensor, skip_activation: bool = None):
+        skip_activation = (
+            skip_activation
+            if skip_activation is not None
+            else self.skip_activation
+        )
+        out = self.op(X) + self.skip_op(X)
+        if skip_activation is not True:
+            out = self.final_op(out)
+        return out
+
+
+class ResNeXtBlock2d(ResNeXtBlock):
     """
     Default ResNeXt block in 2 dimensions. If `out_channels`
     is different from `in_channels` then a convolution is applied to
     the skip connection to match the number of `out_channels`.
     """
 
-    def __init__(
-        self,
-        in_channels: int,
-        kernel_size: int,
-        inter_channels: int = None,
-        out_channels: int = None,
-        adn_fn: torch.nn.Module = torch.nn.Identity,
-        n_splits: int = 16,
-        skip_activation: bool = None,
-    ):
-        """
-        Args:
-            in_channels (int): number of input channels.
-            inter_channels (int): number of intermediary channels. Defaults
-                to None.
-            out_channels (int): number of output channels. Defaults to None.
-            kernel_size (int): kernel size.
-            adn_fn (torch.nn.Module, optional): the activation-dropout-normalization
-                module used. Defaults to torch.nn.Identity.
-            n_splits (int, optional): number of branches in intermediate step
-                of the ResNeXt module. Defaults to 32.
-            skip_activation (bool, optional): skips final activation during forward
-                pass. Defaults to None (False).
-        """
-        super().__init__()
-        self.in_channels = in_channels
-        self.kernel_size = kernel_size
-        self.inter_channels = inter_channels
-        if out_channels is not None:
-            self.out_channels = out_channels
-        else:
-            self.out_channels = self.in_channels
-        self.adn_fn = adn_fn
-        self.n_splits = n_splits
-        self.skip_activation = skip_activation
-
-        self.init_layers()
-
-    def init_layers(self):
-        if self.inter_channels is None:
-            self.inter_channels = self.output_channels
-        self.in_channels_splits = split_int_into_n(
-            self.inter_channels, n=self.n_splits
-        )
-        self.ops = torch.nn.ModuleList([])
-        for in_channels in self.in_channels_splits:
-            op = torch.nn.Sequential(
-                torch.nn.Conv2d(self.in_channels, in_channels, 1),
-                self.adn_fn(in_channels),
-                torch.nn.Conv2d(
-                    in_channels, in_channels, self.kernel_size, padding="same"
-                ),
-                self.adn_fn(in_channels),
-                torch.nn.Conv2d(in_channels, self.out_channels, 1),
-            )
-            self.ops.append(op)
-
-        self.op = ParallelOperationsAndSum(self.ops)
-
-        # convolve residual connection to match possible difference in
-        # output channels
-        if self.in_channels != self.out_channels:
-            self.skip_op = torch.nn.Conv2d(
-                self.in_channels, self.out_channels, 1
-            )
-        else:
-            self.skip_op = torch.nn.Identity()
-
-        self.final_op = self.adn_fn(self.out_channels)
-
-    def forward(self, X: torch.Tensor, skip_activation: bool = None):
-        skip_activation = (
-            skip_activation
-            if skip_activation is not None
-            else self.skip_activation
-        )
-        out = self.op(X) + self.skip_op(X)
-        if skip_activation is not True:
-            out = self.final_op(out)
-        return out
+    Conv = torch.nn.Conv2d
+    default_n_splits = 16
 
 
-class ResNeXtBlock3d(torch.nn.Module):
+class ResNeXtBlock3d(ResNeXtBlock):
     """
     Default ResNeXt block in 3 dimensions. If `out_channels`
     is different from `in_channels` then a convolution is applied to
     the skip connection to match the number of `out_channels`.
     """
 
-    def __init__(
-        self,
-        in_channels: int,
-        kernel_size: int,
-        inter_channels: int = None,
-        out_channels: int = None,
-        adn_fn: torch.nn.Module = torch.nn.Identity,
-        n_splits: int = 32,
-        skip_activation: bool = None,
-    ):
-        """
-        Args:
-            in_channels (int): number of input channels.
-            inter_channels (int): number of intermediary channels. Defaults
-                to None.
-            out_channels (int): number of output channels. Defaults to None.
-            kernel_size (int): kernel size.
-            adn_fn (torch.nn.Module, optional): the activation-dropout-normalization
-                module used. Defaults to torch.nn.Identity.
-            n_splits (int, optional): number of branches in intermediate step
-                of the ResNeXt module. Defaults to 32.
-            skip_activation (bool, optional): skips final activation during forward
-                pass. Defaults to None (False).
-        """
-        super().__init__()
-        self.in_channels = in_channels
-        self.kernel_size = kernel_size
-        self.inter_channels = inter_channels
-        if out_channels is not None:
-            self.out_channels = out_channels
-        else:
-            self.out_channels = self.in_channels
-        self.adn_fn = adn_fn
-        self.n_splits = n_splits
-        self.skip_activation = skip_activation
-
-        self.init_layers()
-
-    def init_layers(self):
-        if self.inter_channels is None:
-            self.inter_channels = self.output_channels
-        self.in_channels_splits = split_int_into_n(
-            self.inter_channels, n=self.n_splits
-        )
-        self.ops = torch.nn.ModuleList([])
-        for in_channels in self.in_channels_splits:
-            op = torch.nn.Sequential(
-                torch.nn.Conv3d(self.in_channels, in_channels, 1),
-                self.adn_fn(in_channels),
-                torch.nn.Conv3d(
-                    in_channels, in_channels, self.kernel_size, padding="same"
-                ),
-                self.adn_fn(in_channels),
-                torch.nn.Conv3d(in_channels, self.out_channels, 1),
-            )
-            self.ops.append(op)
-
-        self.op = ParallelOperationsAndSum(self.ops)
-
-        # convolve residual connection to match possible difference in
-        # output channels
-        if self.in_channels != self.out_channels:
-            self.skip_op = torch.nn.Conv3d(
-                self.in_channels, self.out_channels, 1
-            )
-        else:
-            self.skip_op = torch.nn.Identity()
-
-        self.final_op = self.adn_fn(self.out_channels)
-
-    def forward(self, X: torch.Tensor, skip_activation: bool = None):
-        skip_activation = (
-            skip_activation
-            if skip_activation is not None
-            else self.skip_activation
-        )
-        out = self.op(X) + self.skip_op(X)
-        if skip_activation is not True:
-            out = self.final_op(out)
-        return out
+    Conv = torch.nn.Conv3d
+    default_n_splits = 32
 
 
 class ConvNeXtBlock2d(torch.nn.Module):
