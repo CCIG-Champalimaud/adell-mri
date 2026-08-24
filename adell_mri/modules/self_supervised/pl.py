@@ -137,10 +137,7 @@ class BarlowTwinsPL(ResNet, pl.LightningModule):
         }
 
     def on_validation_epoch_end(self):
-        sch = self.lr_schedulers().state_dict()
-        lr = self.learning_rate
-        last_lr = sch["_last_lr"][0] if "_last_lr" in sch else lr
-        self.log("lr", last_lr)
+        log_current_lr(self)
 
     def setup_metrics(self):
         metric_dict = {
@@ -397,10 +394,7 @@ class SelfSLBasePL(pl.LightningModule, ABC):
         }
 
     def on_train_epoch_end(self):
-        sch = self.lr_schedulers().state_dict()
-        lr = self.learning_rate
-        last_lr = sch["_last_lr"][0] if "_last_lr" in sch else lr
-        self.log("lr", last_lr, sync_dist=True)
+        log_current_lr(self, sync_dist=True)
 
     def setup_metrics(self):
         metric_dict = {

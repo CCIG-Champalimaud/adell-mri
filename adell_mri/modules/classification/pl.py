@@ -362,10 +362,7 @@ class ClassPLABC(pl.LightningModule, ABC):
         """
         Called at end of training epoch. Updates learning rate.
         """
-        sch = self.lr_schedulers().state_dict()
-        lr = self.learning_rate
-        last_lr = sch["_last_lr"][0] if "_last_lr" in sch else lr
-        self.log("lr", last_lr, sync_dist=True, prog_bar=True)
+        log_current_lr(self, sync_dist=True, prog_bar=True)
         gc.collect()
 
     def classification_probabilities(

@@ -33,7 +33,12 @@ def meta_tensors_to_tensors(batch: dict) -> dict:
     return batch
 
 
-def log_current_lr(module, key: str = "lr", sync_dist: bool = False) -> None:
+def log_current_lr(
+    module,
+    key: str = "lr",
+    sync_dist: bool = False,
+    prog_bar: bool = False,
+) -> None:
     """
     Logs the current learning rate taken from the module's active LR
     scheduler (falls back to ``module.learning_rate`` when unavailable).
@@ -45,11 +50,13 @@ def log_current_lr(module, key: str = "lr", sync_dist: bool = False) -> None:
             Defaults to "lr".
         sync_dist (bool, optional): whether to sync the logged value across
             processes. Defaults to False.
+        prog_bar (bool, optional): whether to show the value in the progress
+            bar. Defaults to False.
     """
     sch = module.lr_schedulers().state_dict()
     lr = module.learning_rate
     last_lr = sch["_last_lr"][0] if "_last_lr" in sch else lr
-    module.log(key, last_lr, sync_dist=sync_dist)
+    module.log(key, last_lr, sync_dist=sync_dist, prog_bar=prog_bar)
 
 
 def calculate_sn_weights(state_dict: dict) -> dict:

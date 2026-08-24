@@ -10,7 +10,7 @@ from adell_mri.modules.learning_rate import CosineAnnealingWithWarmupLR
 from adell_mri.modules.object_detection.map import mAP
 from adell_mri.modules.object_detection.nets import CoarseDetector3d, YOLONet3d
 from adell_mri.utils.optimizer_factory import OPTIMIZER_EPS_DEFAULT
-from adell_mri.utils.torch_utils import meta_tensors_to_tensors
+from adell_mri.utils.torch_utils import log_current_lr, meta_tensors_to_tensors
 
 
 def real_boxes_from_centres_sizes(
@@ -368,10 +368,7 @@ class YOLONet3dPL(YOLONet3d, pl.LightningModule):
         }
 
     def on_validation_epoch_end(self):
-        sch = self.lr_schedulers().state_dict()
-        lr = self.learning_rate
-        last_lr = sch["_last_lr"][0] if "_last_lr" in sch else lr
-        self.log("lr", last_lr)
+        log_current_lr(self)
 
     def setup_metrics(self):
         if self.n_classes == 2:
@@ -630,10 +627,7 @@ class CoarseDetector3dPL(CoarseDetector3d, pl.LightningModule):
             self.log(k, val, prog_bar=True)
             self.val_metrics[k_typ].reset()
         val_loss = self.loss_accumulator / self.loss_accumulator_d
-        sch = self.lr_schedulers().state_dict()
-        lr = self.learning_rate
-        last_lr = sch["_last_lr"][0] if "_last_lr" in sch else lr
-        self.log("lr", last_lr)
+        log_current_lr(self)
         self.log("val_loss", val_loss, prog_bar=True)
         self.loss_accumulator = 0.0
         self.loss_accumulator_d = 0.0
