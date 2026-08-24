@@ -215,6 +215,53 @@ class UNetBasePL(pl.LightningModule, ABC):
     def device(self):
         return next(self.parameters()).device
 
+    def _init_training_params(
+        self,
+        image_key,
+        label_key,
+        skip_conditioning_key,
+        feature_conditioning_key,
+        optimizer_str,
+        optimizer_eps,
+        learning_rate,
+        lr_encoder,
+        start_decay,
+        warmup_steps,
+        batch_size,
+        n_epochs,
+        weight_decay,
+        training_dataloader_call,
+        loss_fn,
+        picai_eval,
+    ):
+        """
+        Stores the shared training hyperparameters and initializes the
+        common metric/state attributes used by the segmentation PL modules.
+        """
+        self.image_key = image_key
+        self.label_key = label_key
+        self.skip_conditioning_key = skip_conditioning_key
+        self.feature_conditioning_key = feature_conditioning_key
+        self.optimizer_str = optimizer_str
+        self.optimizer_eps = optimizer_eps
+        self.learning_rate = learning_rate
+        self.lr_encoder = lr_encoder
+        self.start_decay = start_decay
+        self.warmup_steps = warmup_steps
+        self.batch_size = batch_size
+        self.n_epochs = n_epochs
+        self.weight_decay = weight_decay
+        self.training_dataloader_call = training_dataloader_call
+        self.loss_fn = loss_fn
+        self.picai_eval = picai_eval
+
+        self.loss_fn_class = torch.nn.BCEWithLogitsLoss()
+        self.setup_metrics()
+
+        # for metrics (AUC, AP) which require a list of predictions + gt
+        self.all_pred = []
+        self.all_true = []
+
     def calculate_loss(self, prediction, y):
         loss = self.loss_fn(prediction, y)
         if isinstance(loss, list):
@@ -736,29 +783,24 @@ class UNetPL(UNet, UNetBasePL):
 
         super().__init__(*args, **kwargs)
 
-        self.image_key = image_key
-        self.label_key = label_key
-        self.skip_conditioning_key = skip_conditioning_key
-        self.feature_conditioning_key = feature_conditioning_key
-        self.optimizer_str = optimizer_str
-        self.optimizer_eps = optimizer_eps
-        self.learning_rate = learning_rate
-        self.lr_encoder = lr_encoder
-        self.start_decay = start_decay
-        self.warmup_steps = warmup_steps
-        self.batch_size = batch_size
-        self.n_epochs = n_epochs
-        self.weight_decay = weight_decay
-        self.training_dataloader_call = training_dataloader_call
-        self.loss_fn = loss_fn
-        self.picai_eval = picai_eval
-
-        self.loss_fn_class = torch.nn.BCEWithLogitsLoss()
-        self.setup_metrics()
-
-        # for metrics (AUC, AP) which require a list of predictions + gt
-        self.all_pred = []
-        self.all_true = []
+        self._init_training_params(
+            image_key,
+            label_key,
+            skip_conditioning_key,
+            feature_conditioning_key,
+            optimizer_str,
+            optimizer_eps,
+            learning_rate,
+            lr_encoder,
+            start_decay,
+            warmup_steps,
+            batch_size,
+            n_epochs,
+            weight_decay,
+            training_dataloader_call,
+            loss_fn,
+            picai_eval,
+        )
 
         self.bn_mult = 0.1
 
@@ -824,29 +866,24 @@ class UNETRPL(UNETR, UNetBasePL):
             kwargs: keyword arguments for UNet class.
         """
         super().__init__(*args, **kwargs)
-        self.image_key = image_key
-        self.label_key = label_key
-        self.skip_conditioning_key = skip_conditioning_key
-        self.feature_conditioning_key = feature_conditioning_key
-        self.optimizer_str = optimizer_str
-        self.optimizer_eps = optimizer_eps
-        self.learning_rate = learning_rate
-        self.lr_encoder = lr_encoder
-        self.start_decay = start_decay
-        self.warmup_steps = warmup_steps
-        self.batch_size = batch_size
-        self.n_epochs = n_epochs
-        self.weight_decay = weight_decay
-        self.training_dataloader_call = training_dataloader_call
-        self.loss_fn = loss_fn
-        self.picai_eval = picai_eval
-
-        self.loss_fn_class = torch.nn.BCEWithLogitsLoss()
-        self.setup_metrics()
-
-        # for metrics (AUC, AP) which require a list of predictions + gt
-        self.all_pred = []
-        self.all_true = []
+        self._init_training_params(
+            image_key,
+            label_key,
+            skip_conditioning_key,
+            feature_conditioning_key,
+            optimizer_str,
+            optimizer_eps,
+            learning_rate,
+            lr_encoder,
+            start_decay,
+            warmup_steps,
+            batch_size,
+            n_epochs,
+            weight_decay,
+            training_dataloader_call,
+            loss_fn,
+            picai_eval,
+        )
 
         self.bn_mult = 0.1
 
@@ -913,29 +950,24 @@ class SWINUNetPL(SWINUNet, UNetBasePL):
         """
         super().__init__(*args, **kwargs)
 
-        self.image_key = image_key
-        self.label_key = label_key
-        self.skip_conditioning_key = skip_conditioning_key
-        self.feature_conditioning_key = feature_conditioning_key
-        self.optimizer_str = optimizer_str
-        self.optimizer_eps = optimizer_eps
-        self.learning_rate = learning_rate
-        self.lr_encoder = lr_encoder
-        self.start_decay = start_decay
-        self.warmup_steps = warmup_steps
-        self.batch_size = batch_size
-        self.n_epochs = n_epochs
-        self.weight_decay = weight_decay
-        self.training_dataloader_call = training_dataloader_call
-        self.loss_fn = loss_fn
-        self.picai_eval = picai_eval
-
-        self.loss_fn_class = torch.nn.BCEWithLogitsLoss()
-        self.setup_metrics()
-
-        # for metrics (AUC, AP) which require a list of predictions + gt
-        self.all_pred = []
-        self.all_true = []
+        self._init_training_params(
+            image_key,
+            label_key,
+            skip_conditioning_key,
+            feature_conditioning_key,
+            optimizer_str,
+            optimizer_eps,
+            learning_rate,
+            lr_encoder,
+            start_decay,
+            warmup_steps,
+            batch_size,
+            n_epochs,
+            weight_decay,
+            training_dataloader_call,
+            loss_fn,
+            picai_eval,
+        )
 
         self.bn_mult = 0.1
 
@@ -1002,29 +1034,24 @@ class MonaiSWINUNetPL(MonaiSWINUNet, UNetBasePL):
         """
         super().__init__(*args, **kwargs)
 
-        self.image_key = image_key
-        self.label_key = label_key
-        self.skip_conditioning_key = skip_conditioning_key
-        self.feature_conditioning_key = feature_conditioning_key
-        self.optimizer_str = optimizer_str
-        self.optimizer_eps = optimizer_eps
-        self.learning_rate = learning_rate
-        self.lr_encoder = lr_encoder
-        self.start_decay = start_decay
-        self.warmup_steps = warmup_steps
-        self.batch_size = batch_size
-        self.n_epochs = n_epochs
-        self.weight_decay = weight_decay
-        self.training_dataloader_call = training_dataloader_call
-        self.loss_fn = loss_fn
-        self.picai_eval = picai_eval
-
-        self.loss_fn_class = torch.nn.BCEWithLogitsLoss()
-        self.setup_metrics()
-
-        # for metrics (AUC, AP) which require a list of predictions + gt
-        self.all_pred = []
-        self.all_true = []
+        self._init_training_params(
+            image_key,
+            label_key,
+            skip_conditioning_key,
+            feature_conditioning_key,
+            optimizer_str,
+            optimizer_eps,
+            learning_rate,
+            lr_encoder,
+            start_decay,
+            warmup_steps,
+            batch_size,
+            n_epochs,
+            weight_decay,
+            training_dataloader_call,
+            loss_fn,
+            picai_eval,
+        )
 
         self.bn_mult = 0.1
 
@@ -1091,29 +1118,24 @@ class MonaiUNETRPL(MonaiUNETR, UNetBasePL):
         """
         super().__init__(*args, **kwargs)
 
-        self.image_key = image_key
-        self.label_key = label_key
-        self.skip_conditioning_key = skip_conditioning_key
-        self.feature_conditioning_key = feature_conditioning_key
-        self.optimizer_str = optimizer_str
-        self.optimizer_eps = optimizer_eps
-        self.learning_rate = learning_rate
-        self.lr_encoder = lr_encoder
-        self.start_decay = start_decay
-        self.warmup_steps = warmup_steps
-        self.batch_size = batch_size
-        self.n_epochs = n_epochs
-        self.weight_decay = weight_decay
-        self.training_dataloader_call = training_dataloader_call
-        self.loss_fn = loss_fn
-        self.picai_eval = picai_eval
-
-        self.loss_fn_class = torch.nn.BCEWithLogitsLoss()
-        self.setup_metrics()
-
-        # for metrics (AUC, AP) which require a list of predictions + gt
-        self.all_pred = []
-        self.all_true = []
+        self._init_training_params(
+            image_key,
+            label_key,
+            skip_conditioning_key,
+            feature_conditioning_key,
+            optimizer_str,
+            optimizer_eps,
+            learning_rate,
+            lr_encoder,
+            start_decay,
+            warmup_steps,
+            batch_size,
+            n_epochs,
+            weight_decay,
+            training_dataloader_call,
+            loss_fn,
+            picai_eval,
+        )
 
         self.bn_mult = 0.1
 
@@ -1180,30 +1202,26 @@ class UNetPlusPlusPL(UNetPlusPlus, UNetBasePL):
 
         super().__init__(*args, **kwargs)
 
-        self.image_key = image_key
-        self.label_key = label_key
-        self.skip_conditioning_key = skip_conditioning_key
-        self.feature_conditioning_key = feature_conditioning_key
-        self.optimizer_str = optimizer_str
-        self.optimizer_eps = optimizer_eps
-        self.learning_rate = learning_rate
-        self.lr_encoder = lr_encoder
-        self.start_decay = start_decay
-        self.warmup_steps = warmup_steps
-        self.batch_size = batch_size
-        self.n_epochs = n_epochs
-        self.weight_decay = weight_decay
-        self.training_dataloader_call = training_dataloader_call
-        self.loss_fn = loss_fn
-        self.picai_eval = picai_eval
+        self._init_training_params(
+            image_key,
+            label_key,
+            skip_conditioning_key,
+            feature_conditioning_key,
+            optimizer_str,
+            optimizer_eps,
+            learning_rate,
+            lr_encoder,
+            start_decay,
+            warmup_steps,
+            batch_size,
+            n_epochs,
+            weight_decay,
+            training_dataloader_call,
+            loss_fn,
+            picai_eval,
+        )
 
         self.deep_supervision = True
-        self.loss_fn_class = torch.nn.BCEWithLogitsLoss()
-        self.setup_metrics()
-
-        # for metrics (AUC, AP) which require a list of predictions + gt
-        self.all_pred = []
-        self.all_true = []
 
         self.bn_mult = 0.1
 
@@ -1265,27 +1283,24 @@ class MIMUNetPL(MIMUNet, UNetBasePL):
 
         super().__init__(*args, **kwargs)
 
-        self.image_key = image_key
-        self.label_key = label_key
-        self.optimizer_str = optimizer_str
-        self.optimizer_eps = optimizer_eps
-        self.learning_rate = learning_rate
-        self.lr_encoder = lr_encoder
-        self.start_decay = start_decay
-        self.warmup_steps = warmup_steps
-        self.batch_size = batch_size
-        self.n_epochs = n_epochs
-        self.weight_decay = weight_decay
-        self.training_dataloader_call = training_dataloader_call
-        self.loss_fn = loss_fn
-        self.picai_eval = picai_eval
-
-        self.loss_fn_class = torch.nn.BCEWithLogitsLoss()
-        self.setup_metrics()
-
-        # for metrics (AUC, AP) which require a list of predictions + gt
-        self.all_pred = []
-        self.all_true = []
+        self._init_training_params(
+            image_key,
+            label_key,
+            None,
+            None,
+            optimizer_str,
+            optimizer_eps,
+            learning_rate,
+            lr_encoder,
+            start_decay,
+            warmup_steps,
+            batch_size,
+            n_epochs,
+            weight_decay,
+            training_dataloader_call,
+            loss_fn,
+            picai_eval,
+        )
 
         self.make_uniform = True
 
