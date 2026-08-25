@@ -186,6 +186,8 @@ def main(arguments):
         presence_keys.extend(args.input_mask_keys)
 
     data_dict.apply_filters(**vars(args), presence_keys=presence_keys)
+    if args.cat_condition_keys:
+        data_dict.apply(str, to_keys=args.cat_condition_keys)
 
     if len(data_dict) == 0:
         raise Exception(
