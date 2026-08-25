@@ -6,6 +6,126 @@ from rich.progress import track
 from tqdm import tqdm
 
 
+class _SamplingBuffers:
+    """
+    Pre-allocated tensors reused across the iterations of the sampling
+    loop (timestep placeholder, network input with channel-concatenated
+    conditioning, classifier-free guidance context and output). Constant
+    entries (conditioning slices) are filled once on construction; only
+    the entries which depend on the current iterate are refreshed at
+    each step.
+    """
+
+    def __init__(
+        self,
+        image: torch.Tensor,
+        conditioning: torch.Tensor | None,
+        unconditioning: torch.Tensor | None,
+        concat_condition: torch.Tensor | None,
+        use_guidance: bool,
+    ):
+        self.batch_size = image.shape[0]
+        self.image_channels = image.shape[1]
+        self.timestep = torch.zeros(1, dtype=torch.long, device=image.device)
+        n = self.batch_size * (2 if use_guidance else 1)
+        if concat_condition is None and not use_guidance:
+            self.model_input = None
+            self.context = None
+            self.prediction = None
+            return
+        in_channels = self.image_channels + (
+            concat_condition.shape[1] if concat_condition is not None else 0
+        )
+        self.model_input = torch.empty(
+            (n, in_channels, *image.shape[2:]),
+            dtype=image.dtype,
+            device=image.device,
+        )
+        if concat_condition is not None:
+            offset = self.image_channels
+            if use_guidance:
+                self.model_input[: self.batch_size, offset:].copy_(
+                    concat_condition
+                )
+                self.model_input[self.batch_size :, offset:].copy_(
+                    concat_condition
+                )
+            else:
+                self.model_input[:, offset:].copy_(concat_condition)
+        if use_guidance:
+            self.context = torch.empty(
+                (n, *conditioning.shape[1:]),
+                dtype=conditioning.dtype,
+                device=conditioning.device,
+            )
+            self.context[: self.batch_size].copy_(conditioning)
+            self.context[self.batch_size :].copy_(unconditioning)
+        else:
+            self.context = None
+        self.prediction = None
+
+    def get_model_input(self, image: torch.Tensor) -> torch.Tensor:
+        """
+        Returns the pre-allocated network input updated with the current
+        noisy image (or the image itself if no buffers are needed).
+
+        Args:
+            image (torch.Tensor): current noisy image.
+
+        Returns:
+            torch.Tensor: network input.
+        """
+        if self.model_input is None:
+            return image
+        b = self.batch_size
+        c = self.image_channels
+        if self.context is not None:
+            self.model_input[:b, :c].copy_(image)
+            self.model_input[b:, :c].copy_(image)
+        else:
+            self.model_input[:, :c].copy_(image)
+        return self.model_input
+
+    def combine_guidance(
+        self, model_output: torch.Tensor, guidance_strength: float
+    ) -> torch.Tensor:
+        """
+        Combines conditional and unconditional predictions using
+        classifier-free guidance without intermediate allocations:
+
+        ``(1 + guidance_strength) * cond - guidance_strength * uncond``
+
+        Args:
+            model_output (torch.Tensor): doubled-batch network output
+                (conditional followed by unconditional predictions).
+            guidance_strength (float): classifier-free guidance strength.
+
+        Returns:
+            torch.Tensor: guided prediction.
+        """
+        b = self.batch_size
+        conditional = model_output[:b]
+        unconditional = model_output[b:]
+        if (
+            self.prediction is None
+            or self.prediction.shape != conditional.shape
+            or self.prediction.dtype != conditional.dtype
+        ):
+            self.prediction = torch.empty_like(conditional)
+        prediction = self.prediction
+        if torch.is_grad_enabled() and (
+            conditional.requires_grad or unconditional.requires_grad
+        ):
+            return torch.subtract(
+                (1.0 + guidance_strength) * conditional,
+                guidance_strength * unconditional,
+            )
+        torch.subtract(conditional, unconditional, out=prediction)
+        prediction.mul_(guidance_strength)
+        prediction.add_(conditional)
+        return prediction
+
+
 class DiffusionInfererSkipSteps(DiffusionInferer):
     def __call__(
         self,
@@ -62,6 +182,7 @@ class DiffusionInfererSkipSteps(DiffusionInferer):
         concat_condition: torch.Tensor | None,
         unconditioning: torch.Tensor | None = None,
         guidance_strength: float | None = None,
+        buffers: _SamplingBuffers | None = None,
     ) -> torch.Tensor:
         """
         Predicts the noise at a given timestep, combining cross-attention
@@ -82,6 +203,10 @@ class DiffusionInfererSkipSteps(DiffusionInferer):
                 context for classifier-free guidance. Defaults to None.
             guidance_strength (float | None, optional): classifier-free
                 guidance strength. Defaults to None.
+            buffers (_SamplingBuffers | None, optional): pre-allocated
+                buffers reused across sampling steps. If not provided,
+                required intermediates are allocated on the fly. Defaults
+                to None.
 
         Returns:
             torch.Tensor: predicted noise.
@@ -92,30 +217,34 @@ class DiffusionInfererSkipSteps(DiffusionInferer):
             and unconditioning is not None
         )
         if use_guidance:
-            b = image.shape[0]
-            model_input = torch.cat([image, image], dim=0)
-            if concat_condition is not None:
-                model_input = torch.cat(
-                    [
-                        model_input,
-                        torch.cat([concat_condition, concat_condition], dim=0),
-                    ],
-                    dim=1,
+            if buffers is None:
+                buffers = _SamplingBuffers(
+                    image=image,
+                    conditioning=conditioning,
+                    unconditioning=unconditioning,
+                    concat_condition=concat_condition,
+                    use_guidance=True,
                 )
-            context = torch.cat([conditioning, unconditioning], dim=0)
             model_output = diffusion_model(
-                x=model_input,
+                x=buffers.get_model_input(image),
                 timesteps=timestep,
-                context=context,
+                context=buffers.context,
             )
-            return torch.subtract(
-                (1.0 + guidance_strength) * model_output[:b],
-                guidance_strength * model_output[b:],
-            )
+            return buffers.combine_guidance(model_output, guidance_strength)
         if concat_condition is not None:
-            image = torch.cat([image, concat_condition], dim=1)
+            if buffers is None or buffers.context is not None:
+                buffers = _SamplingBuffers(
+                    image=image,
+                    conditioning=None,
+                    unconditioning=None,
+                    concat_condition=concat_condition,
+                    use_guidance=False,
+                )
+            model_input = buffers.get_model_input(image)
+        else:
+            model_input = image
         return diffusion_model(
-            x=image,
+            x=model_input,
             timesteps=timestep,
             context=conditioning,
         )
@@ -170,6 +299,19 @@ class DiffusionInfererSkipSteps(DiffusionInferer):
         if not scheduler:
             scheduler = self.scheduler
         image = input_noise
+        use_guidance = (
+            guidance_strength is not None
+            and conditioning is not None
+            and unconditioning is not None
+        )
+        buffers = _SamplingBuffers(
+            image=image,
+            conditioning=conditioning,
+            unconditioning=unconditioning,
+            concat_condition=concat_condition,
+            use_guidance=use_guidance,
+        )
+        timestep = buffers.timestep
         if verbose:
             progress_bar = track(
                 scheduler.timesteps[skip_steps:],
@@ -182,14 +324,16 @@ class DiffusionInfererSkipSteps(DiffusionInferer):
         intermediates = []
         for t in progress_bar:
             # 1. predict noise model_output
+            timestep.fill_(t)
             model_output = self._predict(
                 diffusion_model,
                 image,
-                torch.tensor((t,), device=image.device),
+                timestep,
                 conditioning=conditioning,
                 concat_condition=concat_condition,
                 unconditioning=unconditioning,
                 guidance_strength=guidance_strength,
+                buffers=buffers,
             )
             # 2. compute previous image: x_t -> x_t-1
             image, _ = scheduler.step(model_output, t, image)
@@ -246,20 +390,35 @@ class DiffusionInfererSkipSteps(DiffusionInferer):
         if not scheduler:
             scheduler = self.scheduler
         image = input_noise
+        use_guidance = (
+            guidance_strength is not None
+            and conditioning is not None
+            and unconditioning is not None
+        )
+        buffers = _SamplingBuffers(
+            image=image,
+            conditioning=conditioning,
+            unconditioning=unconditioning,
+            concat_condition=concat_condition,
+            use_guidance=use_guidance,
+        )
+        timestep = buffers.timestep
         if verbose:
             progress_bar = tqdm_fn(scheduler.timesteps[skip_steps:])
         else:
             progress_bar = iter(scheduler.timesteps[skip_steps:])
         for t in progress_bar:
             # 1. predict noise model_output
+            timestep.fill_(t)
             model_output = self._predict(
                 diffusion_model,
                 image,
-                torch.tensor((t,), device=input_noise.device),
+                timestep,
                 conditioning=conditioning,
                 concat_condition=concat_condition,
                 unconditioning=unconditioning,
                 guidance_strength=guidance_strength,
+                buffers=buffers,
             )
             # 2. compute previous image: x_t -> x_t-1
             image, _ = scheduler.step(model_output, t, image)
