@@ -1138,12 +1138,13 @@ def get_generative_network(
         A :class:`LightningModule` generative network.
     """
     try:
-        from generative.networks.schedulers import DDPMScheduler
+        import generative.networks.schedulers  # noqa: F401
 
         from adell_mri.modules.diffusion.inferer import (
             DiffusionInfererSkipSteps,
         )
         from adell_mri.modules.diffusion.pl import DiffusionUNetPL
+        from adell_mri.modules.diffusion.scheduler import DDPMScheduler
     except ImportError:
         raise ImportError(
             "Please install the generative package to diffusion models"
