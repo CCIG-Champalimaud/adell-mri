@@ -153,12 +153,9 @@ def binary_focal_loss(
     pred_inv = torch.maximum(1 - pred, eps)
     target = (target > threshold).long().flatten(start_dim=2)
     target = target * (1 - label_smoothing) + label_smoothing / 2
+    pt = target * pred + (1 - target) * pred_inv
     return (
-        torch.add(
-            alpha * (pred**gamma) * torch.log(pred) * target,
-            (pred_inv**gamma) * torch.log(pred_inv) * (1 - target),
-        )
-        .negative()
+        (-alpha * target * (1 - pt) ** gamma * torch.log(pt))
         .multiply(scale)
         .mean(-1)
     )
@@ -554,7 +551,9 @@ def cat_cross_entropy(
 
     if pred.shape != target.shape:
         target = classes_to_one_hot(target)
-    target = target * (1 - label_smoothing) + 1 / target.shape[1]
+    target = target * (1 - label_smoothing) + (
+        label_smoothing / target.shape[1]
+    )
     if isinstance(weight, torch.Tensor) is True:
         weight = unsqueeze_to_shape(weight, pred.shape, 1)
     out = -target * torch.log(pred + eps)
@@ -601,7 +600,9 @@ def mc_focal_loss(
     if pred.shape != target.shape:
         target = classes_to_one_hot(target)
     p = mc_pt(pred, target)
-    target = target * (1 - label_smoothing) + 1 / target.shape[1]
+    target = target * (1 - label_smoothing) + (
+        label_smoothing / target.shape[1]
+    )
     ce = -target * torch.log(pred + eps)
     out = torch.flatten(alpha * ((1 - p + eps) ** gamma) * ce, start_dim=1)
     return torch.mean(out * scale, dim=1)

@@ -31,13 +31,23 @@ class BarlowTwinsLoss(torch.nn.Module):
         self.std = None
 
     def standardize(self, x: torch.Tensor) -> torch.Tensor:
-        if self.moving is False and self.sum is None:
+        """
+        Standardizes features using running average/std when in moving
+        average mode, or batch statistics otherwise.
+
+        Args:
+            x (torch.Tensor): tensor with shape [batch, n_features].
+
+        Returns:
+            torch.Tensor: standardized tensor.
+        """
+        if self.moving is True:
+            o = torch.divide(x - self.average, self.std)
+        else:
             o = torch.divide(
                 x - torch.mean(x, 0, keepdim=True),
                 torch.std(x, 0, keepdim=True),
             )
-        else:
-            o = torch.divide(x - self.average, self.std)
         return o
 
     def pearson_corr(self, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
@@ -78,8 +88,15 @@ class BarlowTwinsLoss(torch.nn.Module):
         return loss
 
     def calculate_average_std(self):
+        """
+        Computes the running average and variance of the accumulated
+        feature statistics.
+
+        The variance is computed as E[x^2] - E[x]^2; any positive scaling
+        cancels out in the Pearson correlation used by the loss.
+        """
         self.average = self.sum / self.count
-        self.std = self.sum_of_squares - torch.square(self.sum) / self.count
+        self.std = self.sum_of_squares / self.count - torch.square(self.average)
 
     def reset(self):
         self.count = 0.0

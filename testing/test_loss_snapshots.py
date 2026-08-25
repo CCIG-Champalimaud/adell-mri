@@ -57,47 +57,66 @@ def test_binary_cross_entropy_value():
     assert torch.allclose(loss, expected)
 
 
-def test_binary_focal_loss_value_current_behaviour():
+def test_binary_focal_loss_value():
     """
-    Characterizes the current implementation, which weights the log-loss
-    by pt**gamma (rather than the paper's (1-pt)**gamma).
+    Focal loss per Lin et al. (2018): -(1-pt)^gamma * log(pt), with the
+    repository's convention of applying ``alpha`` to positive-class terms.
     """
     gamma = 2.0
     loss = binary_focal_loss(BINARY_PRED, BINARY_TARGET, gamma=gamma)
     p = BINARY_PRED.flatten(start_dim=2)
     t = (BINARY_TARGET > 0.5).long().flatten(start_dim=2).to(torch.float64)
     pt = t * p + (1 - t) * (1 - p)
-    expected = -torch.mean((pt**gamma) * torch.log(pt), dim=-1)
+    expected = -torch.mean(t * (1 - pt) ** gamma * torch.log(pt), dim=-1)
     assert loss.shape == expected.shape
     assert torch.allclose(loss, expected)
 
 
-def test_cat_cross_entropy_value_current_behaviour():
+def test_focal_loss_downweights_easy_examples():
     """
-    Characterizes the current implementation, which adds 1/n_classes to
-    the targets even when label_smoothing is 0.
+    The focusing parameter must down-weight easy (pt close to 1) examples:
+    loss(gamma>0) < BCE for confident correct predictions.
     """
-    loss = cat_cross_entropy(MC_PRED, MC_TARGET)
+    pred = torch.tensor([[[[0.99]]]], dtype=torch.float64)
+    target = torch.tensor([[[[1.0]]]], dtype=torch.float64)
+    bce = binary_cross_entropy(pred, target)
+    focal = binary_focal_loss(pred, target, gamma=2.0)
+    assert float(focal) < float(bce)
+
+
+def test_cat_cross_entropy_value_and_smoothing():
+    """
+    Label smoothing must interpolate targets toward 1/n_classes and be a
+    no-op when label_smoothing=0.
+    """
     one_hot = _one_hot(MC_TARGET)
-    shifted_target = one_hot * (1 - 0.0) + 1 / one_hot.shape[1]
+    n_classes = one_hot.shape[1]
+
+    loss = cat_cross_entropy(MC_PRED, MC_TARGET)
     expected = -torch.mean(
+        torch.flatten(one_hot * torch.log(MC_PRED + EPS), start_dim=1), dim=1
+    )
+    assert torch.allclose(loss, expected)
+
+    ls = 0.3
+    smoothed_loss = cat_cross_entropy(MC_PRED, MC_TARGET, label_smoothing=ls)
+    shifted_target = one_hot * (1 - ls) + ls / n_classes
+    expected_smoothed = -torch.mean(
         torch.flatten(shifted_target * torch.log(MC_PRED + EPS), start_dim=1),
         dim=1,
     )
-    assert loss.shape == expected.shape
-    assert torch.allclose(loss, expected)
+    assert torch.allclose(smoothed_loss, expected_smoothed)
 
 
-def test_mc_focal_loss_value_current_behaviour():
+def test_mc_focal_loss_value():
     gamma = 2.0
     alpha = torch.ones(3, dtype=torch.float64)
     loss = mc_focal_loss(MC_PRED, MC_TARGET, alpha=alpha, gamma=gamma)
     one_hot = _one_hot(MC_TARGET)
-    p = torch.where(one_hot > 0.5, MC_PRED, 1 - MC_PRED)
-    shifted_target = one_hot * (1 - 0.0) + 1 / one_hot.shape[1]
-    ce = -shifted_target * torch.log(MC_PRED + EPS)
+    pt = torch.where(one_hot > 0.5, MC_PRED, 1 - MC_PRED)
+    ce = -one_hot * torch.log(MC_PRED + EPS)
     expected = torch.mean(
-        torch.flatten((1 - p + EPS) ** gamma * ce, start_dim=1), dim=1
+        torch.flatten((1 - pt + EPS) ** gamma * ce, start_dim=1), dim=1
     )
     assert loss.shape == expected.shape
     assert torch.allclose(loss, expected)
@@ -140,3 +159,84 @@ def test_composite_losses_deterministic(fn):
     a = fn(BINARY_PRED, BINARY_TARGET, **kwargs)
     b = fn(BINARY_PRED, BINARY_TARGET, **kwargs)
     assert torch.equal(a, b)
+
+
+def test_barlow_twins_loss_multiple_updates_non_moving():
+    """
+    Non-moving BarlowTwinsLoss must standardize per batch and support
+    repeated update=True calls (previously crashed on the second call).
+    """
+    from adell_mri.modules.self_supervised.losses.barlow_twins import (
+        BarlowTwinsLoss,
+    )
+
+    torch.manual_seed(0)
+    loss_fn = BarlowTwinsLoss(moving=False)
+    for _ in range(3):
+        x, y = torch.rand(4, 8), torch.rand(4, 8)
+        loss = loss_fn(x, y, update=True)
+        assert loss.ndim == 0
+        assert torch.isfinite(loss)
+
+
+def test_barlow_twins_loss_identical_views_zero_invariance():
+    """
+    For identical views the sample-vs-sample cross-correlation diagonal is
+    exactly one, so the invariance term must vanish; the remaining value
+    comes solely from the scaled off-diagonal (reduction) term.
+    """
+    from adell_mri.modules.self_supervised.losses.barlow_twins import (
+        BarlowTwinsLoss,
+    )
+
+    torch.manual_seed(0)
+    x = torch.rand(16, 8, dtype=torch.float64)
+    loss_fn = BarlowTwinsLoss(moving=False)
+    C = loss_fn.pearson_corr(x, x.clone())
+    inv_term = torch.diagonal(1 - C).abs().max()
+    assert float(inv_term) < 1e-12
+
+
+def test_barlow_twins_standardize_modes():
+    """
+    Non-moving mode must always use batch statistics; moving mode must use
+    the running statistics once they are available (previously crashed on
+    the second update in non-moving mode).
+    """
+    from adell_mri.modules.self_supervised.losses.barlow_twins import (
+        BarlowTwinsLoss,
+    )
+
+    torch.manual_seed(0)
+    x = torch.rand(32, 8, dtype=torch.float64) * 3 + 5
+
+    fn = BarlowTwinsLoss(moving=False)
+    out = fn.standardize(x)
+    assert torch.allclose(out.mean(0), torch.zeros(8, dtype=torch.float64))
+    assert torch.allclose(out.std(0), torch.ones(8, dtype=torch.float64))
+
+    # moving mode: populate running statistics from one batch...
+    fn = BarlowTwinsLoss(moving=True)
+    y = x + torch.rand(32, 8, dtype=torch.float64) * 0.01
+    loss = fn(x, y, update=True)
+    assert torch.isfinite(loss)
+    # ...then standardize a batch from a very different distribution: the
+    # output must NOT be batch-standardized (running stats are used)
+    z = torch.rand(32, 8, dtype=torch.float64) * 3 + 50
+    out = fn.standardize(z)
+    assert not torch.allclose(out.mean(0), torch.zeros(8, dtype=torch.float64))
+
+
+def test_barlow_twins_loss_moving_average_mode():
+    """Moving-average mode must work across multiple updates."""
+    from adell_mri.modules.self_supervised.losses.barlow_twins import (
+        BarlowTwinsLoss,
+    )
+
+    torch.manual_seed(0)
+    loss_fn = BarlowTwinsLoss(moving=True)
+    for _ in range(3):
+        x, y = torch.rand(4, 8), torch.rand(4, 8)
+        loss = loss_fn(x, y, update=True)
+        assert loss.ndim == 0
+        assert torch.isfinite(loss)
