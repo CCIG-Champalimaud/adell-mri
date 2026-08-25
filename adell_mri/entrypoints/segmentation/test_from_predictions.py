@@ -578,7 +578,7 @@ def main(arguments):
     )
     parser.add_argument(
         "--identifier_pattern",
-        default="[0-9\\.]+\.[0-9\\.]+\.[0-9]+",
+        default=r"[0-9\.]+\.[0-9\.]+\.[0-9]+",
         help="Pattern for identifier",
     )
     parser.add_argument(
@@ -612,6 +612,7 @@ def main(arguments):
     parser.add_argument(
         "--class_idx",
         default=0,
+        type=int,
         help="Extracts this class from the data if more than one channel in \
             prediction",
     )
@@ -630,7 +631,7 @@ def main(arguments):
     parser.add_argument(
         "--proba_threshold",
         default=0.1,
-        type=str,
+        type=float,
         help="If a probability is > threshold then it is considered positive. \
             If not specified, assumes the maximum probability/0.5 in binary \
             cases corresponds to the correct/positive class",
@@ -638,7 +639,7 @@ def main(arguments):
     parser.add_argument(
         "--min_size",
         default=10,
-        type=str,
+        type=int,
         help="Minimum prediction size",
     )
     parser.add_argument(

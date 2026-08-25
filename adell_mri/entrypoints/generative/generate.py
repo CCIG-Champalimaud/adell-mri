@@ -227,6 +227,8 @@ def main(arguments):
             filters_presence=presence_keys,
             filters=args.filter_on_keys,
         )
+        if args.cat_condition_keys:
+            data_dict.apply(str, args.cat_condition_keys)
         if args.subsample_size is not None:
             data_dict.subsample_dataset(args.subsample_size)
 

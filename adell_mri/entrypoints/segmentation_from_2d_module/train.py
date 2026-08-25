@@ -1,3 +1,4 @@
+import ast
 import gc
 from copy import deepcopy
 
@@ -127,6 +128,7 @@ def main(arguments):
             "metric_path",
             "early_stopping",
             ("class_weights", "class_weights", {"default": [1.0]}),
+            "cosine_decay",
             "spectral_norm_power_iterations",
         ]
     )
@@ -285,7 +287,11 @@ def main(arguments):
             "t2_keys": t2_keys,
             "random_crop_size": args.random_crop_size,
             "n_crops": args.n_crops,
-        } | (eval(args.augment_args) if args.augment_args is not None else {})
+        } | (
+            ast.literal_eval(args.augment_args)
+            if args.augment_args is not None
+            else {}
+        )
         if args.random_crop_size:
             get_all_crops_transform = [
                 GetAllCropsd(args.image_keys + ["mask"], args.random_crop_size)
@@ -436,11 +442,12 @@ def main(arguments):
 
         # get loss function parameters
         loss_params = get_loss_param_dict(
-            weights=weights,
+            loss_key=loss_key,
+            weight=weights,
             gamma=args.loss_gamma,
             comb=args.loss_comb,
             scale=args.loss_scale,
-        )[loss_key]
+        )
         if "eps" in loss_params and args.precision != "32":
             if loss_params["eps"] < 1e-4:
                 loss_params["eps"] = 1e-4

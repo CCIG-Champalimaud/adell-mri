@@ -30,6 +30,27 @@ def move_axis(X: torch.Tensor, axis1: int, axis2: int) -> torch.Tensor:
     return X.permute(tuple(axes))
 
 
+def expand_and_check(x: Union[List[int], int], n: int) -> List[int]:
+    """
+    Expands a scalar to a list of length n or checks that a list has
+    length n.
+
+    Args:
+        x (Union[List[int],int]): integer or list of integers.
+        n (int): expected number of elements.
+
+    Returns:
+        List[int]: list of integers with length n.
+
+    Raises:
+        AssertionError: if x is a list whose length differs from n.
+    """
+    if isinstance(x, list) is False:
+        return [x for _ in range(n)]
+    assert len(x) == n
+    return x
+
+
 def einops_rescale(X: torch.Tensor, scale: int = 1) -> torch.Tensor:
     sh = X.shape
     b, c, inner = sh[0], sh[1], sh[2:]
@@ -1225,36 +1246,6 @@ class SWINTransformerBlock(torch.nn.Module):
             X = einops_rescale(X, scale)
         return X
 
-    def forward_old(
-        self, X: torch.Tensor, scale: int = None
-    ) -> Tuple[torch.Tensor, TensorList]:
-        """
-        Forward pass.
-
-                Args:
-                    X (torch.Tensor): tensor of shape
-                        [-1,self.in_channels,*self.image_size]
-                    scale (int): downsampling scale for output. Defaults to None
-                        (returns the non-rearranged output).
-
-                Returns:
-                    torch.Tensor: tensor of shape [...,self.input_dim_primary]
-                    List[torch.Tensor]: list of intermediary tensors corresponding to
-                        the ith transformer outputs, where i is contained in return_at.
-                        Same shape as the final output.
-        """
-        if self.shift_size > 0:
-            attention = self.apply_shift_and_attention(X)
-            X = self.embedding(X)
-        else:
-            X = self.embedding(X)
-            attention = self.mha(self.norm_op_1(X), mask=None)
-        X = X + self.drop_op_1(attention)
-        X = X + self.drop_op_2(self.mlp(self.norm_op_2(X)))
-
-        X = self.embedding.rearrange_rescale(X, scale)
-        return X
-
 
 class TransformerBlockStack(torch.nn.Module):
     """
@@ -1338,12 +1329,7 @@ class TransformerBlockStack(torch.nn.Module):
                 Returns:
                     List[int]: list of integers.
         """
-        if isinstance(x, list) is False:
-            x = [x for _ in range(self.number_of_blocks)]
-        else:
-            x = x
-        self.check_if_consistent(x)
-        return x
+        return expand_and_check(x, self.number_of_blocks)
 
     def check_if_consistent(self, x: Sequence):
         """
@@ -1543,10 +1529,7 @@ class SWINTransformerBlockStack(torch.nn.Module):
                 Returns:
                     List[int]: list of integers.
         """
-        if isinstance(x, list) is False:
-            return [x for _ in self.shift_sizes]
-        else:
-            return self.check_if_consistent(x)
+        return expand_and_check(x, len(self.shift_sizes))
 
     def check_if_consistent(self, x: Sequence):
         """
@@ -1984,6 +1967,5 @@ class FactorizedViT(torch.nn.Module):
             embeded_X = torch.concat([class_token, embeded_X], 1)
         else:
             embeded_X = embeded_X.mean(-2)
-            embeded_X = embeded_X
         embeded_X, _ = self.transformer_block_between(embeded_X)
         return embeded_X

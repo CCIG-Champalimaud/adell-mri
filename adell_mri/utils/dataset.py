@@ -5,11 +5,12 @@ Functions for dataset handling and operations.
 import json
 from copy import deepcopy
 from dataclasses import dataclass
-from typing import Any, Iterator
+from typing import Any, Callable, Iterator
 
 import numpy as np
 import yaml
 
+from adell_mri.constants import DEFAULT_SEED
 from adell_mri.custom_types import DatasetDict
 from adell_mri.utils.dataset_filters import (
     fill_conditional,
@@ -85,7 +86,7 @@ class Dataset:
 
     path: str | list[str]
     rng: np.random.Generator = None
-    seed: int = 42
+    seed: int = DEFAULT_SEED
     dataset_name: str = "dataset"
 
     def __post_init__(self):
@@ -309,6 +310,23 @@ class Dataset:
                 subsample_size=filter_dict["subsample_size"],
                 strata_key=filter_dict.get("label_keys", None),
             )
+
+    def apply(self, fn: Callable, to_keys: list[str] | None = None):
+        """
+        Applies a function to all values of ``Dataset``.
+
+        Args:
+            fn (Callable): a function which will be applied to every value of
+                ``Dataset``.
+            to_keys (list[str], optional): applies the function to specific
+                values inside each value instead. Defaults to None.
+        """
+        for k in self:
+            if to_keys:
+                for kk in to_keys:
+                    self[k][kk] = fn(self[k][kk])
+            else:
+                self[k] = fn(self[k])
 
     def __getitem__(self, key: str | list[str]):
         """

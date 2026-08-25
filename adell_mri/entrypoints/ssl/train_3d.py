@@ -1,3 +1,4 @@
+import sys
 from copy import deepcopy
 
 import monai
@@ -7,6 +8,7 @@ from lightning.pytorch import Trainer
 from lightning.pytorch.callbacks import RichProgressBar
 
 from adell_mri.entrypoints.assemble_args import Parser
+from adell_mri.entrypoints.cli_utils import fail
 from adell_mri.modules.config_parsing import parse_config_ssl, parse_config_unet
 from adell_mri.transform_factory import SSLTransforms, get_augmentations_ssl
 from adell_mri.utils.dataset import Dataset
@@ -15,7 +17,10 @@ from adell_mri.utils.optimizer_factory import optimizer_eps_from_precision
 from adell_mri.utils.pl_callbacks import SpectralNorm
 from adell_mri.utils.pl_utils import get_ckpt_callback, get_devices, get_logger
 from adell_mri.utils.python_logging import get_logger as get_python_logger
-from adell_mri.utils.torch_utils import get_generator_and_rng
+from adell_mri.utils.torch_utils import (
+    force_cudnn_initialization,
+    get_generator_and_rng,
+)
 from adell_mri.utils.utils import ExponentialMovingAverage, safe_collate
 
 torch.backends.cudnn.benchmark = True
@@ -25,19 +30,6 @@ def keep_first_not_none(*args):
     for arg in args:
         if arg is not None:
             return arg
-
-
-def force_cudnn_initialization():
-    """
-    Convenience function to initialise CuDNN (and avoid the lazy loading
-    from PyTorch).
-    """
-    s = 16
-    dev = torch.device("cuda")
-    torch.nn.functional.conv2d(
-        torch.zeros(s, s, s, s, device=dev),
-        torch.zeros(s, s, s, s, device=dev),
-    )
 
 
 def main(arguments):
@@ -114,8 +106,7 @@ def main(arguments):
     data_dict.apply_filters(**vars(args), presence_keys=all_keys)
 
     if len(data_dict) == 0:
-        logger.error("No data in dataset JSON")
-        exit()
+        fail("No data in dataset JSON")
 
     for k in data_dict:
         data_dict[k]["pid"] = k
@@ -319,7 +310,7 @@ def main(arguments):
     ckpt = ckpt_callback is not None
     if status == "finished":
         logger.info("Training has finished")
-        exit()
+        sys.exit(0)
 
     pl_logger = get_logger(
         summary_name=args.summary_name,

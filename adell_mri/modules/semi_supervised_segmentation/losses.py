@@ -10,6 +10,8 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
+from adell_mri.constants import DEFAULT_SEED
+
 
 def swap(xs: Sequence, a: int, b: int) -> None:
     """
@@ -24,7 +26,7 @@ def swap(xs: Sequence, a: int, b: int) -> None:
 
 
 def derangement(
-    n: int, rng: np.random.Generator = None, seed: int = 42
+    n: int, rng: np.random.Generator = None, seed: int = DEFAULT_SEED
 ) -> list[int]:
     """
     Generate a derangement of n elements.
@@ -273,7 +275,7 @@ class NearestNeighbourLoss(torch.nn.Module):
         max_elements_per_batch: int,
         n_samples_per_class: int,
         temperature: float = 0.1,
-        seed: int = 42,
+        seed: int = DEFAULT_SEED,
     ):
         """
         Args:
@@ -482,7 +484,7 @@ class LocalContrastiveLoss(torch.nn.Module):
     Implements a local contrastive loss function.
     """
 
-    def __init__(self, temperature: float = 0.1, seed: int = 42):
+    def __init__(self, temperature: float = 0.1, seed: int = DEFAULT_SEED):
         """
         Args:
             temperature (float, optional): temperature for cross entropy.
@@ -531,7 +533,7 @@ class LocalContrastiveLossWithAnchors(torch.nn.Module):
     Implements a local contrastive loss function with anchors.
     """
 
-    def __init__(self, temperature: float = 0.1, seed: int = 42):
+    def __init__(self, temperature: float = 0.1, seed: int = DEFAULT_SEED):
         """
         Args:
             temperature (float, optional): temperature for cross validation.

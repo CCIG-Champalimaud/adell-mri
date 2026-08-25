@@ -756,15 +756,27 @@ class UNet(torch.nn.Module):
         return_features=False,
         return_bottleneck=False,
         return_logits=False,
-    ) -> torch.Tensor:
+    ) -> torch.Tensor | tuple[torch.Tensor, ...]:
         """
-                Forward pass for this class.
+        Forward pass for this class.
 
         Args:
-            X (torch.Tensor)
+            X (torch.Tensor): input tensor.
+            X_skip_layer (torch.Tensor, optional): skip connection input from
+                an external encoder. Defaults to None.
+            X_feature_conditioning (torch.Tensor, optional): feature
+                conditioning tensor. Defaults to None.
+            return_features (bool, optional): also returns bottleneck features.
+                Defaults to False.
+            return_bottleneck (bool, optional): also returns the bottleneck.
+                Defaults to False.
+            return_logits (bool, optional): returns logits instead of
+                probabilities. Defaults to False.
 
         Returns:
-            torch.Tensor
+            torch.Tensor | tuple[torch.Tensor, ...]: the output tensor, or a
+                tuple containing the output alongside the requested auxiliary
+                outputs (features/bottleneck) depending on the flags.
         """
         # check if channel dim is available and if not include it
         if X_skip_layer is not None:

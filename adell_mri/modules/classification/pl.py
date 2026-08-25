@@ -60,6 +60,10 @@ try:
 except ModuleNotFoundError:
     has_monai = False
 
+# re-exported for backwards compatibility
+from adell_mri.utils.pl_utils import log_current_lr
+from adell_mri.utils.torch_utils import meta_tensors_to_tensors
+
 
 def get_ordinal_metric_dict(
     nc: int,
@@ -158,25 +162,6 @@ def get_metric_dict(
         if k in md:
             metric_dict[prefix + k] = md[k]()
     return metric_dict
-
-
-def meta_tensors_to_tensors(batch):
-    """
-    Converts any MetaTensor instances in a batch to regular PyTorch tensors.
-
-    Args:
-        batch (dict): A dictionary containing tensors, where some values may be
-            MONAI MetaTensor instances.
-
-    Returns:
-        dict: The input batch with all MetaTensor instances converted to regular
-            PyTorch tensors.
-    """
-    if has_monai is True:
-        for key in batch:
-            if isinstance(batch[key], monai.data.MetaTensor):
-                batch[key] = batch[key].as_tensor()
-    return batch
 
 
 class ClassPLABC(pl.LightningModule, ABC):
@@ -378,10 +363,7 @@ class ClassPLABC(pl.LightningModule, ABC):
         """
         Called at end of training epoch. Updates learning rate.
         """
-        sch = self.lr_schedulers().state_dict()
-        lr = self.learning_rate
-        last_lr = sch["_last_lr"][0] if "_last_lr" in sch else lr
-        self.log("lr", last_lr, sync_dist=True, prog_bar=True)
+        log_current_lr(self, sync_dist=True, prog_bar=True)
         gc.collect()
 
     def classification_probabilities(
@@ -1501,7 +1483,66 @@ class UNetEncoderPL(UNetEncoder, ClassPLABC):
         self.setup_metrics()
 
 
-class GenericEnsemblePL(GenericEnsemble, ClassPLABC):
+class _EnsemblePLBase(ClassPLABC):
+    """
+    Shared step implementations for ensemble-based classification
+    LightningModules.
+    """
+
+    def training_step(self, batch, batch_idx):
+        x, y = [batch[k] for k in self.image_keys], batch[self.label_key]
+        prediction = self.forward(x)
+        prediction = torch.squeeze(prediction, 1)
+
+        loss = self.calculate_loss(prediction, y)
+
+        self.log("train_loss", loss.detach())
+        return loss
+
+    def validation_step(self, batch, batch_idx):
+        x, y = [batch[k] for k in self.image_keys], batch[self.label_key]
+        prediction = self.forward(x)
+        prediction = torch.squeeze(prediction, 1)
+
+        loss = self.calculate_loss(prediction, y)
+        self.log(
+            "val_loss",
+            loss,
+            on_epoch=True,
+            on_step=False,
+            prog_bar=True,
+            batch_size=x[0].shape[0],
+        )
+        self.update_metrics(prediction, y, self.val_metrics)
+        return loss
+
+    def test_step(self, batch, batch_idx):
+        x, y = [batch[k] for k in self.image_keys], batch[self.label_key]
+        prediction = self.forward(x)
+        prediction = torch.squeeze(prediction, 1)
+
+        loss = self.calculate_loss(prediction, y)
+
+        self.update_metrics(prediction, y, self.test_metrics, log=False)
+        return loss
+
+    def predict_step(
+        self, batch, batch_idx, dataloader_idx: int = 0, *args, **kwargs
+    ):
+        x = [batch[k] for k in self.image_keys]
+        prediction = self.forward(x, *args, **kwargs)
+        prediction = torch.squeeze(prediction, 1)
+
+        return {"prediction": prediction}
+
+    def train_dataloader(self) -> torch.utils.data.DataLoader:
+        return self.training_dataloader_call()
+
+    def on_train_epoch_end(self):
+        log_current_lr(self)
+
+
+class GenericEnsemblePL(GenericEnsemble, _EnsemblePLBase):
     """
     Ensemble classification network for PL.
     """
@@ -1575,63 +1616,8 @@ class GenericEnsemblePL(GenericEnsemble, ClassPLABC):
         )
         self.setup_metrics()
 
-    def training_step(self, batch, batch_idx):
-        x, y = [batch[k] for k in self.image_keys], batch[self.label_key]
-        prediction = self.forward(x)
-        prediction = torch.squeeze(prediction, 1)
 
-        loss = self.calculate_loss(prediction, y)
-
-        self.log("train_loss", loss.detach())
-        return loss
-
-    def validation_step(self, batch, batch_idx):
-        x, y = [batch[k] for k in self.image_keys], batch[self.label_key]
-        prediction = self.forward(x)
-        prediction = torch.squeeze(prediction, 1)
-
-        loss = self.calculate_loss(prediction, y)
-        self.log(
-            "val_loss",
-            loss,
-            on_epoch=True,
-            on_step=False,
-            prog_bar=True,
-            batch_size=x[0].shape[0],
-        )
-        self.update_metrics(prediction, y, self.val_metrics)
-        return loss
-
-    def test_step(self, batch, batch_idx):
-        x, y = [batch[k] for k in self.image_keys], batch[self.label_key]
-        prediction = self.forward(x)
-        prediction = torch.squeeze(prediction, 1)
-
-        loss = self.calculate_loss(prediction, y)
-
-        self.update_metrics(prediction, y, self.test_metrics, log=False)
-        return loss
-
-    def predict_step(
-        self, batch, batch_idx, dataloader_idx: int = 0, *args, **kwargs
-    ):
-        x = [batch[k] for k in self.image_keys]
-        prediction = self.forward(x, *args, **kwargs)
-        prediction = torch.squeeze(prediction, 1)
-
-        return {"prediction": prediction}
-
-    def train_dataloader(self) -> torch.utils.data.DataLoader:
-        return self.training_dataloader_call()
-
-    def on_train_epoch_end(self):
-        sch = self.lr_schedulers().state_dict()
-        lr = self.learning_rate
-        last_lr = sch["_last_lr"][0] if "_last_lr" in sch else lr
-        self.log("lr", last_lr)
-
-
-class AveragingEnsemblePL(AveragingEnsemble, ClassPLABC):
+class AveragingEnsemblePL(AveragingEnsemble, _EnsemblePLBase):
     """
     Ensemble average classification network for PL.
     """
@@ -1705,52 +1691,6 @@ class AveragingEnsemblePL(AveragingEnsemble, ClassPLABC):
             ]
         )
         self.setup_metrics()
-
-    def training_step(self, batch, batch_idx):
-        x, y = [batch[k] for k in self.image_keys], batch[self.label_key]
-        prediction = self.forward(x)
-        prediction = torch.squeeze(prediction, 1)
-
-        loss = self.calculate_loss(prediction, y)
-
-        self.log("train_loss", loss.detach())
-        return loss
-
-    def validation_step(self, batch, batch_idx):
-        x, y = [batch[k] for k in self.image_keys], batch[self.label_key]
-        prediction = self.forward(x)
-        prediction = torch.squeeze(prediction, 1)
-
-        loss = self.calculate_loss(prediction, y)
-        self.log(
-            "val_loss",
-            loss,
-            on_epoch=True,
-            on_step=False,
-            prog_bar=True,
-            batch_size=x[0].shape[0],
-        )
-        self.update_metrics(prediction, y, self.val_metrics)
-        return loss
-
-    def test_step(self, batch, batch_idx):
-        x, y = [batch[k] for k in self.image_keys], batch[self.label_key]
-        prediction = self.forward(x)
-        prediction = torch.squeeze(prediction, 1)
-
-        loss = self.calculate_loss(prediction, y)
-
-        self.update_metrics(prediction, y, self.test_metrics, log=False)
-        return loss
-
-    def train_dataloader(self) -> torch.utils.data.DataLoader:
-        return self.training_dataloader_call()
-
-    def on_train_epoch_end(self):
-        sch = self.lr_schedulers().state_dict()
-        lr = self.learning_rate
-        last_lr = sch["_last_lr"][0] if "_last_lr" in sch else lr
-        self.log("lr", last_lr)
 
     def predict_step(self, batch, batch_idx, dataloader_idx=0, *args, **kwargs):
         x = [batch[k] for k in self.image_keys]

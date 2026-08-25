@@ -7,6 +7,7 @@ from typing import Tuple
 import numpy as np
 import torch
 
+from adell_mri.constants import DEFAULT_SEED
 from adell_mri.utils.python_logging import get_logger
 
 logger = get_logger(__name__)
@@ -124,7 +125,7 @@ class BatchPreprocessing:
         label_smoothing: float = None,
         mixup_alpha: float = None,
         partial_mixup: float = None,
-        seed: int = 42,
+        seed: int = DEFAULT_SEED,
     ):
         """
         Args:

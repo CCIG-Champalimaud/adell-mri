@@ -6,6 +6,7 @@ from typing import Any
 
 import torch
 
+from adell_mri.constants import DEFAULT_SEED
 from adell_mri.modules.layers.linear_blocks import MLP
 from adell_mri.modules.layers.vit import ViT
 from adell_mri.utils.masking import get_masker
@@ -31,7 +32,7 @@ class iBOT(torch.nn.Module):
         max_patch_size: list[int],
         n_patches: int = 4,
         reduce_fn: str = "mean",
-        seed: int = 42,
+        seed: int = DEFAULT_SEED,
     ):
         """
         Args:

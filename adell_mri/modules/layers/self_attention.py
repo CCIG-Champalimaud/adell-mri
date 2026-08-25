@@ -9,11 +9,18 @@ import torch
 from adell_mri.modules.layers.linear_blocks import MultiHeadSelfAttention
 
 
-class SpatialSqueezeAndExcite2d(torch.nn.Module):
+class SpatialSqueezeAndExcite(torch.nn.Module):
+    """
+    Base class for spatial squeeze and excite layers. Subclasses select the
+    convolution operator via the ``Conv`` attribute.
+    """
+
+    Conv: type = None
+
     def __init__(self, input_channels: int):
         """
-        Spatial squeeze and excite layer [1] for 2d inputs. Basically a
-        modular attention mechanism.
+        Spatial squeeze and excite layer [1]. Basically a modular attention
+        mechanism.
 
         [1] https://arxiv.org/abs/1803.02579
 
@@ -27,7 +34,7 @@ class SpatialSqueezeAndExcite2d(torch.nn.Module):
 
     def init_layers(self):
         self.op = torch.nn.Sequential(
-            torch.nn.Conv2d(self.input_channels, 1, kernel_size=1),
+            self.Conv(self.input_channels, 1, kernel_size=1),
             torch.nn.Sigmoid(),
         )
 
@@ -37,32 +44,26 @@ class SpatialSqueezeAndExcite2d(torch.nn.Module):
         return X
 
 
-class SpatialSqueezeAndExcite3d(torch.nn.Module):
-    def __init__(self, input_channels: int):
-        """
-        Spatial squeeze and excite layer [1] for 3d inputs. Basically a
-        modular attention mechanism.
+class SpatialSqueezeAndExcite2d(SpatialSqueezeAndExcite):
+    """
+    Spatial squeeze and excite layer [1] for 2d inputs. Basically a
+    modular attention mechanism.
 
-        [1] https://arxiv.org/abs/1803.02579
+    [1] https://arxiv.org/abs/1803.02579
+    """
 
-        Args:
-            input_channels (int): number of input channels.
-        """
-        super().__init__()
-        self.input_channels = input_channels
+    Conv = torch.nn.Conv2d
 
-        self.init_layers()
 
-    def init_layers(self):
-        self.op = torch.nn.Sequential(
-            torch.nn.Conv3d(self.input_channels, 1, kernel_size=1),
-            torch.nn.Sigmoid(),
-        )
+class SpatialSqueezeAndExcite3d(SpatialSqueezeAndExcite):
+    """
+    Spatial squeeze and excite layer [1] for 3d inputs. Basically a
+    modular attention mechanism.
 
-    def forward(self, X: torch.Tensor) -> torch.Tensor:
-        spatial_squeeze = self.op(X)
-        X = X * spatial_squeeze
-        return X
+    [1] https://arxiv.org/abs/1803.02579
+    """
+
+    Conv = torch.nn.Conv3d
 
 
 class ChannelSqueezeAndExcite(torch.nn.Module):
@@ -99,11 +100,18 @@ class ChannelSqueezeAndExcite(torch.nn.Module):
         return X
 
 
-class ConcurrentSqueezeAndExcite2d(torch.nn.Module):
+class ConcurrentSqueezeAndExcite(torch.nn.Module):
+    """
+    Base class for concurrent squeeze and excite layers. Subclasses select
+    the spatial squeeze and excite variant via the ``Spatial`` attribute.
+    """
+
+    Spatial: type = None
+
     def __init__(self, input_channels: int):
         """
-        Concurrent squeeze and excite for 2d inputs. Combines channel and
-        spatial squeeze and excite by adding the output of both.
+        Concurrent squeeze and excite. Combines channel and spatial squeeze
+        and excite by adding the output of both.
 
         Args:
             input_channels (int): number of input channels.
@@ -114,7 +122,7 @@ class ConcurrentSqueezeAndExcite2d(torch.nn.Module):
         self.init_layers()
 
     def init_layers(self):
-        self.spatial = SpatialSqueezeAndExcite2d(self.input_channels)
+        self.spatial = self.Spatial(self.input_channels)
         self.channel = ChannelSqueezeAndExcite(self.input_channels)
 
     def forward(self, X):
@@ -124,29 +132,22 @@ class ConcurrentSqueezeAndExcite2d(torch.nn.Module):
         return output
 
 
-class ConcurrentSqueezeAndExcite3d(torch.nn.Module):
-    def __init__(self, input_channels: int):
-        """
-        Concurrent squeeze and excite for 3d inputs. Combines channel and
-        spatial squeeze and excite by adding the output of both.
+class ConcurrentSqueezeAndExcite2d(ConcurrentSqueezeAndExcite):
+    """
+    Concurrent squeeze and excite for 2d inputs. Combines channel and
+    spatial squeeze and excite by adding the output of both.
+    """
 
-        Args:
-            input_channels (int): number of input channels.
-        """
-        super().__init__()
-        self.input_channels = input_channels
+    Spatial = SpatialSqueezeAndExcite2d
 
-        self.init_layers()
 
-    def init_layers(self):
-        self.spatial = SpatialSqueezeAndExcite3d(self.input_channels)
-        self.channel = ChannelSqueezeAndExcite(self.input_channels)
+class ConcurrentSqueezeAndExcite3d(ConcurrentSqueezeAndExcite):
+    """
+    Concurrent squeeze and excite for 3d inputs. Combines channel and
+    spatial squeeze and excite by adding the output of both.
+    """
 
-    def forward(self, X):
-        s = self.spatial(X)
-        c = self.channel(X)
-        output = s + c
-        return output
+    Spatial = SpatialSqueezeAndExcite3d
 
 
 class SelfAttentionBlock(torch.nn.Module):

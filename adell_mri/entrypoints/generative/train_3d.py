@@ -1,3 +1,4 @@
+import ast
 import sys
 
 import monai
@@ -185,6 +186,8 @@ def main(arguments):
         presence_keys.extend(args.input_mask_keys)
 
     data_dict.apply_filters(**vars(args), presence_keys=presence_keys)
+    if args.cat_condition_keys:
+        data_dict.apply(str, to_keys=args.cat_condition_keys)
 
     if len(data_dict) == 0:
         raise Exception(
@@ -258,7 +261,11 @@ def main(arguments):
         "mask_key": None,
         "t2_keys": all_image_keys,
         "flip_axis": [0],
-    } | (eval(args.augment_args) if args.augment_args is not None else {})
+    } | (
+        ast.literal_eval(args.augment_args)
+        if args.augment_args is not None
+        else {}
+    )
 
     transform_factory = GenerationTransforms(**transform_arguments)
     transforms_train = transform_factory.transforms(
@@ -286,7 +293,8 @@ def main(arguments):
     )
     ckpt = ckpt_callback is not None
     if status == "finished":
-        exit()
+        logger.info("Training has finished")
+        sys.exit(0)
 
     logger.info("Number of cases: %s", len(train_list))
 

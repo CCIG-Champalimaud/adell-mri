@@ -25,9 +25,16 @@ def get_optimizer(optimizer_str: str, *args, **kwargs) -> torch.optim.Optimizer:
 
     Returns:
         torch.optim.Optimizer: a torch-ready optimizer.
+
+    Raises:
+        ValueError: if ``optimizer_str`` is not in `OPTIMIZER_MATCH`.
     """
     if optimizer_str in OPTIMIZER_MATCH:
         return OPTIMIZER_MATCH[optimizer_str](*args, **kwargs)
+    raise ValueError(
+        f"Unknown optimizer: {optimizer_str}. "
+        f"Supported optimizers: {sorted(OPTIMIZER_MATCH.keys())}"
+    )
 
 
 def optimizer_eps_from_precision(precision: str) -> float:

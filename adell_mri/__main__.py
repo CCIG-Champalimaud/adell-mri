@@ -1,20 +1,27 @@
+import importlib
 import sys
 
 from adell_mri.utils.python_logging import get_logger
 
 logger = get_logger(__name__)
 
-supported_modes = [
-    "classification",
-    "classification_mil",
-    "classification_ensemble",
-    "generative",
-    "segmentation",
-    "segmentation_from_2d_module",
-    "ssl",
-    "detection",
-    "utils",
-]
+TASK_PACKAGES = {
+    "classification": "adell_mri.entrypoints.classification",
+    "classification_mil": "adell_mri.entrypoints.classification_mil",
+    "classification_ensemble": (
+        "adell_mri.entrypoints.classification_ensemble"
+    ),
+    "generative": "adell_mri.entrypoints.generative",
+    "segmentation": "adell_mri.entrypoints.segmentation",
+    "segmentation_from_2d_module": (
+        "adell_mri.entrypoints.segmentation_from_2d_module"
+    ),
+    "ssl": "adell_mri.entrypoints.ssl",
+    "detection": "adell_mri.entrypoints.detection",
+    "utils": "adell_mri.entrypoints.utils",
+}
+
+supported_modes = list(TASK_PACKAGES.keys())
 
 
 def set_threading_env_vars(args: list[str]):
@@ -32,69 +39,15 @@ def set_threading_env_vars(args: list[str]):
 def main():
     arguments = sys.argv[1:]
 
-    if len(arguments) == 0:
+    if len(arguments) == 0 or arguments[0] == "help":
         print(f"\n\tSupported modes: {supported_modes}")
-    elif arguments[0] == "help":
-        print(f"\n\tSupported modes: {supported_modes}")
-
-    # classification modes
-    elif arguments[0] == "classification":
-        set_threading_env_vars(arguments)
-        from adell_mri.entrypoints.classification.__main__ import main
-
-        main(arguments[1:])
-    elif arguments[0] == "classification_mil":
-        set_threading_env_vars(arguments)
-        from adell_mri.entrypoints.classification_mil.__main__ import main
-
-        main(arguments[1:])
-    elif arguments[0] == "classification_ensemble":
-        set_threading_env_vars(arguments)
-        from adell_mri.entrypoints.classification_ensemble.__main__ import main
-
-        main(arguments[1:])
-
-    # generation modes
-    elif arguments[0] == "generative":
-        set_threading_env_vars(arguments)
-        from adell_mri.entrypoints.generative.__main__ import main
-
-        main(arguments[1:])
-
-    # segmentation modes
-    elif arguments[0] == "segmentation":
-        set_threading_env_vars(arguments)
-        from adell_mri.entrypoints.segmentation.__main__ import main
-
-        main(arguments[1:])
-    elif arguments[0] == "segmentation_from_2d_module":
-        set_threading_env_vars(arguments)
-        from adell_mri.entrypoints.segmentation_from_2d_module.__main__ import (
-            main,
+    elif arguments[0] in TASK_PACKAGES:
+        if arguments[0] != "utils":
+            set_threading_env_vars(arguments)
+        module = importlib.import_module(
+            TASK_PACKAGES[arguments[0]] + ".__main__"
         )
-
-        main(arguments[1:])
-
-    # ssl modes
-    elif arguments[0] == "ssl":
-        set_threading_env_vars(arguments)
-        from adell_mri.entrypoints.ssl.__main__ import main
-
-        main(arguments[1:])
-
-    # detection modes
-    elif arguments[0] == "detection":
-        set_threading_env_vars(arguments)
-        from adell_mri.entrypoints.detection.__main__ import main
-
-        main(arguments[1:])
-
-    # utils modes
-    elif arguments[0] == "utils":
-        from adell_mri.entrypoints.utils.__main__ import main
-
-        main(arguments[1:])
-
+        module.main(arguments[1:])
     else:
         raise NotImplementedError(
             f"\n\tMode {arguments[0]} not supported\n\tSupported modes: {supported_modes}"
@@ -102,5 +55,4 @@ def main():
 
 
 if __name__ == "__main__":
-    train_loader_call = None
     main()

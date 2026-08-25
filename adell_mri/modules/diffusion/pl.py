@@ -14,11 +14,11 @@ from generative.networks.nets import DiffusionModelUNet
 from generative.networks.nets.diffusion_model_unet import AttentionBlock
 from generative.networks.schedulers import DDPMScheduler
 
-from adell_mri.modules.classification.pl import meta_tensors_to_tensors
+from adell_mri.constants import DEFAULT_SEED
 from adell_mri.modules.diffusion.embedder import Embedder
 from adell_mri.modules.learning_rate import CosineAnnealingWithWarmupLR
 from adell_mri.utils.optimizer_factory import OPTIMIZER_EPS_DEFAULT
-from adell_mri.utils.torch_utils import get_global_rank
+from adell_mri.utils.torch_utils import get_global_rank, meta_tensors_to_tensors
 
 
 class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
@@ -39,7 +39,7 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
         batch_size: int = 16,
         learning_rate: float = 0.001,
         weight_decay: float = 0.0,
-        seed: int = 42,
+        seed: int = DEFAULT_SEED,
         optimizer_eps: float = OPTIMIZER_EPS_DEFAULT,
         *args,
         **kwargs,

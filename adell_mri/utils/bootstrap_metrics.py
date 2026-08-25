@@ -6,6 +6,8 @@ import torch
 import torchmetrics as tmc
 from tqdm import trange
 
+from adell_mri.constants import DEFAULT_SEED
+
 
 def cat_if_necessary(
     tensor: torch.Tensor | list[torch.Tensor],
@@ -31,7 +33,7 @@ def bootstrap_metric(
     interval: float = 0.95,
     significance: float = 0.05,
     generator: torch.Generator = None,
-    seed: int = 42,
+    seed: int = DEFAULT_SEED,
 ) -> tuple[torch.Tensor, tuple[torch.Tensor, torch.Tensor]]:
     if hasattr(metric, "preds") is False or hasattr(metric, "target") is False:
         raise NotImplementedError(

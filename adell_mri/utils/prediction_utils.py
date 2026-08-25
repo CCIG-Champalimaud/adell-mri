@@ -27,7 +27,7 @@ def get_ensemble_prediction(
             corresponding to the ensemble prediction and the number of
             predictions used to calculate the ensemble prediction.
     """
-    if ensemble_type not in ["mean", "median"]:
+    if ensemble_type not in ["mean", "majority"]:
         raise ValueError("Unknown ensemble type")
     output_dict_ensemble = {
         "iteration": 0,

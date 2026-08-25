@@ -1,4 +1,5 @@
 desc = "Calculates anchors from a dataset JSON."
+from adell_mri.constants import DEFAULT_SEED
 
 
 def main(arguments):
@@ -69,7 +70,7 @@ def main(arguments):
     i = 2
     while cont is True:
         up.update()
-        km = KMeans(i, random_state=42)
+        km = KMeans(i, random_state=DEFAULT_SEED)
         km = km.fit(d)
         centers = km.cluster_centers_
         iou = []

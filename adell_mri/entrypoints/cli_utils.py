@@ -1,4 +1,5 @@
 import importlib
+import sys
 
 
 def run_main(
@@ -22,3 +23,17 @@ def run_main(
         raise NotImplementedError(
             f"\n\tMode {arguments[0]} not supported\n\tSupported modes: {supported_modes}"
         )
+
+
+def fail(message: str) -> None:
+    """
+    Logs an error message and terminates the process with a non-zero exit
+    code.
+
+    Args:
+        message (str): the error message to log.
+    """
+    from adell_mri.utils.python_logging import get_logger
+
+    get_logger("adell_mri.entrypoints").error("%s", message)
+    sys.exit(1)

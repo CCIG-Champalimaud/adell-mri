@@ -15,6 +15,8 @@ import torch
 import torch.nn.functional as F
 from lightning.pytorch import LightningModule
 
+from adell_mri.constants import DEFAULT_SEED
+
 # classification
 from adell_mri.modules.classification.classification import TabularClassifier
 from adell_mri.modules.classification.classification.deconfounded_classification import (
@@ -420,6 +422,35 @@ def get_detection_network(
     dev: str,
     optimizer_eps: float = OPTIMIZER_EPS_DEFAULT,
 ) -> LightningModule:
+    """
+    Builds a YOLO-based 3D detection network wrapped in a LightningModule.
+
+    Args:
+        network_config (dict[str, Any]): network configuration. May include
+            ``activation_fn``, ``classification_loss_fn`` and
+            ``object_loss_fn`` keys (the latter two index ``loss_factory``).
+        dropout_param (float): dropout parameter for the activation/ADN blocks.
+        loss_gamma (float): focusing parameter for the object loss.
+        loss_comb (float): combination parameter for the object loss.
+        class_weights (torch.Tensor): class weights.
+        train_loader_call (Callable): callable returning the training dataloader.
+        iou_threshold (float): IoU threshold used for anchor matching.
+        n_classes (int): number of box classes.
+        anchor_array (np.ndarray): array of anchor sizes.
+        n_epochs (int): number of training epochs.
+        warmup_steps (int): number of LR warmup steps.
+        boxes_key (str): key corresponding to the boxes in the batch.
+        box_class_key (str): key corresponding to the box classes in the batch.
+        dev (str): device string.
+        optimizer_eps (float, optional): optimizer epsilon. Defaults to
+            `OPTIMIZER_EPS_DEFAULT`.
+
+    Returns:
+        LightningModule: the detection LightningModule.
+
+    Raises:
+        ValueError: if an unknown loss or optimizer key is supplied.
+    """
     if "activation_fn" in network_config:
         act_fn = network_config["activation_fn"]
     else:
@@ -458,9 +489,15 @@ def get_detection_network(
     if (loss_gamma is None) or (loss_comb is None) or (class_weights is None):
         object_loss_params = {}
     else:
+        if "object_loss_fn" not in network_config:
+            object_loss_key = "cross_entropy"
         object_loss_params = get_loss_param_dict(
-            1.0, loss_gamma, loss_comb, 0.5
-        )[object_loss_key]
+            loss_key=object_loss_key,
+            weight=1.0,
+            gamma=loss_gamma,
+            comb=loss_comb,
+            scale=0.5,
+        )
 
     adn_fn = get_adn_fn(
         3, norm_fn="batch", act_fn=act_fn, dropout_param=dropout_param
@@ -519,7 +556,7 @@ def get_segmentation_network(
     resize_size: list[int] = None,
     semi_supervised: bool = False,
     max_steps_optim: int = None,
-    seed: int = 42,
+    seed: int = DEFAULT_SEED,
 ) -> LightningModule:
     """
     Returns a segmentation network.
@@ -701,6 +738,53 @@ def get_segmentation_network(
     return unet
 
 
+def _vit_backbone_defaults() -> dict[str, Any]:
+    """
+    Returns the default ViT backbone arguments for the SSL methods that
+    require a ViT backbone (IJEPA, DINO, iBOT).
+
+    Returns:
+        dict[str, Any]: default backbone arguments.
+    """
+    return {
+        "image_size": [224, 224],
+        "patch_size": [16, 16],
+        "in_channels": 1,
+        "number_of_blocks": 4,
+        "attention_dim": 96,
+        "embedding_size": 96,
+        "n_heads": 3,
+    }
+
+
+def _compute_vit_dims(
+    backbone_args: dict[str, Any],
+) -> tuple[list[int], int]:
+    """
+    Computes the feature map dimensions and the number of encoder features
+    from ViT backbone arguments.
+
+    Args:
+        backbone_args (dict[str, Any]): ViT backbone arguments containing
+            ``image_size``, ``patch_size`` and either ``embedding_size`` or
+            ``attention_dim``.
+
+    Returns:
+        tuple[list[int], int]: feature map dimensions (image size divided by
+            patch size, element-wise) and the number of encoder features.
+    """
+    feature_map_dimensions = [
+        s // p
+        for s, p in zip(
+            backbone_args["image_size"], backbone_args["patch_size"]
+        )
+    ]
+    n_encoder_features = backbone_args.get(
+        "embedding_size", backbone_args["attention_dim"]
+    )
+    return feature_map_dimensions, n_encoder_features
+
+
 @compile_if_necessary
 def get_ssl_network(
     train_loader_call: Callable,
@@ -803,25 +887,10 @@ def get_ssl_network(
                 "IJEPA only supports net_type='vit', got %s" % net_type
             )
         backbone_args: dict = network_config.get(
-            "backbone_args",
-            {
-                "image_size": [224, 224],
-                "patch_size": [16, 16],
-                "in_channels": 1,
-                "number_of_blocks": 4,
-                "attention_dim": 96,
-                "embedding_size": 96,
-                "n_heads": 3,
-            },
+            "backbone_args", _vit_backbone_defaults()
         )
-        feature_map_dimensions = [
-            s // p
-            for s, p in zip(
-                backbone_args["image_size"], backbone_args["patch_size"]
-            )
-        ]
-        n_encoder_features = backbone_args.get(
-            "embedding_size", backbone_args["attention_dim"]
+        feature_map_dimensions, n_encoder_features = _compute_vit_dims(
+            backbone_args
         )
         predictor_head_args: dict = network_config.get(
             "projection_head_args",
@@ -873,16 +942,7 @@ def get_ssl_network(
                 "DINO only supports net_type='vit', got %s" % net_type
             )
         backbone_args: dict = network_config.get(
-            "backbone_args",
-            {
-                "image_size": [224, 224],
-                "patch_size": [16, 16],
-                "in_channels": 1,
-                "number_of_blocks": 4,
-                "attention_dim": 96,
-                "embedding_size": 96,
-                "n_heads": 3,
-            },
+            "backbone_args", _vit_backbone_defaults()
         )
         projection_head_args: dict = network_config.get(
             "projection_head_args",
@@ -911,25 +971,10 @@ def get_ssl_network(
                 "iBOT only supports net_type='vit', got %s" % net_type
             )
         backbone_args: dict = network_config.get(
-            "backbone_args",
-            {
-                "image_size": [224, 224],
-                "patch_size": [16, 16],
-                "in_channels": 1,
-                "number_of_blocks": 4,
-                "attention_dim": 96,
-                "embedding_size": 96,
-                "n_heads": 3,
-            },
+            "backbone_args", _vit_backbone_defaults()
         )
-        feature_map_dimensions = [
-            s // p
-            for s, p in zip(
-                backbone_args["image_size"], backbone_args["patch_size"]
-            )
-        ]
-        n_encoder_features = backbone_args.get(
-            "embedding_size", backbone_args["attention_dim"]
+        feature_map_dimensions, n_encoder_features = _compute_vit_dims(
+            backbone_args
         )
         projection_head_args: dict = network_config.get(
             "projection_head_args",
@@ -995,9 +1040,6 @@ def get_ssl_network(
         )
 
     else:
-        if ssl_method == "simclr":
-            # simclr only uses a projection head, no prediction head
-            del network_config["prediction_head_args"]
         boilerplate = {
             "training_dataloader_call": train_loader_call,
             "aug_image_key_1": "augmented_image_1",

@@ -19,6 +19,7 @@ from adell_mri.utils.python_logging import get_logger
 logger = get_logger(__name__)
 
 ADELL_PARALLEL_STRATEGY = os.environ.get("ADELL_PARALLEL_STRATEGY", "ddp")
+VAL_CHECK_EPOCHS = 5
 
 
 class GPULock:
@@ -232,7 +233,7 @@ def get_step_information(
         max_steps_optim = max_epochs * steps_per_epoch_optim
         warmup_steps = warmup_epochs * steps_per_epoch_optim
         check_val_every_n_epoch = None
-        val_check_interval = 5 * steps_per_epoch
+        val_check_interval = VAL_CHECK_EPOCHS * steps_per_epoch
     else:
         bs = batch_size
         steps_per_epoch = n_images // (bs * n_devices)
@@ -240,7 +241,7 @@ def get_step_information(
         max_steps = -1
         max_steps_optim = max_epochs * steps_per_epoch
         warmup_steps = warmup_epochs * steps_per_epoch
-        check_val_every_n_epoch = 5
+        check_val_every_n_epoch = VAL_CHECK_EPOCHS
         val_check_interval = None
 
     warmup_steps = int(warmup_steps)
@@ -264,7 +265,7 @@ def get_ckpt_callback(
     monitor: str = "val_loss",
     n_best_ckpts: int = 1,
     metadata: dict = None,
-) -> ModelCheckpoint:
+) -> tuple[ModelCheckpoint, str, str]:
     """
     Gets a checkpoint callback for PyTorch Lightning. The format for
         for the last and 2 best checkpoints, respectively is:
@@ -344,7 +345,7 @@ def get_ckpt_callback(
     return ckpt_callback, ckpt_path, status
 
 
-def get_logger(
+def get_pl_logger(
     summary_name: str,
     summary_dir: str,
     project_name: str,
@@ -421,6 +422,9 @@ def get_logger(
     return logger
 
 
+get_logger = get_pl_logger
+
+
 def get_devices(
     device_str: str, strategy: str = None
 ) -> Tuple[str, Union[List[int], int], str]:
@@ -456,3 +460,29 @@ def get_devices(
         accelerator = "gpu" if "cuda" in device_str else "cpu"
         devices = [0]
     return accelerator, devices, strategy_out
+
+
+def log_current_lr(
+    module,
+    key: str = "lr",
+    sync_dist: bool = False,
+    prog_bar: bool = False,
+) -> None:
+    """
+    Logs the current learning rate taken from the module's active LR
+    scheduler (falls back to ``module.learning_rate`` when unavailable).
+
+    Args:
+        module (pl.LightningModule): Lightning module with configured
+            schedulers.
+        key (str, optional): string under which the learning rate is logged.
+            Defaults to "lr".
+        sync_dist (bool, optional): whether to sync the logged value across
+            processes. Defaults to False.
+        prog_bar (bool, optional): whether to show the value in the progress
+            bar. Defaults to False.
+    """
+    sch = module.lr_schedulers().state_dict()
+    lr = module.learning_rate
+    last_lr = sch["_last_lr"][0] if "_last_lr" in sch else lr
+    module.log(key, last_lr, sync_dist=sync_dist, prog_bar=prog_bar)

@@ -122,14 +122,14 @@ def barlow_twins_loss(
     Returns:
         torch.Tensor: Barlow twins loss
     """
-    diag_idx = torch.arange(0, x.shape)
+    diag_idx = torch.arange(0, x.shape[0])
     n = x.shape[0]
     C = pearson_corr(x, y)
-    inv_term = torch.diagonal(1 - C)[diag_idx, diag_idx]
+    inv_term = torch.diagonal(1 - C)
     red_term = torch.square(C)
     red_term[diag_idx, diag_idx] = 0
     loss = torch.add(
-        inv_term.sum() / x.shape[0],
+        inv_term.sum() / n,
         red_term.sum() / (n * (n - 1)) * reduction_scale,
     )
     return loss

@@ -1,3 +1,4 @@
+import ast
 import sys
 from copy import deepcopy
 
@@ -248,7 +249,11 @@ def main(arguments):
         "t2_keys": t2_keys,
         "image_keys": keys,
         "mask_key": mask_key,
-    } | (eval(args.augment_args) if args.augment_args is not None else {})
+    } | (
+        ast.literal_eval(args.augment_args)
+        if args.augment_args is not None
+        else {}
+    )
 
     transform_factory = ClassificationTransforms(**transform_arguments)
     transforms_train = transform_factory.transforms(

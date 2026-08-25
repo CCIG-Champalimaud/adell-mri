@@ -43,3 +43,9 @@ class LoadIndividualDICOMd(monai.transforms.MapTransform):
         for k in self.keys:
             X[k] = self.tr(X[k])
         return X
+
+
+__all__ = [
+    "LoadIndividualDICOM",
+    "LoadIndividualDICOMd",
+]

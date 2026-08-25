@@ -35,6 +35,9 @@ from adell_mri.modules.segmentation.losses import (
     unified_focal_loss,
     weighted_mse,
 )
+from adell_mri.utils.python_logging import get_logger
+
+logger = get_logger(__name__)
 
 loss_factory = {
     "binary": {
@@ -172,9 +175,9 @@ def get_loss_param_dict(
             will be appended.
 
     Returns:
-        dict[str,dict[str,Union[float,torch.Tensor]]]: dictionary where each
-        key refers to a loss function and each value is keyword dictionary for
-        different losses.
+        dict[str,Union[float,torch.Tensor]]: flat keyword dictionary for the
+        loss corresponding to `loss_key`. The `weight` keyword argument is
+        renamed according to the loss family (`alpha` for focal-type losses).
     """
 
     def invert_weights(w: torch.Tensor) -> torch.Tensor:
@@ -209,8 +212,9 @@ def get_loss_param_dict(
             return {"weight": weights, **kwargs}
         else:
             return kwargs
-    elif loss_key in "tversky_focal":
+    elif loss_key == "tversky_focal":
         if "weight" in kwargs:
+            weights = kwargs["weight"]
             inverted_weights = invert_weights(weights)
             s = weights + inverted_weights
             weights_tv = weights / s
@@ -288,8 +292,9 @@ def collate_last_slice(X: list[TensorIterable]) -> TensorIterable:
         try:
             o = torch.cat([swap(y) for y in x])
             return o
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error("Failed to collate tensors: %s", e)
+            raise
 
     example = X[0]
     if isinstance(example, list):

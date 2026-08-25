@@ -1,6 +1,5 @@
 import pytest
 import torch
-from torch.utils.data import DataLoader, TensorDataset
 
 from adell_mri.modules.self_supervised.pl import ViTMaskedAutoEncoderPL
 

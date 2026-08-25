@@ -242,6 +242,7 @@ def copy_information_nd(
     Raises:
         Exception: if the source image has more dimensions than the target
             image.
+        ValueError: if the sizes of the first n axes of both images differ.
 
     Returns:
         sitk.Image: target image with metadata copied from source image.
@@ -262,9 +263,10 @@ def copy_information_nd(
                 source_image"
         )
     if size_target[:n_dim_in] != size_source:
-        out_str = f"sizes are different (target={size_target[:n_dim_in]}"
-        out_str += f" size_source={size_source})"
-        return out_str
+        raise ValueError(
+            f"sizes are different (target={size_target[:n_dim_in]}"
+            f" size_source={size_source})"
+        )
     spacing = list(source_image.GetSpacing())
     origin = list(source_image.GetOrigin())
     direction = list(source_image.GetDirection())

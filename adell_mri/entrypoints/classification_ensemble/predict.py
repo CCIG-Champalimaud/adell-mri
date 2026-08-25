@@ -7,6 +7,7 @@ import monai
 import torch
 from tqdm import tqdm
 
+from adell_mri.constants import DEFAULT_SEED
 from adell_mri.entrypoints.assemble_args import Parser
 from adell_mri.entrypoints.classification.predict_utils import (
     ClassificationPredictionAccumulator,
@@ -201,7 +202,7 @@ def main(arguments):
                         net_type=net_type,
                         network_config=network_config,
                         dropout_param=0.0,
-                        seed=42,
+                        seed=DEFAULT_SEED,
                         n_classes=args.n_classes,
                         keys=input_keys,
                         clinical_feature_keys=clinical_feature_keys,

@@ -1,3 +1,4 @@
+import ast
 import sys
 
 import monai
@@ -206,7 +207,11 @@ def main(arguments):
         "augment": args.augment,
         "t2_keys": t2_keys,
         "image_keys": keys,
-    } | (eval(args.augment_args) if args.augment_args is not None else {})
+    } | (
+        ast.literal_eval(args.augment_args)
+        if args.augment_args is not None
+        else {}
+    )
 
     final_transforms = [
         EinopsRearranged("image", "c h w d -> 1 h w (d c)"),

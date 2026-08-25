@@ -259,3 +259,11 @@ class RandomDropoutd(
         for k in zip(self.keys):
             X = self.transforms[k](X[k])
         return X
+
+
+__all__ = [
+    "RandomAffined",
+    "RandomSlices",
+    "RandomDropout",
+    "RandomDropoutd",
+]

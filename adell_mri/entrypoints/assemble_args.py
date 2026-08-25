@@ -703,7 +703,6 @@ argument_factory = {
         ],
         help="SSL method",
     ),
-    "unet_encoder": dict(action="store_true", help="Trains a UNet encoder"),
     "max_slices": dict(
         type=int, default=None, help="Excludes studies with over max_slices"
     ),

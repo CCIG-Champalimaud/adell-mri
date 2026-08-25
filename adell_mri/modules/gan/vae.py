@@ -125,7 +125,8 @@ class VariationalAutoEncoder(Generator):
     ):
         if self.no_skip_connection is False:
             raise NotImplementedError(
-                f"no_skip_connection must be False for {self.__name__} generation"
+                f"no_skip_connection must be True for "
+                f"{self.__class__.__name__} generation"
             )
         if shape is None:
             if self.last_bottleneck_shape is None:

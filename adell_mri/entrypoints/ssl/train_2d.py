@@ -1,5 +1,6 @@
 import json
 import os
+import sys
 from copy import deepcopy
 
 import monai
@@ -10,6 +11,7 @@ from lightning.pytorch.callbacks import RichProgressBar
 from tqdm import tqdm
 
 from adell_mri.entrypoints.assemble_args import Parser
+from adell_mri.entrypoints.cli_utils import fail
 from adell_mri.modules.config_parsing import parse_config_ssl, parse_config_unet
 from adell_mri.transform_factory import SSLTransforms, get_augmentations_ssl
 from adell_mri.utils.dicom_dataset import (
@@ -22,7 +24,11 @@ from adell_mri.utils.optimizer_factory import optimizer_eps_from_precision
 from adell_mri.utils.pl_callbacks import SpectralNorm
 from adell_mri.utils.pl_utils import get_ckpt_callback, get_devices, get_logger
 from adell_mri.utils.python_logging import get_logger as get_python_logger
-from adell_mri.utils.torch_utils import get_generator_and_rng, get_global_rank
+from adell_mri.utils.torch_utils import (
+    force_cudnn_initialization,
+    get_generator_and_rng,
+    get_global_rank,
+)
 from adell_mri.utils.utils import ExponentialMovingAverage, safe_collate
 
 torch.backends.cudnn.benchmark = True
@@ -32,19 +38,6 @@ def keep_first_not_none(*args):
     for arg in args:
         if arg is not None:
             return arg
-
-
-def force_cudnn_initialization():
-    """
-    Convenience function to initialise CuDNN (and avoid the lazy loading
-    from PyTorch).
-    """
-    s = 16
-    dev = torch.device("cuda")
-    torch.nn.functional.conv2d(
-        torch.zeros(s, s, s, s, device=dev),
-        torch.zeros(s, s, s, s, device=dev),
-    )
 
 
 def main(arguments):
@@ -116,6 +109,8 @@ def main(arguments):
     copied_keys = [k + "_copy" for k in keys]
     if args.adc_keys is None:
         adc_image_keys = []
+    else:
+        adc_image_keys = args.adc_keys
     adc_image_keys = [k for k in adc_image_keys if k in keys]
     non_adc_keys = [k for k in keys if k not in adc_image_keys]
     all_keys = [*keys]
@@ -152,8 +147,7 @@ def main(arguments):
                     )
 
     if len(data_dict) == 0:
-        logger.error("No data in dataset JSON")
-        exit()
+        fail("No data in dataset JSON")
 
     if args.subsample_size is not None:
         ss = np.random.choice(
@@ -390,7 +384,7 @@ def main(arguments):
     ckpt = ckpt_callback is not None
     if status == "finished":
         logger.info("Training has finished")
-        exit()
+        sys.exit(0)
 
     pl_logger = get_logger(
         summary_name=args.summary_name,

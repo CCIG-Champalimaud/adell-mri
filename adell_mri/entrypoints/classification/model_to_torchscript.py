@@ -3,6 +3,7 @@ import argparse
 import numpy as np
 import torch
 
+from adell_mri.constants import DEFAULT_SEED
 from adell_mri.modules.config_parsing import parse_config_cat, parse_config_unet
 from adell_mri.utils.network_factories import (
     get_classification_network,
@@ -152,7 +153,7 @@ def main(arguments):
         network = get_deconfounded_classification_network(
             network_config=network_config,
             dropout_param=0.0,
-            seed=42,
+            seed=DEFAULT_SEED,
             n_classes=args.n_classes,
             keys=input_keys,
             cat_confounder_key=(
@@ -182,7 +183,7 @@ def main(arguments):
             net_type=args.net_type,
             network_config=network_config,
             dropout_param=0.0,
-            seed=42,
+            seed=DEFAULT_SEED,
             n_classes=args.n_classes,
             keys=input_keys,
             clinical_feature_keys=clinical_feature_keys,
