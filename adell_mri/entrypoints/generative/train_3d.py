@@ -45,7 +45,7 @@ def get_conditional_specification(d: dict, cond_key: str):
             v = d[k][cond_key]
             if v not in possible_values:
                 possible_values.append(d[k][cond_key])
-    return possible_values
+    return sorted(possible_values)
 
 
 def get_mean_and_std(d: dict, regression_keys: list[str]):
