@@ -10,7 +10,8 @@ from adell_mri.modules.learning_rate import CosineAnnealingWithWarmupLR
 from adell_mri.modules.object_detection.map import mAP
 from adell_mri.modules.object_detection.nets import CoarseDetector3d, YOLONet3d
 from adell_mri.utils.optimizer_factory import OPTIMIZER_EPS_DEFAULT
-from adell_mri.utils.torch_utils import log_current_lr, meta_tensors_to_tensors
+from adell_mri.utils.pl_utils import log_current_lr
+from adell_mri.utils.torch_utils import meta_tensors_to_tensors
 
 
 def real_boxes_from_centres_sizes(

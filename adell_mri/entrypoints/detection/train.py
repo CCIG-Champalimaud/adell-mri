@@ -351,7 +351,9 @@ def main(arguments):
             log_every_n_steps=10,
         )
 
-        trainer.fit(yolo, train_loader, train_val_loader, ckpt_path=ckpt_path)
+        trainer.fit(
+            yolo, train_loader_call(), train_val_loader, ckpt_path=ckpt_path
+        )
 
         # assessing performance on validation set
         logger.info("Validating...")

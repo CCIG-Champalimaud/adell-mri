@@ -30,6 +30,7 @@ from adell_mri.modules.self_supervised.losses import (
     simsiam_loss,
 )
 from adell_mri.utils.optimizer_factory import OPTIMIZER_EPS_DEFAULT
+from adell_mri.utils.pl_utils import log_current_lr
 from adell_mri.utils.python_logging import get_logger
 
 logger = get_logger(__name__)
