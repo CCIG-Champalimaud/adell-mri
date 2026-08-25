@@ -12,10 +12,10 @@ import torch
 from generative.inferers import DiffusionInferer
 from generative.networks.nets import DiffusionModelUNet
 from generative.networks.nets.diffusion_model_unet import AttentionBlock
-from generative.networks.schedulers import DDPMScheduler
 
 from adell_mri.constants import DEFAULT_SEED
 from adell_mri.modules.diffusion.embedder import Embedder
+from adell_mri.modules.diffusion.scheduler import DDPMScheduler
 from adell_mri.modules.learning_rate import CosineAnnealingWithWarmupLR
 from adell_mri.utils.optimizer_factory import OPTIMIZER_EPS_DEFAULT
 from adell_mri.utils.torch_utils import get_global_rank, meta_tensors_to_tensors
@@ -66,6 +66,7 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
 
         self.g = torch.Generator()
         self.g.manual_seed(self.seed + get_global_rank())
+        self._device_generators = {}
         self.rng = np.random.default_rng(self.seed + get_global_rank())
         self.noise_steps = self.scheduler.num_train_timesteps
         self.loss_fn = torch.nn.MSELoss()
@@ -103,6 +104,25 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
         loss = self.loss_fn(prediction, epsilon)
         return loss.mean()
 
+    def _device_generator(self, device: torch.device) -> torch.Generator:
+        """
+        Returns a generator seeded with the instance seed for the given
+        device, creating it if necessary. Sampling random tensors directly
+        on the target device requires a device-local generator.
+
+        Args:
+            device (torch.device): target device.
+
+        Returns:
+            torch.Generator: generator for the target device.
+        """
+        key = (device.type, device.index)
+        if key not in self._device_generators:
+            generator = torch.Generator(device=device)
+            generator.manual_seed(self.seed + get_global_rank())
+            self._device_generators[key] = generator
+        return self._device_generators[key]
+
     def randn_like(self, x: torch.Tensor) -> torch.Tensor:
         """
         Generates a tensor of random normal values with the same shape as the
@@ -116,12 +136,12 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
             torch.Tensor: A tensor of random normal values with the same shape
                 as `x`.
         """
-        return (
-            torch.randn(
-                size=x.shape, generator=self.g, dtype=x.dtype, layout=x.layout
-            )
-            .contiguous()
-            .to(x.device)
+        return torch.randn(
+            size=x.shape,
+            dtype=x.dtype,
+            layout=x.layout,
+            device=x.device,
+            generator=self._device_generator(x.device),
         )
 
     def timesteps_like(self, x: torch.Tensor) -> torch.Tensor:
@@ -137,11 +157,13 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
             torch.Tensor: A tensor of random integer values between 0 and
                 `self.noise_steps` with the same batch size as `x`.
         """
-        return (
-            torch.randint(0, self.noise_steps, (x.shape[0],), generator=self.g)
-            .to(x.device)
-            .long()
-        )
+        return torch.randint(
+            0,
+            self.noise_steps,
+            (x.shape[0],),
+            device=x.device,
+            generator=self._device_generator(x.device),
+        ).long()
 
     def step(
         self,
