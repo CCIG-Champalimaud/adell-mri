@@ -287,100 +287,129 @@ class ResNeXtBlock3d(ResNeXtBlock):
     default_n_splits = 32
 
 
-class ConvNeXtBlock2d(torch.nn.Module):
+class ConvNeXtBlock(torch.nn.Module):
+    """
+    Base class for ConvNeXt blocks. Subclasses select the convolution
+    operator for the desired number of spatial dimensions via the ``Conv``
+    attribute. Adapted from [1].
+
+        [1] https://github.com/facebookresearch/ConvNeXt
+    """
+
+    Conv: type = None
+
+    def __init__(
+        self,
+        in_channels: int,
+        kernel_size: int,
+        inter_channels: int,
+        out_channels: int,
+        adn_fn: torch.nn.Module = torch.nn.Identity,
+        layer_scale_init_value: float = 1e-6,
+        skip_activation: bool = None,
+    ):
+        """
+        Args:
+            in_channels (int): number of input channels.
+            kernel_size (int): kernel size.
+            inter_channels (int): number of intermediary channels.
+            out_channels (int): number of output channels.
+            adn_fn (torch.nn.Module, optional): not used, kept for
+                compatibility purposes. Defaults to torch.nn.Identity.
+            layer_scale_init_value (float, optional): init value for gamma (
+                scales non-residual term). Defaults to 1e-6.
+            skip_activation (bool, optional): unused, kept for compatibility
+                purposes. Defaults to None.
+        """
+        super().__init__()
+        self.in_channels = in_channels
+        self.kernel_size = kernel_size
+        self.inter_channels = inter_channels
+        self.out_channels = out_channels
+        self.adn_fn = adn_fn
+        self.layer_scale_init_value = layer_scale_init_value
+        self.skip_activation = skip_activation
+
+        self.dwconv = self.Conv(
+            in_channels,
+            in_channels,
+            kernel_size=kernel_size,
+            padding="same",
+            groups=in_channels,
+        )
+        self.norm = torch.nn.LayerNorm(in_channels, eps=1e-6)
+        self.pwconv1 = torch.nn.Linear(in_channels, inter_channels)
+        self.act = torch.nn.GELU()
+        self.pwconv2 = torch.nn.Linear(inter_channels, in_channels)
+        self.gamma = (
+            torch.nn.Parameter(
+                layer_scale_init_value * torch.ones((in_channels)),
+                requires_grad=True,
+            )
+            if layer_scale_init_value > 0
+            else None
+        )
+        if out_channels != in_channels:
+            self.out_layer = torch.nn.Sequential(
+                self.Conv(
+                    in_channels, out_channels, kernel_size=1, padding="same"
+                ),
+                torch.nn.GELU(),
+            )
+        else:
+            self.out_layer = None
+
+    def forward(self, x, mask=None):
+        input = x
+        x = self.dwconv(x)
+        x = x.movedim(1, -1)  # (N, C, ...) -> (N, ..., C)
+        x = self.norm(x)
+        x = self.pwconv1(x)
+        x = self.act(x)
+        x = self.pwconv2(x)
+        if self.gamma is not None:
+            x = self.gamma * x
+        x = x.movedim(-1, 1)  # (N, ..., C) -> (N, C, ...)
+
+        x = input + x
+        if self.out_layer is not None:
+            x = self.out_layer(x)
+
+        return x
+
+
+class ConvNeXtBlock2d(ConvNeXtBlock):
     """
     Two-dimensional ConvNeXt Block. Adapted from [1].
 
         [1] https://github.com/facebookresearch/ConvNeXt
     """
 
-    def __init__(
-        self,
-        in_channels: int,
-        kernel_size: int,
-        inter_channels: int = None,
-        out_channels: int = None,
-        adn_fn: torch.nn.Module = torch.nn.Identity,
-        layer_scale_init_value: float = 1e-6,
-        skip_activation: bool = None,
-    ):
-        """
-        Args:
-            in_channels (int): number of input channels.
-            kernel_size (int): kernel size.
-            inter_channels (int): number of intermediary channels. Defaults
-                to None.
-            out_channels (int): number of output channels. Defaults to None.
-            adn_fn (torch.nn.Module, optional): for compability purposes.
-            layer_scale_init_value (float, optional): init value for gamma (
-                scales non-residual term). Defaults to 1e-6.
-            skip_activation (bool, optional): skips final activation during forward
-                pass (redundant; for consistency). Defaults to None (False).
-        """
-        super().__init__()
-        self.in_channels = in_channels
-        self.kernel_size = kernel_size
-        self.inter_channels = inter_channels
-        self.out_channels = out_channels
-        self.adn_fn = adn_fn
-        self.layer_scale_init_value = layer_scale_init_value
-        self.skip_activation = skip_activation
-
-        self.dwconv = torch.nn.Conv2d(
-            in_channels,
-            in_channels,
-            kernel_size=kernel_size,
-            padding="same",
-            groups=in_channels,
-        )
-        self.norm = torch.nn.LayerNorm(in_channels, eps=1e-6)
-        self.pwconv1 = torch.nn.Linear(in_channels, inter_channels)
-        self.act = torch.nn.GELU()
-        self.pwconv2 = torch.nn.Linear(inter_channels, in_channels)
-        self.gamma = (
-            torch.nn.Parameter(
-                layer_scale_init_value * torch.ones((in_channels)),
-                requires_grad=True,
-            )
-            if layer_scale_init_value > 0
-            else None
-        )
-        if out_channels != in_channels:
-            self.out_layer = torch.nn.Sequential(
-                torch.nn.Conv2d(
-                    in_channels, out_channels, kernel_size=1, padding="same"
-                ),
-                torch.nn.GELU(),
-            )
-        else:
-            self.out_layer = None
-
-    def forward(self, x, mask=None):
-        input = x
-        x = self.dwconv(x)
-        x = x.permute(0, 2, 3, 1)  # (N, C, H, W) -> (N, H, W, C)
-        x = self.norm(x)
-        x = self.pwconv1(x)
-        x = self.act(x)
-        x = self.pwconv2(x)
-        if self.gamma is not None:
-            x = self.gamma * x
-        x = x.permute(0, 3, 1, 2)  # (N, H, W, C) -> (N, C, H, W)
-
-        x = input + x
-        if self.out_layer is not None:
-            x = self.out_layer(x)
-
-        return x
+    Conv = torch.nn.Conv2d
 
 
-class ConvNeXtBlock3d(torch.nn.Module):
+class ConvNeXtBlock3d(ConvNeXtBlock):
     """
     Three-dimensional ConvNeXt Block. Adapted from [1].
 
         [1] https://github.com/facebookresearch/ConvNeXt
     """
 
+    Conv = torch.nn.Conv3d
+
+
+class ConvNeXtBlockVTwo(torch.nn.Module):
+    """
+    Base class for ConvNeXtV2 blocks. Subclasses select the convolution
+    operator via ``Conv`` and the channel-normalization dimensions via
+    ``reduce_dims``. Adapted from [1] and [2].
+
+        [1] https://github.com/facebookresearch/ConvNeXt-V2
+    """
+
+    Conv: type = None
+    reduce_dims: tuple = None
+
     def __init__(
         self,
         in_channels: int,
@@ -388,22 +417,18 @@ class ConvNeXtBlock3d(torch.nn.Module):
         inter_channels: int,
         out_channels: int,
         adn_fn: torch.nn.Module = torch.nn.Identity,
-        layer_scale_init_value: float = 1e-6,
         skip_activation: bool = None,
     ):
         """
         Args:
             in_channels (int): number of input channels.
             kernel_size (int): kernel size.
-            inter_channels (int): number of intermediary channels. Defaults
-                to None.
-            out_channels (int): number of output channels. Defaults to None.
-            adn_fn (torch.nn.Module, optional): not used, kept for compatibility
-                purposes. Defaults to torch.nn.Identity.
-            layer_scale_init_value (float, optional): init value for gamma (
-                scales non-residual term). Defaults to 1e-6.
-            skip_activation (bool, optional): skips final activation during forward
-                pass (redundant; for consistency). Defaults to None (False).
+            inter_channels (int): number of intermediary channels.
+            out_channels (int): number of output channels.
+            adn_fn (torch.nn.Module, optional): used only when the output
+                channels are different. Defaults to torch.nn.Identity.
+            skip_activation (bool, optional): unused, kept for compatibility
+                purposes. Defaults to None.
         """
         super().__init__()
         self.in_channels = in_channels
@@ -411,10 +436,9 @@ class ConvNeXtBlock3d(torch.nn.Module):
         self.inter_channels = inter_channels
         self.out_channels = out_channels
         self.adn_fn = adn_fn
-        self.layer_scale_init_value = layer_scale_init_value
         self.skip_activation = skip_activation
 
-        self.dwconv = torch.nn.Conv3d(
+        self.dwconv = self.Conv(
             in_channels,
             in_channels,
             kernel_size=kernel_size,
@@ -424,98 +448,11 @@ class ConvNeXtBlock3d(torch.nn.Module):
         self.norm = torch.nn.LayerNorm(in_channels, eps=1e-6)
         self.pwconv1 = torch.nn.Linear(in_channels, inter_channels)
         self.act = torch.nn.GELU()
-        self.pwconv2 = torch.nn.Linear(inter_channels, in_channels)
-        self.gamma = (
-            torch.nn.Parameter(
-                layer_scale_init_value * torch.ones((in_channels)),
-                requires_grad=True,
-            )
-            if layer_scale_init_value > 0
-            else None
-        )
-        if out_channels != in_channels:
-            self.out_layer = torch.nn.Sequential(
-                torch.nn.Conv3d(
-                    in_channels,
-                    out_channels,
-                    kernel_size=1,
-                    padding="same",
-                ),
-                torch.nn.GELU(),
-            )
-        else:
-            self.out_layer = None
-
-    def forward(self, x):
-        input = x
-        x = self.dwconv(x)
-        x = x.permute(0, 2, 3, 4, 1)  # (N, C, H, W) -> (N, H, W, C)
-        x = self.norm(x)
-        x = self.pwconv1(x)
-        x = self.act(x)
-        x = self.pwconv2(x)
-        if self.gamma is not None:
-            x = self.gamma * x
-        x = x.permute(0, 4, 1, 2, 3)  # (N, H, W, C) -> (N, C, H, W)
-
-        x = input + x
-        if self.out_layer is not None:
-            x = self.out_layer(x)
-
-        return x
-
-
-class ConvNeXtBlockVTwo2d(torch.nn.Module):
-    """
-    Two-dimensional ConvNeXtV2 Block. Adapted from [1] and [2].
-
-        [1] https://github.com/facebookresearch/ConvNeXt
-        [2] https://arxiv.org/pdf/2301.00808.pdf
-    """
-
-    def __init__(
-        self,
-        in_channels: int,
-        kernel_size: int,
-        inter_channels: int = None,
-        out_channels: int = None,
-        adn_fn: torch.nn.Module = torch.nn.Identity,
-        skip_activation: bool = False,
-    ):
-        """
-        Args:
-            in_channels (int): number of input channels.
-            kernel_size (int): kernel size.
-            inter_channels (int): number of intermediary channels. Defaults
-                to None.
-            out_channels (int): number of output channels. Defaults to None.
-            adn_fn (torch.nn.Module, optional): not used, kept for compability
-                purposes. Defaults to torch.nn.Identity.
-            skip_activation (bool, optional): skips activation during forward
-                pass (redundant; for consistency). Defaults to False.
-        """
-        super().__init__()
-        self.in_channels = in_channels
-        self.kernel_size = kernel_size
-        self.inter_channels = inter_channels
-        self.out_channels = out_channels
-        self.adn_fn = adn_fn
-
-        self.dwconv = torch.nn.Conv2d(
-            in_channels,
-            in_channels,
-            kernel_size=kernel_size,
-            padding="same",
-            groups=in_channels,
-        )
-        self.norm = torch.nn.LayerNorm(in_channels, eps=1e-6)
-        self.pwconv1 = torch.nn.Linear(in_channels, inter_channels)
-        self.act = torch.nn.GELU()
-        self.grn = GRN(in_channels=inter_channels, reduce_dims=(1, 2))
+        self.grn = GRN(in_channels=inter_channels, reduce_dims=self.reduce_dims)
         self.pwconv2 = torch.nn.Linear(inter_channels, in_channels)
         if out_channels != in_channels:
             self.out_layer = torch.nn.Sequential(
-                torch.nn.Conv2d(
+                self.Conv(
                     in_channels, out_channels, kernel_size=1, padding="same"
                 ),
                 torch.nn.GELU(),
@@ -529,13 +466,13 @@ class ConvNeXtBlockVTwo2d(torch.nn.Module):
             x = self.dwconv(x * mask) * mask
         else:
             x = self.dwconv(x)
-        x = x.permute(0, 2, 3, 1)  # (N, C, H, W) -> (N, H, W, C)
+        x = x.movedim(1, -1)  # (N, C, ...) -> (N, ..., C)
         x = self.norm(x)
         x = self.pwconv1(x)
         x = self.act(x)
         x = self.grn(x)
         x = self.pwconv2(x)
-        x = x.permute(0, 3, 1, 2)  # (N, H, W, C) -> (N, C, H, W)
+        x = x.movedim(-1, 1)  # (N, ..., C) -> (N, C, ...)
 
         x = input + x
         if self.out_layer is not None:
@@ -544,83 +481,23 @@ class ConvNeXtBlockVTwo2d(torch.nn.Module):
         return x
 
 
-class ConvNeXtBlockVTwo3d(torch.nn.Module):
+class ConvNeXtBlockVTwo2d(ConvNeXtBlockVTwo):
+    """
+    Two-dimensional ConvNeXtV2 Block. Adapted from [1] and [2].
+
+        [1] https://github.com/facebookresearch/ConvNeXt-V2
+    """
+
+    Conv = torch.nn.Conv2d
+    reduce_dims = (1, 2)
+
+
+class ConvNeXtBlockVTwo3d(ConvNeXtBlockVTwo):
     """
     Three-dimensional ConvNeXtV2 Block. Adapted from [1] and [2].
 
-        [1] https://github.com/facebookresearch/ConvNeXt
-        [2] https://arxiv.org/pdf/2301.00808.pdf
+        [1] https://github.com/facebookresearch/ConvNeXt-V2
     """
 
-    def __init__(
-        self,
-        in_channels: int,
-        kernel_size: int,
-        inter_channels: int,
-        out_channels: int,
-        adn_fn: torch.nn.Module = torch.nn.Identity,
-        skip_activation: bool = None,
-    ):
-        """
-        Args:
-            in_channels (int): number of input channels.
-            kernel_size (int): kernel size.
-            inter_channels (int): number of intermediary channels. Defaults
-                to None.
-            out_channels (int): number of output channels. Defaults to None.
-            adn_fn (torch.nn.Module, optional): used only when the output
-                channels are different. Defaults to torch.nn.Identity.
-            skip_activation (bool, optional): skips activation during forward
-                pass (redundant; for consistency). Defaults to None (False).
-        """
-        super().__init__()
-        self.in_channels = in_channels
-        self.kernel_size = kernel_size
-        self.inter_channels = inter_channels
-        self.out_channels = out_channels
-        self.adn_fn = adn_fn
-
-        self.dwconv = torch.nn.Conv3d(
-            in_channels,
-            in_channels,
-            kernel_size=kernel_size,
-            padding="same",
-            groups=in_channels,
-        )
-        self.norm = torch.nn.LayerNorm(in_channels, eps=1e-6)
-        self.pwconv1 = torch.nn.Linear(in_channels, inter_channels)
-        self.act = torch.nn.GELU()
-        self.grn = GRN(in_channels=inter_channels, reduce_dims=(1, 2, 3))
-        self.pwconv2 = torch.nn.Linear(inter_channels, in_channels)
-        if out_channels != in_channels:
-            self.out_layer = torch.nn.Sequential(
-                torch.nn.Conv3d(
-                    in_channels,
-                    out_channels,
-                    kernel_size=1,
-                    padding="same",
-                ),
-                torch.nn.GELU(),
-            )
-        else:
-            self.out_layer = None
-
-    def forward(self, x, mask=None):
-        input = x
-        if mask is not None:
-            x = self.dwconv(x * mask) * mask
-        else:
-            x = self.dwconv(x)
-        x = x.permute(0, 2, 3, 4, 1)  # (N, C, H, W, D) -> (N, H, W, D, C)
-        x = self.norm(x)
-        x = self.pwconv1(x)
-        x = self.act(x)
-        x = self.grn(x)
-        x = self.pwconv2(x)
-        x = x.permute(0, 4, 1, 2, 3)  # (N, H, W, D, C) -> (N, C, H, W, D)
-
-        x = input + x
-        if self.out_layer is not None:
-            x = self.out_layer(x)
-
-        return x
+    Conv = torch.nn.Conv3d
+    reduce_dims = (1, 2, 3)
