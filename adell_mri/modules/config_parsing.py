@@ -10,7 +10,7 @@ import yaml
 from adell_mri.modules.activations import activation_factory
 from adell_mri.modules.layers import get_adn_fn
 from adell_mri.modules.losses import CompoundLoss
-from adell_mri.utils.utils import loss_factory
+from adell_mri.utils.generic_utils import loss_factory
 
 
 def _load_yaml(config_file: str) -> dict[str, Any]:

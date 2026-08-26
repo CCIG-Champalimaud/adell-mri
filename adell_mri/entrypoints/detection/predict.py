@@ -12,10 +12,10 @@ from adell_mri.utils.dataset_filters import (
     filter_dictionary_with_filters,
     filter_dictionary_with_presence,
 )
+from adell_mri.utils.generic_utils import load_anchors
 from adell_mri.utils.network_factories import get_detection_network
 from adell_mri.utils.pl_utils import get_devices
 from adell_mri.utils.python_logging import get_logger
-from adell_mri.utils.utils import load_anchors
 
 sys.path.append(r"..")
 

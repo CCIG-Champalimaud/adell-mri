@@ -12,7 +12,7 @@ from typing import Any
 import torch
 
 from adell_mri.modules.classification.losses import OrdinalSigmoidalLoss
-from adell_mri.utils.utils import make_json_serializable
+from adell_mri.utils.generic_utils import make_json_serializable
 
 
 def predict_sample(

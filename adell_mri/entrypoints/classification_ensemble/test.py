@@ -17,12 +17,12 @@ from adell_mri.modules.config_parsing import (
 from adell_mri.modules.losses import OrdinalSigmoidalLoss
 from adell_mri.transform_factory.transforms import ClassificationTransforms
 from adell_mri.utils.dataset import Dataset
+from adell_mri.utils.generic_utils import safe_collate
 from adell_mri.utils.network_factories import get_classification_network
 from adell_mri.utils.parser import get_params, merge_args, parse_ids
 from adell_mri.utils.pl_utils import get_devices
 from adell_mri.utils.python_logging import get_logger
 from adell_mri.utils.torch_utils import load_checkpoint_to_model
-from adell_mri.utils.utils import safe_collate
 
 
 def main(arguments):

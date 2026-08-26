@@ -28,6 +28,7 @@ from adell_mri.transform_factory import (
 )
 from adell_mri.transform_factory.transforms import ClassificationTransforms
 from adell_mri.utils.dataset import Dataset
+from adell_mri.utils.generic_utils import safe_collate
 from adell_mri.utils.logging import CSVLogger
 from adell_mri.utils.parser import get_params, merge_args, parse_ids
 from adell_mri.utils.pl_callbacks import SpectralNorm
@@ -45,7 +46,6 @@ from adell_mri.utils.torch_utils import (
     load_checkpoint_to_model,
     set_classification_layer_bias,
 )
-from adell_mri.utils.utils import safe_collate
 
 
 def main(arguments):

@@ -13,6 +13,7 @@ from adell_mri.entrypoints.assemble_args import Parser
 from adell_mri.entrypoints.generative.train_3d import return_first_not_none
 from adell_mri.transform_factory import GenerationTransforms
 from adell_mri.utils.dataset import Dataset
+from adell_mri.utils.generic_utils import safe_collate
 from adell_mri.utils.network_factories import get_generative_network
 from adell_mri.utils.parser import compose, get_params, merge_args, parse_ids
 from adell_mri.utils.pl_utils import get_devices
@@ -21,7 +22,6 @@ from adell_mri.utils.torch_utils import (
     get_generator_and_rng,
     load_checkpoint_to_model,
 )
-from adell_mri.utils.utils import safe_collate
 
 
 def image_to_sitk_array(image: torch.Tensor) -> np.ndarray:

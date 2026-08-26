@@ -1,6 +1,8 @@
 import os
 import random
 import re
+from collections import OrderedDict
+from copy import deepcopy
 from multiprocessing import Pool
 from typing import Any
 
@@ -10,9 +12,134 @@ import torch
 from tqdm import tqdm
 
 from adell_mri.utils.python_logging import get_logger
-from adell_mri.utils.utils import return_classes
 
 logger = get_logger(__name__)
+
+
+class ExponentialMovingAverage(torch.nn.Module):
+    """
+    Exponential moving average for model weights. The weight-averaged
+    model is kept as `self.shadow` and each iteration of self.update leads
+    to weight updating. This implementation is heavily based on that
+    available in https://www.zijianhu.com/post/pytorch/ema/.
+
+    Essentially, self.update(model) is called, a shadow version of the
+    model (i.e. self.shadow) is updated using the exponential moving
+    average formula such that $v'=(1-decay)*(v_{shadow}-v)$, where
+    $v$ is the new parameter value, $v'$ is the updated value and
+    $v_{shadow}$ is the exponential moving average value (i.e. the shadow).
+    """
+
+    def __init__(
+        self, decay: float, final_decay: float | None = None, n_steps=None
+    ):
+        """
+        Args:
+            decay (float): decay for the exponential moving average.
+            final_decay (float, optional): final value for decay. Defaults to
+                None (same as initial decay).
+            n_steps (float, optional): number of updates until `decay` becomes
+                `final_decay` with linear scaling. Defaults to None.
+        """
+        super().__init__()
+        self.decay = decay
+        self.final_decay = final_decay
+        self.n_steps = n_steps
+        self.shadow = None
+        self.step = 0
+
+        if self.final_decay is None:
+            self.slope = None
+            self.intercept = None
+        else:
+            self.slope = (self.final_decay - self.decay) / self.n_steps
+            self.intercept = self.decay
+
+    def set_requires_grad_false(self, model: torch.nn.Module):
+        """
+        Sets requires_grad attribute of all parameters to False in a torch
+        Module.
+
+        Args:
+            model (torch.Tensor): torch module.
+        """
+        for k, p in model.named_parameters():
+            if p.requires_grad is True:
+                p.requires_grad = False
+
+    @torch.no_grad()
+    def update(self, model: torch.nn.Module, exclude_keys: list[str] = None):
+        """
+        Updates the shadow version of the model using an exponential moving
+        average.
+
+        Args:
+            model (torch.nn.Module): torch module. Must have same parameters as
+                self.shadow.
+            exclude_keys (list[str]): excludes these keys from the update.
+        """
+        if self.shadow is None:
+            # this effectively skips the first epoch
+            self.shadow = deepcopy(model)
+            self.shadow.training = False
+            self.set_requires_grad_false(self.shadow)
+        else:
+            if exclude_keys is None:
+                exclude_keys = []
+            model_params = OrderedDict(model.named_parameters())
+            shadow_params = OrderedDict(self.shadow.named_parameters())
+
+            sd_model_shadow = set.difference(
+                set(shadow_params.keys()), set(model_params.keys())
+            )
+            sd_shadow_model = set.difference(
+                set(model_params.keys()), set(shadow_params.keys())
+            )
+            sd_shadow_model = [x for x in sd_shadow_model if "shadow" not in x]
+
+            assert len(sd_model_shadow) == 0
+            assert len(sd_shadow_model) == 0
+
+            for name, param in model_params.items():
+                if name in exclude_keys:
+                    continue
+                if "shadow" not in name:
+                    shadow_params[name].sub_(
+                        (1 - self.decay) * (shadow_params[name] - param)
+                    )
+
+            if self.final_decay:
+                self.decay = self.step * self.slope + self.intercept
+            if self.decay > 1.0:
+                self.decay = 1.0
+            self.step += 1
+
+    def forward(self, *args, **kwargs):
+        """
+        Wrapper for the shadow model ``forward`` function.
+
+        Returns:
+            Output for ``self.shadow.forward`` with args and kwargs.
+        """
+        return self.shadow.forward(*args, **kwargs)
+
+    def state_dict(self) -> dict[str, torch.Tensor]:
+        """
+        Wrapper for the shadow model ``state_dict`` function.
+
+        Returns:
+            dict[str, torch.Tensor]: returns the ``shadows``'s state dict.
+        """
+        return self.shadow.state_dict()
+
+    def load_state_dict(self, state_dict: dict[str, torch.Tensor]):
+        """
+        Wrapper for the shadow model ``load_state_dict`` function.
+
+        Args:
+            state_dict (dict[str, torch.Tensor]): state dictionary.
+        """
+        self.shadow.load_state_dict(state_dict)
 
 
 def force_cudnn_initialization():
@@ -274,6 +401,29 @@ def set_classification_layer_bias(
             if list(v.shape) == [1]:
                 with torch.no_grad():
                     v[0] = value
+
+
+def return_classes(paths: str | list[str]) -> dict[str | int, str]:
+    """
+    Returns a dictionary with the unique values in the images and their counts.
+
+    Args:
+        paths (str | list[str]): Path or list of paths to images.
+
+    Returns:
+        dict: Dictionary with unique values as keys and counts as values.
+    """
+    if isinstance(paths, str):
+        paths = [paths]
+    out = {}
+    for path in paths:
+        image = monai.transforms.LoadImage()(path)
+        un_cl, counts = np.unique(image, return_counts=True)
+        for u, c in zip(un_cl, counts):
+            if u not in out:
+                out[u] = 0
+            out[u] += c
+    return out
 
 
 def get_segmentation_sample_weights(

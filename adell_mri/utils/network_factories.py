@@ -78,13 +78,10 @@ from adell_mri.modules.semi_supervised_segmentation.pl import (
     UNetContrastiveSemiSL,
 )
 from adell_mri.utils.batch_preprocessing import BatchPreprocessing
+from adell_mri.utils.generic_utils import get_loss_param_dict, loss_factory
 from adell_mri.utils.optimizer_factory import OPTIMIZER_EPS_DEFAULT
 from adell_mri.utils.python_logging import get_logger
-from adell_mri.utils.utils import (
-    ExponentialMovingAverage,
-    get_loss_param_dict,
-    loss_factory,
-)
+from adell_mri.utils.torch_utils import ExponentialMovingAverage
 
 logger = get_logger(__name__)
 

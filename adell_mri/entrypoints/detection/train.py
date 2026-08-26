@@ -21,6 +21,7 @@ from adell_mri.utils.dataset_filters import (
     filter_dictionary_with_presence,
 )
 from adell_mri.utils.detection import anchors_from_nested_list
+from adell_mri.utils.generic_utils import load_anchors, safe_collate
 from adell_mri.utils.network_factories import get_detection_network
 from adell_mri.utils.optimizer_factory import optimizer_eps_from_precision
 from adell_mri.utils.pl_callbacks import SpectralNorm
@@ -28,7 +29,6 @@ from adell_mri.utils.pl_utils import get_ckpt_callback, get_devices, get_logger
 from adell_mri.utils.python_logging import get_logger as get_python_logger
 from adell_mri.utils.sitk_utils import spacing_from_dataset_json
 from adell_mri.utils.torch_utils import get_generator_and_rng
-from adell_mri.utils.utils import load_anchors, safe_collate
 
 torch.backends.cudnn.benchmark = True
 

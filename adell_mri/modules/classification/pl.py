@@ -60,7 +60,6 @@ try:
 except ModuleNotFoundError:
     has_monai = False
 
-# re-exported for backwards compatibility
 from adell_mri.utils.pl_utils import log_current_lr
 from adell_mri.utils.torch_utils import meta_tensors_to_tensors
 

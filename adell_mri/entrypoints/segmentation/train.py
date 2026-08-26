@@ -21,6 +21,12 @@ from adell_mri.transform_factory.semi_sl_segmentation import (
     get_semi_sl_transforms,
 )
 from adell_mri.utils.dataset import Dataset
+from adell_mri.utils.generic_utils import (
+    collate_last_slice,
+    get_loss_param_dict,
+    safe_collate,
+    safe_collate_crops,
+)
 from adell_mri.utils.logging import CSVLogger
 from adell_mri.utils.monai_transforms import (
     GetAllCropsd,
@@ -42,12 +48,6 @@ from adell_mri.utils.torch_utils import (
     get_generator_and_rng,
     get_global_rank,
     get_segmentation_sample_weights,
-)
-from adell_mri.utils.utils import (
-    collate_last_slice,
-    get_loss_param_dict,
-    safe_collate,
-    safe_collate_crops,
 )
 
 torch.backends.cudnn.benchmark = True

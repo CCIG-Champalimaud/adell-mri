@@ -13,6 +13,7 @@ from adell_mri.modules.config_parsing import parse_config_gan
 from adell_mri.transform_factory import GenerationTransforms
 from adell_mri.utils.dicom_dataset import filter_dicom_dict_on_presence
 from adell_mri.utils.dicom_loader import DICOMDataset, SliceSampler
+from adell_mri.utils.generic_utils import safe_collate
 from adell_mri.utils.network_factories import (
     get_gan_network,
     get_generative_network,
@@ -33,7 +34,6 @@ from adell_mri.utils.torch_utils import (
     get_global_rank,
     load_checkpoint_to_model,
 )
-from adell_mri.utils.utils import safe_collate
 
 
 def get_conditional_specification(d: dict, cond_key: str):

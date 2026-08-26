@@ -1,5 +1,4 @@
-from copy import deepcopy
-from typing import Any, Sequence
+from typing import Any
 
 import lightning.pytorch as pl
 import numpy as np
@@ -12,7 +11,7 @@ from PIL import Image
 from torch.nn.utils.parametrizations import spectral_norm
 
 from adell_mri.utils.python_logging import get_logger
-from adell_mri.utils.utils import ExponentialMovingAverage
+from adell_mri.utils.torch_utils import ExponentialMovingAverage
 
 logger = get_logger(__name__)
 

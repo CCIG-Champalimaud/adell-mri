@@ -15,15 +15,15 @@ sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 import torch
 
 from adell_mri.modules.segmentation import *
+from adell_mri.utils.generic_utils import (
+    collate_last_slice,
+    get_prostatex_path_dictionary,
+    get_size_spacing_dict,
+)
 from adell_mri.utils.monai_transforms import (
     ConvertToOneHot,
     RandomSlices,
     SlicesToFirst,
-)
-from adell_mri.utils.utils import (
-    collate_last_slice,
-    get_prostatex_path_dictionary,
-    get_size_spacing_dict,
 )
 
 if __name__ == "__main__":

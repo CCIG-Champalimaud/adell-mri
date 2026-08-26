@@ -14,6 +14,7 @@ from adell_mri.transform_factory import (
     get_augmentations_class as get_augmentations,
 )
 from adell_mri.utils.dataset import Dataset
+from adell_mri.utils.generic_utils import collate_last_slice, safe_collate
 from adell_mri.utils.monai_transforms import RandomSlices
 from adell_mri.utils.network_factories import (
     get_gan_network,
@@ -35,7 +36,6 @@ from adell_mri.utils.torch_utils import (
     get_generator_and_rng,
     load_checkpoint_to_model,
 )
-from adell_mri.utils.utils import collate_last_slice, safe_collate
 
 
 def get_conditional_specification(d: dict, cond_key: str):

@@ -22,6 +22,7 @@ from adell_mri.transform_factory import (
 )
 from adell_mri.transform_factory.transforms import ClassificationTransforms
 from adell_mri.utils.dataset import Dataset
+from adell_mri.utils.generic_utils import safe_collate
 from adell_mri.utils.logging import CSVLogger
 from adell_mri.utils.network_factories import get_classification_network
 from adell_mri.utils.optimizer_factory import optimizer_eps_from_precision
@@ -41,7 +42,6 @@ from adell_mri.utils.torch_utils import (
     load_checkpoint_to_model,
     set_classification_layer_bias,
 )
-from adell_mri.utils.utils import safe_collate
 
 python_logger = get_python_logger(__name__)
 

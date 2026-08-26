@@ -13,12 +13,12 @@ from adell_mri.modules.config_parsing import parse_config_ssl, parse_config_unet
 from adell_mri.modules.layers import ResNet
 from adell_mri.transform_factory.transforms import SegmentationTransforms
 from adell_mri.utils.dataset import Dataset
+from adell_mri.utils.generic_utils import collate_last_slice, safe_collate
 from adell_mri.utils.inference import SegmentationInference, TensorListReduction
 from adell_mri.utils.monai_transforms import SlicesToFirst
 from adell_mri.utils.network_factories import get_segmentation_network
 from adell_mri.utils.parser import parse_ids
 from adell_mri.utils.sitk_writer import SitkWriter
-from adell_mri.utils.utils import collate_last_slice, safe_collate
 
 torch.backends.cudnn.benchmark = True
 

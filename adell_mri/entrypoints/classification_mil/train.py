@@ -24,6 +24,7 @@ from adell_mri.transform_factory import (
 )
 from adell_mri.utils.batch_preprocessing import BatchPreprocessing
 from adell_mri.utils.dataset import Dataset
+from adell_mri.utils.generic_utils import safe_collate
 from adell_mri.utils.logging import CSVLogger
 from adell_mri.utils.monai_transforms import (
     EinopsRearranged,
@@ -42,7 +43,6 @@ from adell_mri.utils.torch_utils import (
     get_generator_and_rng,
     set_classification_layer_bias,
 )
-from adell_mri.utils.utils import safe_collate
 
 
 def main(arguments):

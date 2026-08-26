@@ -19,6 +19,12 @@ from adell_mri.transform_factory import (
     get_augmentations_unet as get_augmentations,
 )
 from adell_mri.utils.dataset import Dataset
+from adell_mri.utils.generic_utils import (
+    collate_last_slice,
+    get_loss_param_dict,
+    safe_collate,
+    safe_collate_crops,
+)
 from adell_mri.utils.logging import CSVLogger
 from adell_mri.utils.monai_transforms import (
     GetAllCropsd,
@@ -35,12 +41,6 @@ from adell_mri.utils.sitk_utils import (
     spacing_values_from_dataset_json,
 )
 from adell_mri.utils.torch_utils import get_generator_and_rng, get_global_rank
-from adell_mri.utils.utils import (
-    collate_last_slice,
-    get_loss_param_dict,
-    safe_collate,
-    safe_collate_crops,
-)
 
 torch.backends.cudnn.benchmark = True
 
