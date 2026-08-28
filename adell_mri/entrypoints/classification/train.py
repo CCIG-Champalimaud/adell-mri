@@ -76,6 +76,7 @@ def main(arguments):
             "label_groups",
             "cache_rate",
             "target_spacing",
+            "resample_to",
             "pad_size",
             "crop_size",
             "subsample_size",

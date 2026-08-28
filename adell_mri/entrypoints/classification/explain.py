@@ -325,6 +325,7 @@ def main(arguments):
             "n_classes",
             "filter_on_keys",
             "target_spacing",
+            "resample_to",
             "pad_size",
             "crop_size",
             "subsample_size",

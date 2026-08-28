@@ -168,6 +168,7 @@ def create_transform_arguments(
         ),
         "adc_keys": adc_keys,
         "target_spacing": getattr(args, "target_spacing", None),
+        "resample_to": getattr(args, "resample_to", None),
         "crop_size": getattr(args, "crop_size", None),
         "pad_size": getattr(args, "pad_size", None),
     }
