@@ -151,6 +151,12 @@ argument_factory = {
         type=float,
         help="Resamples all images to target spacing",
     ),
+    "resample_to": dict(
+        default=None,
+        type=int,
+        help="Index of the image key to resample all other images and the mask \
+            to.",
+    ),
     "pad_size": dict(
         default=None,
         type=float,
