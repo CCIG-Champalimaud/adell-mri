@@ -367,11 +367,12 @@ class DetectionTransforms(TransformMixin):
 @dataclass
 class ClassificationTransforms(TransformMixin):
     keys: tuple[str]
-    adc_keys: tuple[str]
-    clinical_feature_keys: tuple[str]
-    target_spacing: tuple[float]
-    crop_size: tuple[int]
-    pad_size: tuple[int]
+    clinical_feature_keys: tuple[str] | None = tuple()
+    crop_size: tuple[int] | None = None
+    pad_size: tuple[int] | None = None
+    adc_keys: tuple[str] = tuple()
+    target_spacing: tuple[float] | None = None
+    resample_to: int | None = 0
     image_masking: bool = False
     image_crop_from_mask: bool = False
     mask_key: str = None
@@ -413,19 +414,6 @@ class ClassificationTransforms(TransformMixin):
                 self.all_keys, ensure_channel_first=True
             )
         ]
-        if self.mask_key is not None:
-            transforms.append(
-                monai.transforms.ResampleToMatchd(
-                    self.mask_key, key_dst=self.keys[0], mode="nearest"
-                )
-            )
-        transforms.append(
-            monai.transforms.Orientationd(
-                self.all_keys,
-                "RAS",
-                labels=(("L", "R"), ("P", "A"), ("I", "S")),
-            )
-        )
 
         if len(self.non_adc_keys) > 0:
             transforms.append(
@@ -441,17 +429,51 @@ class ClassificationTransforms(TransformMixin):
                     self.adc_keys, None, None, ADC_FACTOR
                 )
             )
-        if self.target_spacing is not None:
-            transforms.extend(
-                [
+
+        transforms.append(
+            monai.transforms.Orientationd(
+                self.all_keys,
+                "RAS",
+                labels=(("L", "R"), ("P", "A"), ("I", "S")),
+            )
+        )
+
+        if self.resample_to is not None:
+            key_dst = self.keys[self.resample_to]
+            if self.target_spacing is not None:
+                transforms.append(
+                    monai.transforms.Spacingd(
+                        key_dst,
+                        pixdim=self.target_spacing,
+                        dtype=torch.float32,
+                        mode=IMAGE_INTERPOLATION,
+                    )
+                )
+            if self.mask_key is not None:
+                transforms.append(
+                    monai.transforms.ResampleToMatchd(
+                        self.mask_key, key_dst=key_dst, mode="nearest"
+                    )
+                )
+            if len(self.keys) > 1:
+                moving_keys = [k for k in self.keys if k != key_dst]
+                transforms.append(
+                    monai.transforms.ResampleToMatchd(
+                        moving_keys,
+                        key_dst=key_dst,
+                        mode=IMAGE_INTERPOLATION,
+                    )
+                )
+        else:
+            if self.target_spacing is not None:
+                transforms.append(
                     monai.transforms.Spacingd(
                         self.all_keys,
                         pixdim=self.target_spacing,
                         dtype=torch.float32,
                         mode=self.interpolation,
                     ),
-                ]
-            )
+                )
         if self.target_size is not None:
             transforms.append(
                 monai.transforms.Resized(
