@@ -5,6 +5,8 @@ from generative.inferers import DiffusionInferer
 from rich.progress import track
 from tqdm import tqdm
 
+from adell_mri.utils.logging import get_progress
+
 
 class _SamplingBuffers:
     """
@@ -312,33 +314,29 @@ class DiffusionInfererSkipSteps(DiffusionInferer):
             use_guidance=use_guidance,
         )
         timestep = buffers.timestep
-        if verbose:
-            progress_bar = track(
-                scheduler.timesteps[skip_steps:],
-                description="Generating...",
-                refresh_per_second=1,
-                show_speed=True,
-            )
-        else:
-            progress_bar = iter(scheduler.timesteps[skip_steps:])
+        progress = get_progress(transient=True, disable=not verbose)
         intermediates = []
-        for t in progress_bar:
-            # 1. predict noise model_output
-            timestep.fill_(t)
-            model_output = self._predict(
-                diffusion_model,
-                image,
-                timestep,
-                conditioning=conditioning,
-                concat_condition=concat_condition,
-                unconditioning=unconditioning,
-                guidance_strength=guidance_strength,
-                buffers=buffers,
-            )
-            # 2. compute previous image: x_t -> x_t-1
-            image, _ = scheduler.step(model_output, t, image)
-            if save_intermediates and t % intermediate_steps == 0:
-                intermediates.append(image)
+        with progress:
+            for t in progress.track(
+                scheduler.timesteps[skip_steps:],
+                description="Generating image...",
+            ):
+                # 1. predict noise model_output
+                timestep.fill_(t)
+                model_output = self._predict(
+                    diffusion_model,
+                    image,
+                    timestep,
+                    conditioning=conditioning,
+                    concat_condition=concat_condition,
+                    unconditioning=unconditioning,
+                    guidance_strength=guidance_strength,
+                    buffers=buffers,
+                )
+                # 2. compute previous image: x_t -> x_t-1
+                image, _ = scheduler.step(model_output, t, image)
+                if save_intermediates and t % intermediate_steps == 0:
+                    intermediates.append(image)
         if save_intermediates:
             return image, intermediates
         else:

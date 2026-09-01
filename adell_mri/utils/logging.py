@@ -9,6 +9,14 @@ from pathlib import Path
 from typing import Any
 
 import torch
+from rich.progress import (
+    BarColumn,
+    MofNCompleteColumn,
+    Progress,
+    TaskProgressColumn,
+    TextColumn,
+    TimeRemainingColumn,
+)
 
 
 def make_grid(image_tensor: torch.Tensor) -> torch.Tensor:
@@ -75,3 +83,18 @@ class CSVLogger:
             writer = csv.DictWriter(f, fieldnames=self.history[0].keys())
             writer.writeheader()
             writer.writerows(self.history)
+
+
+def get_progress(transient: bool = True, disable: bool = False):
+    """
+    Creates a rich text progress bar.
+    """
+    return Progress(
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        TaskProgressColumn(),
+        MofNCompleteColumn(),
+        TimeRemainingColumn(),
+        transient=transient,
+        disable=disable,
+    )

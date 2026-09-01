@@ -14,6 +14,7 @@ from adell_mri.entrypoints.generative.train_3d import return_first_not_none
 from adell_mri.transform_factory import GenerationTransforms
 from adell_mri.utils.dataset import Dataset
 from adell_mri.utils.generic_utils import safe_collate
+from adell_mri.utils.logging import get_progress
 from adell_mri.utils.network_factories import get_generative_network
 from adell_mri.utils.parser import compose, get_params, merge_args, parse_ids
 from adell_mri.utils.pl_utils import get_devices
@@ -208,6 +209,8 @@ def main(arguments):
     network = network.eval()
     network = torch.compile(network)
     network = network.to(dtype=inference_dtype)
+    progress = get_progress(transient=True)
+    progress.start()
     if args.dataset_json is not None:
         logger.info("Setting up transforms...")
         transforms = GenerationTransforms(**transform_args).transforms()
@@ -262,7 +265,7 @@ def main(arguments):
         )
 
         Path(args.output_path).mkdir(exist_ok=True, parents=True)
-        for data in tqdm(dataloader, desc="Generating images"):
+        for data in progress.track(dataloader, description="Generating images"):
             output_paths = [
                 os.path.join(args.output_path, f"{k}_gen.mha")
                 for k in data["key"]
@@ -345,7 +348,9 @@ def main(arguments):
                 device=args.dev,
                 dtype=inference_dtype,
             )
-        for i in range(args.n_samples_gen):
+        for i in progress.track(
+            range(args.n_samples_gen), description="Generating images"
+        ):
             output = network.generate_image(
                 size=size,
                 n=1,
@@ -365,3 +370,5 @@ def main(arguments):
         raise Exception(
             "one of dataset_json, n_samples_gen should be specified"
         )
+
+    progress.stop()
