@@ -101,9 +101,8 @@ def convert_arguments_augment_all(
         "shear",
         "flip",
     ]
-    augment_arguments_semi_sl["all_keys"] = [
-        f"{k}_aug_{idx}" for k, idx in product(image_keys, [1, 2])
-    ]
+    augment_arguments_semi_sl.pop("all_keys", None)
+    augment_arguments_semi_sl["label_keys"] = None
     augment_arguments_semi_sl["image_keys"] = [
         f"{k}_aug_{idx}" for k, idx in product(image_keys, [1, 2])
     ]
@@ -145,9 +144,8 @@ def convert_arguments_augment_individual(
         "blur",
         "trivial",
     ]
-    augment_arguments_semi_sl["all_keys"] = [
-        f"{k}_aug_{idx}" for k in image_keys
-    ]
+    augment_arguments_semi_sl.pop("all_keys", None)
+    augment_arguments_semi_sl["label_keys"] = None
     augment_arguments_semi_sl["image_keys"] = [
         f"{k}_aug_{idx}" for k in image_keys
     ]
