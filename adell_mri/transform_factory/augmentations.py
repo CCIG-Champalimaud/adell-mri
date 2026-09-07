@@ -216,39 +216,37 @@ def get_augmentations_class(
         augments.append(monai.transforms.Identityd(image_keys))
         prob = 1.0
 
-    if "intensity" in augment:
-        augments.extend(
-            [
-                monai.transforms.RandAdjustContrastd(
-                    image_keys, gamma=(0.5, 1.5), prob=prob
-                ),
-                monai.transforms.RandStdShiftIntensityd(
-                    image_keys, factors=0.1, prob=prob
-                ),
-                monai.transforms.RandShiftIntensityd(
-                    image_keys, offsets=0.1, prob=prob
-                ),
-            ]
-        )
-
-    if "noise" in augment:
-        augments.extend(
-            [
-                monai.transforms.RandRicianNoised(
-                    image_keys, std=0.02, prob=prob
-                ),
-                monai.transforms.RandGibbsNoised(
-                    image_keys, alpha=(0.3, 0.6), prob=prob
-                ),
-            ]
-        )
-
-    if "lowres" in augment:
+    if "rbf" in augment and len(t2_keys) > 0:
         augments.append(
-            monai.transforms.RandSimulateLowResolutiond(
-                image_keys,
-                zoom_range=[0.8, 1.2],
+            monai.transforms.RandBiasFieldd(t2_keys, degree=3, prob=prob)
+        )
+
+    if "affine" in augment or "shear" in augment:
+        kwargs = {}
+        if "affine" in augment:
+            kwargs["translate_range"] = [8, 8, 2]
+            kwargs["rotate_range"] = [np.pi / 8]
+            kwargs["scale_range"] = [0.1]
+        if "shear" in augment:
+            kwargs["shear_range"] = ((0.9, 1.1), (0.9, 1.1), (0.9, 1.1))
+        augments.append(
+            monai.transforms.RandAffined(
+                all_keys_with_mask,
+                **kwargs,
                 prob=prob,
+                mode=intp,
+                padding_mode="zeros",
+            )
+        )
+
+    if "distort" in augment:
+        augments.append(
+            monai.transforms.RandGridDistortiond(
+                all_keys_with_mask,
+                distort_limit=0.2,
+                prob=prob,
+                mode=intp,
+                padding_mode="zeros",
             )
         )
 
@@ -268,47 +266,56 @@ def get_augmentations_class(
                 )
         augments.append(monai.transforms.OneOf(flips))
 
+    if "intensity" in augment:
+        augments.extend(
+            [
+                monai.transforms.RandAdjustContrastd(
+                    image_keys, gamma=(0.5, 1.5), prob=prob
+                ),
+                monai.transforms.RandScaleIntensityd(
+                    image_keys, factors=0.1, prob=prob
+                ),
+                monai.transforms.ScaleIntensityRanged(
+                    keys=image_keys,
+                    a_min=0.0,
+                    a_max=1.0,
+                    b_min=0.0,
+                    b_max=1.0,
+                    clip=True,
+                ),
+            ]
+        )
+
     if "blur" in augment:
-        augments.extend([monai.transforms.RandGaussianSmoothd(image_keys)])
-
-    if "rbf" in augment and len(t2_keys) > 0:
         augments.append(
-            monai.transforms.RandBiasFieldd(t2_keys, degree=3, prob=prob)
-        )
-
-    if "affine" in augment:
-        augments.append(
-            monai.transforms.RandAffined(
-                all_keys_with_mask,
-                translate_range=[4, 4, 1],
-                rotate_range=[np.pi / 16],
-                scale_range=[0.1, 0.1, 0.05],
+            monai.transforms.RandGaussianSmoothd(
+                image_keys,
                 prob=prob,
-                mode=intp,
-                padding_mode="zeros",
+                sigma_x=(0.5, 1.5),
+                sigma_y=(0.5, 1.5),
+                sigma_z=(0.5, 1.5),
             )
         )
 
-    if "shear" in augment:
+    if "lowres" in augment:
         augments.append(
-            monai.transforms.RandAffined(
-                all_keys_with_mask,
-                shear_range=((0.9, 1.1), (0.9, 1.1), (0.9, 1.1)),
+            monai.transforms.RandSimulateLowResolutiond(
+                image_keys,
+                zoom_range=[0.8, 1.2],
                 prob=prob,
-                mode=intp,
-                padding_mode="zeros",
             )
         )
 
-    if "distort" in augment:
-        augments.append(
-            monai.transforms.RandGridDistortiond(
-                all_keys_with_mask,
-                distort_limit=0.05,
-                prob=prob,
-                mode=intp,
-                padding_mode="zeros",
-            )
+    if "noise" in augment:
+        augments.extend(
+            [
+                monai.transforms.RandRicianNoised(
+                    image_keys, std=(0.01, 0.03), prob=prob
+                ),
+                monai.transforms.RandGibbsNoised(
+                    image_keys, alpha=(0.3, 0.6), prob=prob
+                ),
+            ]
         )
 
     if "trivial" in augment:
