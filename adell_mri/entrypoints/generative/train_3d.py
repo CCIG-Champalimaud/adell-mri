@@ -9,10 +9,7 @@ from lightning.pytorch.callbacks import RichProgressBar
 
 from adell_mri.entrypoints.assemble_args import Parser
 from adell_mri.modules.config_parsing import parse_config_gan
-from adell_mri.transform_factory import GenerationTransforms
-from adell_mri.transform_factory import (
-    get_augmentations_class as get_augmentations,
-)
+from adell_mri.transform_factory import GenerationTransforms, get_augmentations
 from adell_mri.utils.dataset import Dataset
 from adell_mri.utils.generic_utils import collate_last_slice, safe_collate
 from adell_mri.utils.monai_transforms import RandomSlices
@@ -258,9 +255,9 @@ def main(arguments):
     augmentation_args = {
         "augment": args.augment,
         "image_keys": all_image_keys,
-        "mask_key": None,
         "t2_keys": all_image_keys,
         "flip_axis": [0],
+        "data_range": (-1.0, 1.0),
     } | (
         ast.literal_eval(args.augment_args)
         if args.augment_args is not None
