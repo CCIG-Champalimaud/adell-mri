@@ -18,9 +18,9 @@ from adell_mri.modules.classification.pl import (
     TransformableTransformerPL,
 )
 from adell_mri.modules.config_parsing import parse_config_2d_classifier_3d
-from adell_mri.transform_factory import ClassificationTransforms
 from adell_mri.transform_factory import (
-    get_augmentations_class as get_augmentations,
+    ClassificationTransforms,
+    get_augmentations,
 )
 from adell_mri.utils.batch_preprocessing import BatchPreprocessing
 from adell_mri.utils.dataset import Dataset
@@ -222,7 +222,7 @@ def main(arguments):
 
     transform_factory = ClassificationTransforms(**transform_arguments)
     transforms_train = transform_factory.transforms(
-        get_augmentations(**augment_arguments, mask_key=None),
+        get_augmentations(**augment_arguments, data_range=(0.0, 1.0)),
         final_transforms=final_transforms,
     )
     transforms_val = transform_factory.transforms(

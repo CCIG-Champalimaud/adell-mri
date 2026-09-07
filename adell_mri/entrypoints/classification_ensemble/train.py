@@ -17,9 +17,7 @@ from adell_mri.modules.config_parsing import (
     parse_config_unet,
 )
 from adell_mri.modules.losses import OrdinalSigmoidalLoss
-from adell_mri.transform_factory import (
-    get_augmentations_class as get_augmentations,
-)
+from adell_mri.transform_factory import get_augmentations
 from adell_mri.transform_factory.transforms import ClassificationTransforms
 from adell_mri.utils.dataset import Dataset
 from adell_mri.utils.generic_utils import safe_collate
@@ -250,7 +248,8 @@ def main(arguments):
         "augment": args.augment,
         "t2_keys": t2_keys,
         "image_keys": keys,
-        "mask_key": mask_key,
+        "label_keys": [mask_key] if mask_key is not None else None,
+        "data_range": (0.0, 1.0),
     } | (
         ast.literal_eval(args.augment_args)
         if args.augment_args is not None
