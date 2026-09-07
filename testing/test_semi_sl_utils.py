@@ -37,8 +37,8 @@ TRANSFORM_ARGUMENTS = {
 
 AUGMENT_ARGUMENTS = {
     "augment": ["affine"],
-    "all_keys": ["image", "mask"],
     "image_keys": ["image"],
+    "label_keys": ["mask"],
     "t2_keys": [],
     "random_crop_size": None,
     "n_crops": 1,
@@ -70,7 +70,7 @@ def test_convert_arguments_augment_all():
     out = convert_arguments_augment_all(AUGMENT_ARGUMENTS, ["image"])
     assert out["augment"] == ["affine", "shear", "flip"]
     assert out["image_keys"] == ["image_aug_1", "image_aug_2"]
-    assert out["all_keys"] == ["image_aug_1", "image_aug_2"]
+    assert out["label_keys"] is None
     assert out["has_label"] is False
 
 
@@ -78,5 +78,5 @@ def test_convert_arguments_augment_individual():
     out = convert_arguments_augment_individual(AUGMENT_ARGUMENTS, 2, ["image"])
     assert out["augment"] == ["intensity", "noise", "rbf", "blur", "trivial"]
     assert out["image_keys"] == ["image_aug_2"]
-    assert out["all_keys"] == ["image_aug_2"]
+    assert out["label_keys"] is None
     assert out["has_label"] is False
