@@ -13,9 +13,9 @@ from sklearn.model_selection import KFold, train_test_split
 from adell_mri.entrypoints.assemble_args import Parser
 from adell_mri.modules.config_parsing import parse_config_ssl, parse_config_unet
 from adell_mri.modules.layers import ResNet
-from adell_mri.transform_factory import SegmentationTransforms
 from adell_mri.transform_factory import (
-    get_augmentations_unet as get_augmentations,
+    SegmentationTransforms,
+    get_augmentations,
 )
 from adell_mri.transform_factory.semi_sl_segmentation import (
     get_semi_sl_transforms,
@@ -350,8 +350,8 @@ def main(arguments):
         transform_arguments_val["crop_size"] = None
         augment_arguments = {
             "augment": args.augment,
-            "all_keys": all_keys,
             "image_keys": keys,
+            "label_keys": [*label_keys, *aux_keys, *aux_mask_keys],
             "t2_keys": t2_keys,
             "random_crop_size": args.random_crop_size,
             "n_crops": args.n_crops,

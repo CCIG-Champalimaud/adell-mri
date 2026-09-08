@@ -406,9 +406,13 @@ class ClassPLABC(pl.LightningModule, ABC):
                 otherwise.
         """
         if self.net_type == "ord":
-            output = torch.cumsum(proba > 0.5, -1)[..., -1]
-            last_pred_index = output
-            output = output.to(proba.dtype) + proba[last_pred_index]
+            num_crossed = torch.cumsum(proba > 0.5, -1)[..., -1]
+            next_index = num_crossed.to(proba.device)
+            next_index = next_index.long().clamp(max=proba.shape[-1] - 1)
+            next_proba = torch.gather(
+                proba, -1, next_index.unsqueeze(-1)
+            ).squeeze(-1)
+            return num_crossed.to(proba.dtype) + next_proba
         return proba
 
     def on_train_end(self):
@@ -511,12 +515,18 @@ class ClassPLABC(pl.LightningModule, ABC):
                 - predictive_mean: Mean of GP samples
                 - predictive_std: Standard deviation of GP samples
                 - epistemic_uncertainty: Model uncertainty from GP covariance
-                - predictive_std_pred: Std of GP samples in probability space
-                    (for multiclass/binary predictions) and in soft-prediction
-                    space for ordinal samples.
-                - epistemic_uncertainty_pred: Epistemic uncertainty in
-                    probability space (for multiclass/binary predictions) and
-                    in soft-prediction space for ordinal samples.
+                - predictive_std_pred: Per-sample std across GP samples of each
+                    individual probability (one value per class for
+                    multiclass/binary and one value per ordinal threshold for
+                    ordinal predictions).
+                - epistemic_uncertainty_pred: Per-sample epistemic std of each
+                    individual probability (same shape as predictive_std_pred).
+                - ordinal_class_std: Std across GP samples of the ordinal soft
+                    class prediction. Single scalar per sample (only set for
+                    ordinal models, None otherwise).
+                - ordinal_class_epistemic_uncertainty: Epistemic std of the
+                    ordinal soft class prediction. Single scalar per sample
+                    (only set for ordinal models, None otherwise).
 
         Raises:
             RuntimeError: If GP is not enabled or not fitted
@@ -553,16 +563,27 @@ class ClassPLABC(pl.LightningModule, ABC):
         epistemic_uncertainty = torch.diagonal(gp_cov, dim1=-2, dim2=-1)
 
         prob_samples = self.classification_probabilities(gp_samples)
-        pred_estimate = self.calculate_pred_for_ordinal(prob_samples)
-        predictive_std_pred = pred_estimate.std(dim=0)
+        # per-sample std of each individual (class/threshold) probability
+        predictive_std_pred = prob_samples.std(dim=0)
 
         gp_mean_samples_dist = torch.distributions.MultivariateNormal(
             gp_mean, gp_cov
         )
         gp_mean_samples = gp_mean_samples_dist.rsample([n_samples])
         gp_mean_proba = self.classification_probabilities(gp_mean_samples)
-        gp_mean_prediction = self.calculate_pred_for_ordinal(gp_mean_proba)
-        epistemic_uncertainty_pred = gp_mean_prediction.std(dim=0)
+        # per-sample epistemic std of each individual probability
+        epistemic_uncertainty_pred = gp_mean_proba.std(dim=0)
+
+        # only included for ordinal models
+        ordinal_class_std = None
+        ordinal_class_epistemic_uncertainty = None
+        if self.net_type == "ord":
+            ordinal_class_std = self.calculate_pred_for_ordinal(
+                prob_samples
+            ).std(dim=0)
+            ordinal_class_epistemic_uncertainty = (
+                self.calculate_pred_for_ordinal(gp_mean_proba).std(dim=0)
+            )
 
         return {
             "prediction": prediction,
@@ -573,6 +594,10 @@ class ClassPLABC(pl.LightningModule, ABC):
             "epistemic_uncertainty": epistemic_uncertainty,
             "predictive_std_pred": predictive_std_pred,
             "epistemic_uncertainty_pred": epistemic_uncertainty_pred,
+            "ordinal_class_std": ordinal_class_std,
+            "ordinal_class_epistemic_uncertainty": (
+                ordinal_class_epistemic_uncertainty
+            ),
         }
 
     def predict_calibrated_step(self, batch, batch_idx, *args, **kwargs):

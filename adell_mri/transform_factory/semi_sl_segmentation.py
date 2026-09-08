@@ -9,7 +9,7 @@ from adell_mri.modules.semi_supervised_segmentation.utils import (
     convert_arguments_post,
     convert_arguments_pre,
 )
-from adell_mri.transform_factory.augmentations import get_augmentations_unet
+from adell_mri.transform_factory.augmentations import get_augmentations
 from adell_mri.transform_factory.transforms import SegmentationTransforms
 from adell_mri.utils.monai_transforms import CopyEntryd
 
@@ -44,9 +44,9 @@ def get_semi_sl_transforms(
         ).pre_transforms(),
         CopyEntryd(keys, {k: f"{k}_aug_1" for k in keys}),
         CopyEntryd(keys, {k: f"{k}_aug_2" for k in keys}),
-        get_augmentations_unet(**augment_arguments_semi_sl_all),
-        get_augmentations_unet(**augment_arguments_semi_sl_1),
-        get_augmentations_unet(**augment_arguments_semi_sl_2),
+        get_augmentations(**augment_arguments_semi_sl_all),
+        get_augmentations(**augment_arguments_semi_sl_1),
+        get_augmentations(**augment_arguments_semi_sl_2),
         *SegmentationTransforms(
             **transform_arguments_semi_sl_post_1
         ).post_transforms(),
