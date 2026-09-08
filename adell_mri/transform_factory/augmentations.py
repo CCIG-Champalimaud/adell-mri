@@ -130,10 +130,10 @@ def get_augmentations(
         kwargs = {}
         if "affine" in augment:
             kwargs["translate_range"] = [8, 8, 2]
-            kwargs["rotate_range"] = [np.pi / 8]
+            kwargs["rotate_range"] = [np.pi / 16, np.pi / 16, 0]
             kwargs["scale_range"] = [0.1]
         if "shear" in augment:
-            kwargs["shear_range"] = ((0.9, 1.1), (0.9, 1.1), (0.9, 1.1))
+            kwargs["shear_range"] = (0.1 for _ in range(3))
         augments.append(
             monai.transforms.RandAffined(
                 spatial_keys,
@@ -205,10 +205,10 @@ def get_augmentations(
         augments.extend(
             [
                 monai.transforms.RandRicianNoised(
-                    image_keys, std=(0.01, 0.03), prob=prob
+                    image_keys, std=0.05, prob=prob
                 ),
                 monai.transforms.RandGibbsNoised(
-                    image_keys, alpha=(0.3, 0.6), prob=prob
+                    image_keys, alpha=(0.5, 0.7), prob=prob
                 ),
             ]
         )
@@ -240,7 +240,7 @@ def get_augmentations(
         else:
             new_augments.append(
                 monai.transforms.RandSpatialCropd(
-                    image_keys,
+                    spatial_keys,
                     pre_final_size,
                 )
             )
@@ -249,8 +249,7 @@ def get_augmentations(
                 *new_augments,
                 transform,
                 monai.transforms.CenterSpatialCropd(
-                    spatial_keys if has_label else image_keys,
-                    random_crop_size,
+                    spatial_keys, random_crop_size
                 ),
             ]
         )
