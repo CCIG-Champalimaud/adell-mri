@@ -62,6 +62,7 @@ def main(arguments):
             "seed",
             "one_to_one",
             "prediction_ids",
+            "tta",
             "ensemble",
             (
                 "prediction_type",
@@ -208,7 +209,8 @@ def main(arguments):
                 output = network_config["module"](input_example)
                 network_config["module_out_dim"] = int(output.shape[1])
                 logger.info(
-                    "2D module output size=%s", network_config["module_out_dim"]
+                    "2D module output size=%s",
+                    network_config["module_out_dim"],
                 )
             if args.mil_method == "transformer":
                 network = TransformableTransformerPL(
@@ -241,6 +243,7 @@ def main(arguments):
                         post_proc_fn,
                         extra_args,
                         process_features=False,
+                        tta=args.tta,
                     )
                     accumulator.add(identifier, output)
                     pbar.update()

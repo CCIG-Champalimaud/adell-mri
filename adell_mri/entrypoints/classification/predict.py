@@ -84,6 +84,7 @@ def main(arguments):
             ),
             ("prediction_checkpoints", "checkpoints"),
             "ensemble",
+            "tta",
             "output_path",
         ]
     )
@@ -241,6 +242,7 @@ def main(arguments):
                         post_proc_fn,
                         extra_args,
                         include_tabular=not use_deconfounding(args),
+                        tta=args.tta,
                     )
                     accumulator.add(identifier, output)
                     pbar.update()

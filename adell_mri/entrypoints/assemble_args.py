@@ -469,6 +469,12 @@ argument_factory = {
         nargs="+",
         help="Predict using these checkpoints.",
     ),
+    "tta": dict(
+        action="store_true",
+        default=False,
+        help="Applies test-time augmentation flips to the input data and "
+        "averages the result.",
+    ),
     # mil-specific
     "mil_method": dict(
         required=True,

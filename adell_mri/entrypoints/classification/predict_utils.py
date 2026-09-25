@@ -6,13 +6,68 @@ Consolidates the common prediction logic duplicated across
 and ``classification_mil`` entrypoints.
 """
 
+from copy import deepcopy
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Callable
 
 import torch
 
 from adell_mri.modules.classification.losses import OrdinalSigmoidalLoss
 from adell_mri.utils.generic_utils import make_json_serializable
+
+
+def predict_step_with_tta(
+    predict_step_fn: Callable,
+    batch: dict[str, Any],
+    *args,
+    **extra_args,
+) -> dict[str, torch.Tensor]:
+    """
+    Predicts using flip-based TTA. Only the image (`batch["image"]`) is flipped
+    prior to inference. The output is not processed in any form or way. Raw
+    or average predictions are averaged as sum/n, whereas standard deviation
+    predictions (from GP models) are sqrt(sum(square) / n) given that variances
+    can be added.
+
+    Args:
+        predict_step_fn (Callable): a function which produces a dictionary with
+            keys and `torch.Tensor` values.
+        batch (dict[str, Any]): a batch tensor of any kind.
+
+    Returns:
+        dict[str, torch.Tensor]: the averaged output from `predict_step_fn`.
+    """
+    mean_pred_vars = [
+        "prediction",
+        "gp_mean",
+        "predictive_mean",
+        "epistemic_uncertainty_pred",
+    ]
+    std_vars = [
+        "predictive_std",
+        "epistemic_uncertainty",
+        "predictive_std_pred",
+        "ordinal_class_std",
+        "ordinal_class_epistemic_uncertainty",
+    ]
+    flip_dims = [(2,), (3,), (4,), (2, 3), (3, 4), (2, 4), (2, 3, 4)]
+    n_flips = len(flip_dims) + 1
+    result_accumulator = predict_step_fn(batch, *args, **extra_args)
+    for flip_dim in flip_dims:
+        curr_batch = deepcopy(batch)
+        curr_batch["image"] = torch.flip(curr_batch["image"], flip_dim)
+        result = predict_step_fn(curr_batch, *args, **extra_args)
+        for k in result:
+            if k in mean_pred_vars:
+                result_accumulator[k] += result[k]
+            elif k in std_vars:
+                result_accumulator[k] += torch.square(result[k])
+    for k in result_accumulator:
+        if k in mean_pred_vars:
+            result_accumulator[k] = result_accumulator[k] / n_flips
+        elif k in std_vars:
+            result_accumulator[k] = torch.sqrt(result_accumulator[k] / n_flips)
+    return result_accumulator
 
 
 def predict_sample(
@@ -22,8 +77,9 @@ def predict_sample(
     post_proc_fn,
     extra_args,
     *,
-    include_tabular=False,
-    process_features=True,
+    include_tabular: bool = False,
+    process_features: bool = True,
+    tta: bool = False,
 ):
     """
     Runs prediction on a single sample and post-processes the output.
@@ -54,7 +110,12 @@ def predict_sample(
     batch = {"image": element["image"].unsqueeze(0).to(dev)}
     if include_tabular and "tabular" in element:
         batch["tabular"] = element["tabular"].unsqueeze(0).to(dev)
-    output = network.predict_step(batch, 0, **extra_args)
+    if tta:
+        output = predict_step_with_tta(
+            network.predict_step, batch, 0, **extra_args
+        )
+    else:
+        output = network.predict_step(batch, 0, **extra_args)
     if process_features and "features" in output:
         output["features"] = (
             output["features"].flatten(start_dim=2).max(-1).values

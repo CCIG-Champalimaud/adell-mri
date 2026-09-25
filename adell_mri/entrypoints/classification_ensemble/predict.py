@@ -62,6 +62,7 @@ def main(arguments):
             ("prediction_type", "type"),
             ("prediction_checkpoints", "checkpoints"),
             "batch_size",
+            "tta",
             "output_path",
         ]
     )
@@ -272,6 +273,7 @@ def main(arguments):
                         args.dev,
                         post_proc_fn,
                         extra_args,
+                        tta=args.tta,
                     )
                     accumulator.add(identifier, output)
                     pbar.update()
