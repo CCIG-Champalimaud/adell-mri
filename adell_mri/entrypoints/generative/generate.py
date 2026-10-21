@@ -134,7 +134,7 @@ def main(arguments):
             "target_spacing",
             "pad_size",
             "crop_size",
-            "config_file",
+            ("config_file", "config_file", {"required": False}),
             "overrides",
             "dev",
             "n_workers",
@@ -214,6 +214,11 @@ def main(arguments):
         with_conditioning = True
 
     if network_config is None:
+        if args.config_file is None:
+            raise ValueError(
+                "The checkpoint does not contain a network configuration; "
+                "use --config_file"
+            )
         network_config = compose(args.config_file, "diffusion", args.overrides)
         network_config["batch_size"] = return_first_not_none(
             args.batch_size, network_config.get("batch_size")
