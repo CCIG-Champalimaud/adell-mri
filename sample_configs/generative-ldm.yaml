@@ -1,0 +1,13 @@
+# Latent diffusion configuration for --model_type ldm
+# in_channels and out_channels are overridden with the latent channel count
+spatial_dims: 3
+in_channels: 3
+out_channels: 3
+num_channels: [256, 512, 768]
+num_res_blocks: 2
+attention_levels: [false, true, true]
+norm_num_groups: 32
+with_conditioning: false
+cross_attention_dim: null
+batch_size: 64
+learning_rate: 2.5e-5
