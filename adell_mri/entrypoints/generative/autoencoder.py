@@ -208,7 +208,9 @@ def ensure_autoencoder(
     last_checkpoint = get_autoencoder_checkpoint(checkpoint_dir, ae_name)
     if status == "finished":
         stored_config = _read_autoencoder_config(last_checkpoint)
-        if stored_config is not None and stored_config != parsed_config:
+        if stored_config is not None and stored_config.get(
+            "model"
+        ) != parsed_config.get("model"):
             raise ValueError(
                 "The existing autoencoder checkpoint was trained with a "
                 "different configuration. Use --ae_checkpoint_name to point "
@@ -289,6 +291,7 @@ def prepare_latents(
     checkpoint_name: str,
     overwrite: bool,
     batch_size: int,
+    ae_checkpoint: str | None,
     logger: Any,
 ) -> tuple[list[dict], dict[str, float], tuple[int, ...]]:
     """
@@ -303,6 +306,8 @@ def prepare_latents(
         checkpoint_name (str): base checkpoint name.
         overwrite (bool): whether existing latents should be overwritten.
         batch_size (int): batch size used for encoding.
+        ae_checkpoint (str | None): path to the autoencoder checkpoint, used
+            to detect stale latent caches.
         logger (Any): python logger.
 
     Returns:
@@ -312,6 +317,19 @@ def prepare_latents(
     latent_dir = args.latent_dir or os.path.join(
         checkpoint_dir, checkpoint_name + "_latents"
     )
+    manifest_path = os.path.join(latent_dir, "_ae_checkpoint.txt")
+    if (
+        overwrite is False
+        and ae_checkpoint is not None
+        and os.path.exists(manifest_path) is True
+    ):
+        with open(manifest_path, "r") as manifest:
+            if manifest.read().strip() != ae_checkpoint:
+                logger.info(
+                    "Latents were generated with a different autoencoder; "
+                    "re-encoding"
+                )
+                overwrite = True
     logger.info("Caching latents in %s", latent_dir)
     cached_list = cache_latents(
         autoencoder,
@@ -323,6 +341,9 @@ def prepare_latents(
         device=args.dev,
         overwrite=overwrite,
     )
+    if ae_checkpoint is not None:
+        with open(manifest_path, "w") as manifest:
+            manifest.write(ae_checkpoint)
     latent_paths = [record["latent"] for record in cached_list]
     statistics = compute_latent_statistics(latent_paths)
     latent_shape = tuple(np.load(latent_paths[0], mmap_mode="r").shape)

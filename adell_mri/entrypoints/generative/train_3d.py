@@ -359,6 +359,7 @@ def main(arguments):
             args.checkpoint_name,
             overwrite=trained_now,
             batch_size=ae_config["batch_size"],
+            ae_checkpoint=ae_checkpoint,
             logger=logger,
         )
         latent_dir = args.latent_dir or os.path.join(

@@ -147,7 +147,11 @@ def test_ae_ldm_training_and_generation(dataset, tmp_path):
     ldm_checkpoint = os.path.join(checkpoint_dir, "smoke_last.ckpt")
     assert os.path.exists(ldm_checkpoint)
     latent_dir = os.path.join(checkpoint_dir, "smoke_latents")
-    assert len(os.listdir(latent_dir)) == 4
+    latent_files = [
+        name for name in os.listdir(latent_dir) if name.endswith(".npy")
+    ]
+    assert len(latent_files) == 4
+    assert os.path.exists(os.path.join(latent_dir, "_ae_checkpoint.txt"))
 
     output_dir = str(tmp_path / "generated")
     generate_main(
