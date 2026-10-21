@@ -707,6 +707,20 @@ class GenerationTransforms(TransformMixin):
             transforms.append(
                 monai.transforms.ConcatItemsd(self.latent_keys, "image")
             )
+            if self.cat_keys is not None:
+                transforms.append(
+                    monai.transforms.Lambdad(
+                        self.cat_keys, box, track_meta=False
+                    )
+                )
+                transforms.append(
+                    monai.transforms.ConcatItemsd(self.cat_keys, "cat")
+                )
+            if self.num_keys is not None:
+                transforms.append(monai.transforms.Lambdad(self.num_keys, box))
+                transforms.append(
+                    monai.transforms.ConcatItemsd(self.num_keys, "num")
+                )
             return transforms
         transforms.append(
             monai.transforms.ConcatItemsd(self.image_keys, "image")

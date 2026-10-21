@@ -9,7 +9,10 @@ from lightning.pytorch import Trainer
 from lightning.pytorch.callbacks import RichProgressBar
 
 from adell_mri.entrypoints.assemble_args import Parser
-from adell_mri.entrypoints.generative.autoencoder import ensure_autoencoder
+from adell_mri.entrypoints.generative.autoencoder import (
+    ensure_autoencoder,
+    prepare_latents,
+)
 from adell_mri.modules.config_parsing import parse_config_ae, parse_config_gan
 from adell_mri.transform_factory import GenerationTransforms, get_augmentations
 from adell_mri.utils.dataset import Dataset
@@ -99,6 +102,8 @@ def main(arguments):
             "ae_checkpoint",
             "ae_max_epochs",
             "ae_monitor",
+            "latent_dir",
+            "latent_only",
             "spatial_dims",
             "warmup_steps",
             "start_decay",
@@ -144,10 +149,10 @@ def main(arguments):
         param_dict = get_params(args.params_from)
         args = merge_args(args, param_dict, sys.argv[1:])
 
-    if args.model_type not in ["diffusion", "gan", "ae"]:
+    if args.model_type not in ["diffusion", "gan", "ae", "ldm"]:
         raise ValueError(
-            f"--model_type must be one of ['diffusion', 'gan', 'ae'], got "
-            f"'{args.model_type}'"
+            f"--model_type must be one of ['diffusion', 'gan', 'ae', 'ldm'], "
+            f"got '{args.model_type}'"
         )
 
     g, rng = get_generator_and_rng(args.seed)
@@ -281,8 +286,19 @@ def main(arguments):
 
     logger.info("Train set size=%s", len(train_list))
 
-    if args.model_type == "ae":
-        ae_config_file = args.ae_config_file or args.config_file
+    ae_config = None
+    ae_checkpoint = None
+    latent_statistics = None
+    latent_shape = None
+    if args.model_type in ["ae", "ldm"]:
+        ae_config_file = args.ae_config_file
+        if ae_config_file is None:
+            if args.model_type == "ae":
+                ae_config_file = args.config_file
+            else:
+                raise ValueError(
+                    "--ae_config_file is required for --model_type ldm"
+                )
         ae_config = parse_config_ae(
             ae_config_file,
             args.image_keys,
@@ -302,7 +318,7 @@ def main(arguments):
             fold=None,
             tags={"model_type": "ae", "ae_config": ae_config},
         )
-        ensure_autoencoder(
+        autoencoder, ae_checkpoint, trained_now = ensure_autoencoder(
             args,
             ae_config,
             train_list,
@@ -317,9 +333,97 @@ def main(arguments):
             output_file,
             logger,
         )
-        output_file.close()
-        return
+        if args.model_type == "ae":
+            output_file.close()
+            return
 
+        if args.checkpoint_dir is None or args.checkpoint_name is None:
+            raise ValueError(
+                "--checkpoint_dir and --checkpoint_name are required for "
+                "--model_type ldm"
+            )
+        if (
+            args.input_image_keys is not None
+            or args.input_mask_keys is not None
+        ):
+            raise ValueError(
+                "concat conditioning is not supported for --model_type ldm; "
+                "use --cat_condition_keys or --num_condition_keys"
+            )
+        train_list, latent_statistics, latent_shape = prepare_latents(
+            args,
+            autoencoder,
+            train_list,
+            transforms_eval,
+            args.checkpoint_dir,
+            args.checkpoint_name,
+            overwrite=trained_now,
+            batch_size=ae_config["batch_size"],
+            logger=logger,
+        )
+        latent_dir = args.latent_dir or os.path.join(
+            args.checkpoint_dir, args.checkpoint_name + "_latents"
+        )
+        latent_channels = int(latent_shape[0])
+        latent_spatial_shape = tuple(int(s) for s in latent_shape[1:])
+        logger.info(
+            "Latent shape=%s, scale=%s",
+            latent_shape,
+            latent_statistics["scale"],
+        )
+
+        network_config = compose(args.config_file, "diffusion", args.overrides)
+        network_config["batch_size"] = return_first_not_none(
+            args.batch_size, network_config.get("batch_size")
+        )
+        network_config["learning_rate"] = return_first_not_none(
+            args.learning_rate, network_config.get("learning_rate")
+        )
+        network_config["with_conditioning"] = with_conditioning
+        network_config["cross_attention_dim"] = (
+            256 if with_conditioning else None
+        )
+        network_config["in_channels"] = latent_channels
+        network_config["out_channels"] = latent_channels
+        network_config["spatial_dims"] = 3
+
+        transform_arguments = {
+            "keys": ("latent",),
+            "image_keys": ("latent",),
+            "latent_keys": ("latent",),
+            "latent_only": True,
+            "n_dim": 3,
+            "target_spacing": args.target_spacing,
+            "cat_keys": args.cat_condition_keys,
+            "num_keys": args.num_condition_keys,
+        }
+        latent_transform_factory = GenerationTransforms(**transform_arguments)
+        transforms_train = [latent_transform_factory.transforms()]
+        transforms_eval = transforms_train[0]
+        keys = ["latent"]
+        all_image_keys = ["latent"]
+        input_image_key = None
+
+    checkpoint_metadata = {
+        "train_pids": all_pids,
+        "network_config": network_config,
+        "transform_arguments": transform_arguments,
+        "categorical_specification": categorical_specification,
+        "numerical_specification": numerical_specification,
+        "model_type": args.model_type,
+    }
+    if args.model_type == "ldm":
+        checkpoint_metadata.update(
+            {
+                "ae_config": ae_config,
+                "ae_checkpoint": ae_checkpoint,
+                "latent_scale": latent_statistics["scale"],
+                "latent_mean": latent_statistics["mean"],
+                "latent_std": latent_statistics["std"],
+                "latent_shape": latent_shape,
+                "latent_dir": latent_dir,
+            }
+        )
     ckpt_callback, ckpt_path, status = get_ckpt_callback(
         checkpoint_dir=args.checkpoint_dir,
         checkpoint_name=args.checkpoint_name,
@@ -460,6 +564,20 @@ def main(arguments):
         network, args.freeze_regex, args.not_freeze_regex
     )
 
+    if args.model_type == "ldm":
+        autoencoder_parameter = next(autoencoder.parameters())
+        latent_scale = float(latent_statistics["scale"])
+
+        def decode_latents(z):
+            z = z / latent_scale
+            z = z.to(
+                device=autoencoder_parameter.device,
+                dtype=autoencoder_parameter.dtype,
+            )
+            return autoencoder.decode(z)
+
+        network.latent_decoder = decode_latents
+
     # instantiate callbacks and loggers
     callbacks = [RichProgressBar()]
 
@@ -496,8 +614,11 @@ def main(arguments):
     )
 
     if pl_logger is not None:
-        size = return_first_not_none(args.pad_size, args.crop_size)
-        size = [int(x) for x in size][:spatial_dims]
+        if args.model_type == "ldm":
+            size = list(latent_spatial_shape)
+        else:
+            size = return_first_not_none(args.pad_size, args.crop_size)
+            size = [int(x) for x in size][:spatial_dims]
         if args.model_type == "gan":
             callbacks.append(
                 LogImageFromGAN(

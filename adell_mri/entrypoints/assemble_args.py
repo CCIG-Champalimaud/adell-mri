@@ -740,7 +740,7 @@ argument_factory = {
     "model_type": dict(
         type=str,
         default=None,
-        choices=["diffusion", "gan", "ae"],
+        choices=["diffusion", "gan", "ae", "ldm"],
         help="Type of generative model to train",
     ),
     "ae_config_file": dict(
@@ -770,6 +770,16 @@ argument_factory = {
         type=str,
         default="val_loss",
         help="Metric monitored for autoencoder checkpointing.",
+    ),
+    "latent_dir": dict(
+        type=str,
+        default=None,
+        help="Directory where cached latents are stored.",
+    ),
+    "latent_only": dict(
+        action="store_true",
+        default=False,
+        help="Only load latents (used internally for latent diffusion).",
     ),
     "spatial_dims": dict(
         type=int,
