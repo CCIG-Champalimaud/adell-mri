@@ -291,8 +291,8 @@ def parse_config_ae(
 
     is_variational = model_config.pop("is_variational", False)
 
-    losses = dict(config.get("losses", {}))
-    loss_weights = dict(losses.get("weights", {}))
+    losses = dict(config.get("losses") or {})
+    loss_weights = dict(losses.get("weights") or {})
     rec_loss = losses.get("rec_loss", "mse")
     perceptual_kwargs = losses.get("perceptual_kwargs")
     if perceptual_kwargs is not None:
@@ -305,7 +305,7 @@ def parse_config_ae(
         "rec_loss": rec_loss,
         "perceptual_kwargs": perceptual_kwargs,
         "discriminator": config.get("discriminator"),
-        "optimizer": dict(config.get("optimizer", {})),
+        "optimizer": dict(config.get("optimizer") or {}),
         "batch_size": config.get("batch_size", 1),
         "spatial_dims": spatial_dims,
     }
