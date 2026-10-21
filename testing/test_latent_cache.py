@@ -78,6 +78,19 @@ def test_latents_are_not_intensity_scaled(image_and_latent_files):
     assert float(output["image"].min()) == pytest.approx(-1.0)
 
 
+def test_latent_scale_is_applied(latent_file):
+    source = np.load(latent_file)
+    factory = GenerationTransforms(
+        keys=("latent",),
+        latent_keys=("latent",),
+        latent_only=True,
+        latent_scale=2.0,
+        n_dim=2,
+    )
+    output = Compose(factory.transforms())({"latent": latent_file})
+    np.testing.assert_allclose(output["image"].numpy(), source * 2.0)
+
+
 def test_latent_only_requires_latent_keys():
     with pytest.raises(ValueError):
         GenerationTransforms(keys=("image",), latent_only=True)

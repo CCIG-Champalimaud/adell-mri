@@ -394,6 +394,7 @@ def main(arguments):
             "latent_only": True,
             "n_dim": 3,
             "target_spacing": args.target_spacing,
+            "latent_scale": latent_statistics["scale"],
             "cat_keys": args.cat_condition_keys,
             "num_keys": args.num_condition_keys,
         }

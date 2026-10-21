@@ -1,5 +1,6 @@
 import os
 from dataclasses import dataclass
+from functools import partial
 
 import monai
 import monai.transforms
@@ -23,6 +24,22 @@ from adell_mri.utils.monai_transforms import (
 )
 
 ADC_FACTOR = -2 / 3
+
+
+def scale_latent(x: np.ndarray, scale: float) -> np.ndarray:
+    """
+    Multiplies a latent array by a scale factor.
+
+    Args:
+        x (np.ndarray): latent array.
+        scale (float): scale factor.
+
+    Returns:
+        np.ndarray: scaled latent.
+    """
+    return x * scale
+
+
 IMAGE_INTERPOLATION = os.getenv("ADELL_IMAGE_INTERPOLATION", "bilinear")
 if IMAGE_INTERPOLATION in [str(x) for x in range(6)]:
     IMAGE_INTERPOLATION = int(IMAGE_INTERPOLATION)
@@ -594,6 +611,7 @@ class GenerationTransforms(TransformMixin):
     num_keys: tuple[str] | None = None
     latent_keys: tuple[str] | None = None
     latent_only: bool = False
+    latent_scale: float | None = None
 
     def __post_init__(self):
         self.latent_keys = tuple(self.latent_keys or ())
@@ -633,10 +651,18 @@ class GenerationTransforms(TransformMixin):
 
     def pre_transforms(self):
         if self.latent_only is True:
-            return [
-                monai.transforms.LoadImaged(self.latent_keys, image_only=True),
-                monai.transforms.EnsureTyped(self.latent_keys),
+            transforms = [
+                monai.transforms.LoadImaged(self.latent_keys, image_only=True)
             ]
+            if self.latent_scale is not None:
+                transforms.append(
+                    monai.transforms.Lambdad(
+                        self.latent_keys,
+                        partial(scale_latent, scale=self.latent_scale),
+                    )
+                )
+            transforms.append(monai.transforms.EnsureTyped(self.latent_keys))
+            return transforms
 
         spatial_keys = [k for k in self.load_keys if k not in self.latent_keys]
         transforms = [
@@ -648,6 +674,13 @@ class GenerationTransforms(TransformMixin):
             transforms.append(
                 monai.transforms.LoadImaged(self.latent_keys, image_only=True)
             )
+            if self.latent_scale is not None:
+                transforms.append(
+                    monai.transforms.Lambdad(
+                        self.latent_keys,
+                        partial(scale_latent, scale=self.latent_scale),
+                    )
+                )
         if self.n_dim == 2:
             transforms.extend(
                 [
