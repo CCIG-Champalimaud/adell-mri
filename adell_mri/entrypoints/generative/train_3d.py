@@ -1,4 +1,5 @@
 import ast
+import os
 import sys
 
 import monai
@@ -8,7 +9,8 @@ from lightning.pytorch import Trainer
 from lightning.pytorch.callbacks import RichProgressBar
 
 from adell_mri.entrypoints.assemble_args import Parser
-from adell_mri.modules.config_parsing import parse_config_gan
+from adell_mri.entrypoints.generative.autoencoder import ensure_autoencoder
+from adell_mri.modules.config_parsing import parse_config_ae, parse_config_gan
 from adell_mri.transform_factory import GenerationTransforms, get_augmentations
 from adell_mri.utils.dataset import Dataset
 from adell_mri.utils.generic_utils import collate_last_slice, safe_collate
@@ -92,6 +94,11 @@ def main(arguments):
             "config_file",
             "overrides",
             "model_type",
+            "ae_config_file",
+            "ae_checkpoint_name",
+            "ae_checkpoint",
+            "ae_max_epochs",
+            "ae_monitor",
             "spatial_dims",
             "warmup_steps",
             "start_decay",
@@ -137,9 +144,9 @@ def main(arguments):
         param_dict = get_params(args.params_from)
         args = merge_args(args, param_dict, sys.argv[1:])
 
-    if args.model_type not in ["diffusion", "gan"]:
+    if args.model_type not in ["diffusion", "gan", "ae"]:
         raise ValueError(
-            f"--model_type must be one of ['diffusion', 'gan'], got "
+            f"--model_type must be one of ['diffusion', 'gan', 'ae'], got "
             f"'{args.model_type}'"
         )
 
@@ -222,7 +229,7 @@ def main(arguments):
             batch_size=args.batch_size,
             learning_rate=args.learning_rate,
         )
-    else:
+    elif args.model_type == "diffusion":
         network_config = compose(args.config_file, "diffusion", args.overrides)
         network_config["batch_size"] = return_first_not_none(
             args.batch_size, network_config.get("batch_size")
@@ -268,10 +275,50 @@ def main(arguments):
     transforms_train = transform_factory.transforms(
         get_augmentations(**augmentation_args)
     )
+    transforms_eval = transform_factory.transforms()
 
-    train_list = [data_dict[pid] for pid in all_pids]
+    train_list = data_dict.to_datalist(all_pids)
 
     logger.info("Train set size=%s", len(train_list))
+
+    if args.model_type == "ae":
+        ae_config_file = args.ae_config_file or args.config_file
+        ae_config = parse_config_ae(
+            ae_config_file,
+            args.image_keys,
+            spatial_dims=args.spatial_dims or 3,
+        )
+        ae_logger_name = (
+            args.summary_name or args.checkpoint_name or "generative"
+        ) + "_ae"
+        ae_pl_logger = get_logger(
+            summary_name=ae_logger_name,
+            summary_dir=args.summary_dir,
+            project_name=args.project_name,
+            resume=args.resume,
+            log_model=args.log_model,
+            logger_type=args.logger_type,
+            tracking_uri=args.tracking_uri,
+            fold=None,
+            tags={"model_type": "ae", "ae_config": ae_config},
+        )
+        ensure_autoencoder(
+            args,
+            ae_config,
+            train_list,
+            transforms_train,
+            args.checkpoint_dir,
+            args.checkpoint_name,
+            accelerator,
+            devices,
+            strategy,
+            n_devices,
+            ae_pl_logger,
+            output_file,
+            logger,
+        )
+        output_file.close()
+        return
 
     ckpt_callback, ckpt_path, status = get_ckpt_callback(
         checkpoint_dir=args.checkpoint_dir,
@@ -280,13 +327,7 @@ def main(arguments):
         resume_from_last=args.resume_from_last,
         val_fold=None,
         monitor=args.monitor,
-        metadata={
-            "train_pids": all_pids,
-            "network_config": network_config,
-            "transform_arguments": transform_arguments,
-            "categorical_specification": categorical_specification,
-            "numerical_specification": numerical_specification,
-        },
+        metadata=checkpoint_metadata,
     )
     ckpt = ckpt_callback is not None
     if status == "finished":
@@ -335,7 +376,12 @@ def main(arguments):
         real_bs = bs * n_devices
 
     def train_loader_call(batch_size):
-        num_samples = args.steps_per_epoch * real_bs
+        steps_per_epoch = args.steps_per_epoch or max(
+            1, len(train_dataset) // real_bs
+        )
+        num_samples = steps_per_epoch * real_bs
+        if n_devices == 1:
+            num_samples = min(num_samples, len(train_dataset))
         if n_devices > 1:
             sampler = DistributedRandomSampler(
                 train_dataset,
@@ -353,17 +399,18 @@ def main(arguments):
                 num_samples=num_samples,
                 generator=g,
             )
-        return monai.data.ThreadDataLoader(
-            train_dataset,
-            batch_size=batch_size,
-            num_workers=n_workers,
-            collate_fn=collate_fn,
-            pin_memory=True,
-            persistent_workers=args.n_workers > 0,
-            drop_last=True,
-            sampler=sampler,
-            prefetch_factor=8,
-        )
+        loader_kwargs = {
+            "batch_size": batch_size,
+            "num_workers": n_workers,
+            "collate_fn": collate_fn,
+            "pin_memory": True,
+            "drop_last": True,
+            "sampler": sampler,
+        }
+        if n_workers > 0:
+            loader_kwargs["persistent_workers"] = True
+            loader_kwargs["prefetch_factor"] = 8
+        return monai.data.ThreadDataLoader(train_dataset, **loader_kwargs)
 
     train_loader = train_loader_call(bs)
 
