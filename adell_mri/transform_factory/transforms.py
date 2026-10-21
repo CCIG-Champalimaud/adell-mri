@@ -592,8 +592,19 @@ class GenerationTransforms(TransformMixin):
     n_dim: int = 3
     cat_keys: tuple[str] | None = None
     num_keys: tuple[str] | None = None
+    latent_keys: tuple[str] | None = None
+    latent_only: bool = False
 
     def __post_init__(self):
+        self.latent_keys = tuple(self.latent_keys or ())
+        if self.latent_only is True:
+            if len(self.latent_keys) == 0:
+                raise ValueError("latent_only requires latent_keys")
+            self.keys = self.latent_keys
+            self.image_keys = self.latent_keys
+            self.load_keys = list(self.latent_keys)
+            self.conditioning_keys = []
+            return
         if self.image_keys is None:
             self.image_keys = self.keys
         self.load_keys = [*self.keys]
@@ -603,6 +614,9 @@ class GenerationTransforms(TransformMixin):
             for k in self.input_image_keys:
                 if k not in self.load_keys:
                     self.load_keys.append(k)
+        for k in self.latent_keys:
+            if k not in self.load_keys:
+                self.load_keys.append(k)
         self.conditioning_keys = []
         if self.input_image_keys is not None:
             self.conditioning_keys.extend(self.input_image_keys)
@@ -618,40 +632,51 @@ class GenerationTransforms(TransformMixin):
                 )
 
     def pre_transforms(self):
+        if self.latent_only is True:
+            return [
+                monai.transforms.LoadImaged(self.latent_keys, image_only=True),
+                monai.transforms.EnsureTyped(self.latent_keys),
+            ]
+
+        spatial_keys = [k for k in self.load_keys if k not in self.latent_keys]
         transforms = [
             monai.transforms.LoadImaged(
-                self.load_keys, ensure_channel_first=True, image_only=True
+                spatial_keys, ensure_channel_first=True, image_only=True
             )
         ]
+        if len(self.latent_keys) > 0:
+            transforms.append(
+                monai.transforms.LoadImaged(self.latent_keys, image_only=True)
+            )
         if self.n_dim == 2:
             transforms.extend(
                 [
-                    SampleChannelDimd(self.load_keys, 1, 3),
+                    SampleChannelDimd(spatial_keys, 1, 3),
                     monai.transforms.SqueezeDimd(
-                        self.load_keys, -1, update_meta=False
+                        spatial_keys, -1, update_meta=False
                     ),
                 ]
             )
         if self.n_dim == 3:
             transforms.append(
                 monai.transforms.Orientationd(
-                    self.load_keys,
+                    spatial_keys,
                     "RAS",
                     labels=(("L", "R"), ("P", "A"), ("I", "S")),
                 )
             )
 
         if self.target_spacing is not None:
-            mode = [IMAGE_INTERPOLATION for _ in self.load_keys]
+            mode = [IMAGE_INTERPOLATION for _ in spatial_keys]
             if self.input_mask_keys is not None:
-                n_images = len(self.load_keys) - len(self.input_mask_keys)
+                n_images = len(spatial_keys) - len(self.input_mask_keys)
                 mode = [IMAGE_INTERPOLATION] * n_images + [
                     "nearest" for _ in self.input_mask_keys
                 ]
             transforms.extend(
                 [
                     monai.transforms.Spacingd(
-                        self.load_keys,
+                        spatial_keys,
                         pixdim=self.target_spacing,
                         mode=mode,
                         dtype=torch.float32,
@@ -664,13 +689,13 @@ class GenerationTransforms(TransformMixin):
         if self.pad_size is not None:
             transforms.append(
                 monai.transforms.SpatialPadd(
-                    self.load_keys, [int(j) for j in self.pad_size]
+                    spatial_keys, [int(j) for j in self.pad_size]
                 )
             )
         if self.crop_size is not None:
             transforms.append(
                 monai.transforms.CenterSpatialCropd(
-                    self.load_keys, [int(j) + 16 for j in self.crop_size]
+                    spatial_keys, [int(j) + 16 for j in self.crop_size]
                 )
             )
         transforms.append(monai.transforms.EnsureTyped(self.load_keys))
@@ -678,6 +703,11 @@ class GenerationTransforms(TransformMixin):
 
     def post_transforms(self):
         transforms = []
+        if self.latent_only is True:
+            transforms.append(
+                monai.transforms.ConcatItemsd(self.latent_keys, "image")
+            )
+            return transforms
         transforms.append(
             monai.transforms.ConcatItemsd(self.image_keys, "image")
         )
