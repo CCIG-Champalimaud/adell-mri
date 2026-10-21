@@ -10,6 +10,7 @@ import torch
 from tqdm import tqdm
 
 from adell_mri.entrypoints.assemble_args import Parser
+from adell_mri.entrypoints.generative.autoencoder import build_autoencoder
 from adell_mri.entrypoints.generative.train_3d import return_first_not_none
 from adell_mri.transform_factory import GenerationTransforms
 from adell_mri.utils.dataset import Dataset
@@ -50,6 +51,29 @@ def image_to_sitk_array(image: torch.Tensor) -> np.ndarray:
     return image.permute(perm).numpy()
 
 
+def decode_latents(
+    latents: torch.Tensor,
+    autoencoder: torch.nn.Module,
+    scale: float,
+) -> torch.Tensor:
+    """
+    Decodes latents into images in the original normalised intensity space.
+
+    Args:
+        latents (torch.Tensor): latent tensor.
+        autoencoder (torch.nn.Module): autoencoder with a ``decode`` method.
+        scale (float): scale used to normalise latents before diffusion.
+
+    Returns:
+        torch.Tensor: decoded images on the CPU.
+    """
+    parameter = next(autoencoder.parameters())
+    latents = latents.to(device=parameter.device, dtype=parameter.dtype)
+    with torch.inference_mode():
+        images = autoencoder.decode(latents / scale)
+    return images.detach().float().cpu()
+
+
 def fetch_specifications(state_dict: dict[str, Any]):
     cbks = state_dict["callbacks"]
     ckpt_cbk = cbks[[k for k in cbks if "ModelCheckpointWithMetadata" in k][0]]
@@ -70,8 +94,20 @@ def fetch_specifications(state_dict: dict[str, Any]):
     transform_args = metadata["transform_arguments"]
     if ("pre" in transform_args) and ("post" in transform_args):
         transform_args = transform_args["pre"] | transform_args["post"]
-    spacing = metadata["transform_arguments"]["target_spacing"]
-    return network_config, cat_spec, num_spec, spacing, transform_args
+    spacing = transform_args.get("target_spacing")
+    return {
+        "network_config": network_config,
+        "cat_spec": cat_spec,
+        "num_spec": num_spec,
+        "spacing": spacing,
+        "transform_args": transform_args,
+        "model_type": metadata.get("model_type"),
+        "ae_config": metadata.get("ae_config"),
+        "ae_checkpoint": metadata.get("ae_checkpoint"),
+        "latent_scale": metadata.get("latent_scale"),
+        "latent_shape": metadata.get("latent_shape"),
+        "latent_dir": metadata.get("latent_dir"),
+    }
 
 
 def main(arguments):
@@ -105,6 +141,8 @@ def main(arguments):
             "precision",
             "seed",
             "checkpoint",
+            "ae_checkpoint",
+            "latent_dir",
             "batch_size",
             "learning_rate",
             "diffusion_steps",
@@ -131,13 +169,42 @@ def main(arguments):
     n_devices = 1 if isinstance(devices, str) else n_devices
 
     specs = fetch_specifications(ckpt)
-    network_config = specs[0]
-    categorical_specification = specs[1]
-    numerical_specification = specs[2]
-    spacing = specs[3]
-    transform_args = specs[4]
+    network_config = specs["network_config"]
+    categorical_specification = specs["cat_spec"]
+    numerical_specification = specs["num_spec"]
+    spacing = specs["spacing"]
+    transform_args = specs["transform_args"]
+    model_type = specs["model_type"]
+    autoencoder = None
+    latent_scale = None
+    latent_shape = None
+    if model_type == "ldm":
+        if specs["ae_config"] is None:
+            raise ValueError(
+                "The checkpoint does not contain an autoencoder configuration"
+            )
+        ae_checkpoint = args.ae_checkpoint or specs["ae_checkpoint"]
+        if ae_checkpoint is None:
+            raise ValueError(
+                "The checkpoint does not contain an autoencoder checkpoint; "
+                "use --ae_checkpoint"
+            )
+        autoencoder, _ = build_autoencoder(specs["ae_config"])
+        load_checkpoint_to_model(autoencoder, ae_checkpoint, [])
+        autoencoder.eval()
+        latent_scale = float(specs["latent_scale"])
+        latent_shape = tuple(specs["latent_shape"])
+        logger.info(
+            "Loaded autoencoder from %s (latent scale=%s)",
+            ae_checkpoint,
+            latent_scale,
+        )
 
-    presence_keys = [*args.image_keys]
+    presence_keys = (
+        list(transform_args.get("latent_keys", ("latent",)))
+        if model_type == "ldm"
+        else [*args.image_keys]
+    )
     with_conditioning = False
     if args.cat_condition_keys is not None:
         presence_keys.extend(args.cat_condition_keys)
@@ -189,6 +256,8 @@ def main(arguments):
 
     if "cuda" in args.dev:
         network = network.to(args.dev)
+    if autoencoder is not None:
+        autoencoder = autoencoder.to(args.dev)
 
     cat_condition = None
     num_condition = None
@@ -218,6 +287,22 @@ def main(arguments):
         data_dict = Dataset(args.dataset_json, rng=rng)
         for k in list(data_dict.keys()):
             data_dict[k] = {**data_dict[k], "key": k}
+        if model_type == "ldm":
+            latent_dir = args.latent_dir or specs["latent_dir"]
+            for k in list(data_dict.keys()):
+                record = data_dict[k]
+                if "latent" not in record:
+                    if latent_dir is None:
+                        raise ValueError(
+                            "The dataset has no latent entries and the "
+                            "checkpoint does not specify a latent directory; "
+                            "use --latent_dir"
+                        )
+                    record = {
+                        **record,
+                        "latent": os.path.join(latent_dir, k + ".npy"),
+                    }
+                    data_dict[k] = record
         if args.excluded_ids is not None:
             args.excluded_ids = parse_ids(
                 args.excluded_ids, output_format="list"
@@ -315,31 +400,50 @@ def main(arguments):
                 ),
             )
             outputs = outputs.detach().float().cpu()
+            if model_type == "ldm":
+                outputs = decode_latents(outputs, autoencoder, latent_scale)
             for image, output_path, output in zip(
                 images, output_paths, outputs
             ):
                 output = sitk.GetImageFromArray(image_to_sitk_array(output))
-                output.SetSpacing(spacing)
+                if spacing is not None:
+                    output.SetSpacing(spacing)
                 output.SetMetaData("checkpoint", args.checkpoint[0])
                 sitk.WriteImage(output, output_path, useCompression=True)
                 if args.keep_original:
+                    if model_type == "ldm":
+                        original = decode_latents(
+                            image.detach().cpu()[None],
+                            autoencoder,
+                            latent_scale,
+                        )[0]
+                    else:
+                        original = image.detach().cpu()
                     image = sitk.GetImageFromArray(
-                        image_to_sitk_array(image.detach().cpu())
+                        image_to_sitk_array(original)
                     )
-                    image.SetSpacing(spacing)
+                    if spacing is not None:
+                        image.SetSpacing(spacing)
                     image_path = output_path.replace("_gen.mha", "_orig.mha")
                     sitk.WriteImage(image, image_path, useCompression=True)
 
     elif args.n_samples_gen is not None:
-        size = return_first_not_none(args.crop_size, args.pad_size)
-        size = [int(i) for i in size]
+        if model_type == "ldm":
+            size = list(latent_shape[1:])
+        else:
+            size = return_first_not_none(args.crop_size, args.pad_size)
+            size = [int(i) for i in size]
         Path(args.output_path).mkdir(exist_ok=True, parents=True)
         logger.info("Generating %s samples", args.n_samples_gen)
-        cat_condition = [cat_condition[k] for k in args.cat_condition_keys]
-        num_condition = [num_condition[k] for k in args.num_condition_keys]
-        num_condition = torch.as_tensor(
-            [num_condition], device=args.dev, dtype=inference_dtype
-        )
+        cat_values = None
+        if args.cat_condition_keys is not None:
+            cat_values = [cat_condition[k] for k in args.cat_condition_keys]
+        num_values = None
+        if args.num_condition_keys is not None:
+            num_values = [num_condition[k] for k in args.num_condition_keys]
+            num_values = torch.as_tensor(
+                [num_values], device=args.dev, dtype=inference_dtype
+            )
         concat_condition = None
         n_cond_channels = network.in_channels - network.out_channels
         if n_cond_channels > 0:
@@ -355,13 +459,20 @@ def main(arguments):
                 size=size,
                 n=1,
                 skip_steps=0,
-                cat_condition=cat_condition,
-                num_condition=num_condition,
+                cat_condition=cat_values,
+                num_condition=num_values,
                 concat_condition=concat_condition,
             )
+            if model_type == "ldm":
+                output = decode_latents(
+                    output.detach().float().cpu(),
+                    autoencoder,
+                    latent_scale,
+                )
             output = image_to_sitk_array(output.detach().cpu()[0])
             output = sitk.GetImageFromArray(output)
-            output.SetSpacing(spacing)
+            if spacing is not None:
+                output.SetSpacing(spacing)
             output.SetMetaData("checkpoint", args.checkpoint[0])
             output_path = os.path.join(args.output_path, f"{i}.mha")
             sitk.WriteImage(output, output_path, useCompression=True)
