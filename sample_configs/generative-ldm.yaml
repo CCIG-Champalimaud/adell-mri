@@ -1,4 +1,38 @@
 # Latent diffusion configuration for --model_type ldm
+# The autoencoder is trained (or reused) from the ae section below.
+ae:
+  model:
+    spatial_dims: 3
+    in_channels: 1
+    out_channels: 1
+    num_channels: [64, 128, 128, 128]
+    num_res_blocks: 2
+    attention_levels: [false, false, false, false]
+    norm_num_groups: 32
+    no_skip_connection: true
+    latent_channels: 3
+    is_variational: true
+  losses:
+    weights:
+      rec: 1.0
+      kl: 1.0e-07
+      perceptual: 0.001
+      adversarial: 0.025
+    rec_loss: l1
+    perceptual_kwargs:
+      network_type: squeeze
+      fake_3d_ratio: 0.5
+  discriminator:
+    num_channels: 64
+    num_layers_d: 3
+  optimizer:
+    learning_rate: 5.0e-5
+    discriminator_learning_rate: 1.0e-4
+    momentum_beta1: 0.9
+    momentum_beta2: 0.99
+  batch_size: 1
+
+# Latent diffusion model
 # in_channels and out_channels are overridden with the latent channel count
 spatial_dims: 3
 in_channels: 3
@@ -9,5 +43,6 @@ attention_levels: [false, true, true]
 norm_num_groups: 32
 with_conditioning: false
 cross_attention_dim: null
+latent_scale: 1.0
 batch_size: 64
 learning_rate: 2.5e-5

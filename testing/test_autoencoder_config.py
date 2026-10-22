@@ -81,6 +81,19 @@ def test_parse_config_ae_missing_model_section(tmp_path):
         parse_config_ae(str(path), ["t1"])
 
 
+def test_parse_config_ae_from_nested_section(tmp_path):
+    path = tmp_path / "ldm.yaml"
+    path.write_text(
+        yaml.safe_dump({"ae": CONFIG, "spatial_dims": 3, "batch_size": 4})
+    )
+    parsed = parse_config_ae(str(path), ["t1"])
+    assert parsed["model"]["latent_channels"] == 3
+    assert parsed["batch_size"] == 2
+
+    parsed_from_dict = parse_config_ae({"ae": CONFIG}, ["t1"])
+    assert parsed_from_dict["model"]["latent_channels"] == 3
+
+
 def test_parse_config_ae_optional_sections(tmp_path):
     path = tmp_path / "autoencoder.yaml"
     path.write_text(

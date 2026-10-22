@@ -743,43 +743,11 @@ argument_factory = {
         choices=["diffusion", "gan", "ae", "ldm"],
         help="Type of generative model to train",
     ),
-    "ae_config_file": dict(
-        type=str,
-        default=None,
-        help="Path to the autoencoder configuration file.",
-    ),
-    "ae_checkpoint_name": dict(
-        type=str,
-        default=None,
-        help="Checkpoint ID for the autoencoder. Defaults to "
-        "{checkpoint_name}_ae.",
-    ),
-    "ae_checkpoint": dict(
-        type=str,
-        default=None,
-        help="Path to a trained autoencoder checkpoint. If specified, "
-        "autoencoder training is skipped.",
-    ),
     "ae_max_epochs": dict(
         type=int,
         default=None,
         help="Maximum number of epochs for autoencoder training. Defaults to "
         "max_epochs.",
-    ),
-    "ae_monitor": dict(
-        type=str,
-        default="val_loss",
-        help="Metric monitored for autoencoder checkpointing.",
-    ),
-    "latent_dir": dict(
-        type=str,
-        default=None,
-        help="Directory where cached latents are stored.",
-    ),
-    "latent_only": dict(
-        action="store_true",
-        default=False,
-        help="Only load latents (used internally for latent diffusion).",
     ),
     "spatial_dims": dict(
         type=int,

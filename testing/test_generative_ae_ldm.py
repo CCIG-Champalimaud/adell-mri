@@ -47,8 +47,10 @@ LDM_CONFIG = {
     "norm_num_groups": 8,
     "with_conditioning": False,
     "cross_attention_dim": None,
+    "latent_scale": 1.0,
     "batch_size": 2,
     "learning_rate": 1.0e-3,
+    "ae": AE_CONFIG,
 }
 
 
@@ -128,8 +130,6 @@ def test_ae_ldm_training_and_generation(dataset, tmp_path):
             *base_arguments(dataset["ldm_config"], dataset),
             "--model_type",
             "ldm",
-            "--ae_config_file",
-            dataset["ae_config"],
             "--checkpoint_dir",
             checkpoint_dir,
             "--checkpoint_name",
@@ -146,12 +146,7 @@ def test_ae_ldm_training_and_generation(dataset, tmp_path):
     )
     ldm_checkpoint = os.path.join(checkpoint_dir, "smoke_last.ckpt")
     assert os.path.exists(ldm_checkpoint)
-    latent_dir = os.path.join(checkpoint_dir, "smoke_latents")
-    latent_files = [
-        name for name in os.listdir(latent_dir) if name.endswith(".npy")
-    ]
-    assert len(latent_files) == 4
-    assert os.path.exists(os.path.join(latent_dir, "_ae_checkpoint.txt"))
+    assert not os.path.exists(os.path.join(checkpoint_dir, "smoke_latents"))
 
     output_dir = str(tmp_path / "generated")
     generate_main(
@@ -159,13 +154,11 @@ def test_ae_ldm_training_and_generation(dataset, tmp_path):
             "--dataset_json",
             dataset["dataset"],
             "--image_keys",
-            "latent",
+            "t1",
             "--config_file",
             dataset["ldm_config"],
             "--checkpoint",
             ldm_checkpoint,
-            "--latent_dir",
-            latent_dir,
             "--output_path",
             output_dir,
             "--dev",
@@ -209,8 +202,6 @@ def test_ldm_generates_samples_without_dataset(dataset, tmp_path):
             *base_arguments(dataset["ldm_config"], dataset),
             "--model_type",
             "ldm",
-            "--ae_config_file",
-            dataset["ae_config"],
             "--checkpoint_dir",
             checkpoint_dir,
             "--checkpoint_name",
@@ -230,10 +221,8 @@ def test_ldm_generates_samples_without_dataset(dataset, tmp_path):
         [
             "--checkpoint",
             os.path.join(checkpoint_dir, "smoke_last.ckpt"),
-            "--config_file",
-            dataset["ldm_config"],
             "--image_keys",
-            "latent",
+            "t1",
             "--output_path",
             output_dir,
             "--dev",

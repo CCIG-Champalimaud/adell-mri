@@ -242,7 +242,7 @@ def parse_config_gan(
 
 
 def parse_config_ae(
-    config_file: str,
+    config_file: str | dict[str, Any],
     target_keys: list[str],
     spatial_dims: int | None = None,
     **kwargs,
@@ -258,7 +258,10 @@ def parse_config_ae(
     discriminator and an optional ``optimizer`` section.
 
     Args:
-        config_file (str): path to the YAML configuration file.
+        config_file (str | dict[str, Any]): path to the YAML configuration
+            file or an already loaded configuration dictionary. If the
+            dictionary has an ``ae`` section and no ``model`` section, the
+            ``ae`` section is used.
         target_keys (list[str]): keys corresponding to the target images. The
             number of keys determines the number of input and output channels.
         spatial_dims (int | None, optional): number of spatial dimensions. If
@@ -275,7 +278,12 @@ def parse_config_ae(
     Raises:
         ValueError: if the ``model`` section is missing.
     """
-    config = _load_yaml(config_file)
+    if isinstance(config_file, str):
+        config = _load_yaml(config_file)
+    else:
+        config = dict(config_file)
+    if "ae" in config and "model" not in config:
+        config = dict(config["ae"])
     model_config = config.get("model")
     if model_config is None:
         raise ValueError(
