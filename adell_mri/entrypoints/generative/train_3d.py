@@ -9,6 +9,7 @@ from lightning.pytorch.callbacks import RichProgressBar
 
 from adell_mri.entrypoints.assemble_args import Parser
 from adell_mri.entrypoints.generative.autoencoder import (
+    attach_autoencoder,
     ensure_autoencoder,
     get_latent_shape,
 )
@@ -283,25 +284,26 @@ def main(arguments):
     latent_channels = None
     latent_shape = None
     latent_scale = 1.0
-    ldm_config = None
     if args.model_type in ["ae", "ldm"]:
         if args.spatial_dims not in [None, 3]:
             raise ValueError(
                 "--model_type ae and ldm currently support 3D data only"
             )
         if args.model_type == "ldm":
-            ldm_config = compose(args.config_file, "diffusion", args.overrides)
-            if "ae" not in ldm_config:
+            network_config = compose(
+                args.config_file, "diffusion", args.overrides
+            )
+            if "ae" not in network_config:
                 raise ValueError(
                     "--model_type ldm requires an 'ae' section in "
                     "--config_file"
                 )
             ae_config = parse_config_ae(
-                ldm_config.pop("ae"),
+                network_config.pop("ae"),
                 args.image_keys,
                 spatial_dims=args.spatial_dims or 3,
             )
-            latent_scale = float(ldm_config.pop("latent_scale", 1.0))
+            latent_scale = float(network_config.pop("latent_scale", 1.0))
         else:
             ae_config = parse_config_ae(
                 args.config_file,
@@ -352,7 +354,6 @@ def main(arguments):
         latent_channels = (
             autoencoder.latent_channels or autoencoder.block_out_channels[-1]
         )
-        network_config = ldm_config
         network_config["batch_size"] = return_first_not_none(
             args.batch_size, network_config.get("batch_size")
         )
@@ -534,27 +535,7 @@ def main(arguments):
     )
 
     if args.model_type == "ldm":
-        autoencoder_parameter = next(autoencoder.parameters())
-
-        def encode_images(images):
-            images = images.to(
-                device=autoencoder_parameter.device,
-                dtype=autoencoder_parameter.dtype,
-            )
-            with torch.no_grad():
-                return autoencoder.encode(images)
-
-        def decode_latents(latents):
-            latents = latents.to(
-                device=autoencoder_parameter.device,
-                dtype=autoencoder_parameter.dtype,
-            )
-            with torch.no_grad():
-                return autoencoder.decode(latents)
-
-        network.input_encoder = encode_images
-        network.output_decoder = decode_latents
-        network.latent_scale = latent_scale
+        attach_autoencoder(network, autoencoder, latent_scale)
 
     # instantiate callbacks and loggers
     callbacks = [RichProgressBar()]

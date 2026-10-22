@@ -214,6 +214,35 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
         loss = self.calculate_loss(epsilon_pred, epsilon)
         return loss
 
+    def encode_latents(self, images: torch.Tensor) -> torch.Tensor:
+        """
+        Encodes images with the optional encoder and applies the latent scale.
+
+        Args:
+            images (torch.Tensor): input images.
+
+        Returns:
+            torch.Tensor: latents (or the input images if no encoder is set).
+        """
+        if self.input_encoder is None:
+            return images
+        with torch.no_grad():
+            return self.input_encoder(images) * self.latent_scale
+
+    def decode_latents(self, latents: torch.Tensor) -> torch.Tensor:
+        """
+        Inverts the latent scale and decodes latents with the optional decoder.
+
+        Args:
+            latents (torch.Tensor): latent samples.
+
+        Returns:
+            torch.Tensor: images (or the input latents if no decoder is set).
+        """
+        if self.output_decoder is None:
+            return latents
+        return self.output_decoder(latents / self.latent_scale)
+
     def unpack_batch(
         self, batch: dict[str, torch.Tensor]
     ) -> tuple[torch.Tensor, torch.Tensor | None, torch.Tensor | None]:
@@ -232,11 +261,7 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
                 image, embedded condition (if provided) and concatenated
                 conditioning channels (if provided).
         """
-        x = batch[self.image_key]
-        if self.input_encoder is not None:
-            with torch.no_grad():
-                x = self.input_encoder(x)
-            x = x * self.latent_scale
+        x = self.encode_latents(batch[self.image_key])
         concat_condition = None
         if self.concat_condition_key is not None:
             concat_condition = batch[self.concat_condition_key]
@@ -408,10 +433,8 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
         Returns:
             torch.Tensor: generated (or re-generated) sample.
         """
-        if input_image is not None and self.input_encoder is not None:
-            with torch.no_grad():
-                input_image = self.input_encoder(input_image)
-            input_image = input_image * self.latent_scale
+        if input_image is not None:
+            input_image = self.encode_latents(input_image)
         noise = torch.randn([n, self.out_channels, *size], device=self.device)
         if input_image is None:
             input_image = noise
@@ -465,9 +488,7 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
             skip_steps=skip_steps,
             guidance_strength=guidance_strength,
         )
-        if self.output_decoder is not None:
-            sample = self.output_decoder(sample / self.latent_scale)
-        return sample
+        return self.decode_latents(sample)
 
     def train_dataloader(self) -> torch.utils.data.DataLoader:
         """

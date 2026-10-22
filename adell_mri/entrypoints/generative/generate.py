@@ -9,7 +9,10 @@ import SimpleITK as sitk
 import torch
 
 from adell_mri.entrypoints.assemble_args import Parser
-from adell_mri.entrypoints.generative.autoencoder import build_autoencoder
+from adell_mri.entrypoints.generative.autoencoder import (
+    attach_autoencoder,
+    load_autoencoder,
+)
 from adell_mri.entrypoints.generative.train_3d import return_first_not_none
 from adell_mri.transform_factory import GenerationTransforms
 from adell_mri.utils.dataset import Dataset
@@ -50,7 +53,74 @@ def image_to_sitk_array(image: torch.Tensor) -> np.ndarray:
     return image.permute(perm).numpy()
 
 
-def fetch_specifications(state_dict: dict[str, Any]):
+def build_autoencoder_from_specs(
+    specs: dict[str, Any], device: str | torch.device, logger: Any
+) -> torch.nn.Module:
+    """
+    Rebuilds the autoencoder stored in a latent diffusion checkpoint.
+
+    Args:
+        specs (dict[str, Any]): specifications read from the checkpoint.
+        device (str | torch.device): device where the autoencoder is placed.
+        logger (Any): python logger.
+
+    Returns:
+        torch.nn.Module: the autoencoder in evaluation mode.
+
+    Raises:
+        ValueError: if the checkpoint has no autoencoder configuration or
+            checkpoint.
+    """
+    if specs["ae_config"] is None:
+        raise ValueError(
+            "The checkpoint does not contain an autoencoder configuration"
+        )
+    checkpoint = specs["ae_checkpoint"]
+    if checkpoint is None:
+        raise ValueError(
+            "The checkpoint does not contain an autoencoder checkpoint"
+        )
+    return load_autoencoder(specs["ae_config"], checkpoint, device, logger)
+
+
+def resolve_generation_size(
+    model_type: str | None,
+    latent_shape: tuple[int, ...] | None,
+    image_shape: list[int] | tuple[int],
+) -> list[int]:
+    """
+    Returns the spatial size expected by the diffusion sampler.
+
+    Args:
+        model_type (str | None): type of generative model.
+        latent_shape (tuple[int, ...] | None): latent shape from the
+            checkpoint. Required for latent diffusion.
+        image_shape (list[int] | tuple[int]): spatial shape of the images.
+
+    Returns:
+        list[int]: spatial size for the sampler.
+
+    Raises:
+        ValueError: if latent diffusion is used without a latent shape.
+    """
+    if model_type == "ldm":
+        if latent_shape is None:
+            raise ValueError("The checkpoint does not contain the latent shape")
+        return list(latent_shape[1:])
+    return list(image_shape)
+
+
+def fetch_specifications(state_dict: dict[str, Any]) -> dict[str, Any]:
+    """
+    Reads network, conditioning and transform specifications from a
+    checkpoint.
+
+    Args:
+        state_dict (dict[str, Any]): loaded checkpoint.
+
+    Returns:
+        dict[str, Any]: checkpoint specifications.
+    """
     cbks = state_dict["callbacks"]
     ckpt_cbk = cbks[[k for k in cbks if "ModelCheckpointWithMetadata" in k][0]]
     metadata = ckpt_cbk["metadata"]
@@ -152,24 +222,12 @@ def main(arguments):
     latent_scale = None
     latent_shape = None
     if model_type == "ldm":
-        if specs["ae_config"] is None:
-            raise ValueError(
-                "The checkpoint does not contain an autoencoder configuration"
-            )
-        ae_checkpoint = specs["ae_checkpoint"]
-        if ae_checkpoint is None:
-            raise ValueError(
-                "The checkpoint does not contain an autoencoder checkpoint"
-            )
-        autoencoder, _ = build_autoencoder(specs["ae_config"])
-        load_checkpoint_to_model(autoencoder, ae_checkpoint, [])
-        autoencoder.eval()
-        latent_scale = float(specs["latent_scale"])
-        latent_shape = tuple(specs["latent_shape"])
-        logger.info(
-            "Loaded autoencoder from %s (latent scale=%s)",
-            ae_checkpoint,
-            latent_scale,
+        autoencoder = build_autoencoder_from_specs(specs, args.dev, logger)
+        latent_scale = float(specs["latent_scale"] or 1.0)
+        latent_shape = (
+            tuple(specs["latent_shape"])
+            if specs["latent_shape"] is not None
+            else None
         )
 
     presence_keys = [*args.image_keys]
@@ -230,29 +288,7 @@ def main(arguments):
     if "cuda" in args.dev:
         network = network.to(args.dev)
     if autoencoder is not None:
-        autoencoder = autoencoder.to(args.dev)
-        autoencoder.eval()
-        autoencoder_parameter = next(autoencoder.parameters())
-
-        def encode_images(images):
-            images = images.to(
-                device=autoencoder_parameter.device,
-                dtype=autoencoder_parameter.dtype,
-            )
-            with torch.inference_mode():
-                return autoencoder.encode(images)
-
-        def decode_latents(latents):
-            latents = latents.to(
-                device=autoencoder_parameter.device,
-                dtype=autoencoder_parameter.dtype,
-            )
-            with torch.inference_mode():
-                return autoencoder.decode(latents)
-
-        network.input_encoder = encode_images
-        network.output_decoder = decode_latents
-        network.latent_scale = float(latent_scale)
+        attach_autoencoder(network, autoencoder, latent_scale)
 
     cat_condition = None
     num_condition = None
@@ -362,14 +398,9 @@ def main(arguments):
                 curr_num = torch.as_tensor(
                     curr_num, device=args.dev, dtype=inference_dtype
                 )
-            if model_type == "ldm":
-                if latent_shape is None:
-                    raise ValueError(
-                        "The checkpoint does not contain the latent shape"
-                    )
-                size = list(latent_shape[1:])
-            else:
-                size = images.shape[2:]
+            size = resolve_generation_size(
+                model_type, latent_shape, images.shape[2:]
+            )
             outputs = network.generate_image(
                 input_image=images.to(inference_dtype),
                 size=size,
@@ -405,15 +436,15 @@ def main(arguments):
                     sitk.WriteImage(image, image_path, useCompression=True)
 
     elif args.n_samples_gen is not None:
-        if model_type == "ldm":
-            if latent_shape is None:
-                raise ValueError(
-                    "The checkpoint does not contain the latent shape"
-                )
-            size = list(latent_shape[1:])
-        else:
-            size = return_first_not_none(args.crop_size, args.pad_size)
-            size = [int(i) for i in size]
+        image_shape = (
+            []
+            if model_type == "ldm"
+            else [
+                int(i)
+                for i in return_first_not_none(args.crop_size, args.pad_size)
+            ]
+        )
+        size = resolve_generation_size(model_type, latent_shape, image_shape)
         Path(args.output_path).mkdir(exist_ok=True, parents=True)
         logger.info("Generating %s samples", args.n_samples_gen)
         cat_values = None

@@ -1,5 +1,6 @@
 """
-Helpers for training autoencoders from the generative entrypoint.
+Helpers for training autoencoders and connecting them to latent diffusion
+models.
 """
 
 import os
@@ -16,10 +17,10 @@ from adell_mri.utils.pl_callbacks import EMACallback
 from adell_mri.utils.pl_utils import get_ckpt_callback
 from adell_mri.utils.torch_utils import load_checkpoint_to_model
 
+AUTOENCODER_SUFFIX = "_ae"
 
-def build_autoencoder(
-    parsed_config: dict[str, Any],
-) -> tuple[torch.nn.Module, dict[str, Any]]:
+
+def build_autoencoder(parsed_config: dict[str, Any]) -> torch.nn.Module:
     """
     Builds an autoencoder module from a parsed configuration.
 
@@ -28,8 +29,7 @@ def build_autoencoder(
             :func:`adell_mri.modules.config_parsing.parse_config_ae`.
 
     Returns:
-        tuple[torch.nn.Module, dict[str, Any]]: the lightning module and the
-            model configuration used to build it.
+        torch.nn.Module: the autoencoder lightning module.
     """
     model_config = dict(parsed_config["model"])
     common_args = {
@@ -45,7 +45,20 @@ def build_autoencoder(
         if parsed_config["is_variational"]
         else AutoEncoderPL
     )
-    return module_class(**model_config, **common_args), model_config
+    return module_class(**model_config, **common_args)
+
+
+def get_autoencoder_checkpoint_name(checkpoint_name: str) -> str:
+    """
+    Returns the checkpoint name used for the autoencoder.
+
+    Args:
+        checkpoint_name (str): base checkpoint name.
+
+    Returns:
+        str: autoencoder checkpoint name.
+    """
+    return checkpoint_name + AUTOENCODER_SUFFIX
 
 
 def get_autoencoder_checkpoint(
@@ -62,7 +75,73 @@ def get_autoencoder_checkpoint(
     Returns:
         str: path to the last autoencoder checkpoint.
     """
-    return os.path.join(checkpoint_dir, checkpoint_name + "_ae_last.ckpt")
+    return os.path.join(
+        checkpoint_dir,
+        get_autoencoder_checkpoint_name(checkpoint_name) + "_last.ckpt",
+    )
+
+
+def attach_autoencoder(
+    network: torch.nn.Module,
+    autoencoder: torch.nn.Module,
+    latent_scale: float = 1.0,
+) -> None:
+    """
+    Connects a frozen autoencoder to a diffusion model.
+
+    The diffusion model receives images, encodes them with ``autoencoder``
+    before the diffusion process and decodes its samples afterwards. The
+    autoencoder remains a separate module and is not included in the diffusion
+    model state dict.
+
+    Args:
+        network (torch.nn.Module): diffusion module with ``input_encoder`` and
+            ``output_decoder`` attributes.
+        autoencoder (torch.nn.Module): frozen autoencoder.
+        latent_scale (float, optional): scale applied to latents before the
+            diffusion process and inverted after it. Defaults to 1.0.
+    """
+    parameter = next(autoencoder.parameters())
+
+    def encode_images(images: torch.Tensor) -> torch.Tensor:
+        images = images.to(device=parameter.device, dtype=parameter.dtype)
+        with torch.no_grad():
+            return autoencoder.encode(images)
+
+    def decode_latents(latents: torch.Tensor) -> torch.Tensor:
+        latents = latents.to(device=parameter.device, dtype=parameter.dtype)
+        with torch.no_grad():
+            return autoencoder.decode(latents)
+
+    network.input_encoder = encode_images
+    network.output_decoder = decode_latents
+    network.latent_scale = latent_scale
+
+
+def load_autoencoder(
+    parsed_config: dict[str, Any],
+    checkpoint_path: str,
+    device: str | torch.device,
+    logger: Any,
+) -> torch.nn.Module:
+    """
+    Builds an autoencoder and loads its weights from a checkpoint.
+
+    Args:
+        parsed_config (dict[str, Any]): parsed autoencoder configuration.
+        checkpoint_path (str): path to the autoencoder checkpoint.
+        device (str | torch.device): device where the autoencoder is placed.
+        logger (Any): python logger.
+
+    Returns:
+        torch.nn.Module: the autoencoder in evaluation mode.
+    """
+    autoencoder = build_autoencoder(parsed_config)
+    load_checkpoint_to_model(autoencoder, checkpoint_path, [])
+    autoencoder = autoencoder.to(device)
+    autoencoder.eval()
+    logger.info("Loading autoencoder checkpoint %s", checkpoint_path)
+    return autoencoder
 
 
 def get_latent_shape(
@@ -206,7 +285,7 @@ def ensure_autoencoder(
     max_epochs = args.ae_max_epochs or args.max_epochs
     ckpt_callback, ckpt_path, status = get_ckpt_callback(
         checkpoint_dir=checkpoint_dir,
-        checkpoint_name=checkpoint_name + "_ae",
+        checkpoint_name=get_autoencoder_checkpoint_name(checkpoint_name),
         max_epochs=max_epochs,
         resume_from_last=True,
         val_fold=None,
@@ -226,13 +305,12 @@ def ensure_autoencoder(
                 "different architecture. Remove the existing checkpoint or "
                 "use a different --checkpoint_name."
             )
-        autoencoder, _ = build_autoencoder(parsed_config)
-        load_checkpoint_to_model(autoencoder, last_checkpoint, [])
-        autoencoder = autoencoder.to(args.dev)
-        logger.info("Reusing autoencoder checkpoint %s", last_checkpoint)
+        autoencoder = load_autoencoder(
+            parsed_config, last_checkpoint, args.dev, logger
+        )
         return autoencoder, last_checkpoint, False
 
-    autoencoder, _ = build_autoencoder(parsed_config)
+    autoencoder = build_autoencoder(parsed_config)
     callbacks = [RichProgressBar()]
     if ckpt_callback is not None:
         callbacks.append(ckpt_callback)
