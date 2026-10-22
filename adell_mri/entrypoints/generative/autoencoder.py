@@ -228,6 +228,7 @@ def ensure_autoencoder(
             )
         autoencoder, _ = build_autoencoder(parsed_config)
         load_checkpoint_to_model(autoencoder, last_checkpoint, [])
+        autoencoder = autoencoder.to(args.dev)
         logger.info("Reusing autoencoder checkpoint %s", last_checkpoint)
         return autoencoder, last_checkpoint, False
 
@@ -286,5 +287,6 @@ def ensure_autoencoder(
             if isinstance(value, torch.Tensor):
                 value = value.detach().cpu().item()
             output_file.write(f"{value}\n")
+    autoencoder = autoencoder.to(args.dev)
     autoencoder.eval()
     return autoencoder, last_checkpoint, True
