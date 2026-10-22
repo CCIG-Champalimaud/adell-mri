@@ -9,10 +9,7 @@ class AutoEncoder(Generator):
     encoder skip connections.
 
     When ``latent_channels`` is specified, the bottleneck is projected to a
-    smaller number of channels with a 1x1 convolution. The projection makes it
-    possible to use the autoencoder as the compression stage of a latent
-    diffusion model, where the latent is expected to be much smaller than the
-    input volume.
+    smaller number of channels with a 1x1 convolution.
     """
 
     def __init__(

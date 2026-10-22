@@ -11,8 +11,7 @@ class VariationalAutoEncoder(Generator):
 
     The posterior is predicted from the bottleneck with channel-wise linear
     layers. When ``latent_channels`` is specified, the sampled bottleneck is
-    projected to a smaller number of channels with a 1x1 convolution, which
-    keeps the latent compact for downstream generative modelling.
+    projected to a smaller number of channels with a 1x1 convolution.
     """
 
     def __init__(
