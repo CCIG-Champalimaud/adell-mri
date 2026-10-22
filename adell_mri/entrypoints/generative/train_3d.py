@@ -525,9 +525,8 @@ def main(arguments):
         )
 
     if args.checkpoint is not None:
-        checkpoint = args.checkpoint
         load_checkpoint_to_model(
-            network, checkpoint, args.exclude_from_state_dict
+            network, args.checkpoint[0], args.exclude_from_state_dict
         )
 
     conditional_parameter_freezing(
