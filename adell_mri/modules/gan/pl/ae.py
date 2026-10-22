@@ -325,6 +325,20 @@ class _AutoEncoderLossMixin:
         self.log("test_loss", losses["loss"], on_epoch=True)
         return losses["loss"]
 
+    def init_routine(self) -> None:
+        """
+        Saves hyperparameters while ignoring the instantiated loss modules.
+        """
+        self.save_hyperparameters(
+            ignore=[
+                "discriminator",
+                "perceptual_loss",
+                "reconstruction_loss_fn",
+                "variational_loss_fn",
+                "adversarial_loss",
+            ]
+        )
+
     def configure_optimizers(self) -> Any:
         """
         Configures the optimiser(s).
@@ -428,20 +442,6 @@ class AutoEncoderPL(_AutoEncoderLossMixin, AutoEncoder, pl.LightningModule):
         )
         self.init_routine()
 
-    def init_routine(self):
-        """
-        Simple initialization routine which saves hyperparameters.
-        """
-        self.save_hyperparameters(
-            ignore=[
-                "discriminator",
-                "perceptual_loss",
-                "reconstruction_loss_fn",
-                "variational_loss_fn",
-                "adversarial_loss",
-            ]
-        )
-
 
 class VariationalAutoEncoderPL(
     _AutoEncoderLossMixin, VariationalAutoEncoder, pl.LightningModule
@@ -516,17 +516,3 @@ class VariationalAutoEncoderPL(
             loss_weights, rec_loss, discriminator_config, perceptual_kwargs
         )
         self.init_routine()
-
-    def init_routine(self):
-        """
-        Simple initialization routine which saves hyperparameters.
-        """
-        self.save_hyperparameters(
-            ignore=[
-                "discriminator",
-                "perceptual_loss",
-                "reconstruction_loss_fn",
-                "variational_loss_fn",
-                "adversarial_loss",
-            ]
-        )
