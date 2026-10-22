@@ -220,6 +220,7 @@ def load_checkpoint_to_model(
     checkpoint: str | dict[str, torch.Tensor],
     exclude_from_state_dict: list[str] | None = None,
     weights_only: bool = False,
+    prefer_ema: bool = False,
     *args,
     **kwargs,
 ) -> None:
@@ -236,6 +237,10 @@ def load_checkpoint_to_model(
             dict containing state dict.
         exclude_from_state_dict (list[str], optional): List of regex patterns to
             exclude from state dict. Defaults to None.
+        weights_only (bool, optional): passed to :func:`torch.load`. Defaults
+            to False.
+        prefer_ema (bool, optional): load the exponential moving average
+            weights when the checkpoint contains them. Defaults to False.
 
     Returns:
         None: the model is updated in place.
@@ -250,7 +255,9 @@ def load_checkpoint_to_model(
         sd = torch.load(checkpoint, weights_only=False, *args, **kwargs)
     else:
         sd = checkpoint
-    if "state_dict" in sd:
+    if prefer_ema and "state_dict_ema" in sd:
+        sd = sd["state_dict_ema"]
+    elif "state_dict" in sd:
         sd = sd["state_dict"]
 
     sd = calculate_sn_weights(sd)

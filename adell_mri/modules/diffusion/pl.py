@@ -9,9 +9,11 @@ from typing import Callable, List
 import lightning.pytorch as pl
 import numpy as np
 import torch
+import torch.nn.functional as F
 from generative.inferers import DiffusionInferer
 from generative.networks.nets import DiffusionModelUNet
 from generative.networks.nets.diffusion_model_unet import AttentionBlock
+from generative.networks.schedulers.ddpm import DDPMPredictionType
 
 from adell_mri.constants import DEFAULT_SEED
 from adell_mri.modules.diffusion.embedder import Embedder
@@ -41,6 +43,9 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
         weight_decay: float = 0.0,
         seed: int = DEFAULT_SEED,
         optimizer_eps: float = OPTIMIZER_EPS_DEFAULT,
+        latent_std_decay: float = 0.99,
+        reconstruction_weight: float = 0.0,
+        reconstruction_loss: str = "l1",
         *args,
         **kwargs,
     ):
@@ -68,7 +73,16 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
         # before the diffusion process and samples are decoded afterwards.
         self.input_encoder: Callable | None = None
         self.output_decoder: Callable | None = None
-        self.latent_scale: float = 1.0
+        self.latent_std_decay = latent_std_decay
+        self.reconstruction_weight = reconstruction_weight
+        if reconstruction_loss not in ["l1", "mse"]:
+            raise ValueError(
+                "reconstruction_loss must be either 'l1' or 'mse', got "
+                f"'{reconstruction_loss}'"
+            )
+        self.reconstruction_loss = reconstruction_loss
+        self.register_buffer("latent_std", torch.ones(1))
+        self.register_buffer("latent_std_initialized", torch.zeros(1))
 
         self.g = torch.Generator()
         self.g.manual_seed(self.seed + get_global_rank())
@@ -177,7 +191,8 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
         timesteps: torch.Tensor = None,
         context: torch.Tensor = None,
         concat_condition: torch.Tensor = None,
-    ) -> torch.Tensor:
+        target_images: torch.Tensor = None,
+    ) -> tuple[torch.Tensor, torch.Tensor | None]:
         """
         Computes the loss for a single step of the diffusion model.
 
@@ -191,10 +206,16 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
             concat_condition (torch.Tensor, optional): conditioning tensor
                 concatenated along the channel dimension of the noisy input.
                 Defaults to None.
+            target_images (torch.Tensor, optional): target images used by the
+                optional reconstruction loss. Defaults to None.
 
         Returns:
-            torch.Tensor: The mean loss for the current step.
+            tuple[torch.Tensor, torch.Tensor | None]: the total loss and the
+                reconstruction loss (or None if it is not used).
 
+        Raises:
+            ValueError: if the reconstruction loss is enabled without target
+                images.
         """
         epsilon = self.randn_like(x)
         if timesteps is None:
@@ -212,7 +233,25 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
             inferer_kwargs["concat_condition"] = concat_condition
         epsilon_pred = self.inferer(**inferer_kwargs)
         loss = self.calculate_loss(epsilon_pred, epsilon)
-        return loss
+        reconstruction_loss = None
+        if self.reconstruction_weight > 0.0:
+            if target_images is None:
+                raise ValueError(
+                    "target_images are required when reconstruction_weight > 0"
+                )
+            predicted_x0 = self.predict_x0(x, timesteps, epsilon_pred)
+            if self.output_decoder is not None:
+                reconstruction = self.decode_latents(predicted_x0)
+                target = target_images
+            else:
+                reconstruction = predicted_x0
+                target = x
+            loss_fn = (
+                F.l1_loss if self.reconstruction_loss == "l1" else F.mse_loss
+            )
+            reconstruction_loss = loss_fn(reconstruction, target)
+            loss = loss + self.reconstruction_weight * reconstruction_loss
+        return loss, reconstruction_loss
 
     def encode_latents(self, images: torch.Tensor) -> torch.Tensor:
         """
@@ -227,11 +266,14 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
         if self.input_encoder is None:
             return images
         with torch.no_grad():
-            return self.input_encoder(images) * self.latent_scale
+            latents = self.input_encoder(images)
+        if self.training:
+            self.update_latent_std(latents)
+        return latents / self.latent_std
 
     def decode_latents(self, latents: torch.Tensor) -> torch.Tensor:
         """
-        Inverts the latent scale and decodes latents with the optional decoder.
+        Rescales latents and decodes them with the optional decoder.
 
         Args:
             latents (torch.Tensor): latent samples.
@@ -241,7 +283,55 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
         """
         if self.output_decoder is None:
             return latents
-        return self.output_decoder(latents / self.latent_scale)
+        return self.output_decoder(latents * self.latent_std)
+
+    @torch.no_grad()
+    def update_latent_std(self, latents: torch.Tensor) -> None:
+        """
+        Updates the exponential moving average of the latent standard
+        deviation.
+
+        The first batch initialises the estimate; subsequent batches update it
+        with ``latent_std_decay``.
+
+        Args:
+            latents (torch.Tensor): latents produced by the encoder.
+        """
+        std = latents.float().std(unbiased=False).clamp_min(1e-6)
+        if self.latent_std_initialized.item() == 0:
+            self.latent_std.fill_(std)
+            self.latent_std_initialized.fill_(1.0)
+        else:
+            self.latent_std.mul_(self.latent_std_decay).add_(
+                std, alpha=1.0 - self.latent_std_decay
+            )
+
+    def predict_x0(
+        self,
+        x: torch.Tensor,
+        timesteps: torch.Tensor,
+        model_output: torch.Tensor,
+    ) -> torch.Tensor:
+        """
+        Predicts the clean sample from the model output.
+
+        Args:
+            x (torch.Tensor): current noisy sample.
+            timesteps (torch.Tensor): timesteps for each sample.
+            model_output (torch.Tensor): model prediction.
+
+        Returns:
+            torch.Tensor: predicted clean sample.
+        """
+        alpha_prod = self.scheduler.alphas_cumprod.to(x.device)[timesteps]
+        shape = (-1, *([1] * (x.ndim - 1)))
+        sqrt_alpha = alpha_prod.sqrt().view(shape)
+        sqrt_one_minus = (1.0 - alpha_prod).sqrt().view(shape)
+        if self.scheduler.prediction_type == DDPMPredictionType.SAMPLE:
+            return model_output
+        if self.scheduler.prediction_type == DDPMPredictionType.V_PREDICTION:
+            return sqrt_alpha * x - sqrt_one_minus * model_output
+        return (x - sqrt_one_minus * model_output) / sqrt_alpha
 
     def unpack_batch(
         self, batch: dict[str, torch.Tensor]
@@ -318,10 +408,16 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
             torch.Tensor: loss value.
         """
         x, condition, concat_condition = self.unpack_batch(batch)
-        loss = self.step(
-            x, context=condition, concat_condition=concat_condition
+        loss, recon_loss = self.step(
+            x,
+            context=condition,
+            concat_condition=concat_condition,
+            target_images=batch[self.image_key],
         )
         self.log("loss", loss, on_step=True, prog_bar=True)
+        self.log("latent_std", self.latent_std.item(), on_epoch=True)
+        if recon_loss is not None:
+            self.log("recon_loss", recon_loss, on_epoch=True)
         return loss
 
     def validation_step(self, batch: dict, batch_idx: int):
@@ -336,10 +432,16 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
             torch.Tensor: loss value.
         """
         x, condition, concat_condition = self.unpack_batch(batch)
-        loss = self.step(
-            x, context=condition, concat_condition=concat_condition
+        loss, recon_loss = self.step(
+            x,
+            context=condition,
+            concat_condition=concat_condition,
+            target_images=batch[self.image_key],
         )
         self.log("val_loss", loss, on_epoch=True, prog_bar=True)
+        self.log("val_latent_std", self.latent_std.item(), on_epoch=True)
+        if recon_loss is not None:
+            self.log("val_recon_loss", recon_loss, on_epoch=True)
         return loss
 
     def test_step(self, batch: dict, batch_idx: int):
@@ -354,10 +456,16 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
             torch.Tensor: loss value.
         """
         x, condition, concat_condition = self.unpack_batch(batch)
-        loss = self.step(
-            x, context=condition, concat_condition=concat_condition
+        loss, recon_loss = self.step(
+            x,
+            context=condition,
+            concat_condition=concat_condition,
+            target_images=batch[self.image_key],
         )
-        self.log("test_loss", loss)
+        self.log("test_loss", loss, on_epoch=True)
+        self.log("test_latent_std", self.latent_std.item(), on_epoch=True)
+        if recon_loss is not None:
+            self.log("test_recon_loss", recon_loss, on_epoch=True)
         return loss
 
     @property

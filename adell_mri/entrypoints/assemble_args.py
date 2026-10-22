@@ -120,6 +120,12 @@ argument_factory = {
         help="Uses this fraction of training data as a validation set \
             during training",
     ),
+    "test_from_train": dict(
+        default=None,
+        type=float,
+        help="Uses this fraction of training data as a test set during \
+            training",
+    ),
     "use_val_as_train_val": dict(
         action="store_true",
         default=False,

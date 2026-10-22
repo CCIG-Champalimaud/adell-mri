@@ -43,6 +43,15 @@ attention_levels: [false, true, true]
 norm_num_groups: 32
 with_conditioning: false
 cross_attention_dim: null
-latent_scale: 1.0
+latent_std_decay: 0.99
+reconstruction_weight: 0.1
+reconstruction_loss: l1
+scheduler:
+  schedule: scaled_linear_beta
+  beta_start: 0.0005
+  beta_end: 0.0195
+  prediction_type: epsilon
+  clip_sample: true
+diffusion_steps: 1000
 batch_size: 64
 learning_rate: 2.5e-5

@@ -10,6 +10,7 @@ from lightning.pytorch.callbacks import RichProgressBar
 from adell_mri.entrypoints.assemble_args import Parser
 from adell_mri.entrypoints.cli_utils import fail
 from adell_mri.modules.config_parsing import parse_config_gan
+from adell_mri.modules.diffusion.scheduler import DEFAULT_SCHEDULER_CONFIG
 from adell_mri.transform_factory import GenerationTransforms
 from adell_mri.utils.dicom_dataset import filter_dicom_dict_on_presence
 from adell_mri.utils.dicom_loader import DICOMDataset, SliceSampler
@@ -203,6 +204,8 @@ def main(arguments):
         conditioning_channels += sum(args.mask_classes)
     input_image_key = "cat_conditioning" if conditioning_channels > 0 else None
 
+    scheduler_config = None
+    diffusion_steps = None
     if args.model_type == "gan":
         network_config, gen_config, disc_config = parse_config_gan(
             args.config_file,
@@ -215,6 +218,12 @@ def main(arguments):
         )
     else:
         network_config = compose(args.config_file, "diffusion", args.overrides)
+        scheduler_config = network_config.pop(
+            "scheduler", dict(DEFAULT_SCHEDULER_CONFIG)
+        )
+        diffusion_steps = int(
+            network_config.pop("diffusion_steps", args.diffusion_steps)
+        )
         network_config["spatial_dims"] = 2
         network_config["batch_size"] = return_first_not_none(
             args.batch_size, network_config.get("batch_size")
@@ -244,8 +253,6 @@ def main(arguments):
         "cat_keys": args.cat_condition_keys,
         "num_keys": args.num_condition_keys,
     }
-
-    augmentation_args = {}
 
     transform_factory = GenerationTransforms(**transform_arguments)
 
@@ -327,18 +334,14 @@ def main(arguments):
     else:
         model = get_generative_network(
             network_config=network_config,
-            scheduler_config={
-                "schedule": "scaled_linear_beta",
-                "beta_start": 0.0005,
-                "beta_end": 0.0195,
-            },
+            scheduler_config=scheduler_config,
             categorical_specification=categorical_specification,
             numerical_specification=numerical_specification,
             train_loader_call=train_loader_call,
             max_epochs=args.max_epochs,
             warmup_steps=args.warmup_steps,
             start_decay=args.start_decay,
-            diffusion_steps=args.diffusion_steps,
+            diffusion_steps=diffusion_steps,
             uncondition_proba=args.uncondition_proba,
             concat_condition_key=input_image_key,
             optimizer_eps=optimizer_eps_from_precision(args.precision),
@@ -346,7 +349,7 @@ def main(arguments):
 
     if args.checkpoint is not None:
         load_checkpoint_to_model(
-            model, args.checkpoint, args.exclude_from_state_dict
+            model, args.checkpoint[0], args.exclude_from_state_dict
         )
 
     conditional_parameter_freezing(
@@ -368,7 +371,15 @@ def main(arguments):
             "transform_arguments": transform_arguments,
             "categorical_specification": categorical_specification,
             "numerical_specification": numerical_specification,
-        },
+        }
+        | (
+            {
+                "scheduler_config": scheduler_config,
+                "diffusion_steps": diffusion_steps,
+            }
+            if args.model_type != "gan"
+            else {}
+        ),
     )
 
     if ckpt_callback is not None:
@@ -450,6 +461,13 @@ def main(arguments):
     trainer.fit(model, val_dataloaders=val_loader, ckpt_path=ckpt_path)
 
     logger.info("Validating...")
+    if ckpt_callback is not None and ckpt_callback.last_model_path:
+        load_checkpoint_to_model(
+            model,
+            ckpt_callback.last_model_path,
+            [],
+            prefer_ema=True,
+        )
     test_metrics = trainer.test(
         model,
         val_loader,

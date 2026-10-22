@@ -84,7 +84,6 @@ def get_autoencoder_checkpoint(
 def attach_autoencoder(
     network: torch.nn.Module,
     autoencoder: torch.nn.Module,
-    latent_scale: float = 1.0,
 ) -> None:
     """
     Connects a frozen autoencoder to a diffusion model.
@@ -98,8 +97,6 @@ def attach_autoencoder(
         network (torch.nn.Module): diffusion module with ``input_encoder`` and
             ``output_decoder`` attributes.
         autoencoder (torch.nn.Module): frozen autoencoder.
-        latent_scale (float, optional): scale applied to latents before the
-            diffusion process and inverted after it. Defaults to 1.0.
     """
     parameter = next(autoencoder.parameters())
 
@@ -115,7 +112,6 @@ def attach_autoencoder(
 
     network.input_encoder = encode_images
     network.output_decoder = decode_latents
-    network.latent_scale = latent_scale
 
 
 def load_autoencoder(
@@ -123,6 +119,7 @@ def load_autoencoder(
     checkpoint_path: str,
     device: str | torch.device,
     logger: Any,
+    prefer_ema: bool = True,
 ) -> torch.nn.Module:
     """
     Builds an autoencoder and loads its weights from a checkpoint.
@@ -132,12 +129,16 @@ def load_autoencoder(
         checkpoint_path (str): path to the autoencoder checkpoint.
         device (str | torch.device): device where the autoencoder is placed.
         logger (Any): python logger.
+        prefer_ema (bool, optional): load the EMA weights when available.
+            Defaults to True.
 
     Returns:
         torch.nn.Module: the autoencoder in evaluation mode.
     """
     autoencoder = build_autoencoder(parsed_config)
-    load_checkpoint_to_model(autoencoder, checkpoint_path, [])
+    load_checkpoint_to_model(
+        autoencoder, checkpoint_path, [], prefer_ema=prefer_ema
+    )
     autoencoder = autoencoder.to(device)
     autoencoder.eval()
     logger.info("Loading autoencoder checkpoint %s", checkpoint_path)
@@ -175,6 +176,7 @@ def make_autoencoder_loader(
     batch_size: int,
     n_workers: int,
     seed: int,
+    shuffle: bool = True,
 ) -> monai.data.ThreadDataLoader:
     """
     Builds the dataloader used to train the autoencoder.
@@ -185,6 +187,8 @@ def make_autoencoder_loader(
         batch_size (int): batch size.
         n_workers (int): number of dataloader workers.
         seed (int): random seed.
+        shuffle (bool, optional): whether the dataset is shuffled. Defaults to
+            True.
 
     Returns:
         monai.data.ThreadDataLoader: dataloader.
@@ -197,8 +201,8 @@ def make_autoencoder_loader(
         "num_workers": n_workers,
         "collate_fn": safe_collate,
         "pin_memory": True,
-        "drop_last": len(dataset) > batch_size,
-        "shuffle": True,
+        "drop_last": shuffle and len(dataset) > batch_size,
+        "shuffle": shuffle,
         "generator": generator,
     }
     if n_workers > 0:
@@ -233,7 +237,10 @@ def ensure_autoencoder(
     args: Any,
     parsed_config: dict[str, Any],
     train_list: list[dict],
+    val_list: list[dict],
+    test_list: list[dict],
     transforms: Any,
+    eval_transforms: Any,
     checkpoint_dir: str | None,
     checkpoint_name: str,
     accelerator: str,
@@ -256,7 +263,11 @@ def ensure_autoencoder(
         args (Any): parsed command-line arguments.
         parsed_config (dict[str, Any]): parsed autoencoder configuration.
         train_list (list[dict]): training records.
+        val_list (list[dict]): validation records.
+        test_list (list[dict]): test records.
         transforms (Any): transforms applied to the training images.
+        eval_transforms (Any): deterministic transforms for validation and
+            test images.
         checkpoint_dir (str | None): directory where checkpoints are stored.
         checkpoint_name (str): base checkpoint name.
         accelerator (str): lightning accelerator.
@@ -329,12 +340,28 @@ def ensure_autoencoder(
         accumulate_grad_batches = 1
 
     batch_size = max(1, parsed_config["batch_size"] // n_devices)
-    loader = make_autoencoder_loader(
+    train_loader = make_autoencoder_loader(
         train_list,
         transforms,
         batch_size=batch_size,
         n_workers=args.n_workers,
         seed=args.seed,
+    )
+    val_loader = make_autoencoder_loader(
+        val_list,
+        eval_transforms,
+        batch_size=batch_size,
+        n_workers=args.n_workers,
+        seed=args.seed,
+        shuffle=False,
+    )
+    test_loader = make_autoencoder_loader(
+        test_list,
+        eval_transforms,
+        batch_size=batch_size,
+        n_workers=args.n_workers,
+        seed=args.seed,
+        shuffle=False,
     )
     trainer = Trainer(
         accelerator=accelerator,
@@ -350,21 +377,17 @@ def ensure_autoencoder(
         precision=args.precision,
         deterministic="warn",
     )
-    trainer.fit(autoencoder, loader, loader, ckpt_path=ckpt_path)
+    trainer.fit(autoencoder, train_loader, val_loader, ckpt_path=ckpt_path)
 
     if os.path.exists(last_checkpoint) is True:
-        load_checkpoint_to_model(autoencoder, last_checkpoint, [])
-        test_metrics = trainer.test(
-            autoencoder,
-            loader,
-            ckpt_path=last_checkpoint,
-            weights_only=False,
-        )[0]
-        for key in test_metrics:
-            value = test_metrics[key]
+        autoencoder = load_autoencoder(
+            parsed_config, last_checkpoint, args.dev, logger
+        )
+        test_metrics = trainer.test(autoencoder, test_loader)[0]
+        for key, value in test_metrics.items():
             if isinstance(value, torch.Tensor):
                 value = value.detach().cpu().item()
-            output_file.write(f"{value}\n")
+            output_file.write(f"ae_{key},{value}\n")
     autoencoder = autoencoder.to(args.dev)
     autoencoder.eval()
     return autoencoder, last_checkpoint, True

@@ -14,6 +14,7 @@ from adell_mri.entrypoints.generative.autoencoder import (
     load_autoencoder,
 )
 from adell_mri.entrypoints.generative.train_3d import return_first_not_none
+from adell_mri.modules.diffusion.scheduler import DEFAULT_SCHEDULER_CONFIG
 from adell_mri.transform_factory import GenerationTransforms
 from adell_mri.utils.dataset import Dataset
 from adell_mri.utils.generic_utils import safe_collate
@@ -146,8 +147,9 @@ def fetch_specifications(state_dict: dict[str, Any]) -> dict[str, Any]:
         "model_type": metadata.get("model_type"),
         "ae_config": metadata.get("ae_config"),
         "ae_checkpoint": metadata.get("ae_checkpoint"),
-        "latent_scale": metadata.get("latent_scale"),
         "latent_shape": metadata.get("latent_shape"),
+        "scheduler_config": metadata.get("scheduler_config"),
+        "diffusion_steps": metadata.get("diffusion_steps"),
     }
 
 
@@ -215,11 +217,9 @@ def main(arguments):
     transform_args = specs["transform_args"]
     model_type = specs["model_type"]
     autoencoder = None
-    latent_scale = None
     latent_shape = None
     if model_type == "ldm":
         autoencoder = build_autoencoder_from_specs(specs, args.dev, logger)
-        latent_scale = float(specs["latent_scale"] or 1.0)
         latent_shape = (
             tuple(specs["latent_shape"])
             if specs["latent_shape"] is not None
@@ -253,6 +253,10 @@ def main(arguments):
             256 if with_conditioning else None
         )
 
+    scheduler_config = specs["scheduler_config"] or dict(
+        DEFAULT_SCHEDULER_CONFIG
+    )
+    diffusion_steps = specs["diffusion_steps"] or args.diffusion_steps
     network = get_generative_network(
         network_config=network_config,
         categorical_specification=categorical_specification,
@@ -261,12 +265,8 @@ def main(arguments):
         max_epochs=None,
         warmup_steps=None,
         start_decay=None,
-        diffusion_steps=args.diffusion_steps,
-        scheduler_config={
-            "schedule": "scaled_linear_beta",
-            "beta_start": 0.0005,
-            "beta_end": 0.0195,
-        },
+        diffusion_steps=diffusion_steps,
+        scheduler_config=scheduler_config,
         uncondition_proba=0.0,
         concat_condition_key=(
             "cat_conditioning"
@@ -276,7 +276,7 @@ def main(arguments):
         ),
     )
 
-    load_checkpoint_to_model(network, ckpt, [])
+    load_checkpoint_to_model(network, ckpt, [], prefer_ema=True)
 
     # PL needs a little hint to detect GPUs.
     torch.ones([1]).to("cuda" if "cuda" in args.dev else "cpu")
@@ -284,7 +284,7 @@ def main(arguments):
     if "cuda" in args.dev:
         network = network.to(args.dev)
     if autoencoder is not None:
-        attach_autoencoder(network, autoencoder, latent_scale)
+        attach_autoencoder(network, autoencoder)
 
     cat_condition = None
     num_condition = None

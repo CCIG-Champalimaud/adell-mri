@@ -6,6 +6,7 @@ import numpy as np
 import torch
 from lightning.pytorch import Trainer
 from lightning.pytorch.callbacks import RichProgressBar
+from sklearn.model_selection import GroupShuffleSplit, train_test_split
 
 from adell_mri.entrypoints.assemble_args import Parser
 from adell_mri.entrypoints.generative.autoencoder import (
@@ -14,6 +15,7 @@ from adell_mri.entrypoints.generative.autoencoder import (
     get_latent_shape,
 )
 from adell_mri.modules.config_parsing import parse_config_ae, parse_config_gan
+from adell_mri.modules.diffusion.scheduler import DEFAULT_SCHEDULER_CONFIG
 from adell_mri.transform_factory import GenerationTransforms, get_augmentations
 from adell_mri.utils.dataset import Dataset
 from adell_mri.utils.generic_utils import collate_last_slice, safe_collate
@@ -48,6 +50,42 @@ def get_conditional_specification(d: dict, cond_key: str):
             if v not in possible_values:
                 possible_values.append(d[k][cond_key])
     return sorted(possible_values)
+
+
+def split_records(
+    records: list[dict], fraction: float | None, seed: int
+) -> tuple[list[dict], list[dict]]:
+    """
+    Splits records into a training and a held-out set.
+
+    If every record has a ``subject`` entry, the split is grouped by subject;
+    otherwise the split is random. A fraction of zero or None returns all
+    records as training data.
+
+    Args:
+        records (list[dict]): records to split.
+        fraction (float | None): fraction of records in the held-out set.
+        seed (int): random seed.
+
+    Returns:
+        tuple[list[dict], list[dict]]: training and held-out records.
+    """
+    if fraction is None or fraction <= 0.0 or len(records) < 2:
+        return records, []
+    groups = [record.get("subject") for record in records]
+    if all(group is not None for group in groups):
+        splitter = GroupShuffleSplit(
+            n_splits=1, test_size=fraction, random_state=seed
+        )
+        train_idx, other_idx = next(splitter.split(records, groups=groups))
+    else:
+        train_idx, other_idx = train_test_split(
+            np.arange(len(records)), test_size=fraction, random_state=seed
+        )
+    return (
+        [records[i] for i in train_idx],
+        [records[i] for i in other_idx],
+    )
 
 
 def get_mean_and_std(d: dict, regression_keys: list[str]):
@@ -91,6 +129,7 @@ def main(arguments):
             "cache_rate",
             "subsample_size",
             "val_from_train",
+            "test_from_train",
             "target_spacing",
             "pad_size",
             "crop_size",
@@ -243,6 +282,16 @@ def main(arguments):
         network_config["in_channels"] = len(keys) + conditioning_channels
         network_config["out_channels"] = len(keys)
 
+    scheduler_config = None
+    diffusion_steps = None
+    if args.model_type == "diffusion":
+        scheduler_config = network_config.pop(
+            "scheduler", dict(DEFAULT_SCHEDULER_CONFIG)
+        )
+        diffusion_steps = int(
+            network_config.pop("diffusion_steps", args.diffusion_steps)
+        )
+
     all_pids = [k for k in data_dict]
 
     logger.info("Setting up transforms...")
@@ -276,6 +325,32 @@ def main(arguments):
     )
 
     train_list = data_dict.to_datalist(all_pids)
+    transforms_eval = transform_factory.transforms()
+
+    if args.model_type in ["ae", "ldm"]:
+        val_fraction = args.val_from_train
+        if val_fraction is None:
+            val_fraction = 0.1
+            logger.info(
+                "No --val_from_train specified; using 10% for validation"
+            )
+        train_val, test_list = split_records(
+            train_list, args.test_from_train, args.seed
+        )
+        train_list, val_list = split_records(train_val, val_fraction, args.seed)
+        if len(val_list) == 0:
+            val_list = train_list
+        if len(test_list) == 0:
+            test_list = val_list
+        logger.info(
+            "Split sizes: train=%s, validation=%s, test=%s",
+            len(train_list),
+            len(val_list),
+            len(test_list),
+        )
+    else:
+        val_list = train_list
+        test_list = train_list
 
     logger.info("Train set size=%s", len(train_list))
 
@@ -283,7 +358,6 @@ def main(arguments):
     ae_checkpoint = None
     latent_channels = None
     latent_shape = None
-    latent_scale = 1.0
     if args.model_type in ["ae", "ldm"]:
         if args.spatial_dims not in [None, 3]:
             raise ValueError(
@@ -303,7 +377,12 @@ def main(arguments):
                 args.image_keys,
                 spatial_dims=args.spatial_dims or 3,
             )
-            latent_scale = float(network_config.pop("latent_scale", 1.0))
+            scheduler_config = network_config.pop(
+                "scheduler", dict(DEFAULT_SCHEDULER_CONFIG)
+            )
+            diffusion_steps = int(
+                network_config.pop("diffusion_steps", args.diffusion_steps)
+            )
         else:
             ae_config = parse_config_ae(
                 args.config_file,
@@ -328,7 +407,10 @@ def main(arguments):
             args,
             ae_config,
             train_list,
+            val_list,
+            test_list,
             transforms_train,
+            transforms_eval,
             args.checkpoint_dir,
             args.checkpoint_name,
             accelerator,
@@ -370,20 +452,28 @@ def main(arguments):
         input_image_key = None
 
     checkpoint_metadata = {
-        "train_pids": all_pids,
+        "train_pids": [record["identifier"] for record in train_list],
+        "val_pids": [record["identifier"] for record in val_list],
+        "test_pids": [record["identifier"] for record in test_list],
         "network_config": network_config,
         "transform_arguments": transform_arguments,
         "categorical_specification": categorical_specification,
         "numerical_specification": numerical_specification,
         "model_type": args.model_type,
     }
+    if args.model_type in ["diffusion", "ldm"]:
+        checkpoint_metadata.update(
+            {
+                "scheduler_config": scheduler_config,
+                "diffusion_steps": diffusion_steps,
+            }
+        )
     if args.model_type == "ldm":
         checkpoint_metadata.update(
             {
                 "ae_config": ae_config,
                 "ae_checkpoint": ae_checkpoint,
                 "latent_channels": latent_channels,
-                "latent_scale": latent_scale,
             }
         )
     ckpt_callback, ckpt_path, status = get_ckpt_callback(
@@ -489,6 +579,27 @@ def main(arguments):
 
     train_loader = train_loader_call(bs)
 
+    if args.model_type in ["ae", "ldm"]:
+        val_loader = monai.data.ThreadDataLoader(
+            monai.data.Dataset(val_list, transforms_eval),
+            batch_size=bs,
+            num_workers=n_workers,
+            collate_fn=safe_collate,
+            pin_memory=True,
+            shuffle=False,
+        )
+        test_loader = monai.data.ThreadDataLoader(
+            monai.data.Dataset(test_list, transforms_eval),
+            batch_size=bs,
+            num_workers=n_workers,
+            collate_fn=safe_collate,
+            pin_memory=True,
+            shuffle=False,
+        )
+    else:
+        val_loader = train_loader
+        test_loader = train_loader
+
     if args.model_type == "gan":
         means, stds = get_mean_and_std(data_dict, args.num_condition_keys)
         network = get_gan_network(
@@ -508,18 +619,14 @@ def main(arguments):
     else:
         network = get_generative_network(
             network_config=network_config,
-            scheduler_config={
-                "schedule": "scaled_linear_beta",
-                "beta_start": 0.0005,
-                "beta_end": 0.0195,
-            },
+            scheduler_config=scheduler_config,
             categorical_specification=categorical_specification,
             numerical_specification=numerical_specification,
             train_loader_call=train_loader_call,
             max_epochs=args.max_epochs,
             warmup_steps=args.warmup_steps,
             start_decay=args.start_decay,
-            diffusion_steps=args.diffusion_steps,
+            diffusion_steps=diffusion_steps,
             uncondition_proba=args.uncondition_proba,
             concat_condition_key=input_image_key,
             optimizer_eps=optimizer_eps_from_precision(args.precision),
@@ -535,7 +642,7 @@ def main(arguments):
     )
 
     if args.model_type == "ldm":
-        attach_autoencoder(network, autoencoder, latent_scale)
+        attach_autoencoder(network, autoencoder)
 
     # instantiate callbacks and loggers
     callbacks = [RichProgressBar()]
@@ -605,7 +712,7 @@ def main(arguments):
         deterministic="warn",
     )
 
-    trainer.fit(network, train_loader, train_loader, ckpt_path=ckpt_path)
+    trainer.fit(network, train_loader, val_loader, ckpt_path=ckpt_path)
 
     # assessing performance on validation set
     logger.info("Validating...")
@@ -615,16 +722,16 @@ def main(arguments):
     else:
         ckpt_list = ["last"]
     for ckpt_key in ckpt_list:
-        test_metrics = trainer.test(
-            network,
-            train_loader,
-            ckpt_path=ckpt_key,
-            weights_only=False,
-        )[0]
-        for k in test_metrics:
-            out = test_metrics[k]
-            if isinstance(out, float) is False:
-                value = float(out.detach().numpy())
-            else:
-                value = out
-            output_file.write(f"{value}\n")
+        if ckpt_callback is not None:
+            path = (
+                ckpt_callback.last_model_path
+                if ckpt_key == "last"
+                else ckpt_callback.best_model_path
+            )
+            if path:
+                load_checkpoint_to_model(network, path, [], prefer_ema=True)
+        test_metrics = trainer.test(network, test_loader)[0]
+        for key, value in test_metrics.items():
+            if isinstance(value, torch.Tensor):
+                value = value.detach().cpu().item()
+            output_file.write(f"{ckpt_key}_{key},{value}\n")
