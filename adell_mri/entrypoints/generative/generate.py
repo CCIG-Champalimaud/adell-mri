@@ -122,21 +122,17 @@ def fetch_specifications(state_dict: dict[str, Any]) -> dict[str, Any]:
         dict[str, Any]: checkpoint specifications.
     """
     cbks = state_dict["callbacks"]
-    ckpt_cbk = cbks[[k for k in cbks if "ModelCheckpointWithMetadata" in k][0]]
+    ckpt_cbk = next(
+        value
+        for key, value in cbks.items()
+        if "ModelCheckpointWithMetadata" in key
+    )
     metadata = ckpt_cbk["metadata"]
-    cat_spec = None
-    num_spec = None
-    if "network_config" in metadata:
-        network_config = metadata["network_config"]
-    else:
-        network_config = None
-    if "categorical_specification" in metadata:
-        if metadata["categorical_specification"] is not None:
-            cat_spec = metadata["categorical_specification"]
-            cat_spec = [[str(v) for v in C] for C in cat_spec]
-    if "numerical_specification" in metadata:
-        if metadata["numerical_specification"] is not None:
-            num_spec = metadata["numerical_specification"]
+    network_config = metadata.get("network_config")
+    cat_spec = metadata.get("categorical_specification")
+    if cat_spec is not None:
+        cat_spec = [[str(v) for v in C] for C in cat_spec]
+    num_spec = metadata.get("numerical_specification")
     transform_args = metadata["transform_arguments"]
     if ("pre" in transform_args) and ("post" in transform_args):
         transform_args = transform_args["pre"] | transform_args["post"]
