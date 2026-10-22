@@ -1,5 +1,4 @@
 import ast
-import os
 import sys
 
 import monai
@@ -11,7 +10,7 @@ from lightning.pytorch.callbacks import RichProgressBar
 from adell_mri.entrypoints.assemble_args import Parser
 from adell_mri.entrypoints.generative.autoencoder import (
     ensure_autoencoder,
-    prepare_latents,
+    get_latent_shape,
 )
 from adell_mri.modules.config_parsing import parse_config_ae, parse_config_gan
 from adell_mri.transform_factory import GenerationTransforms, get_augmentations
@@ -97,13 +96,7 @@ def main(arguments):
             "config_file",
             "overrides",
             "model_type",
-            "ae_config_file",
-            "ae_checkpoint_name",
-            "ae_checkpoint",
             "ae_max_epochs",
-            "ae_monitor",
-            "latent_dir",
-            "latent_only",
             "spatial_dims",
             "warmup_steps",
             "start_decay",
@@ -280,7 +273,6 @@ def main(arguments):
     transforms_train = transform_factory.transforms(
         get_augmentations(**augmentation_args)
     )
-    transforms_eval = transform_factory.transforms()
 
     train_list = data_dict.to_datalist(all_pids)
 
@@ -288,22 +280,34 @@ def main(arguments):
 
     ae_config = None
     ae_checkpoint = None
-    latent_statistics = None
+    latent_channels = None
     latent_shape = None
+    latent_scale = 1.0
+    ldm_config = None
     if args.model_type in ["ae", "ldm"]:
-        ae_config_file = args.ae_config_file
-        if ae_config_file is None:
-            if args.model_type == "ae":
-                ae_config_file = args.config_file
-            else:
+        if args.spatial_dims not in [None, 3]:
+            raise ValueError(
+                "--model_type ae and ldm currently support 3D data only"
+            )
+        if args.model_type == "ldm":
+            ldm_config = compose(args.config_file, "diffusion", args.overrides)
+            if "ae" not in ldm_config:
                 raise ValueError(
-                    "--ae_config_file is required for --model_type ldm"
+                    "--model_type ldm requires an 'ae' section in "
+                    "--config_file"
                 )
-        ae_config = parse_config_ae(
-            ae_config_file,
-            args.image_keys,
-            spatial_dims=args.spatial_dims or 3,
-        )
+            ae_config = parse_config_ae(
+                ldm_config.pop("ae"),
+                args.image_keys,
+                spatial_dims=args.spatial_dims or 3,
+            )
+            latent_scale = float(ldm_config.pop("latent_scale", 1.0))
+        else:
+            ae_config = parse_config_ae(
+                args.config_file,
+                args.image_keys,
+                spatial_dims=args.spatial_dims or 3,
+            )
         ae_logger_name = (
             args.summary_name or args.checkpoint_name or "generative"
         ) + "_ae"
@@ -318,7 +322,7 @@ def main(arguments):
             fold=None,
             tags={"model_type": "ae", "ae_config": ae_config},
         )
-        autoencoder, ae_checkpoint, trained_now = ensure_autoencoder(
+        autoencoder, ae_checkpoint, _ = ensure_autoencoder(
             args,
             ae_config,
             train_list,
@@ -337,11 +341,6 @@ def main(arguments):
             output_file.close()
             return
 
-        if args.checkpoint_dir is None or args.checkpoint_name is None:
-            raise ValueError(
-                "--checkpoint_dir and --checkpoint_name are required for "
-                "--model_type ldm"
-            )
         if (
             args.input_image_keys is not None
             or args.input_mask_keys is not None
@@ -350,30 +349,10 @@ def main(arguments):
                 "concat conditioning is not supported for --model_type ldm; "
                 "use --cat_condition_keys or --num_condition_keys"
             )
-        train_list, latent_statistics, latent_shape = prepare_latents(
-            args,
-            autoencoder,
-            train_list,
-            transforms_eval,
-            args.checkpoint_dir,
-            args.checkpoint_name,
-            overwrite=trained_now,
-            batch_size=ae_config["batch_size"],
-            ae_checkpoint=ae_checkpoint,
-            logger=logger,
+        latent_channels = (
+            autoencoder.latent_channels or autoencoder.block_out_channels[-1]
         )
-        latent_dir = args.latent_dir or os.path.join(
-            args.checkpoint_dir, args.checkpoint_name + "_latents"
-        )
-        latent_channels = int(latent_shape[0])
-        latent_spatial_shape = tuple(int(s) for s in latent_shape[1:])
-        logger.info(
-            "Latent shape=%s, scale=%s",
-            latent_shape,
-            latent_statistics["scale"],
-        )
-
-        network_config = compose(args.config_file, "diffusion", args.overrides)
+        network_config = ldm_config
         network_config["batch_size"] = return_first_not_none(
             args.batch_size, network_config.get("batch_size")
         )
@@ -387,23 +366,6 @@ def main(arguments):
         network_config["in_channels"] = latent_channels
         network_config["out_channels"] = latent_channels
         network_config["spatial_dims"] = 3
-
-        transform_arguments = {
-            "keys": ("latent",),
-            "image_keys": ("latent",),
-            "latent_keys": ("latent",),
-            "latent_only": True,
-            "n_dim": 3,
-            "target_spacing": args.target_spacing,
-            "latent_scale": latent_statistics["scale"],
-            "cat_keys": args.cat_condition_keys,
-            "num_keys": args.num_condition_keys,
-        }
-        latent_transform_factory = GenerationTransforms(**transform_arguments)
-        transforms_train = [latent_transform_factory.transforms()]
-        transforms_eval = transforms_train[0]
-        keys = ["latent"]
-        all_image_keys = ["latent"]
         input_image_key = None
 
     checkpoint_metadata = {
@@ -419,11 +381,8 @@ def main(arguments):
             {
                 "ae_config": ae_config,
                 "ae_checkpoint": ae_checkpoint,
-                "latent_scale": latent_statistics["scale"],
-                "latent_mean": latent_statistics["mean"],
-                "latent_std": latent_statistics["std"],
-                "latent_shape": latent_shape,
-                "latent_dir": latent_dir,
+                "latent_channels": latent_channels,
+                "latent_scale": latent_scale,
             }
         )
     ckpt_callback, ckpt_path, status = get_ckpt_callback(
@@ -461,12 +420,21 @@ def main(arguments):
     transforms_train = monai.transforms.Compose(transforms_train)
     transforms_train.set_random_state(args.seed)
 
-    train_dataset = monai.data.CacheDataset(
-        train_list,
-        transforms_train,
-        cache_rate=args.cache_rate,
-        num_workers=args.n_workers,
-    )
+    if args.model_type in ["ae", "ldm"]:
+        train_dataset = monai.data.Dataset(train_list, transforms_train)
+    else:
+        train_dataset = monai.data.CacheDataset(
+            train_list,
+            transforms_train,
+            cache_rate=args.cache_rate,
+            num_workers=args.n_workers,
+        )
+
+    if args.model_type == "ldm":
+        sample = train_dataset[0]["image"]
+        latent_shape = get_latent_shape(autoencoder, sample.shape[1:])
+        checkpoint_metadata["latent_shape"] = latent_shape
+        logger.info("Latent shape inferred from the data: %s", latent_shape)
 
     n_workers = args.n_workers // n_devices
     bs = network_config["batch_size"]
@@ -568,17 +536,26 @@ def main(arguments):
 
     if args.model_type == "ldm":
         autoencoder_parameter = next(autoencoder.parameters())
-        latent_scale = float(latent_statistics["scale"])
 
-        def decode_latents(z):
-            z = z / latent_scale
-            z = z.to(
+        def encode_images(images):
+            images = images.to(
                 device=autoencoder_parameter.device,
                 dtype=autoencoder_parameter.dtype,
             )
-            return autoencoder.decode(z)
+            with torch.no_grad():
+                return autoencoder.encode(images)
 
-        network.latent_decoder = decode_latents
+        def decode_latents(latents):
+            latents = latents.to(
+                device=autoencoder_parameter.device,
+                dtype=autoencoder_parameter.dtype,
+            )
+            with torch.no_grad():
+                return autoencoder.decode(latents)
+
+        network.input_encoder = encode_images
+        network.output_decoder = decode_latents
+        network.latent_scale = latent_scale
 
     # instantiate callbacks and loggers
     callbacks = [RichProgressBar()]
@@ -617,7 +594,7 @@ def main(arguments):
 
     if pl_logger is not None:
         if args.model_type == "ldm":
-            size = list(latent_spatial_shape)
+            size = list(latent_shape[1:])
         else:
             size = return_first_not_none(args.pad_size, args.crop_size)
             size = [int(x) for x in size][:spatial_dims]

@@ -1,20 +1,17 @@
 """
-Helpers for training autoencoders and caching latents from the generative
-entrypoint.
+Helpers for training autoencoders from the generative entrypoint.
 """
 
 import os
 from typing import Any
 
 import monai
-import numpy as np
 import torch
 from lightning.pytorch import Trainer
 from lightning.pytorch.callbacks import RichProgressBar
 
 from adell_mri.modules.gan.pl.ae import AutoEncoderPL, VariationalAutoEncoderPL
 from adell_mri.utils.generic_utils import safe_collate
-from adell_mri.utils.latents import cache_latents, compute_latent_statistics
 from adell_mri.utils.pl_callbacks import EMACallback
 from adell_mri.utils.pl_utils import get_ckpt_callback
 from adell_mri.utils.torch_utils import load_checkpoint_to_model
@@ -59,12 +56,38 @@ def get_autoencoder_checkpoint(
 
     Args:
         checkpoint_dir (str): directory where checkpoints are stored.
-        checkpoint_name (str): checkpoint name (without the ``_last`` suffix).
+        checkpoint_name (str): base checkpoint name. The autoencoder checkpoint
+            appends ``_ae`` to this name.
 
     Returns:
-        str: path to the last checkpoint.
+        str: path to the last autoencoder checkpoint.
     """
-    return os.path.join(checkpoint_dir, checkpoint_name + "_last.ckpt")
+    return os.path.join(checkpoint_dir, checkpoint_name + "_ae_last.ckpt")
+
+
+def get_latent_shape(
+    autoencoder: torch.nn.Module,
+    spatial_shape: list[int] | tuple[int],
+) -> tuple[int, ...]:
+    """
+    Infers the shape of the latent produced by an autoencoder for a given
+    spatial input shape.
+
+    Args:
+        autoencoder (torch.nn.Module): autoencoder with a
+            ``latent_downsample_factor`` attribute and either
+            ``latent_channels`` or ``block_out_channels``.
+        spatial_shape (list[int] | tuple[int]): spatial shape of the input.
+
+    Returns:
+        tuple[int, ...]: latent shape, excluding the batch dimension.
+    """
+    factor = autoencoder.latent_downsample_factor
+    channels = autoencoder.latent_channels
+    if channels is None:
+        channels = autoencoder.block_out_channels[-1]
+    spatial = tuple(int(size) // (2**factor) for size in spatial_shape)
+    return (channels, *spatial)
 
 
 def make_autoencoder_loader(
@@ -73,7 +96,6 @@ def make_autoencoder_loader(
     batch_size: int,
     n_workers: int,
     seed: int,
-    cache_rate: float = 1.0,
 ) -> monai.data.ThreadDataLoader:
     """
     Builds the dataloader used to train the autoencoder.
@@ -84,18 +106,11 @@ def make_autoencoder_loader(
         batch_size (int): batch size.
         n_workers (int): number of dataloader workers.
         seed (int): random seed.
-        cache_rate (float, optional): fraction of the dataset to cache.
-            Defaults to 1.0.
 
     Returns:
         monai.data.ThreadDataLoader: dataloader.
     """
-    dataset = monai.data.CacheDataset(
-        data_list,
-        transforms,
-        cache_rate=cache_rate,
-        num_workers=n_workers,
-    )
+    dataset = monai.data.Dataset(data_list, transforms)
     generator = torch.Generator()
     generator.manual_seed(seed)
     kwargs = {
@@ -153,10 +168,10 @@ def ensure_autoencoder(
     """
     Trains the autoencoder if needed and returns it.
 
-    Training is skipped when an explicit ``--ae_checkpoint`` is provided or
-    when the last checkpoint already reached ``--ae_max_epochs``. The returned
-    flag indicates whether the autoencoder was trained in this call, which is
-    used to decide whether cached latents should be overwritten.
+    The autoencoder checkpoint name is always ``{checkpoint_name}_ae``.
+    Training is skipped when the last checkpoint already reached
+    ``--ae_max_epochs``. The returned flag indicates whether the autoencoder was
+    trained in this call.
 
     Args:
         args (Any): parsed command-line arguments.
@@ -179,33 +194,28 @@ def ensure_autoencoder(
             call.
 
     Raises:
-        ValueError: if a checkpoint is needed to continue but no checkpoint
-            directory is specified, or if an existing checkpoint was trained
-            with a different configuration.
+        ValueError: if a checkpoint directory or name is missing, or if an
+            existing checkpoint was trained with a different architecture.
     """
-    ae_name = args.ae_checkpoint_name or checkpoint_name + "_ae"
-    if args.ae_checkpoint is not None:
-        autoencoder, _ = build_autoencoder(parsed_config)
-        load_checkpoint_to_model(autoencoder, args.ae_checkpoint, [])
-        return autoencoder, args.ae_checkpoint, False
-
     if checkpoint_dir is None or checkpoint_name is None:
         raise ValueError(
-            "--checkpoint_dir and --checkpoint_name are required to train "
-            "an autoencoder that can be reused by a latent diffusion model"
+            "--checkpoint_dir and --checkpoint_name are required to train an "
+            "autoencoder"
         )
 
     max_epochs = args.ae_max_epochs or args.max_epochs
     ckpt_callback, ckpt_path, status = get_ckpt_callback(
         checkpoint_dir=checkpoint_dir,
-        checkpoint_name=ae_name,
+        checkpoint_name=checkpoint_name + "_ae",
         max_epochs=max_epochs,
         resume_from_last=True,
         val_fold=None,
-        monitor=args.ae_monitor,
+        monitor="val_loss",
         metadata={"model_type": "ae", "ae_config": parsed_config},
     )
-    last_checkpoint = get_autoencoder_checkpoint(checkpoint_dir, ae_name)
+    last_checkpoint = get_autoencoder_checkpoint(
+        checkpoint_dir, checkpoint_name
+    )
     if status == "finished":
         stored_config = _read_autoencoder_config(last_checkpoint)
         if stored_config is not None and stored_config.get(
@@ -213,8 +223,8 @@ def ensure_autoencoder(
         ) != parsed_config.get("model"):
             raise ValueError(
                 "The existing autoencoder checkpoint was trained with a "
-                "different configuration. Use --ae_checkpoint_name to point "
-                "to another checkpoint or remove the existing one."
+                "different architecture. Remove the existing checkpoint or "
+                "use a different --checkpoint_name."
             )
         autoencoder, _ = build_autoencoder(parsed_config)
         load_checkpoint_to_model(autoencoder, last_checkpoint, [])
@@ -239,15 +249,13 @@ def ensure_autoencoder(
             )
         accumulate_grad_batches = 1
 
-    batch_size = parsed_config["batch_size"]
-    batch_size = max(1, batch_size // n_devices)
+    batch_size = max(1, parsed_config["batch_size"] // n_devices)
     loader = make_autoencoder_loader(
         train_list,
         transforms,
         batch_size=batch_size,
         n_workers=args.n_workers,
         seed=args.seed,
-        cache_rate=args.cache_rate,
     )
     trainer = Trainer(
         accelerator=accelerator,
@@ -276,75 +284,7 @@ def ensure_autoencoder(
         for key in test_metrics:
             value = test_metrics[key]
             if isinstance(value, torch.Tensor):
-                value = float(value.detach().cpu())
+                value = value.detach().cpu().item()
             output_file.write(f"{value}\n")
     autoencoder.eval()
     return autoencoder, last_checkpoint, True
-
-
-def prepare_latents(
-    args: Any,
-    autoencoder: torch.nn.Module,
-    train_list: list[dict],
-    transforms: Any,
-    checkpoint_dir: str,
-    checkpoint_name: str,
-    overwrite: bool,
-    batch_size: int,
-    ae_checkpoint: str | None,
-    logger: Any,
-) -> tuple[list[dict], dict[str, float], tuple[int, ...]]:
-    """
-    Caches latents for a dataset and computes their statistics.
-
-    Args:
-        args (Any): parsed command-line arguments.
-        autoencoder (torch.nn.Module): trained autoencoder.
-        train_list (list[dict]): records with image paths and identifiers.
-        transforms (Any): deterministic transforms for the images.
-        checkpoint_dir (str): directory where checkpoints are stored.
-        checkpoint_name (str): base checkpoint name.
-        overwrite (bool): whether existing latents should be overwritten.
-        batch_size (int): batch size used for encoding.
-        ae_checkpoint (str | None): path to the autoencoder checkpoint, used
-            to detect stale latent caches.
-        logger (Any): python logger.
-
-    Returns:
-        tuple[list[dict], dict[str, float], tuple[int, ...]]: records with a
-            ``latent`` key, latent statistics and the latent spatial shape.
-    """
-    latent_dir = args.latent_dir or os.path.join(
-        checkpoint_dir, checkpoint_name + "_latents"
-    )
-    manifest_path = os.path.join(latent_dir, "_ae_checkpoint.txt")
-    if (
-        overwrite is False
-        and ae_checkpoint is not None
-        and os.path.exists(manifest_path) is True
-    ):
-        with open(manifest_path, "r") as manifest:
-            if manifest.read().strip() != ae_checkpoint:
-                logger.info(
-                    "Latents were generated with a different autoencoder; "
-                    "re-encoding"
-                )
-                overwrite = True
-    logger.info("Caching latents in %s", latent_dir)
-    cached_list = cache_latents(
-        autoencoder,
-        train_list,
-        transforms,
-        latent_dir,
-        batch_size=batch_size,
-        num_workers=args.n_workers,
-        device=args.dev,
-        overwrite=overwrite,
-    )
-    if ae_checkpoint is not None:
-        with open(manifest_path, "w") as manifest:
-            manifest.write(ae_checkpoint)
-    latent_paths = [record["latent"] for record in cached_list]
-    statistics = compute_latent_statistics(latent_paths)
-    latent_shape = tuple(np.load(latent_paths[0], mmap_mode="r").shape)
-    return cached_list, statistics, latent_shape

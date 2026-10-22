@@ -64,6 +64,12 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
         self.seed = seed
         self.optimizer_eps = optimizer_eps
 
+        # Optional hooks for latent diffusion. When set, images are encoded
+        # before the diffusion process and samples are decoded afterwards.
+        self.input_encoder: Callable | None = None
+        self.output_decoder: Callable | None = None
+        self.latent_scale: float = 1.0
+
         self.g = torch.Generator()
         self.g.manual_seed(self.seed + get_global_rank())
         self._device_generators = {}
@@ -227,6 +233,10 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
                 conditioning channels (if provided).
         """
         x = batch[self.image_key]
+        if self.input_encoder is not None:
+            with torch.no_grad():
+                x = self.input_encoder(x)
+            x = x * self.latent_scale
         concat_condition = None
         if self.concat_condition_key is not None:
             concat_condition = batch[self.concat_condition_key]
@@ -398,6 +408,10 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
         Returns:
             torch.Tensor: generated (or re-generated) sample.
         """
+        if input_image is not None and self.input_encoder is not None:
+            with torch.no_grad():
+                input_image = self.input_encoder(input_image)
+            input_image = input_image * self.latent_scale
         noise = torch.randn([n, self.out_channels, *size], device=self.device)
         if input_image is None:
             input_image = noise
@@ -451,7 +465,8 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
             skip_steps=skip_steps,
             guidance_strength=guidance_strength,
         )
-
+        if self.output_decoder is not None:
+            sample = self.output_decoder(sample / self.latent_scale)
         return sample
 
     def train_dataloader(self) -> torch.utils.data.DataLoader:
