@@ -46,6 +46,7 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
         latent_std_decay: float = 0.99,
         reconstruction_weight: float = 0.0,
         reconstruction_loss: str = "l1",
+        min_snr_gamma: float | None = None,
         *args,
         **kwargs,
     ):
@@ -81,6 +82,7 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
                 f"'{reconstruction_loss}'"
             )
         self.reconstruction_loss = reconstruction_loss
+        self.min_snr_gamma = min_snr_gamma
         self.register_buffer("latent_std", torch.ones(1))
         self.register_buffer("latent_std_initialized", torch.zeros(1))
 
@@ -109,20 +111,95 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
                     del module.proj_attn
 
     def calculate_loss(
-        self, prediction: torch.Tensor, epsilon: torch.Tensor
+        self,
+        prediction: torch.Tensor,
+        target: torch.Tensor,
+        weight: torch.Tensor | None = None,
     ) -> torch.Tensor:
         """
-        Calculates the loss between the predicted noise and the true noise.
+        Calculates the diffusion loss.
 
         Args:
-            prediction (torch.Tensor): The predicted noise.
-            epsilon (torch.Tensor): The true noise.
+            prediction (torch.Tensor): The model prediction.
+            target (torch.Tensor): The prediction target.
+            weight (torch.Tensor | None, optional): per-sample loss weights.
+                Defaults to None.
 
         Returns:
             torch.Tensor: The mean loss.
         """
-        loss = self.loss_fn(prediction, epsilon)
-        return loss.mean()
+        if weight is None:
+            return self.loss_fn(prediction, target).mean()
+        loss = F.mse_loss(prediction, target, reduction="none")
+        loss = loss.mean(dim=tuple(range(1, loss.ndim)))
+        return (loss * weight).mean()
+
+    def alpha_coefficients(
+        self, x: torch.Tensor, timesteps: torch.Tensor
+    ) -> torch.Tensor:
+        """
+        Returns the cumulative alpha coefficient for each sample.
+
+        Args:
+            x (torch.Tensor): tensor used to determine the number of dimensions.
+            timesteps (torch.Tensor): timesteps for each sample.
+
+        Returns:
+            torch.Tensor: coefficient with shape ``(batch, 1, ...)``.
+        """
+        alpha_prod = self.scheduler.alphas_cumprod.to(x.device)[timesteps]
+        return alpha_prod.view(-1, *([1] * (x.ndim - 1)))
+
+    def prediction_target(
+        self,
+        x_0: torch.Tensor,
+        timesteps: torch.Tensor,
+        noise: torch.Tensor,
+    ) -> torch.Tensor:
+        """
+        Returns the target corresponding to the scheduler prediction type.
+
+        Args:
+            x_0 (torch.Tensor): clean sample.
+            timesteps (torch.Tensor): timesteps for each sample.
+            noise (torch.Tensor): sampled noise.
+
+        Returns:
+            torch.Tensor: prediction target.
+        """
+        alpha_prod = self.alpha_coefficients(x_0, timesteps)
+        if self.scheduler.prediction_type == DDPMPredictionType.SAMPLE:
+            return x_0
+        if self.scheduler.prediction_type == DDPMPredictionType.V_PREDICTION:
+            return alpha_prod.sqrt() * noise - (1.0 - alpha_prod).sqrt() * x_0
+        return noise
+
+    def min_snr_weight(
+        self, x: torch.Tensor, timesteps: torch.Tensor
+    ) -> torch.Tensor | None:
+        """
+        Returns the Min-SNR loss weights for the scheduler prediction type.
+
+        Args:
+            x (torch.Tensor): tensor used to determine the number of dimensions.
+            timesteps (torch.Tensor): timesteps for each sample.
+
+        Returns:
+            torch.Tensor | None: per-sample weights, or None when Min-SNR is
+                disabled.
+        """
+        if self.min_snr_gamma is None:
+            return None
+        alpha_prod = self.alpha_coefficients(x, timesteps)
+        snr = alpha_prod / (1.0 - alpha_prod).clamp_min(1e-8)
+        clipped = torch.clamp(snr, max=self.min_snr_gamma)
+        if self.scheduler.prediction_type == DDPMPredictionType.SAMPLE:
+            weight = clipped
+        elif self.scheduler.prediction_type == DDPMPredictionType.V_PREDICTION:
+            weight = clipped / (snr + 1.0)
+        else:
+            weight = clipped / snr
+        return weight.view(-1)
 
     def _device_generator(self, device: torch.device) -> torch.Generator:
         """
@@ -217,7 +294,7 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
             ValueError: if the reconstruction loss is enabled without target
                 images.
         """
-        epsilon = self.randn_like(x)
+        noise = self.randn_like(x)
         if timesteps is None:
             timesteps = self.timesteps_like(x)
         else:
@@ -225,21 +302,23 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
         inferer_kwargs = {
             "inputs": x,
             "diffusion_model": self,
-            "noise": epsilon,
+            "noise": noise,
             "timesteps": timesteps,
             "condition": context,
         }
         if concat_condition is not None:
             inferer_kwargs["concat_condition"] = concat_condition
-        epsilon_pred = self.inferer(**inferer_kwargs)
-        loss = self.calculate_loss(epsilon_pred, epsilon)
+        prediction = self.inferer(**inferer_kwargs)
+        target = self.prediction_target(x, timesteps, noise)
+        weight = self.min_snr_weight(x, timesteps)
+        loss = self.calculate_loss(prediction, target, weight=weight)
         reconstruction_loss = None
         if self.reconstruction_weight > 0.0:
             if target_images is None:
                 raise ValueError(
                     "target_images are required when reconstruction_weight > 0"
                 )
-            predicted_x0 = self.predict_x0(x, timesteps, epsilon_pred)
+            predicted_x0 = self.predict_x0(x, timesteps, prediction)
             if self.output_decoder is not None:
                 reconstruction = self.decode_latents(predicted_x0)
                 target = target_images
@@ -328,10 +407,14 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
         sqrt_alpha = alpha_prod.sqrt().view(shape)
         sqrt_one_minus = (1.0 - alpha_prod).sqrt().view(shape)
         if self.scheduler.prediction_type == DDPMPredictionType.SAMPLE:
-            return model_output
-        if self.scheduler.prediction_type == DDPMPredictionType.V_PREDICTION:
-            return sqrt_alpha * x - sqrt_one_minus * model_output
-        return (x - sqrt_one_minus * model_output) / sqrt_alpha
+            predicted_x0 = model_output
+        elif self.scheduler.prediction_type == DDPMPredictionType.V_PREDICTION:
+            predicted_x0 = sqrt_alpha * x - sqrt_one_minus * model_output
+        else:
+            predicted_x0 = (x - sqrt_one_minus * model_output) / sqrt_alpha
+        if self.scheduler.clip_sample:
+            predicted_x0 = predicted_x0.clamp(-1.0, 1.0)
+        return predicted_x0
 
     def unpack_batch(
         self, batch: dict[str, torch.Tensor]

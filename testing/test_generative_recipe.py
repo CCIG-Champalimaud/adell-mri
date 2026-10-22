@@ -4,6 +4,7 @@ import sys
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 import pytest
 import torch
+from generative.networks.schedulers.ddpm import DDPMPredictionType
 
 from adell_mri.entrypoints.generative.train_3d import split_records
 from adell_mri.utils.network_factories import get_generative_network
@@ -95,6 +96,58 @@ def test_reconstruction_loss_is_computed(diffusion_network):
     assert torch.isfinite(loss)
     assert reconstruction_loss is not None
     assert torch.isfinite(reconstruction_loss)
+
+
+def test_prediction_target_and_x0_roundtrip(diffusion_network):
+    x_0 = torch.rand(2, 1, 16, 16)
+    timesteps = torch.tensor([1, 2])
+    noise = torch.randn_like(x_0)
+    x_t = diffusion_network.scheduler.add_noise(
+        original_samples=x_0, noise=noise, timesteps=timesteps
+    )
+    diffusion_network.scheduler.clip_sample = False
+
+    for prediction_type in [
+        DDPMPredictionType.EPSILON,
+        DDPMPredictionType.V_PREDICTION,
+        DDPMPredictionType.SAMPLE,
+    ]:
+        diffusion_network.scheduler.prediction_type = prediction_type
+        target = diffusion_network.prediction_target(x_0, timesteps, noise)
+        predicted_x0 = diffusion_network.predict_x0(x_t, timesteps, target)
+        torch.testing.assert_close(predicted_x0, x_0, rtol=1e-5, atol=1e-5)
+
+
+def test_min_snr_weights_are_finite(diffusion_network):
+    x = torch.rand(2, 1, 16, 16)
+    timesteps = torch.tensor([1, 8])
+    for prediction_type in [
+        DDPMPredictionType.EPSILON,
+        DDPMPredictionType.V_PREDICTION,
+        DDPMPredictionType.SAMPLE,
+    ]:
+        diffusion_network.scheduler.prediction_type = prediction_type
+        diffusion_network.min_snr_gamma = 5.0
+        weights = diffusion_network.min_snr_weight(x, timesteps)
+        assert list(weights.shape) == [2]
+        assert torch.isfinite(weights).all()
+        assert (weights > 0).all()
+
+
+def test_clip_sample_is_respected(diffusion_network):
+    x = torch.rand(2, 1, 16, 16)
+    timesteps = torch.tensor([1, 2])
+    model_output = torch.full_like(x, 1000.0)
+    diffusion_network.scheduler.prediction_type = DDPMPredictionType.EPSILON
+
+    diffusion_network.scheduler.clip_sample = True
+    clipped = diffusion_network.predict_x0(x, timesteps, model_output)
+    assert float(clipped.min()) >= -1.0
+    assert float(clipped.max()) <= 1.0
+
+    diffusion_network.scheduler.clip_sample = False
+    unclipped = diffusion_network.predict_x0(x, timesteps, model_output)
+    assert (unclipped < -1.0).any()
 
 
 def test_latent_std_is_updated_in_training_mode(diffusion_network):

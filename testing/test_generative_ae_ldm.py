@@ -50,6 +50,7 @@ LDM_CONFIG = {
     "latent_std_decay": 0.99,
     "reconstruction_weight": 0.1,
     "reconstruction_loss": "l1",
+    "min_snr_gamma": 5.0,
     "scheduler": {
         "schedule": "scaled_linear_beta",
         "beta_start": 0.0005,
