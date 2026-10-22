@@ -321,7 +321,7 @@ def main(arguments):
         )
         dataloader = torch.utils.data.DataLoader(
             dataset,
-            batch_size=network_config["batch_size"],
+            batch_size=1,
             shuffle=False,
             num_workers=args.n_workers,
             pin_memory=True,
