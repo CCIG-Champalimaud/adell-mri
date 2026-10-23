@@ -127,12 +127,17 @@ def test_ae_ldm_training_and_generation(dataset, tmp_path):
             checkpoint_dir,
             "--checkpoint_name",
             "smoke",
+            "--ae_checkpoint_name",
+            "smoke_ae_custom",
             "--metric_path",
             str(tmp_path / "ae_metrics.csv"),
         ]
     )
-    ae_checkpoint = os.path.join(checkpoint_dir, "smoke_ae_last.ckpt")
+    ae_checkpoint = os.path.join(checkpoint_dir, "smoke_ae_custom_last.ckpt")
     assert os.path.exists(ae_checkpoint)
+    assert not os.path.exists(
+        os.path.join(checkpoint_dir, "smoke_ae_last.ckpt")
+    )
 
     train_main(
         [
@@ -143,6 +148,8 @@ def test_ae_ldm_training_and_generation(dataset, tmp_path):
             checkpoint_dir,
             "--checkpoint_name",
             "smoke",
+            "--ae_checkpoint_name",
+            "smoke_ae_custom",
             "--ae_max_epochs",
             "1",
             "--diffusion_steps",

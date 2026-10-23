@@ -749,6 +749,12 @@ argument_factory = {
         choices=["diffusion", "gan", "ae", "ldm"],
         help="Type of generative model to train",
     ),
+    "ae_checkpoint_name": dict(
+        type=str,
+        default=None,
+        help="Autoencoder checkpoint name. Defaults to "
+        "{checkpoint_name}_ae.",
+    ),
     "ae_max_epochs": dict(
         type=int,
         default=None,

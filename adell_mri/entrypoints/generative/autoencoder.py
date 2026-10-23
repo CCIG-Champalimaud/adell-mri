@@ -61,24 +61,41 @@ def get_autoencoder_checkpoint_name(checkpoint_name: str) -> str:
     return checkpoint_name + AUTOENCODER_SUFFIX
 
 
+def resolve_autoencoder_checkpoint_name(
+    checkpoint_name: str, ae_checkpoint_name: str | None = None
+) -> str:
+    """
+    Returns the autoencoder checkpoint name.
+
+    Args:
+        checkpoint_name (str): base checkpoint name.
+        ae_checkpoint_name (str | None, optional): explicit autoencoder
+            checkpoint name. Defaults to None, in which case ``_ae`` is
+            appended to ``checkpoint_name``.
+
+    Returns:
+        str: autoencoder checkpoint name.
+    """
+    if ae_checkpoint_name is not None:
+        return ae_checkpoint_name
+    return get_autoencoder_checkpoint_name(checkpoint_name)
+
+
 def get_autoencoder_checkpoint(
-    checkpoint_dir: str, checkpoint_name: str
+    checkpoint_dir: str, ae_checkpoint_name: str
 ) -> str:
     """
     Returns the path to the last autoencoder checkpoint.
 
     Args:
         checkpoint_dir (str): directory where checkpoints are stored.
-        checkpoint_name (str): base checkpoint name. The autoencoder checkpoint
-            appends ``_ae`` to this name.
+        ae_checkpoint_name (str): autoencoder checkpoint name, without the
+            ``_last.ckpt`` suffix.
 
     Returns:
         str: path to the last autoencoder checkpoint.
     """
-    return os.path.join(
-        checkpoint_dir,
-        get_autoencoder_checkpoint_name(checkpoint_name) + "_last.ckpt",
-    )
+    return os.path.join(checkpoint_dir, ae_checkpoint_name + "_last.ckpt")
 
 
 def attach_autoencoder(
@@ -293,10 +310,13 @@ def ensure_autoencoder(
             "autoencoder"
         )
 
+    ae_checkpoint_name = resolve_autoencoder_checkpoint_name(
+        checkpoint_name, args.ae_checkpoint_name
+    )
     max_epochs = args.ae_max_epochs or args.max_epochs
     ckpt_callback, ckpt_path, status = get_ckpt_callback(
         checkpoint_dir=checkpoint_dir,
-        checkpoint_name=get_autoencoder_checkpoint_name(checkpoint_name),
+        checkpoint_name=ae_checkpoint_name,
         max_epochs=max_epochs,
         resume_from_last=True,
         val_fold=None,
@@ -304,7 +324,7 @@ def ensure_autoencoder(
         metadata={"model_type": "ae", "ae_config": parsed_config},
     )
     last_checkpoint = get_autoencoder_checkpoint(
-        checkpoint_dir, checkpoint_name
+        checkpoint_dir, ae_checkpoint_name
     )
     if status == "finished":
         stored_config = _read_autoencoder_config(last_checkpoint)

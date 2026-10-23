@@ -6,6 +6,9 @@ import pytest
 import torch
 from generative.networks.schedulers.ddpm import DDPMPredictionType
 
+from adell_mri.entrypoints.generative.autoencoder import (
+    resolve_autoencoder_checkpoint_name,
+)
 from adell_mri.entrypoints.generative.train_3d import split_records
 from adell_mri.modules.diffusion.recipes import (
     DDPM_RECIPE,
@@ -14,6 +17,13 @@ from adell_mri.modules.diffusion.recipes import (
 )
 from adell_mri.utils.network_factories import get_generative_network
 from adell_mri.utils.torch_utils import load_checkpoint_to_model
+
+
+def test_autoencoder_checkpoint_name_resolution():
+    assert resolve_autoencoder_checkpoint_name("run") == "run_ae"
+    assert (
+        resolve_autoencoder_checkpoint_name("run", "custom_ae") == "custom_ae"
+    )
 
 
 def test_diffusion_recipes_encode_model_specific_settings():

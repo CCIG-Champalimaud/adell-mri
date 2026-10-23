@@ -136,6 +136,7 @@ def main(arguments):
             "config_file",
             "overrides",
             "model_type",
+            "ae_checkpoint_name",
             "ae_max_epochs",
             "spatial_dims",
             "warmup_steps",
