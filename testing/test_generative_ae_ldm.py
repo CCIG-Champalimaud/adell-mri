@@ -6,6 +6,7 @@ sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 import nibabel as nib
 import numpy as np
 import pytest
+import torch
 import yaml
 
 from adell_mri.entrypoints.generative.generate import main as generate_main
@@ -47,6 +48,13 @@ LDM_CONFIG = {
     "norm_num_groups": 8,
     "with_conditioning": False,
     "cross_attention_dim": None,
+    "latent_std_decay": 0.9,
+    "min_snr_gamma": 3.0,
+    "scheduler": {
+        "prediction_type": "epsilon",
+        "clip_sample": True,
+    },
+    "diffusion_steps": 4,
     "reconstruction_weight": 0.1,
     "reconstruction_loss": "l1",
     "batch_size": 2,

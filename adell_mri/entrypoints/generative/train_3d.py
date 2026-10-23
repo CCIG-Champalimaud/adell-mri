@@ -287,14 +287,8 @@ def main(arguments):
         recipe = DDPM_RECIPE
     elif args.model_type == "ldm":
         recipe = LDM_RECIPE
-    scheduler_config = (
-        dict(recipe.scheduler_config) if recipe is not None else None
-    )
-    diffusion_steps = (
-        args.diffusion_steps or recipe.diffusion_steps
-        if recipe is not None
-        else None
-    )
+    scheduler_config = None
+    diffusion_steps = None
 
     all_pids = [k for k in data_dict]
 
@@ -450,22 +444,22 @@ def main(arguments):
         input_image_key = None
 
     if recipe is not None:
+        (
+            scheduler_config,
+            diffusion_steps,
+            min_snr_gamma,
+            latent_std_decay,
+        ) = recipe.resolve(network_config, args.diffusion_steps)
         for key in [
             "scheduler",
             "diffusion_steps",
             "min_snr_gamma",
             "latent_std_decay",
         ]:
-            if key in network_config:
-                logger.warning(
-                    "%s is defined by the %s recipe and will be ignored",
-                    key,
-                    recipe.name,
-                )
-                network_config.pop(key)
-        network_config["min_snr_gamma"] = recipe.min_snr_gamma
-        if recipe.latent_std_decay is not None:
-            network_config["latent_std_decay"] = recipe.latent_std_decay
+            network_config.pop(key, None)
+        network_config["min_snr_gamma"] = min_snr_gamma
+        if latent_std_decay is not None:
+            network_config["latent_std_decay"] = latent_std_decay
 
     checkpoint_metadata = {
         "train_pids": [record["identifier"] for record in train_list],
@@ -478,8 +472,9 @@ def main(arguments):
         "model_type": args.model_type,
     }
     if recipe is not None:
-        checkpoint_metadata.update(recipe.to_metadata())
-        checkpoint_metadata["diffusion_steps"] = diffusion_steps
+        checkpoint_metadata.update(
+            recipe.to_metadata(scheduler_config, diffusion_steps)
+        )
     if args.model_type == "ldm":
         checkpoint_metadata.update(
             {

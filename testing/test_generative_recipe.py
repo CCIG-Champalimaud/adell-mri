@@ -31,6 +31,34 @@ def test_diffusion_recipes_encode_model_specific_settings():
     assert get_recipe("ldm") is LDM_RECIPE
 
 
+def test_recipe_overrides():
+    scheduler, steps, min_snr, decay = LDM_RECIPE.resolve(
+        {
+            "scheduler": {
+                "prediction_type": "epsilon",
+                "clip_sample": True,
+            },
+            "diffusion_steps": 50,
+            "min_snr_gamma": 3.0,
+            "latent_std_decay": 0.9,
+        }
+    )
+    assert scheduler["prediction_type"] == "epsilon"
+    assert scheduler["clip_sample"] is True
+    assert scheduler["schedule"] == LDM_RECIPE.scheduler_config["schedule"]
+    assert steps == 50
+    assert min_snr == 3.0
+    assert decay == 0.9
+
+    scheduler, steps, min_snr, decay = LDM_RECIPE.resolve(
+        {"diffusion_steps": 50}, diffusion_steps=25
+    )
+    assert steps == 25
+    assert scheduler == LDM_RECIPE.scheduler_config
+    assert min_snr == LDM_RECIPE.min_snr_gamma
+    assert decay == LDM_RECIPE.latent_std_decay
+
+
 def test_split_records_by_subject():
     records = [
         {"identifier": f"scan_{i}", "subject": f"subject_{i // 2}"}

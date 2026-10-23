@@ -219,8 +219,6 @@ def main(arguments):
         )
     else:
         recipe = DDPM_RECIPE
-        scheduler_config = dict(recipe.scheduler_config)
-        diffusion_steps = args.diffusion_steps or recipe.diffusion_steps
         network_config = compose(args.config_file, "diffusion", args.overrides)
         network_config["spatial_dims"] = 2
         network_config["batch_size"] = return_first_not_none(
@@ -362,9 +360,11 @@ def main(arguments):
         "transform_arguments": transform_arguments,
         "categorical_specification": categorical_specification,
         "numerical_specification": numerical_specification,
-    } | (recipe.to_metadata() if recipe is not None else {})
+    }
     if recipe is not None:
-        checkpoint_metadata["diffusion_steps"] = diffusion_steps
+        checkpoint_metadata.update(
+            recipe.to_metadata(scheduler_config, diffusion_steps)
+        )
 
     ckpt_callback, ckpt_path, status = get_ckpt_callback(
         checkpoint_dir=args.checkpoint_dir,
