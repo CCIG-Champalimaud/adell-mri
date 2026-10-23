@@ -13,14 +13,6 @@ import torch
 from generative.networks.schedulers.ddpm import DDPMPredictionType
 from generative.networks.schedulers.ddpm import DDPMScheduler as _DDPMScheduler
 
-DEFAULT_SCHEDULER_CONFIG = {
-    "schedule": "scaled_linear_beta",
-    "beta_start": 0.0005,
-    "beta_end": 0.0195,
-    "prediction_type": "epsilon",
-    "clip_sample": True,
-}
-
 
 class DDPMScheduler(_DDPMScheduler):
     """

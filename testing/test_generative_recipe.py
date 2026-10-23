@@ -7,8 +7,28 @@ import torch
 from generative.networks.schedulers.ddpm import DDPMPredictionType
 
 from adell_mri.entrypoints.generative.train_3d import split_records
+from adell_mri.modules.diffusion.recipes import (
+    DDPM_RECIPE,
+    LDM_RECIPE,
+    get_recipe,
+)
 from adell_mri.utils.network_factories import get_generative_network
 from adell_mri.utils.torch_utils import load_checkpoint_to_model
+
+
+def test_diffusion_recipes_encode_model_specific_settings():
+    assert DDPM_RECIPE.scheduler_config["prediction_type"] == "epsilon"
+    assert DDPM_RECIPE.scheduler_config["clip_sample"] is True
+    assert DDPM_RECIPE.min_snr_gamma is None
+    assert DDPM_RECIPE.scheduler_config["schedule"] == "linear_beta"
+
+    assert LDM_RECIPE.scheduler_config["prediction_type"] == "v_prediction"
+    assert LDM_RECIPE.scheduler_config["clip_sample"] is False
+    assert LDM_RECIPE.min_snr_gamma == 5.0
+    assert LDM_RECIPE.latent_std_decay == 0.99
+
+    assert get_recipe("ddpm") is DDPM_RECIPE
+    assert get_recipe("ldm") is LDM_RECIPE
 
 
 def test_split_records_by_subject():

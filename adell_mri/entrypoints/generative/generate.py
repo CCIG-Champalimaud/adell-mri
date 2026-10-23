@@ -14,7 +14,7 @@ from adell_mri.entrypoints.generative.autoencoder import (
     load_autoencoder,
 )
 from adell_mri.entrypoints.generative.train_3d import return_first_not_none
-from adell_mri.modules.diffusion.scheduler import DEFAULT_SCHEDULER_CONFIG
+from adell_mri.modules.diffusion.recipes import get_recipe
 from adell_mri.transform_factory import GenerationTransforms
 from adell_mri.utils.dataset import Dataset
 from adell_mri.utils.generic_utils import safe_collate
@@ -150,6 +150,7 @@ def fetch_specifications(state_dict: dict[str, Any]) -> dict[str, Any]:
         "latent_shape": metadata.get("latent_shape"),
         "scheduler_config": metadata.get("scheduler_config"),
         "diffusion_steps": metadata.get("diffusion_steps"),
+        "recipe": metadata.get("recipe"),
     }
 
 
@@ -253,10 +254,14 @@ def main(arguments):
             256 if with_conditioning else None
         )
 
-    scheduler_config = specs["scheduler_config"] or dict(
-        DEFAULT_SCHEDULER_CONFIG
-    )
-    diffusion_steps = specs["diffusion_steps"] or args.diffusion_steps
+    recipe_name = specs["recipe"] or ("ldm" if model_type == "ldm" else "ddpm")
+    recipe = get_recipe(recipe_name)
+    if specs["recipe"] is None and specs["scheduler_config"] is not None:
+        scheduler_config = specs["scheduler_config"]
+        diffusion_steps = specs["diffusion_steps"] or args.diffusion_steps
+    else:
+        scheduler_config = dict(recipe.scheduler_config)
+        diffusion_steps = args.diffusion_steps or recipe.diffusion_steps
     network = get_generative_network(
         network_config=network_config,
         categorical_specification=categorical_specification,

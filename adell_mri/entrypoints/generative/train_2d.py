@@ -10,7 +10,7 @@ from lightning.pytorch.callbacks import RichProgressBar
 from adell_mri.entrypoints.assemble_args import Parser
 from adell_mri.entrypoints.cli_utils import fail
 from adell_mri.modules.config_parsing import parse_config_gan
-from adell_mri.modules.diffusion.scheduler import DEFAULT_SCHEDULER_CONFIG
+from adell_mri.modules.diffusion.recipes import DDPM_RECIPE
 from adell_mri.transform_factory import GenerationTransforms
 from adell_mri.utils.dicom_dataset import filter_dicom_dict_on_presence
 from adell_mri.utils.dicom_loader import DICOMDataset, SliceSampler
@@ -206,6 +206,7 @@ def main(arguments):
 
     scheduler_config = None
     diffusion_steps = None
+    recipe = None
     if args.model_type == "gan":
         network_config, gen_config, disc_config = parse_config_gan(
             args.config_file,
@@ -217,13 +218,10 @@ def main(arguments):
             learning_rate=args.learning_rate,
         )
     else:
+        recipe = DDPM_RECIPE
+        scheduler_config = dict(recipe.scheduler_config)
+        diffusion_steps = args.diffusion_steps or recipe.diffusion_steps
         network_config = compose(args.config_file, "diffusion", args.overrides)
-        scheduler_config = network_config.pop(
-            "scheduler", dict(DEFAULT_SCHEDULER_CONFIG)
-        )
-        diffusion_steps = int(
-            network_config.pop("diffusion_steps", args.diffusion_steps)
-        )
         network_config["spatial_dims"] = 2
         network_config["batch_size"] = return_first_not_none(
             args.batch_size, network_config.get("batch_size")
@@ -358,6 +356,16 @@ def main(arguments):
 
     callbacks = [RichProgressBar()]
 
+    checkpoint_metadata = {
+        "train_pids": train_pids,
+        "network_config": network_config,
+        "transform_arguments": transform_arguments,
+        "categorical_specification": categorical_specification,
+        "numerical_specification": numerical_specification,
+    } | (recipe.to_metadata() if recipe is not None else {})
+    if recipe is not None:
+        checkpoint_metadata["diffusion_steps"] = diffusion_steps
+
     ckpt_callback, ckpt_path, status = get_ckpt_callback(
         checkpoint_dir=args.checkpoint_dir,
         checkpoint_name=args.checkpoint_name,
@@ -365,21 +373,7 @@ def main(arguments):
         resume_from_last=args.resume_from_last,
         val_fold=None,
         monitor=args.monitor,
-        metadata={
-            "train_pids": train_pids,
-            "network_config": network_config,
-            "transform_arguments": transform_arguments,
-            "categorical_specification": categorical_specification,
-            "numerical_specification": numerical_specification,
-        }
-        | (
-            {
-                "scheduler_config": scheduler_config,
-                "diffusion_steps": diffusion_steps,
-            }
-            if args.model_type != "gan"
-            else {}
-        ),
+        metadata=checkpoint_metadata,
     )
 
     if ckpt_callback is not None:

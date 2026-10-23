@@ -762,7 +762,9 @@ argument_factory = {
     ),
     # diffusion-specific
     "diffusion_steps": dict(
-        type=int, default=1000, help="Number of diffusion steps"
+        type=int,
+        default=None,
+        help="Number of diffusion steps. Defaults to the recipe value.",
     ),
     "n_samples_gen": dict(
         type=int, default=1000, help="Number of samples to generate."
