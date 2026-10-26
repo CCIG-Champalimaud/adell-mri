@@ -483,12 +483,13 @@ class ClassPLABC(pl.LightningModule, ABC):
         Returns:
             torch.Tensor: Model predictions
         """
-        if self.gaussian_process and "return_features" is False:
+        return_features = kwargs.get("return_features", False)
+        if self.gaussian_process and return_features is False:
             return self.predict_step_gp(batch, batch_idx, *args, **kwargs)
 
         x = batch[self.image_key]
         prediction = self.forward(x, *args, **kwargs)
-        if "return_features" in kwargs:
+        if return_features:
             return {"features": prediction}
         return {"prediction": prediction}
 
