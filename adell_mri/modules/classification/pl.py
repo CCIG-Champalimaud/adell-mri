@@ -483,11 +483,7 @@ class ClassPLABC(pl.LightningModule, ABC):
         Returns:
             torch.Tensor: Model predictions
         """
-        if self.gaussian_process:
-            if "return_features" in kwargs:
-                raise NotImplementedError(
-                    "return_features=True not implemented for Gaussian process models"
-                )
+        if self.gaussian_process and "return_features" is False:
             return self.predict_step_gp(batch, batch_idx, *args, **kwargs)
 
         x = batch[self.image_key]

@@ -117,9 +117,9 @@ def predict_sample(
     else:
         output = network.predict_step(batch, 0, **extra_args)
     if process_features and "features" in output:
-        output["features"] = (
-            output["features"].flatten(start_dim=2).max(-1).values
-        )
+        if output["features"].ndim > 2:
+            output["features"] = output["features"].flatten(start_dim=2)
+        output["features"] = output["features"].max(-1).values
     if "prediction" in output:
         output["prediction"] = post_proc_fn(output["prediction"])
     return make_json_serializable(output)
