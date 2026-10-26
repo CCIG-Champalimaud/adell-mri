@@ -171,9 +171,7 @@ def test_diffusionunetpl_concat_training_step():
     }
     x, condition, concat_condition = model.unpack_batch(batch)
     assert concat_condition is not None
-    loss, _ = model.step(
-        x, context=condition, concat_condition=concat_condition
-    )
+    loss = model.step(x, context=condition, concat_condition=concat_condition)
     assert loss.ndim == 0
     assert torch.isfinite(model.training_step(batch, 0))
 
@@ -194,7 +192,7 @@ def test_diffusionunetpl_mixed_conditioning_training_step():
     concat = torch.rand([2, 2, 16, 16])
     context = torch.rand([2, 1, 16])
     # both concat and cross-attention conditioning at the same time
-    loss, _ = model.step(x, context=context, concat_condition=concat)
+    loss = model.step(x, context=context, concat_condition=concat)
     assert loss.ndim == 0
     assert torch.isfinite(loss)
 
@@ -222,7 +220,7 @@ def test_diffusionunetpl_crossattn_training_step():
     x = torch.randn([2, 1, 16, 16])
     context = torch.rand([2, 1, 16])
     # cross-attention conditioning on its own
-    loss, _ = model.step(x, context=context)
+    loss = model.step(x, context=context)
     assert torch.isfinite(loss)
 
 

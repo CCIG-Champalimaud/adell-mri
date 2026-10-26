@@ -53,7 +53,9 @@ scheduler:
 diffusion_steps: 1000
 with_conditioning: false
 cross_attention_dim: null
-reconstruction_weight: 0.1
 reconstruction_loss: l1
+reconstruction_every_n_epochs: 5
+reconstruction_max_batches: 1
+reconstruction_timestep: 250
 batch_size: 64
 learning_rate: 2.5e-5

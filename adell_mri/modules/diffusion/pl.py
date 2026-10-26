@@ -44,8 +44,10 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
         seed: int = DEFAULT_SEED,
         optimizer_eps: float = OPTIMIZER_EPS_DEFAULT,
         latent_std_decay: float = 0.99,
-        reconstruction_weight: float = 0.0,
         reconstruction_loss: str = "l1",
+        reconstruction_every_n_epochs: int = 0,
+        reconstruction_max_batches: int = 1,
+        reconstruction_timestep: int | None = None,
         min_snr_gamma: float | None = None,
         *args,
         **kwargs,
@@ -75,13 +77,16 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
         self.input_encoder: Callable | None = None
         self.output_decoder: Callable | None = None
         self.latent_std_decay = latent_std_decay
-        self.reconstruction_weight = reconstruction_weight
         if reconstruction_loss not in ["l1", "mse"]:
             raise ValueError(
                 "reconstruction_loss must be either 'l1' or 'mse', got "
                 f"'{reconstruction_loss}'"
             )
         self.reconstruction_loss = reconstruction_loss
+        self.reconstruction_every_n_epochs = reconstruction_every_n_epochs
+        self.reconstruction_max_batches = reconstruction_max_batches
+        self.reconstruction_timestep = reconstruction_timestep
+        self.reconstruction_metrics: dict[str, Callable] = {}
         self.min_snr_gamma = min_snr_gamma
         self.register_buffer("latent_std", torch.ones(1))
         self.register_buffer("latent_std_initialized", torch.zeros(1))
@@ -91,6 +96,8 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
         self._device_generators = {}
         self.rng = np.random.default_rng(self.seed + get_global_rank())
         self.noise_steps = self.scheduler.num_train_timesteps
+        if self.reconstruction_timestep is None:
+            self.reconstruction_timestep = max(1, self.noise_steps // 4)
         self.loss_fn = torch.nn.MSELoss()
 
         self._prune_unused_parameters()
@@ -268,8 +275,7 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
         timesteps: torch.Tensor = None,
         context: torch.Tensor = None,
         concat_condition: torch.Tensor = None,
-        target_images: torch.Tensor = None,
-    ) -> tuple[torch.Tensor, torch.Tensor | None]:
+    ) -> torch.Tensor:
         """
         Computes the loss for a single step of the diffusion model.
 
@@ -283,16 +289,9 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
             concat_condition (torch.Tensor, optional): conditioning tensor
                 concatenated along the channel dimension of the noisy input.
                 Defaults to None.
-            target_images (torch.Tensor, optional): target images used by the
-                optional reconstruction loss. Defaults to None.
 
         Returns:
-            tuple[torch.Tensor, torch.Tensor | None]: the total loss and the
-                reconstruction loss (or None if it is not used).
-
-        Raises:
-            ValueError: if the reconstruction loss is enabled without target
-                images.
+            torch.Tensor: the diffusion loss.
         """
         noise = self.randn_like(x)
         if timesteps is None:
@@ -311,26 +310,7 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
         prediction = self.inferer(**inferer_kwargs)
         target = self.prediction_target(x, timesteps, noise)
         weight = self.min_snr_weight(x, timesteps)
-        loss = self.calculate_loss(prediction, target, weight=weight)
-        reconstruction_loss = None
-        if self.reconstruction_weight > 0.0:
-            if target_images is None:
-                raise ValueError(
-                    "target_images are required when reconstruction_weight > 0"
-                )
-            predicted_x0 = self.predict_x0(x, timesteps, prediction)
-            if self.output_decoder is not None:
-                reconstruction = self.decode_latents(predicted_x0)
-                target = target_images
-            else:
-                reconstruction = predicted_x0
-                target = x
-            loss_fn = (
-                F.l1_loss if self.reconstruction_loss == "l1" else F.mse_loss
-            )
-            reconstruction_loss = loss_fn(reconstruction, target)
-            loss = loss + self.reconstruction_weight * reconstruction_loss
-        return loss, reconstruction_loss
+        return self.calculate_loss(prediction, target, weight=weight)
 
     def encode_latents(self, images: torch.Tensor) -> torch.Tensor:
         """
@@ -416,6 +396,116 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
             predicted_x0 = predicted_x0.clamp(-1.0, 1.0)
         return predicted_x0
 
+    def maybe_log_reconstruction(
+        self,
+        images: torch.Tensor,
+        latents: torch.Tensor,
+        context: torch.Tensor | None,
+        concat_condition: torch.Tensor | None,
+        batch_idx: int,
+        prefix: str,
+    ) -> None:
+        """
+        Logs an occasional reconstruction diagnostic.
+
+        The diagnostic adds noise to the latents at a fixed timestep, predicts
+        the clean latents, decodes them with the autoencoder and compares them
+        with the original images. It is not part of the training objective and
+        is limited to ``reconstruction_max_batches`` batches.
+
+        Args:
+            images (torch.Tensor): original images.
+            latents (torch.Tensor): encoded latents.
+            context (torch.Tensor | None): conditioning context.
+            concat_condition (torch.Tensor | None): concatenated conditioning.
+            batch_idx (int): batch index.
+            prefix (str): prefix for the logged metrics.
+        """
+        if self.reconstruction_every_n_epochs <= 0:
+            return
+        if (
+            prefix == "val"
+            and self.current_epoch % self.reconstruction_every_n_epochs != 0
+        ):
+            return
+        if batch_idx >= self.reconstruction_max_batches:
+            return
+        with torch.no_grad():
+            timesteps = torch.full(
+                (latents.shape[0],),
+                min(self.reconstruction_timestep, self.noise_steps - 1),
+                device=latents.device,
+                dtype=torch.long,
+            )
+            noise = self.randn_like(latents)
+            noisy_latents = self.scheduler.add_noise(
+                original_samples=latents,
+                noise=noise,
+                timesteps=timesteps,
+            )
+            model_input = noisy_latents
+            if concat_condition is not None:
+                model_input = torch.cat(
+                    [noisy_latents, concat_condition], dim=1
+                )
+            prediction = self(
+                x=model_input, timesteps=timesteps, context=context
+            )
+            predicted_x0 = self.predict_x0(noisy_latents, timesteps, prediction)
+            reconstruction = self.decode_latents(predicted_x0)
+            loss_fn = (
+                F.l1_loss if self.reconstruction_loss == "l1" else F.mse_loss
+            )
+            reconstruction_loss = loss_fn(reconstruction, images)
+
+            if "ssim" not in self.reconstruction_metrics:
+                from generative.metrics import SSIMMetric
+
+                self.reconstruction_metrics["ssim"] = SSIMMetric(
+                    spatial_dims=images.ndim - 2,
+                    data_range=2.0,
+                    kernel_size=3,
+                )
+            ssim = self.reconstruction_metrics["ssim"](reconstruction, images)
+            self.log(
+                f"{prefix}_recon_loss",
+                reconstruction_loss,
+                on_step=False,
+                on_epoch=True,
+            )
+            self.log(
+                f"{prefix}_recon_ssim",
+                ssim,
+                on_step=False,
+                on_epoch=True,
+            )
+
+            if "lpips" not in self.reconstruction_metrics:
+                try:
+                    from generative.losses import PerceptualLoss
+
+                    self.reconstruction_metrics["lpips"] = PerceptualLoss(
+                        spatial_dims=images.ndim - 2,
+                        network_type="squeeze",
+                        fake_3d_ratio=0.5,
+                    ).to(images.device)
+                except Exception:
+                    self.reconstruction_metrics["lpips"] = None
+            if self.reconstruction_metrics["lpips"] is not None:
+                try:
+                    lpips = self.reconstruction_metrics["lpips"](
+                        reconstruction, images
+                    )
+                except Exception:
+                    self.reconstruction_metrics["lpips"] = None
+                else:
+                    self.log(
+                        f"{prefix}_recon_lpips",
+                        lpips,
+                        on_step=False,
+                        on_epoch=True,
+                    )
+
     def unpack_batch(
         self, batch: dict[str, torch.Tensor]
     ) -> tuple[torch.Tensor, torch.Tensor | None, torch.Tensor | None]:
@@ -491,16 +581,11 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
             torch.Tensor: loss value.
         """
         x, condition, concat_condition = self.unpack_batch(batch)
-        loss, recon_loss = self.step(
-            x,
-            context=condition,
-            concat_condition=concat_condition,
-            target_images=batch[self.image_key],
+        loss = self.step(
+            x, context=condition, concat_condition=concat_condition
         )
         self.log("loss", loss, on_step=True, prog_bar=True)
         self.log("latent_std", self.latent_std.item(), on_epoch=True)
-        if recon_loss is not None:
-            self.log("recon_loss", recon_loss, on_epoch=True)
         return loss
 
     def validation_step(self, batch: dict, batch_idx: int):
@@ -515,16 +600,19 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
             torch.Tensor: loss value.
         """
         x, condition, concat_condition = self.unpack_batch(batch)
-        loss, recon_loss = self.step(
+        self.maybe_log_reconstruction(
+            batch[self.image_key],
             x,
-            context=condition,
-            concat_condition=concat_condition,
-            target_images=batch[self.image_key],
+            condition,
+            concat_condition,
+            batch_idx,
+            "val",
+        )
+        loss = self.step(
+            x, context=condition, concat_condition=concat_condition
         )
         self.log("val_loss", loss, on_epoch=True, prog_bar=True)
         self.log("val_latent_std", self.latent_std.item(), on_epoch=True)
-        if recon_loss is not None:
-            self.log("val_recon_loss", recon_loss, on_epoch=True)
         return loss
 
     def test_step(self, batch: dict, batch_idx: int):
@@ -539,16 +627,19 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
             torch.Tensor: loss value.
         """
         x, condition, concat_condition = self.unpack_batch(batch)
-        loss, recon_loss = self.step(
+        self.maybe_log_reconstruction(
+            batch[self.image_key],
             x,
-            context=condition,
-            concat_condition=concat_condition,
-            target_images=batch[self.image_key],
+            condition,
+            concat_condition,
+            batch_idx,
+            "test",
+        )
+        loss = self.step(
+            x, context=condition, concat_condition=concat_condition
         )
         self.log("test_loss", loss, on_epoch=True)
         self.log("test_latent_std", self.latent_std.item(), on_epoch=True)
-        if recon_loss is not None:
-            self.log("test_recon_loss", recon_loss, on_epoch=True)
         return loss
 
     @property
@@ -575,6 +666,7 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
         uncondition_num_idx: int | list[int] | None = None,
         guidance_strength: float = 1.0,
         concat_condition: torch.Tensor = None,
+        generator: torch.Generator | None = None,
     ) -> torch.Tensor:
         """
         Generates an image using the learned diffusion model. Can be used for:
@@ -620,13 +712,22 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
                 concatenated along the channel dimension of the sampled image.
                 Can be combined with ``cat_condition``/``num_condition`` for
                 mixed conditioning. Defaults to None.
+            generator (torch.Generator | None, optional): generator used for
+                the initial noise and the reverse process. Defaults to None
+                (uses a generator seeded with the module seed).
 
         Returns:
             torch.Tensor: generated (or re-generated) sample.
         """
         if input_image is not None:
             input_image = self.encode_latents(input_image)
-        noise = torch.randn([n, self.out_channels, *size], device=self.device)
+        if generator is None:
+            generator = self._device_generator(self.device)
+        noise = torch.randn(
+            [n, self.out_channels, *size],
+            device=self.device,
+            generator=generator,
+        )
         if input_image is None:
             input_image = noise
         else:
@@ -678,6 +779,7 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
             unconditioning=uncondition,
             skip_steps=skip_steps,
             guidance_strength=guidance_strength,
+            generator=generator,
         )
         return self.decode_latents(sample)
 

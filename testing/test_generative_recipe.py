@@ -127,8 +127,6 @@ def diffusion_network():
         "attention_levels": (False, False),
         "with_conditioning": False,
         "cross_attention_dim": None,
-        "reconstruction_weight": 0.5,
-        "reconstruction_loss": "l1",
     }
     return get_generative_network(
         network_config=network_config,
@@ -148,12 +146,25 @@ def diffusion_network():
     )
 
 
-def test_reconstruction_loss_is_computed(diffusion_network):
-    x = torch.rand(2, 1, 16, 16)
-    loss, reconstruction_loss = diffusion_network.step(x, target_images=x)
-    assert torch.isfinite(loss)
-    assert reconstruction_loss is not None
-    assert torch.isfinite(reconstruction_loss)
+def test_generate_image_is_seeded(diffusion_network):
+    diffusion_network.eval()
+    diffusion_network.scheduler.prediction_type = (
+        DDPMPredictionType.V_PREDICTION
+    )
+    diffusion_network.scheduler.clip_sample = False
+    generator_1 = torch.Generator(device=diffusion_network.device)
+    generator_1.manual_seed(0)
+    output_1 = diffusion_network.generate_image(
+        size=[8, 8], n=1, generator=generator_1
+    )
+    generator_2 = torch.Generator(device=diffusion_network.device)
+    generator_2.manual_seed(0)
+    output_2 = diffusion_network.generate_image(
+        size=[8, 8], n=1, generator=generator_2
+    )
+    assert torch.isfinite(output_1).all()
+    assert list(output_1.shape) == [1, 1, 8, 8]
+    torch.testing.assert_close(output_1, output_2)
 
 
 def test_prediction_target_and_x0_roundtrip(diffusion_network):

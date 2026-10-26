@@ -458,7 +458,9 @@ def main(arguments):
             "latent_std_decay",
         ]:
             network_config.pop(key, None)
+        network_config.pop("reconstruction_weight", None)
         network_config["min_snr_gamma"] = min_snr_gamma
+        network_config["seed"] = args.seed
         if latent_std_decay is not None:
             network_config["latent_std_decay"] = latent_std_decay
 

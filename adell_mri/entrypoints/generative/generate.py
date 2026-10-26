@@ -256,12 +256,17 @@ def main(arguments):
 
     recipe_name = specs["recipe"] or ("ldm" if model_type == "ldm" else "ddpm")
     recipe = get_recipe(recipe_name)
-    if specs["recipe"] is None and specs["scheduler_config"] is not None:
-        scheduler_config = specs["scheduler_config"]
-        diffusion_steps = specs["diffusion_steps"] or args.diffusion_steps
-    else:
-        scheduler_config = dict(recipe.scheduler_config)
-        diffusion_steps = args.diffusion_steps or recipe.diffusion_steps
+    scheduler_config = {
+        **recipe.scheduler_config,
+        **(specs["scheduler_config"] or {}),
+    }
+    diffusion_steps = (
+        specs["diffusion_steps"]
+        or args.diffusion_steps
+        or recipe.diffusion_steps
+    )
+    network_config.pop("reconstruction_weight", None)
+    network_config["seed"] = args.seed
     network = get_generative_network(
         network_config=network_config,
         categorical_specification=categorical_specification,
