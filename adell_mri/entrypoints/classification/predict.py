@@ -76,6 +76,7 @@ def main(arguments):
                         "probability",
                         "logit",
                         "pre_bias",
+                        "features",
                     ],
                     "help": "Returns either the classification "
                     "probability, the logits or the pre-bias "
