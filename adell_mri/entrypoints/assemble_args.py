@@ -396,7 +396,7 @@ argument_factory = {
         default=5, type=int, help="Validation check frequency"
     ),
     "gradient_clip_val": dict(
-        default=0.0, type=float, help="Value for gradient clipping"
+        default=None, type=float, help="Value for gradient clipping"
     ),
     "accumulate_grad_batches": dict(
         default=1,
