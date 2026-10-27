@@ -7,10 +7,14 @@ import monai
 import numpy as np
 import SimpleITK as sitk
 import torch
-from tqdm import tqdm
 
 from adell_mri.entrypoints.assemble_args import Parser
+from adell_mri.entrypoints.generative.autoencoder import (
+    attach_autoencoder,
+    load_autoencoder,
+)
 from adell_mri.entrypoints.generative.train_3d import return_first_not_none
+from adell_mri.modules.diffusion.recipes import get_recipe
 from adell_mri.transform_factory import GenerationTransforms
 from adell_mri.utils.dataset import Dataset
 from adell_mri.utils.generic_utils import safe_collate
@@ -50,28 +54,104 @@ def image_to_sitk_array(image: torch.Tensor) -> np.ndarray:
     return image.permute(perm).numpy()
 
 
-def fetch_specifications(state_dict: dict[str, Any]):
+def build_autoencoder_from_specs(
+    specs: dict[str, Any], device: str | torch.device, logger: Any
+) -> torch.nn.Module:
+    """
+    Rebuilds the autoencoder stored in a latent diffusion checkpoint.
+
+    Args:
+        specs (dict[str, Any]): specifications read from the checkpoint.
+        device (str | torch.device): device where the autoencoder is placed.
+        logger (Any): python logger.
+
+    Returns:
+        torch.nn.Module: the autoencoder in evaluation mode.
+
+    Raises:
+        ValueError: if the checkpoint has no autoencoder configuration or
+            checkpoint.
+    """
+    if specs["ae_config"] is None:
+        raise ValueError(
+            "The checkpoint does not contain an autoencoder configuration"
+        )
+    checkpoint = specs["ae_checkpoint"]
+    if checkpoint is None:
+        raise ValueError(
+            "The checkpoint does not contain an autoencoder checkpoint"
+        )
+    return load_autoencoder(specs["ae_config"], checkpoint, device, logger)
+
+
+def resolve_generation_size(
+    model_type: str | None,
+    latent_shape: tuple[int, ...] | None,
+    image_shape: list[int] | tuple[int],
+) -> list[int]:
+    """
+    Returns the spatial size expected by the diffusion sampler.
+
+    Args:
+        model_type (str | None): type of generative model.
+        latent_shape (tuple[int, ...] | None): latent shape from the
+            checkpoint. Required for latent diffusion.
+        image_shape (list[int] | tuple[int]): spatial shape of the images.
+
+    Returns:
+        list[int]: spatial size for the sampler.
+
+    Raises:
+        ValueError: if latent diffusion is used without a latent shape.
+    """
+    if model_type == "ldm":
+        if latent_shape is None:
+            raise ValueError("The checkpoint does not contain the latent shape")
+        return list(latent_shape[1:])
+    return list(image_shape)
+
+
+def fetch_specifications(state_dict: dict[str, Any]) -> dict[str, Any]:
+    """
+    Reads network, conditioning and transform specifications from a
+    checkpoint.
+
+    Args:
+        state_dict (dict[str, Any]): loaded checkpoint.
+
+    Returns:
+        dict[str, Any]: checkpoint specifications.
+    """
     cbks = state_dict["callbacks"]
-    ckpt_cbk = cbks[[k for k in cbks if "ModelCheckpointWithMetadata" in k][0]]
+    ckpt_cbk = next(
+        value
+        for key, value in cbks.items()
+        if "ModelCheckpointWithMetadata" in key
+    )
     metadata = ckpt_cbk["metadata"]
-    cat_spec = None
-    num_spec = None
-    if "network_config" in metadata:
-        network_config = metadata["network_config"]
-    else:
-        network_config = None
-    if "categorical_specification" in metadata:
-        if metadata["categorical_specification"] is not None:
-            cat_spec = metadata["categorical_specification"]
-            cat_spec = [[str(v) for v in C] for C in cat_spec]
-    if "numerical_specification" in metadata:
-        if metadata["numerical_specification"] is not None:
-            num_spec = metadata["numerical_specification"]
+    network_config = metadata.get("network_config")
+    cat_spec = metadata.get("categorical_specification")
+    if cat_spec is not None:
+        cat_spec = [[str(v) for v in C] for C in cat_spec]
+    num_spec = metadata.get("numerical_specification")
     transform_args = metadata["transform_arguments"]
     if ("pre" in transform_args) and ("post" in transform_args):
         transform_args = transform_args["pre"] | transform_args["post"]
-    spacing = metadata["transform_arguments"]["target_spacing"]
-    return network_config, cat_spec, num_spec, spacing, transform_args
+    spacing = transform_args.get("target_spacing")
+    return {
+        "network_config": network_config,
+        "cat_spec": cat_spec,
+        "num_spec": num_spec,
+        "spacing": spacing,
+        "transform_args": transform_args,
+        "model_type": metadata.get("model_type"),
+        "ae_config": metadata.get("ae_config"),
+        "ae_checkpoint": metadata.get("ae_checkpoint"),
+        "latent_shape": metadata.get("latent_shape"),
+        "scheduler_config": metadata.get("scheduler_config"),
+        "diffusion_steps": metadata.get("diffusion_steps"),
+        "recipe": metadata.get("recipe"),
+    }
 
 
 def main(arguments):
@@ -98,7 +178,7 @@ def main(arguments):
             "target_spacing",
             "pad_size",
             "crop_size",
-            "config_file",
+            ("config_file", "config_file", {"required": False}),
             "overrides",
             "dev",
             "n_workers",
@@ -131,11 +211,21 @@ def main(arguments):
     n_devices = 1 if isinstance(devices, str) else n_devices
 
     specs = fetch_specifications(ckpt)
-    network_config = specs[0]
-    categorical_specification = specs[1]
-    numerical_specification = specs[2]
-    spacing = specs[3]
-    transform_args = specs[4]
+    network_config = specs["network_config"]
+    categorical_specification = specs["cat_spec"]
+    numerical_specification = specs["num_spec"]
+    spacing = specs["spacing"]
+    transform_args = specs["transform_args"]
+    model_type = specs["model_type"]
+    autoencoder = None
+    latent_shape = None
+    if model_type == "ldm":
+        autoencoder = build_autoencoder_from_specs(specs, args.dev, logger)
+        latent_shape = (
+            tuple(specs["latent_shape"])
+            if specs["latent_shape"] is not None
+            else None
+        )
 
     presence_keys = [*args.image_keys]
     with_conditioning = False
@@ -147,6 +237,11 @@ def main(arguments):
         with_conditioning = True
 
     if network_config is None:
+        if args.config_file is None:
+            raise ValueError(
+                "The checkpoint does not contain a network configuration; "
+                "use --config_file"
+            )
         network_config = compose(args.config_file, "diffusion", args.overrides)
         network_config["batch_size"] = return_first_not_none(
             args.batch_size, network_config.get("batch_size")
@@ -159,6 +254,19 @@ def main(arguments):
             256 if with_conditioning else None
         )
 
+    recipe_name = specs["recipe"] or ("ldm" if model_type == "ldm" else "ddpm")
+    recipe = get_recipe(recipe_name)
+    scheduler_config = {
+        **recipe.scheduler_config,
+        **(specs["scheduler_config"] or {}),
+    }
+    diffusion_steps = (
+        specs["diffusion_steps"]
+        or args.diffusion_steps
+        or recipe.diffusion_steps
+    )
+    network_config.pop("reconstruction_weight", None)
+    network_config["seed"] = args.seed
     network = get_generative_network(
         network_config=network_config,
         categorical_specification=categorical_specification,
@@ -167,12 +275,8 @@ def main(arguments):
         max_epochs=None,
         warmup_steps=None,
         start_decay=None,
-        diffusion_steps=args.diffusion_steps,
-        scheduler_config={
-            "schedule": "scaled_linear_beta",
-            "beta_start": 0.0005,
-            "beta_end": 0.0195,
-        },
+        diffusion_steps=diffusion_steps,
+        scheduler_config=scheduler_config,
         uncondition_proba=0.0,
         concat_condition_key=(
             "cat_conditioning"
@@ -182,13 +286,15 @@ def main(arguments):
         ),
     )
 
-    load_checkpoint_to_model(network, ckpt, [])
+    load_checkpoint_to_model(network, ckpt, [], prefer_ema=True)
 
     # PL needs a little hint to detect GPUs.
     torch.ones([1]).to("cuda" if "cuda" in args.dev else "cpu")
 
     if "cuda" in args.dev:
         network = network.to(args.dev)
+    if autoencoder is not None:
+        attach_autoencoder(network, autoencoder)
 
     cat_condition = None
     num_condition = None
@@ -257,7 +363,7 @@ def main(arguments):
         )
         dataloader = torch.utils.data.DataLoader(
             dataset,
-            batch_size=network_config["batch_size"],
+            batch_size=1,
             shuffle=False,
             num_workers=args.n_workers,
             pin_memory=True,
@@ -298,9 +404,12 @@ def main(arguments):
                 curr_num = torch.as_tensor(
                     curr_num, device=args.dev, dtype=inference_dtype
                 )
+            size = resolve_generation_size(
+                model_type, latent_shape, images.shape[2:]
+            )
             outputs = network.generate_image(
                 input_image=images.to(inference_dtype),
-                size=images.shape[2:],
+                size=size,
                 n=1,
                 skip_steps=args.skip_steps,
                 cat_condition=curr_cat,
@@ -319,27 +428,40 @@ def main(arguments):
                 images, output_paths, outputs
             ):
                 output = sitk.GetImageFromArray(image_to_sitk_array(output))
-                output.SetSpacing(spacing)
+                if spacing is not None:
+                    output.SetSpacing(spacing)
                 output.SetMetaData("checkpoint", args.checkpoint[0])
                 sitk.WriteImage(output, output_path, useCompression=True)
                 if args.keep_original:
                     image = sitk.GetImageFromArray(
                         image_to_sitk_array(image.detach().cpu())
                     )
-                    image.SetSpacing(spacing)
+                    if spacing is not None:
+                        image.SetSpacing(spacing)
                     image_path = output_path.replace("_gen.mha", "_orig.mha")
                     sitk.WriteImage(image, image_path, useCompression=True)
 
     elif args.n_samples_gen is not None:
-        size = return_first_not_none(args.crop_size, args.pad_size)
-        size = [int(i) for i in size]
+        image_shape = (
+            []
+            if model_type == "ldm"
+            else [
+                int(i)
+                for i in return_first_not_none(args.crop_size, args.pad_size)
+            ]
+        )
+        size = resolve_generation_size(model_type, latent_shape, image_shape)
         Path(args.output_path).mkdir(exist_ok=True, parents=True)
         logger.info("Generating %s samples", args.n_samples_gen)
-        cat_condition = [cat_condition[k] for k in args.cat_condition_keys]
-        num_condition = [num_condition[k] for k in args.num_condition_keys]
-        num_condition = torch.as_tensor(
-            [num_condition], device=args.dev, dtype=inference_dtype
-        )
+        cat_values = None
+        if args.cat_condition_keys is not None:
+            cat_values = [cat_condition[k] for k in args.cat_condition_keys]
+        num_values = None
+        if args.num_condition_keys is not None:
+            num_values = [num_condition[k] for k in args.num_condition_keys]
+            num_values = torch.as_tensor(
+                [num_values], device=args.dev, dtype=inference_dtype
+            )
         concat_condition = None
         n_cond_channels = network.in_channels - network.out_channels
         if n_cond_channels > 0:
@@ -355,13 +477,14 @@ def main(arguments):
                 size=size,
                 n=1,
                 skip_steps=0,
-                cat_condition=cat_condition,
-                num_condition=num_condition,
+                cat_condition=cat_values,
+                num_condition=num_values,
                 concat_condition=concat_condition,
             )
             output = image_to_sitk_array(output.detach().cpu()[0])
             output = sitk.GetImageFromArray(output)
-            output.SetSpacing(spacing)
+            if spacing is not None:
+                output.SetSpacing(spacing)
             output.SetMetaData("checkpoint", args.checkpoint[0])
             output_path = os.path.join(args.output_path, f"{i}.mha")
             sitk.WriteImage(output, output_path, useCompression=True)

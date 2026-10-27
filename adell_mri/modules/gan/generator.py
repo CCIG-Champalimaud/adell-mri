@@ -2104,6 +2104,7 @@ class Generator(torch.nn.Module):
             )
 
         self.in_channels = in_channels
+        self.spatial_dims = spatial_dims
         self.block_out_channels = num_channels
         self.out_channels = out_channels
         self.num_res_blocks = num_res_blocks
@@ -2245,6 +2246,16 @@ class Generator(torch.nn.Module):
         )
         self.out_activation = torch.nn.Tanh()
 
+    @property
+    def latent_downsample_factor(self) -> int:
+        """
+        Number of spatial downsampling stages applied by the encoder.
+
+        Returns:
+            int: downsampling factor, e.g. 3 for a factor of 8 per dimension.
+        """
+        return len(self.block_out_channels) - 1
+
     def get_class_embeddings(
         self, x: torch.Tensor, class_labels: torch.Tensor | None
     ) -> torch.Tensor:
@@ -2344,11 +2355,59 @@ class Generator(torch.nn.Module):
             h = h + mid_block_additional_residual
 
         # 5. up
+        h, out_features = self._decode_blocks(
+            h,
+            class_emb,
+            context,
+            down_block_res_samples=down_block_res_samples,
+        )
+
+        if return_features is True:
+            return h, out_features
+        return h
+
+    def _decode_blocks(
+        self,
+        h: torch.Tensor,
+        class_emb: torch.Tensor | None,
+        context: torch.Tensor | None,
+        down_block_res_samples: list[torch.Tensor] | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """
+        Runs the decoder half of the network.
+
+        Args:
+            h (torch.Tensor): bottleneck features.
+            class_emb (torch.Tensor | None): class embeddings.
+            context (torch.Tensor | None): context tensor for cross-attention.
+            down_block_res_samples (list[torch.Tensor] | None, optional):
+                skip connection tensors produced by the encoder. If
+                ``no_skip_connection`` is True these are ignored. Defaults to
+                None.
+
+        Returns:
+            tuple[torch.Tensor, torch.Tensor]: the output image and the output
+                features before the final layer.
+
+        Raises:
+            ValueError: if skip connections are required but not provided.
+        """
+        if down_block_res_samples is None:
+            if self.no_skip_connection is False:
+                raise ValueError(
+                    "skip connections are required to decode from a bottleneck"
+                )
+            down_block_res_samples = []
         for upsample_block in self.up_blocks:
-            res_samples = down_block_res_samples[-len(upsample_block.resnets) :]
-            down_block_res_samples = down_block_res_samples[
-                : -len(upsample_block.resnets)
-            ]
+            if len(down_block_res_samples) > 0:
+                res_samples = down_block_res_samples[
+                    -len(upsample_block.resnets) :
+                ]
+                down_block_res_samples = down_block_res_samples[
+                    : -len(upsample_block.resnets)
+                ]
+            else:
+                res_samples = None
             if self.no_skip_connection:
                 res_samples = None
             h = upsample_block(
@@ -2358,13 +2417,62 @@ class Generator(torch.nn.Module):
                 context=context,
             )
 
-        # 6. output block
         out_features = h
         h = self.out(h)
         h = self.out_activation(h)
+        return h, out_features
 
-        if return_features is True:
-            return h, out_features
+    def encode(
+        self,
+        x: torch.Tensor,
+        context: torch.Tensor | None = None,
+        class_labels: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        """
+        Encodes an input image into the bottleneck representation.
+
+        Args:
+            x (torch.Tensor): input tensor (N, C, SpatialDims).
+            context (torch.Tensor | None, optional): context tensor.
+            class_labels (torch.Tensor | None, optional): class labels.
+
+        Returns:
+            torch.Tensor: bottleneck features.
+        """
+        return self.forward_bottleneck(
+            x, context=context, class_labels=class_labels
+        )
+
+    def decode(
+        self,
+        h: torch.Tensor,
+        context: torch.Tensor | None = None,
+        class_labels: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        """
+        Decodes a bottleneck representation into an image.
+
+        Args:
+            h (torch.Tensor): bottleneck features.
+            context (torch.Tensor | None, optional): context tensor.
+            class_labels (torch.Tensor | None, optional): class labels.
+
+        Returns:
+            torch.Tensor: output image.
+
+        Raises:
+            ValueError: if ``no_skip_connection`` is False.
+        """
+        if self.no_skip_connection is False:
+            raise ValueError(
+                "decode is only available when no_skip_connection is True"
+            )
+        if context is not None and self.with_conditioning is False:
+            raise ValueError(
+                "model should have with_conditioning = True if context is provided"
+            )
+        class_emb = self.get_class_embeddings(h, class_labels)
+        h, _ = self._decode_blocks(h, class_emb, context)
         return h
 
     def forward_bottleneck(

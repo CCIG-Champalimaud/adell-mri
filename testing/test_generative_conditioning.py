@@ -220,7 +220,8 @@ def test_diffusionunetpl_crossattn_training_step():
     x = torch.randn([2, 1, 16, 16])
     context = torch.rand([2, 1, 16])
     # cross-attention conditioning on its own
-    assert torch.isfinite(model.step(x, context=context))
+    loss = model.step(x, context=context)
+    assert torch.isfinite(loss)
 
 
 def test_diffusionunetpl_mixed_conditioning_generate_image():

@@ -120,6 +120,12 @@ argument_factory = {
         help="Uses this fraction of training data as a validation set \
             during training",
     ),
+    "test_from_train": dict(
+        default=None,
+        type=float,
+        help="Uses this fraction of training data as a test set during \
+            training",
+    ),
     "use_val_as_train_val": dict(
         action="store_true",
         default=False,
@@ -740,8 +746,20 @@ argument_factory = {
     "model_type": dict(
         type=str,
         default=None,
-        choices=["diffusion", "gan"],
+        choices=["diffusion", "gan", "ae", "ldm"],
         help="Type of generative model to train",
+    ),
+    "ae_checkpoint_name": dict(
+        type=str,
+        default=None,
+        help="Autoencoder checkpoint name. Defaults to "
+        "{checkpoint_name}_ae.",
+    ),
+    "ae_max_epochs": dict(
+        type=int,
+        default=None,
+        help="Maximum number of epochs for autoencoder training. Defaults to "
+        "max_epochs.",
     ),
     "spatial_dims": dict(
         type=int,
@@ -750,7 +768,9 @@ argument_factory = {
     ),
     # diffusion-specific
     "diffusion_steps": dict(
-        type=int, default=1000, help="Number of diffusion steps"
+        type=int,
+        default=None,
+        help="Number of diffusion steps. Defaults to the recipe value.",
     ),
     "n_samples_gen": dict(
         type=int, default=1000, help="Number of samples to generate."

@@ -22,6 +22,7 @@ dependencies = [
     { name = "itk" },
     { name = "kiwisolver" },
     { name = "lightning" },
+    { name = "lpips" },
     { name = "monai" },
     { name = "multiprocess" },
     { name = "nibabel" },
@@ -41,6 +42,7 @@ dependencies = [
     { name = "simpleitk" },
     { name = "torch" },
     { name = "torchmetrics" },
+    { name = "torchvision" },
     { name = "tqdm" },
     { name = "urllib3" },
     { name = "wandb" },
@@ -70,6 +72,7 @@ requires-dist = [
     { name = "itk", specifier = ">=5.3.0" },
     { name = "kiwisolver", specifier = ">=1.4.7" },
     { name = "lightning", specifier = ">=2.1" },
+    { name = "lpips", specifier = ">=0.1.4" },
     { name = "monai", specifier = ">=1.5.2" },
     { name = "multiprocess", specifier = ">=0.70.13" },
     { name = "nibabel", specifier = ">=5.1.0" },
@@ -87,6 +90,7 @@ requires-dist = [
     { name = "simpleitk", specifier = ">=2.3.1" },
     { name = "torch", specifier = ">=2.8", index = "https://download.pytorch.org/whl/cu126" },
     { name = "torchmetrics", specifier = ">=1.6" },
+    { name = "torchvision", specifier = ">=0.29.1", index = "https://download.pytorch.org/whl/cu126" },
     { name = "tqdm", specifier = ">=4.66.3" },
     { name = "urllib3", specifier = ">=2.7.0" },
     { name = "wandb", specifier = ">=0.22.2" },
@@ -1567,6 +1571,24 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/f1/45/7fa8f56b17dc0f0a41ec70dd307ecd6787254483549843bef4c30ab5adce/lightning_utilities-0.15.3.tar.gz", hash = "sha256:792ae0204c79f6859721ac7f386c237a33b0ed06ba775009cb894e010a842033", size = 33553, upload-time = "2026-02-22T14:48:53.348Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/25/f4/ead6e0e37209b07c9baa3e984ccdb0348ca370b77cea3aaea8ddbb097e00/lightning_utilities-0.15.3-py3-none-any.whl", hash = "sha256:6c55f1bee70084a1cbeaa41ada96e4b3a0fea5909e844dd335bd80f5a73c5f91", size = 31906, upload-time = "2026-02-22T14:48:52.488Z" },
+]
+
+[[package]]
+name = "lpips"
+version = "0.1.4"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
+    { name = "numpy", version = "2.5.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+    { name = "scipy", version = "1.17.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
+    { name = "scipy", version = "1.18.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+    { name = "torch" },
+    { name = "torchvision" },
+    { name = "tqdm" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/e8/2d/4b8148d32f5bd461eb7d5daa54fcc998f86eaa709a57f4ef6aa4c62f024f/lpips-0.1.4.tar.gz", hash = "sha256:3846331df6c69688aec3d300a5eeef6c529435bc8460bd58201c3d62e56188fa", size = 18029, upload-time = "2021-08-25T22:10:32.803Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/9b/13/1df50c7925d9d2746702719f40e864f51ed66f307b20ad32392f1ad2bb87/lpips-0.1.4-py3-none-any.whl", hash = "sha256:fd537af5828b69d2e6ffc0a397bd506dbc28ca183543617690844c08e102ec5e", size = 53763, upload-time = "2021-08-25T22:10:31.257Z" },
 ]
 
 [[package]]
@@ -3256,6 +3278,25 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/18/88/9b0c5542ce845d153eaa7a7eb8e4fad34347b13b5997bf1d744d64410072/torchmetrics-1.6.0.tar.gz", hash = "sha256:aebba248708fb90def20cccba6f55bddd134a58de43fb22b0c5ca0f3a89fa984", size = 538824, upload-time = "2024-11-12T19:35:40.599Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/46/1a/9728a502f377ab8cff1fd15c625aa2919a183fa113ebcefa2cd38edff28b/torchmetrics-1.6.0-py3-none-any.whl", hash = "sha256:a508cdd87766cedaaf55a419812bf9f493aff8fffc02cc19df5a8e2e7ccb942a", size = 926379, upload-time = "2024-11-12T19:35:38.247Z" },
+]
+
+[[package]]
+name = "torchvision"
+version = "0.29.1+cu126"
+source = { registry = "https://download.pytorch.org/whl/cu126" }
+dependencies = [
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
+    { name = "numpy", version = "2.5.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+    { name = "pillow" },
+    { name = "torch" },
+]
+wheels = [
+    { url = "https://download-r2.pytorch.org/whl/cu126/torchvision-0.29.1%2Bcu126-cp311-cp311-manylinux_2_28_aarch64.whl", hash = "sha256:43a992fee7907929e978940a7ac0ea6d6aaaeb8246dc77754c587432a6396827", upload-time = "2026-09-30T15:46:21Z" },
+    { url = "https://download-r2.pytorch.org/whl/cu126/torchvision-0.29.1%2Bcu126-cp311-cp311-manylinux_2_28_x86_64.whl", hash = "sha256:c9e3cb4f609341d418d40a9bbae4280a029f9839d32f123f1c9bcc99aa003843", upload-time = "2026-09-30T15:46:21Z" },
+    { url = "https://download-r2.pytorch.org/whl/cu126/torchvision-0.29.1%2Bcu126-cp311-cp311-win_amd64.whl", hash = "sha256:a86b47b252cb4bc28ce2a9c680bf1096443e21235dc6a00578ac588bd7ab88ec", upload-time = "2026-09-30T15:46:21Z" },
+    { url = "https://download-r2.pytorch.org/whl/cu126/torchvision-0.29.1%2Bcu126-cp312-cp312-manylinux_2_28_aarch64.whl", hash = "sha256:00ec6517420091214edd608e40d82ff6c0357d1a24399dde27ed64ca3a66e022", upload-time = "2026-09-30T15:46:21Z" },
+    { url = "https://download-r2.pytorch.org/whl/cu126/torchvision-0.29.1%2Bcu126-cp312-cp312-manylinux_2_28_x86_64.whl", hash = "sha256:f846900988cbd64b055886c9ad7e7a44606c5710e8272921062c647f237eae34", upload-time = "2026-09-30T15:46:21Z" },
+    { url = "https://download-r2.pytorch.org/whl/cu126/torchvision-0.29.1%2Bcu126-cp312-cp312-win_amd64.whl", hash = "sha256:ab045bfb0ac014b80afb478190d14c6f7d3b57ade0d1fcd6ffc07414a0266b96", upload-time = "2026-09-30T15:46:21Z" },
 ]
 
 [[package]]

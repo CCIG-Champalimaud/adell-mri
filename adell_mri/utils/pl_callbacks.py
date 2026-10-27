@@ -689,8 +689,16 @@ class EMACallback(Callback):
     def on_save_checkpoint(self, trainer, pl_module, checkpoint):
         """
         Saves EMA weights.
+
+        Buffers (e.g. normalisation statistics or running estimates) are taken
+        from the live module because they are not part of the parameter
+        average.
         """
-        checkpoint["state_dict_ema"] = self.ema.state_dict()
+        ema_state = self.ema.state_dict()
+        for name, buffer in pl_module.named_buffers():
+            if name in ema_state:
+                ema_state[name] = buffer.detach().clone()
+        checkpoint["state_dict_ema"] = ema_state
 
     def on_load_checkpoint(self, trainer, pl_module, checkpoint):
         """

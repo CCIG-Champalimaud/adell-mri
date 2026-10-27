@@ -9,9 +9,11 @@ from typing import Callable, List
 import lightning.pytorch as pl
 import numpy as np
 import torch
+import torch.nn.functional as F
 from generative.inferers import DiffusionInferer
 from generative.networks.nets import DiffusionModelUNet
 from generative.networks.nets.diffusion_model_unet import AttentionBlock
+from generative.networks.schedulers.ddpm import DDPMPredictionType
 
 from adell_mri.constants import DEFAULT_SEED
 from adell_mri.modules.diffusion.embedder import Embedder
@@ -41,6 +43,12 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
         weight_decay: float = 0.0,
         seed: int = DEFAULT_SEED,
         optimizer_eps: float = OPTIMIZER_EPS_DEFAULT,
+        latent_std_decay: float = 0.99,
+        reconstruction_loss: str = "l1",
+        reconstruction_every_n_epochs: int = 0,
+        reconstruction_max_batches: int = 1,
+        reconstruction_timestep: int | None = None,
+        min_snr_gamma: float | None = None,
         *args,
         **kwargs,
     ):
@@ -64,11 +72,32 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
         self.seed = seed
         self.optimizer_eps = optimizer_eps
 
+        # Optional hooks for latent diffusion. When set, images are encoded
+        # before the diffusion process and samples are decoded afterwards.
+        self.input_encoder: Callable | None = None
+        self.output_decoder: Callable | None = None
+        self.latent_std_decay = latent_std_decay
+        if reconstruction_loss not in ["l1", "mse"]:
+            raise ValueError(
+                "reconstruction_loss must be either 'l1' or 'mse', got "
+                f"'{reconstruction_loss}'"
+            )
+        self.reconstruction_loss = reconstruction_loss
+        self.reconstruction_every_n_epochs = reconstruction_every_n_epochs
+        self.reconstruction_max_batches = reconstruction_max_batches
+        self.reconstruction_timestep = reconstruction_timestep
+        self.reconstruction_metrics: dict[str, Callable] = {}
+        self.min_snr_gamma = min_snr_gamma
+        self.register_buffer("latent_std", torch.ones(1))
+        self.register_buffer("latent_std_initialized", torch.zeros(1))
+
         self.g = torch.Generator()
         self.g.manual_seed(self.seed + get_global_rank())
         self._device_generators = {}
         self.rng = np.random.default_rng(self.seed + get_global_rank())
         self.noise_steps = self.scheduler.num_train_timesteps
+        if self.reconstruction_timestep is None:
+            self.reconstruction_timestep = max(1, self.noise_steps // 4)
         self.loss_fn = torch.nn.MSELoss()
 
         self._prune_unused_parameters()
@@ -89,20 +118,95 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
                     del module.proj_attn
 
     def calculate_loss(
-        self, prediction: torch.Tensor, epsilon: torch.Tensor
+        self,
+        prediction: torch.Tensor,
+        target: torch.Tensor,
+        weight: torch.Tensor | None = None,
     ) -> torch.Tensor:
         """
-        Calculates the loss between the predicted noise and the true noise.
+        Calculates the diffusion loss.
 
         Args:
-            prediction (torch.Tensor): The predicted noise.
-            epsilon (torch.Tensor): The true noise.
+            prediction (torch.Tensor): The model prediction.
+            target (torch.Tensor): The prediction target.
+            weight (torch.Tensor | None, optional): per-sample loss weights.
+                Defaults to None.
 
         Returns:
             torch.Tensor: The mean loss.
         """
-        loss = self.loss_fn(prediction, epsilon)
-        return loss.mean()
+        if weight is None:
+            return self.loss_fn(prediction, target).mean()
+        loss = F.mse_loss(prediction, target, reduction="none")
+        loss = loss.mean(dim=tuple(range(1, loss.ndim)))
+        return (loss * weight).mean()
+
+    def alpha_coefficients(
+        self, x: torch.Tensor, timesteps: torch.Tensor
+    ) -> torch.Tensor:
+        """
+        Returns the cumulative alpha coefficient for each sample.
+
+        Args:
+            x (torch.Tensor): tensor used to determine the number of dimensions.
+            timesteps (torch.Tensor): timesteps for each sample.
+
+        Returns:
+            torch.Tensor: coefficient with shape ``(batch, 1, ...)``.
+        """
+        alpha_prod = self.scheduler.alphas_cumprod.to(x.device)[timesteps]
+        return alpha_prod.view(-1, *([1] * (x.ndim - 1)))
+
+    def prediction_target(
+        self,
+        x_0: torch.Tensor,
+        timesteps: torch.Tensor,
+        noise: torch.Tensor,
+    ) -> torch.Tensor:
+        """
+        Returns the target corresponding to the scheduler prediction type.
+
+        Args:
+            x_0 (torch.Tensor): clean sample.
+            timesteps (torch.Tensor): timesteps for each sample.
+            noise (torch.Tensor): sampled noise.
+
+        Returns:
+            torch.Tensor: prediction target.
+        """
+        alpha_prod = self.alpha_coefficients(x_0, timesteps)
+        if self.scheduler.prediction_type == DDPMPredictionType.SAMPLE:
+            return x_0
+        if self.scheduler.prediction_type == DDPMPredictionType.V_PREDICTION:
+            return alpha_prod.sqrt() * noise - (1.0 - alpha_prod).sqrt() * x_0
+        return noise
+
+    def min_snr_weight(
+        self, x: torch.Tensor, timesteps: torch.Tensor
+    ) -> torch.Tensor | None:
+        """
+        Returns the Min-SNR loss weights for the scheduler prediction type.
+
+        Args:
+            x (torch.Tensor): tensor used to determine the number of dimensions.
+            timesteps (torch.Tensor): timesteps for each sample.
+
+        Returns:
+            torch.Tensor | None: per-sample weights, or None when Min-SNR is
+                disabled.
+        """
+        if self.min_snr_gamma is None:
+            return None
+        alpha_prod = self.alpha_coefficients(x, timesteps)
+        snr = alpha_prod / (1.0 - alpha_prod).clamp_min(1e-8)
+        clipped = torch.clamp(snr, max=self.min_snr_gamma)
+        if self.scheduler.prediction_type == DDPMPredictionType.SAMPLE:
+            weight = clipped
+        elif self.scheduler.prediction_type == DDPMPredictionType.V_PREDICTION:
+            weight = clipped / (snr + 1.0)
+        else:
+            weight = clipped / snr
+        return weight.view(-1)
 
     def _device_generator(self, device: torch.device) -> torch.Generator:
         """
@@ -187,10 +291,9 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
                 Defaults to None.
 
         Returns:
-            torch.Tensor: The mean loss for the current step.
-
+            torch.Tensor: the diffusion loss.
         """
-        epsilon = self.randn_like(x)
+        noise = self.randn_like(x)
         if timesteps is None:
             timesteps = self.timesteps_like(x)
         else:
@@ -198,15 +301,210 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
         inferer_kwargs = {
             "inputs": x,
             "diffusion_model": self,
-            "noise": epsilon,
+            "noise": noise,
             "timesteps": timesteps,
             "condition": context,
         }
         if concat_condition is not None:
             inferer_kwargs["concat_condition"] = concat_condition
-        epsilon_pred = self.inferer(**inferer_kwargs)
-        loss = self.calculate_loss(epsilon_pred, epsilon)
-        return loss
+        prediction = self.inferer(**inferer_kwargs)
+        target = self.prediction_target(x, timesteps, noise)
+        weight = self.min_snr_weight(x, timesteps)
+        return self.calculate_loss(prediction, target, weight=weight)
+
+    def encode_latents(self, images: torch.Tensor) -> torch.Tensor:
+        """
+        Encodes images with the optional encoder and applies the latent scale.
+
+        Args:
+            images (torch.Tensor): input images.
+
+        Returns:
+            torch.Tensor: latents (or the input images if no encoder is set).
+        """
+        if self.input_encoder is None:
+            return images
+        with torch.no_grad():
+            latents = self.input_encoder(images)
+        if self.training:
+            self.update_latent_std(latents)
+        return latents / self.latent_std
+
+    def decode_latents(self, latents: torch.Tensor) -> torch.Tensor:
+        """
+        Rescales latents and decodes them with the optional decoder.
+
+        Args:
+            latents (torch.Tensor): latent samples.
+
+        Returns:
+            torch.Tensor: images (or the input latents if no decoder is set).
+        """
+        if self.output_decoder is None:
+            return latents
+        return self.output_decoder(latents * self.latent_std)
+
+    @torch.no_grad()
+    def update_latent_std(self, latents: torch.Tensor) -> None:
+        """
+        Updates the exponential moving average of the latent standard
+        deviation.
+
+        The first batch initialises the estimate; subsequent batches update it
+        with ``latent_std_decay``.
+
+        Args:
+            latents (torch.Tensor): latents produced by the encoder.
+        """
+        std = latents.float().std(unbiased=False).clamp_min(1e-6)
+        if self.latent_std_initialized.item() == 0:
+            self.latent_std.fill_(std)
+            self.latent_std_initialized.fill_(1.0)
+        else:
+            self.latent_std.mul_(self.latent_std_decay).add_(
+                std, alpha=1.0 - self.latent_std_decay
+            )
+
+    def predict_x0(
+        self,
+        x: torch.Tensor,
+        timesteps: torch.Tensor,
+        model_output: torch.Tensor,
+    ) -> torch.Tensor:
+        """
+        Predicts the clean sample from the model output.
+
+        Args:
+            x (torch.Tensor): current noisy sample.
+            timesteps (torch.Tensor): timesteps for each sample.
+            model_output (torch.Tensor): model prediction.
+
+        Returns:
+            torch.Tensor: predicted clean sample.
+        """
+        alpha_prod = self.scheduler.alphas_cumprod.to(x.device)[timesteps]
+        shape = (-1, *([1] * (x.ndim - 1)))
+        sqrt_alpha = alpha_prod.sqrt().view(shape)
+        sqrt_one_minus = (1.0 - alpha_prod).sqrt().view(shape)
+        if self.scheduler.prediction_type == DDPMPredictionType.SAMPLE:
+            predicted_x0 = model_output
+        elif self.scheduler.prediction_type == DDPMPredictionType.V_PREDICTION:
+            predicted_x0 = sqrt_alpha * x - sqrt_one_minus * model_output
+        else:
+            predicted_x0 = (x - sqrt_one_minus * model_output) / sqrt_alpha
+        if self.scheduler.clip_sample:
+            predicted_x0 = predicted_x0.clamp(-1.0, 1.0)
+        return predicted_x0
+
+    def maybe_log_reconstruction(
+        self,
+        images: torch.Tensor,
+        latents: torch.Tensor,
+        context: torch.Tensor | None,
+        concat_condition: torch.Tensor | None,
+        batch_idx: int,
+        prefix: str,
+    ) -> None:
+        """
+        Logs an occasional reconstruction diagnostic.
+
+        The diagnostic adds noise to the latents at a fixed timestep, predicts
+        the clean latents, decodes them with the autoencoder and compares them
+        with the original images. It is not part of the training objective and
+        is limited to ``reconstruction_max_batches`` batches.
+
+        Args:
+            images (torch.Tensor): original images.
+            latents (torch.Tensor): encoded latents.
+            context (torch.Tensor | None): conditioning context.
+            concat_condition (torch.Tensor | None): concatenated conditioning.
+            batch_idx (int): batch index.
+            prefix (str): prefix for the logged metrics.
+        """
+        if self.reconstruction_every_n_epochs <= 0:
+            return
+        if (
+            prefix == "val"
+            and self.current_epoch % self.reconstruction_every_n_epochs != 0
+        ):
+            return
+        if batch_idx >= self.reconstruction_max_batches:
+            return
+        with torch.no_grad():
+            timesteps = torch.full(
+                (latents.shape[0],),
+                min(self.reconstruction_timestep, self.noise_steps - 1),
+                device=latents.device,
+                dtype=torch.long,
+            )
+            noise = self.randn_like(latents)
+            noisy_latents = self.scheduler.add_noise(
+                original_samples=latents,
+                noise=noise,
+                timesteps=timesteps,
+            )
+            model_input = noisy_latents
+            if concat_condition is not None:
+                model_input = torch.cat(
+                    [noisy_latents, concat_condition], dim=1
+                )
+            prediction = self(
+                x=model_input, timesteps=timesteps, context=context
+            )
+            predicted_x0 = self.predict_x0(noisy_latents, timesteps, prediction)
+            reconstruction = self.decode_latents(predicted_x0)
+            loss_fn = (
+                F.l1_loss if self.reconstruction_loss == "l1" else F.mse_loss
+            )
+            reconstruction_loss = loss_fn(reconstruction, images)
+
+            if "ssim" not in self.reconstruction_metrics:
+                from generative.metrics import SSIMMetric
+
+                self.reconstruction_metrics["ssim"] = SSIMMetric(
+                    spatial_dims=images.ndim - 2,
+                    data_range=2.0,
+                    kernel_size=3,
+                )
+            ssim = self.reconstruction_metrics["ssim"](reconstruction, images)
+            self.log(
+                f"{prefix}_recon_loss",
+                reconstruction_loss,
+                on_step=False,
+                on_epoch=True,
+            )
+            self.log(
+                f"{prefix}_recon_ssim",
+                ssim,
+                on_step=False,
+                on_epoch=True,
+            )
+
+            if "lpips" not in self.reconstruction_metrics:
+                try:
+                    from generative.losses import PerceptualLoss
+
+                    self.reconstruction_metrics["lpips"] = PerceptualLoss(
+                        spatial_dims=images.ndim - 2,
+                        network_type="squeeze",
+                        fake_3d_ratio=0.5,
+                    ).to(images.device)
+                except Exception:
+                    self.reconstruction_metrics["lpips"] = None
+            if self.reconstruction_metrics["lpips"] is not None:
+                try:
+                    lpips = self.reconstruction_metrics["lpips"](
+                        reconstruction, images
+                    )
+                except Exception:
+                    self.reconstruction_metrics["lpips"] = None
+                else:
+                    self.log(
+                        f"{prefix}_recon_lpips",
+                        lpips,
+                        on_step=False,
+                        on_epoch=True,
+                    )
 
     def unpack_batch(
         self, batch: dict[str, torch.Tensor]
@@ -226,7 +524,7 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
                 image, embedded condition (if provided) and concatenated
                 conditioning channels (if provided).
         """
-        x = batch[self.image_key]
+        x = self.encode_latents(batch[self.image_key])
         concat_condition = None
         if self.concat_condition_key is not None:
             concat_condition = batch[self.concat_condition_key]
@@ -287,6 +585,7 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
             x, context=condition, concat_condition=concat_condition
         )
         self.log("loss", loss, on_step=True, prog_bar=True)
+        self.log("latent_std", self.latent_std.item(), on_epoch=True)
         return loss
 
     def validation_step(self, batch: dict, batch_idx: int):
@@ -301,10 +600,19 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
             torch.Tensor: loss value.
         """
         x, condition, concat_condition = self.unpack_batch(batch)
+        self.maybe_log_reconstruction(
+            batch[self.image_key],
+            x,
+            condition,
+            concat_condition,
+            batch_idx,
+            "val",
+        )
         loss = self.step(
             x, context=condition, concat_condition=concat_condition
         )
         self.log("val_loss", loss, on_epoch=True, prog_bar=True)
+        self.log("val_latent_std", self.latent_std.item(), on_epoch=True)
         return loss
 
     def test_step(self, batch: dict, batch_idx: int):
@@ -319,10 +627,19 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
             torch.Tensor: loss value.
         """
         x, condition, concat_condition = self.unpack_batch(batch)
+        self.maybe_log_reconstruction(
+            batch[self.image_key],
+            x,
+            condition,
+            concat_condition,
+            batch_idx,
+            "test",
+        )
         loss = self.step(
             x, context=condition, concat_condition=concat_condition
         )
-        self.log("test_loss", loss)
+        self.log("test_loss", loss, on_epoch=True)
+        self.log("test_latent_std", self.latent_std.item(), on_epoch=True)
         return loss
 
     @property
@@ -349,6 +666,7 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
         uncondition_num_idx: int | list[int] | None = None,
         guidance_strength: float = 1.0,
         concat_condition: torch.Tensor = None,
+        generator: torch.Generator | None = None,
     ) -> torch.Tensor:
         """
         Generates an image using the learned diffusion model. Can be used for:
@@ -394,11 +712,22 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
                 concatenated along the channel dimension of the sampled image.
                 Can be combined with ``cat_condition``/``num_condition`` for
                 mixed conditioning. Defaults to None.
+            generator (torch.Generator | None, optional): generator used for
+                the initial noise and the reverse process. Defaults to None
+                (uses a generator seeded with the module seed).
 
         Returns:
             torch.Tensor: generated (or re-generated) sample.
         """
-        noise = torch.randn([n, self.out_channels, *size], device=self.device)
+        if input_image is not None:
+            input_image = self.encode_latents(input_image)
+        if generator is None:
+            generator = self._device_generator(self.device)
+        noise = torch.randn(
+            [n, self.out_channels, *size],
+            device=self.device,
+            generator=generator,
+        )
         if input_image is None:
             input_image = noise
         else:
@@ -450,9 +779,9 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
             unconditioning=uncondition,
             skip_steps=skip_steps,
             guidance_strength=guidance_strength,
+            generator=generator,
         )
-
-        return sample
+        return self.decode_latents(sample)
 
     def train_dataloader(self) -> torch.utils.data.DataLoader:
         """

@@ -239,3 +239,85 @@ def parse_config_gan(
             network_config[k] = kwargs[k]
 
     return network_config, generator_config, discriminator_config
+
+
+def parse_config_ae(
+    config_file: str | dict[str, Any],
+    target_keys: list[str],
+    spatial_dims: int | None = None,
+    **kwargs,
+) -> dict[str, Any]:
+    """
+    Parses an autoencoder configuration file.
+
+    The configuration file is expected to contain a ``model`` section with the
+    keyword arguments for :class:`adell_mri.modules.gan.ae.AutoEncoder` or
+    :class:`adell_mri.modules.gan.vae.VariationalAutoEncoder`, an optional
+    ``losses`` section with the loss weights and reconstruction loss, an
+    optional ``discriminator`` section with the keyword arguments for the patch
+    discriminator and an optional ``optimizer`` section.
+
+    Args:
+        config_file (str | dict[str, Any]): path to the YAML configuration
+            file or an already loaded configuration dictionary. If the
+            dictionary has an ``ae`` section and no ``model`` section, the
+            ``ae`` section is used.
+        target_keys (list[str]): keys corresponding to the target images. The
+            number of keys determines the number of input and output channels.
+        spatial_dims (int | None, optional): number of spatial dimensions. If
+            None, the value in the ``model`` section is used. Defaults to None.
+        **kwargs: values that override the corresponding entries in the parsed
+            configuration.
+
+    Returns:
+        dict[str, Any]: parsed configuration with the ``model``,
+            ``is_variational``, ``loss_weights``, ``rec_loss``,
+            ``perceptual_kwargs``, ``discriminator``, ``optimizer``,
+            ``batch_size`` and ``spatial_dims`` keys.
+
+    Raises:
+        ValueError: if the ``model`` section is missing.
+    """
+    if isinstance(config_file, str):
+        config = _load_yaml(config_file)
+    else:
+        config = dict(config_file)
+    if "ae" in config and "model" not in config:
+        config = dict(config["ae"])
+    model_config = config.get("model")
+    if model_config is None:
+        raise ValueError(
+            f"Configuration file {config_file} is missing a 'model' section"
+        )
+    model_config = dict(model_config)
+
+    if spatial_dims is None:
+        spatial_dims = model_config.get("spatial_dims", 3)
+    model_config["spatial_dims"] = spatial_dims
+    model_config["in_channels"] = len(target_keys)
+    model_config["out_channels"] = len(target_keys)
+
+    is_variational = model_config.pop("is_variational", False)
+
+    losses = dict(config.get("losses") or {})
+    loss_weights = dict(losses.get("weights") or {})
+    rec_loss = losses.get("rec_loss", "mse")
+    perceptual_kwargs = losses.get("perceptual_kwargs")
+    if perceptual_kwargs is not None:
+        perceptual_kwargs = dict(perceptual_kwargs)
+
+    parsed = {
+        "model": model_config,
+        "is_variational": is_variational,
+        "loss_weights": loss_weights,
+        "rec_loss": rec_loss,
+        "perceptual_kwargs": perceptual_kwargs,
+        "discriminator": config.get("discriminator"),
+        "optimizer": dict(config.get("optimizer") or {}),
+        "batch_size": config.get("batch_size", 1),
+        "spatial_dims": spatial_dims,
+    }
+    for key in kwargs:
+        if kwargs[key] is not None:
+            parsed[key] = kwargs[key]
+    return parsed

@@ -264,6 +264,7 @@ class DiffusionInfererSkipSteps(DiffusionInferer):
         concat_condition: torch.Tensor | None = None,
         unconditioning: torch.Tensor | None = None,
         guidance_strength: float | None = None,
+        generator: torch.Generator | None = None,
         verbose: bool = True,
     ) -> torch.Tensor | tuple[torch.Tensor, list[torch.Tensor]]:
         """
@@ -334,7 +335,9 @@ class DiffusionInfererSkipSteps(DiffusionInferer):
                     buffers=buffers,
                 )
                 # 2. compute previous image: x_t -> x_t-1
-                image, _ = scheduler.step(model_output, t, image)
+                image, _ = scheduler.step(
+                    model_output, t, image, generator=generator
+                )
                 if save_intermediates and t % intermediate_steps == 0:
                     intermediates.append(image)
         if save_intermediates:
@@ -353,6 +356,7 @@ class DiffusionInfererSkipSteps(DiffusionInferer):
         concat_condition: torch.Tensor | None = None,
         unconditioning: torch.Tensor | None = None,
         guidance_strength: float | None = None,
+        generator: torch.Generator | None = None,
         verbose: bool = True,
         tqdm_fn: Callable = tqdm,
     ) -> Iterator[torch.Tensor]:
@@ -419,5 +423,7 @@ class DiffusionInfererSkipSteps(DiffusionInferer):
                 buffers=buffers,
             )
             # 2. compute previous image: x_t -> x_t-1
-            image, _ = scheduler.step(model_output, t, image)
+            image, _ = scheduler.step(
+                model_output, t, image, generator=generator
+            )
             yield image
