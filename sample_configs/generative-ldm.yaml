@@ -23,7 +23,7 @@ ae:
       network_type: squeeze
       fake_3d_ratio: 0.5
   discriminator:
-    num_channels: 64
+    channels: 64
     num_layers_d: 3
   optimizer:
     learning_rate: 5.0e-5
