@@ -419,7 +419,11 @@ def main(arguments):
         precision=precision,
         accumulate_grad_batches=args.accumulate_grad_batches,
         gradient_clip_val=args.gradient_clip_val,
-        limit_train_batches=len(train_loader) // n_devices,
+        limit_train_batches=(
+            args.steps_per_epoch
+            if args.steps_per_epoch is not None
+            else len(train_loader) // n_devices
+        ),
         limit_val_batches=len(val_loader) // n_devices,
     )
 

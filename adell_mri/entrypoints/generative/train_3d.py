@@ -1,4 +1,5 @@
 import ast
+import os
 import sys
 
 import monai
@@ -30,6 +31,7 @@ from adell_mri.utils.pl_callbacks import (
     EMACallback,
     LogImageFromDiffusionProcess,
     LogImageFromGAN,
+    SetSamplerEpoch,
     SpectralNorm,
 )
 from adell_mri.utils.pl_utils import get_ckpt_callback, get_devices, get_logger
@@ -38,6 +40,7 @@ from adell_mri.utils.samplers import DistributedRandomSampler
 from adell_mri.utils.torch_utils import (
     conditional_parameter_freezing,
     get_generator_and_rng,
+    get_global_rank,
     load_checkpoint_to_model,
 )
 
@@ -541,7 +544,7 @@ def main(arguments):
     bs = network_config["batch_size"]
     real_bs = bs * n_devices
     if len(train_dataset) < real_bs:
-        new_bs = len(train_dataset) // n_devices
+        new_bs = max(1, len(train_dataset) // n_devices)
         logger.info(
             "Batch size changed from %s to %s (dataset too small)",
             bs,
@@ -549,28 +552,25 @@ def main(arguments):
         )
         bs = new_bs
         real_bs = bs * n_devices
+    steps_per_epoch = args.steps_per_epoch or max(
+        1, len(train_dataset) // real_bs
+    )
 
     def train_loader_call(batch_size):
-        steps_per_epoch = args.steps_per_epoch or max(
-            1, len(train_dataset) // real_bs
-        )
-        num_samples = steps_per_epoch * real_bs
-        if n_devices == 1:
-            num_samples = min(num_samples, len(train_dataset))
+        num_samples = steps_per_epoch * batch_size
         if n_devices > 1:
             sampler = DistributedRandomSampler(
                 train_dataset,
-                # this gets divided by num_replicas (as expected), so if we want
-                # to keep the same number of steps we have to multiply it again
-                # by n_devices
                 num_samples=num_samples * n_devices,
                 num_replicas=n_devices,
+                rank=get_global_rank(),
+                replacement=(num_samples * n_devices) > len(train_dataset),
                 seed=args.seed,
             )
         else:
             sampler = torch.utils.data.RandomSampler(
                 train_dataset,
-                replacement=False,
+                replacement=num_samples > len(train_dataset),
                 num_samples=num_samples,
                 generator=g,
             )
@@ -622,7 +622,7 @@ def main(arguments):
             numerical_moments=(means, stds),
             input_image_key=input_image_key,
             max_epochs=args.max_epochs,
-            steps_per_epoch=args.steps_per_epoch or 1,
+            steps_per_epoch=steps_per_epoch,
             pct_start=args.warmup_steps,
             optimizer_eps=optimizer_eps_from_precision(args.precision),
         )
@@ -670,6 +670,7 @@ def main(arguments):
         callbacks.append(
             EMACallback(decay=args.ema_decay, use_ema_weights=True)
         )
+    callbacks.append(SetSamplerEpoch())
 
     pl_logger = get_logger(
         summary_name=args.summary_name,
@@ -720,6 +721,8 @@ def main(arguments):
         check_val_every_n_epoch=args.check_val_every_n_epoch,
         precision=args.precision,
         deterministic="warn",
+        limit_train_batches=steps_per_epoch,
+        use_distributed_sampler=False,
     )
 
     trainer.fit(network, train_loader, val_loader, ckpt_path=ckpt_path)
@@ -727,7 +730,7 @@ def main(arguments):
     # assessing performance on validation set
     logger.info("Validating...")
 
-    if ckpt is True:
+    if ckpt is True and not torch.distributed.is_initialized():
         ckpt_list = ["last", "best"]
     else:
         ckpt_list = ["last"]

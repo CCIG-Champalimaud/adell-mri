@@ -310,7 +310,12 @@ def main(arguments):
 
     n_devices = len(devices) if isinstance(devices, list) else 1
     agb = args.accumulate_grad_batches
-    steps_per_epoch = len(train_loader) // agb // n_devices
+    steps_per_epoch = (
+        args.steps_per_epoch
+        if args.steps_per_epoch is not None
+        else len(train_loader) // n_devices
+    )
+    steps_per_epoch_optim = max(1, steps_per_epoch // agb)
 
     if args.model_type == "gan":
         model = get_gan_network(
@@ -323,7 +328,7 @@ def main(arguments):
             numerical_moments=(means, stds),
             input_image_key=input_image_key,
             max_epochs=args.max_epochs,
-            steps_per_epoch=steps_per_epoch,
+            steps_per_epoch=steps_per_epoch_optim,
             pct_start=args.warmup_steps,
             optimizer_eps=optimizer_eps_from_precision(args.precision),
         )
@@ -446,7 +451,7 @@ def main(arguments):
         check_val_every_n_epoch=args.check_val_every_n_epoch,
         accumulate_grad_batches=args.accumulate_grad_batches,
         gradient_clip_val=args.gradient_clip_val,
-        limit_train_batches=len(train_loader) // n_devices,
+        limit_train_batches=steps_per_epoch,
         limit_val_batches=len(val_loader) // n_devices,
     )
 

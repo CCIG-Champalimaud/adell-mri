@@ -16,7 +16,22 @@ from adell_mri.modules.diffusion.recipes import (
     get_recipe,
 )
 from adell_mri.utils.network_factories import get_generative_network
+from adell_mri.utils.samplers import DistributedRandomSampler
 from adell_mri.utils.torch_utils import load_checkpoint_to_model
+
+
+def test_distributed_sampler_yields_requested_steps():
+    dataset = list(range(10))
+    sampler = DistributedRandomSampler(
+        dataset,
+        num_samples=20,
+        num_replicas=2,
+        rank=0,
+        replacement=True,
+        seed=0,
+    )
+    assert len(list(sampler)) == 10
+    assert len(sampler) == 10
 
 
 def test_autoencoder_checkpoint_name_resolution():

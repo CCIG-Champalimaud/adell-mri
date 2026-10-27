@@ -138,8 +138,9 @@ class DistributedRandomSampler(torch.utils.data.Sampler):
         self.total_size = self.num_samples * self.num_replicas
 
     def __iter__(self):
+        rank = dist.get_rank() if dist.is_initialized() else self.rank
         g = torch.Generator()
-        g.manual_seed(self.seed + self.epoch + self.rank)
+        g.manual_seed(self.seed + self.epoch + rank)
 
         base_sampler = torch.utils.data.RandomSampler(
             self.dataset,
@@ -157,7 +158,7 @@ class DistributedRandomSampler(torch.utils.data.Sampler):
                 :padding_size
             ]
 
-        indices = indices[self.rank : self.total_size : self.num_replicas]
+        indices = indices[rank : self.total_size : self.num_replicas]
         return iter(indices)
 
     def __len__(self):

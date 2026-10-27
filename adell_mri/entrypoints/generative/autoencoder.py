@@ -15,9 +15,28 @@ from adell_mri.modules.gan.pl.ae import AutoEncoderPL, VariationalAutoEncoderPL
 from adell_mri.utils.generic_utils import safe_collate
 from adell_mri.utils.pl_callbacks import EMACallback
 from adell_mri.utils.pl_utils import get_ckpt_callback
-from adell_mri.utils.torch_utils import load_checkpoint_to_model
+from adell_mri.utils.torch_utils import (
+    get_global_rank,
+    load_checkpoint_to_model,
+)
 
 AUTOENCODER_SUFFIX = "_ae"
+
+
+def resolve_device(device: str) -> str | torch.device:
+    """
+    Resolves a multi-GPU device string to the current process device.
+
+    Args:
+        device (str): device string, e.g. ``cuda:0,1`` or ``cpu``.
+
+    Returns:
+        str | torch.device: device for the current process.
+    """
+    if isinstance(device, str) and "," in device and "cuda" in device:
+        local_rank = int(os.environ.get("LOCAL_RANK", get_global_rank()))
+        return torch.device("cuda", local_rank)
+    return device
 
 
 def build_autoencoder(parsed_config: dict[str, Any]) -> torch.nn.Module:
@@ -313,6 +332,7 @@ def ensure_autoencoder(
     ae_checkpoint_name = resolve_autoencoder_checkpoint_name(
         checkpoint_name, args.ae_checkpoint_name
     )
+    device = resolve_device(args.dev)
     max_epochs = args.ae_max_epochs or args.max_epochs
     ckpt_callback, ckpt_path, status = get_ckpt_callback(
         checkpoint_dir=checkpoint_dir,
@@ -337,7 +357,7 @@ def ensure_autoencoder(
                 "use a different --checkpoint_name."
             )
         autoencoder = load_autoencoder(
-            parsed_config, last_checkpoint, args.dev, logger
+            parsed_config, last_checkpoint, device, logger
         )
         return autoencoder, last_checkpoint, False
 
@@ -401,13 +421,13 @@ def ensure_autoencoder(
 
     if os.path.exists(last_checkpoint) is True:
         autoencoder = load_autoencoder(
-            parsed_config, last_checkpoint, args.dev, logger
+            parsed_config, last_checkpoint, device, logger
         )
         test_metrics = trainer.test(autoencoder, test_loader)[0]
         for key, value in test_metrics.items():
             if isinstance(value, torch.Tensor):
                 value = value.detach().cpu().item()
             output_file.write(f"ae_{key},{value}\n")
-    autoencoder = autoencoder.to(args.dev)
+    autoencoder = autoencoder.to(device)
     autoencoder.eval()
     return autoencoder, last_checkpoint, True

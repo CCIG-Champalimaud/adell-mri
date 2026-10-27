@@ -610,6 +610,32 @@ class ModelCheckpointWithMetadata(ModelCheckpoint):
             self._remove_checkpoint(trainer, previous)
 
 
+class SetSamplerEpoch(Callback):
+    """
+    Updates a sampler's epoch before each training epoch.
+
+    Lightning only does this automatically for its own distributed samplers;
+    this callback handles custom samplers which expose ``set_epoch``.
+    """
+
+    def on_train_epoch_start(
+        self, trainer: Trainer, pl_module: LightningModule
+    ) -> None:
+        """
+        Sets the epoch on the training dataloader sampler.
+
+        Args:
+            trainer (Trainer): lightning trainer.
+            pl_module (LightningModule): lightning module.
+        """
+        dataloader = trainer.train_dataloader
+        if isinstance(dataloader, (list, tuple)):
+            dataloader = dataloader[0]
+        sampler = getattr(dataloader, "sampler", None)
+        if sampler is not None and hasattr(sampler, "set_epoch"):
+            sampler.set_epoch(trainer.current_epoch)
+
+
 class EMACallback(Callback):
     """
     Model Exponential Moving Average. Empirically it has been found that using
