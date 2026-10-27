@@ -32,7 +32,6 @@ dependencies = [
     "torchmetrics>=1.6",
     "torch>=2.8",
     "tqdm>=4.66.3",
-    "generative",
     "cycler>=0.12.1",
     "kiwisolver>=1.4.7",
     "pre-commit>=4.3.0",
@@ -74,4 +73,3 @@ workflow = [
 [tool.uv.sources]
 torch = { index = "pytorch-cu1206" }
 torchvision = { index = "pytorch-cu1206" }
-generative = { git = "https://github.com/Project-MONAI/GenerativeModels", rev = "0.2.2" }

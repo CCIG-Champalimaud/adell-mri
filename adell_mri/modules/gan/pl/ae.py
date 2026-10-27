@@ -81,7 +81,7 @@ class _AutoEncoderLossMixin:
         self.perceptual_loss = None
         if self.loss_weights["perceptual"] > 0.0:
             try:
-                from generative.losses import PerceptualLoss
+                from monai.losses import PerceptualLoss
             except ImportError as exc:
                 raise ImportError(
                     "PerceptualLoss requires the generative package and lpips"
@@ -99,8 +99,8 @@ class _AutoEncoderLossMixin:
         self.adversarial_loss = None
         if self.loss_weights["adversarial"] > 0.0:
             try:
-                from generative.losses import PatchAdversarialLoss
-                from generative.networks.nets import PatchDiscriminator
+                from monai.losses import PatchAdversarialLoss
+                from monai.networks.nets import PatchDiscriminator
             except ImportError as exc:
                 raise ImportError(
                     "PatchAdversarialLoss requires the generative package"
@@ -108,7 +108,7 @@ class _AutoEncoderLossMixin:
             discriminator_config = discriminator_config or {}
             disc_config = {
                 "spatial_dims": self.spatial_dims,
-                "num_channels": 64,
+                "channels": 64,
                 "in_channels": self.in_channels,
                 "out_channels": self.out_channels,
                 "num_layers_d": 3,

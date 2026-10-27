@@ -4,7 +4,7 @@ import sys
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 import pytest
 import torch
-from generative.networks.schedulers.ddpm import DDPMPredictionType
+from monai.networks.schedulers.ddpm import DDPMPredictionType
 
 from adell_mri.entrypoints.generative.autoencoder import (
     resolve_autoencoder_checkpoint_name,

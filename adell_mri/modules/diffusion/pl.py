@@ -10,10 +10,11 @@ import lightning.pytorch as pl
 import numpy as np
 import torch
 import torch.nn.functional as F
-from generative.inferers import DiffusionInferer
-from generative.networks.nets import DiffusionModelUNet
-from generative.networks.nets.diffusion_model_unet import AttentionBlock
-from generative.networks.schedulers.ddpm import DDPMPredictionType
+from monai.inferers import DiffusionInferer
+from monai.losses import PerceptualLoss
+from monai.metrics import SSIMMetric
+from monai.networks.nets import DiffusionModelUNet
+from monai.networks.schedulers.ddpm import DDPMPredictionType
 
 from adell_mri.constants import DEFAULT_SEED
 from adell_mri.modules.diffusion.embedder import Embedder
@@ -52,6 +53,10 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
         *args,
         **kwargs,
     ):
+        if "num_channels" in kwargs:
+            # the interface update breaks this part
+            kwargs["channels"] = kwargs["num_channels"]
+            del kwargs["num_channels"]
         super().__init__(*args, **kwargs)
 
         self.inferer = inferer
@@ -99,23 +104,6 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
         if self.reconstruction_timestep is None:
             self.reconstruction_timestep = max(1, self.noise_steps // 4)
         self.loss_fn = torch.nn.MSELoss()
-
-        self._prune_unused_parameters()
-
-    def _prune_unused_parameters(self):
-        """
-        Removes parameters that are never used during training so that
-        DDP can be used without ``find_unused_parameters=True``.
-
-        This is all because ``DiffusionModelUNet`` always gets instatiated with
-        ``proj_attn``, which is unncessary when training without conditioning.
-        """
-        if self.with_conditioning:
-            pass
-        else:
-            for module in self.modules():
-                if isinstance(module, AttentionBlock):
-                    del module.proj_attn
 
     def calculate_loss(
         self,
@@ -459,12 +447,10 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
             reconstruction_loss = loss_fn(reconstruction, images)
 
             if "ssim" not in self.reconstruction_metrics:
-                from generative.metrics import SSIMMetric
-
                 self.reconstruction_metrics["ssim"] = SSIMMetric(
                     spatial_dims=images.ndim - 2,
                     data_range=2.0,
-                    kernel_size=3,
+                    kernel_sigma=1.5,
                 )
             ssim = self.reconstruction_metrics["ssim"](reconstruction, images)
             self.log(
@@ -482,8 +468,6 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
 
             if "lpips" not in self.reconstruction_metrics:
                 try:
-                    from generative.losses import PerceptualLoss
-
                     self.reconstruction_metrics["lpips"] = PerceptualLoss(
                         spatial_dims=images.ndim - 2,
                         network_type="squeeze",

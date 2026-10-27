@@ -10,8 +10,8 @@ the noise directly on the target device instead.
 """
 
 import torch
-from generative.networks.schedulers.ddpm import DDPMPredictionType
-from generative.networks.schedulers.ddpm import DDPMScheduler as _DDPMScheduler
+from monai.networks.schedulers.ddpm import DDPMPredictionType
+from monai.networks.schedulers.ddpm import DDPMScheduler as _DDPMScheduler
 
 
 class DDPMScheduler(_DDPMScheduler):

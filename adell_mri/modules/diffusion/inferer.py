@@ -1,7 +1,7 @@
 from typing import Callable, Iterator
 
 import torch
-from generative.inferers import DiffusionInferer
+from monai.inferers import DiffusionInferer
 from rich.progress import track
 from tqdm import tqdm
 

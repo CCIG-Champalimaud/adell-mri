@@ -1135,7 +1135,7 @@ def get_generative_network(
         A :class:`LightningModule` generative network.
     """
     try:
-        import generative.networks.schedulers  # noqa: F401
+        import monai.networks.schedulers  # noqa: F401
 
         from adell_mri.modules.diffusion.inferer import (
             DiffusionInfererSkipSteps,

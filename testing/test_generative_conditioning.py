@@ -90,7 +90,7 @@ def test_parse_config_gan_with_masks(tmp_path):
 batch_size: 2
 learning_rate: 0.0002
 generator:
-  num_channels: [32]
+  channels: [32]
 discriminator:
   structure: [[16, 16, 3, 3]]
 """
@@ -119,7 +119,7 @@ discriminator:
 
 def _diffusion_model(in_channels, out_channels, concat_condition_key):
     scheduler = __import__(
-        "generative.networks.schedulers", fromlist=["DDPMScheduler"]
+        "monai.networks.schedulers", fromlist=["DDPMScheduler"]
     ).DDPMScheduler(num_train_timesteps=10)
     inferer = DiffusionInfererSkipSteps(scheduler)
     return DiffusionUNetPL(
@@ -130,7 +130,7 @@ def _diffusion_model(in_channels, out_channels, concat_condition_key):
         in_channels=in_channels,
         out_channels=out_channels,
         num_res_blocks=1,
-        num_channels=[32, 32],
+        channels=[32, 32],
         norm_num_groups=8,
         attention_levels=(False, False),
         with_conditioning=False,
@@ -142,7 +142,7 @@ def _diffusion_model(in_channels, out_channels, concat_condition_key):
 
 def _mixed_diffusion_model(embedder=None):
     scheduler = __import__(
-        "generative.networks.schedulers", fromlist=["DDPMScheduler"]
+        "monai.networks.schedulers", fromlist=["DDPMScheduler"]
     ).DDPMScheduler(num_train_timesteps=10)
     inferer = DiffusionInfererSkipSteps(scheduler)
     return DiffusionUNetPL(
@@ -153,7 +153,7 @@ def _mixed_diffusion_model(embedder=None):
         in_channels=3,
         out_channels=1,
         num_res_blocks=1,
-        num_channels=[32, 32],
+        channels=[32, 32],
         norm_num_groups=8,
         attention_levels=(True, True),
         with_conditioning=True,
@@ -199,7 +199,7 @@ def test_diffusionunetpl_mixed_conditioning_training_step():
 
 def test_diffusionunetpl_crossattn_training_step():
     scheduler = __import__(
-        "generative.networks.schedulers", fromlist=["DDPMScheduler"]
+        "monai.networks.schedulers", fromlist=["DDPMScheduler"]
     ).DDPMScheduler(num_train_timesteps=10)
     inferer = DiffusionInfererSkipSteps(scheduler)
     model = DiffusionUNetPL(
@@ -210,7 +210,7 @@ def test_diffusionunetpl_crossattn_training_step():
         in_channels=1,
         out_channels=1,
         num_res_blocks=1,
-        num_channels=[32, 32],
+        channels=[32, 32],
         norm_num_groups=8,
         attention_levels=(True, True),
         with_conditioning=True,
@@ -335,7 +335,7 @@ def test_generative_network_factory_concat():
         "in_channels": 3,
         "out_channels": 1,
         "num_res_blocks": 1,
-        "num_channels": [32, 32],
+        "channels": [32, 32],
         "norm_num_groups": 8,
         "attention_levels": (False, False),
         "with_conditioning": False,
