@@ -18,7 +18,6 @@ SizeDict = Dict[str, List[Union[Tuple[int, int, int], Tuple[int, int]]]]
 SpacingDict = Dict[
     str, List[Union[Tuple[float, float, float], Tuple[float, float]]]
 ]
-BBDict = Dict[str, Dict[str, Union[int, float]]]
 ModuleList = Union[List[torch.nn.Module], torch.nn.ModuleList]
 AveragingFunctionType = Callable[
     [torch.Tensor, torch.Tensor, torch.LongTensor], torch.FloatTensor

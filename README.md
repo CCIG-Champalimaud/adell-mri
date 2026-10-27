@@ -226,7 +226,6 @@ A collection of standalone data preparation and analysis scripts. Available util
 | `get_image_examples` | Produce image examples from a DICOM dataset after transforms. |
 | `get_mask_coordinates` | Produce a JSON of mask coordinates after spatial transforms. |
 | `remove_constant_masks` | Remove empty/constant masks from a dataset JSON. |
-| `bb_to_distances` | Compute minimum distances between bounding boxes. |
 | `describe_sitk` | Print SimpleITK image properties. |
 | `describe_dicom_dataset` | Print general statistics for a DICOM dataset. |
 | `inspect_dicom_dataset` | List entries with NaN/infinite values in a DICOM dataset. |

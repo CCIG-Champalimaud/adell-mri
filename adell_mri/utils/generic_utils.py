@@ -382,22 +382,6 @@ def safe_collate_crops(X: list[list[TensorIterable]]) -> list[TensorIterable]:
     return safe_collate(X)
 
 
-def load_anchors(path: str) -> np.ndarray:
-    """
-    Loads anchor boxes from a CSV file.
-
-    Args:
-        path (str): Path to the CSV file containing anchor boxes.
-
-    Returns:
-        np.ndarray: A numpy array containing the anchor boxes.
-    """
-    with open(path, "r") as o:
-        lines = o.readlines()
-    lines = [[float(y) for y in x.strip().split(",")] for x in lines]
-    return np.array(lines)
-
-
 def make_json_serializable(data_structure: Any) -> Any:
     """
     Recursively ensures that different data types are JSON-serializable. If

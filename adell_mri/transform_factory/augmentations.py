@@ -10,10 +10,7 @@ from adell_mri.modules.augmentations import (
     mri_specific_augments,
     spatial_augments,
 )
-from adell_mri.utils.monai_transforms import (
-    ExposeTransformKeyMetad,
-    RandRotateWithBoxesd,
-)
+from adell_mri.utils.monai_transforms import ExposeTransformKeyMetad
 
 
 def get_augmentations(
@@ -269,74 +266,6 @@ def get_augmentations(
             ]
         )
     return transform
-
-
-def get_augmentations_detection(augment, image_keys, box_keys, t2_keys):
-    valid_arg_list = [
-        "intensity",
-        "noise",
-        "rbf",
-        "rotate",
-        "trivial",
-        "distortion",
-    ]
-    for a in augment:
-        if a not in valid_arg_list:
-            raise NotImplementedError(
-                f"augment can only contain {valid_arg_list}"
-            )
-
-    augments = []
-    prob = 0.1
-    if "trivial" in augment:
-        augments.append(monai.transforms.Identityd(image_keys))
-        prob = 1.0
-
-    if "intensity" in augment:
-        augments.extend(
-            [
-                monai.transforms.RandAdjustContrastd(
-                    image_keys, gamma=(0.5, 1.5), prob=prob
-                ),
-                monai.transforms.RandStdShiftIntensityd(
-                    image_keys, factors=0.1, prob=prob
-                ),
-                monai.transforms.RandShiftIntensityd(
-                    image_keys, offsets=0.1, prob=prob
-                ),
-            ]
-        )
-
-    if "noise" in augment:
-        augments.extend(
-            [monai.transforms.RandRicianNoised(image_keys, std=0.02, prob=prob)]
-        )
-
-    if "rbf" in augment and len(t2_keys) > 0:
-        augments.append(
-            monai.transforms.RandBiasFieldd(t2_keys, degree=3, prob=prob)
-        )
-
-    if "rotate" in augment:
-        augments.append(
-            RandRotateWithBoxesd(
-                image_keys=image_keys,
-                box_keys=box_keys,
-                rotate_range=[np.pi / 16],
-                prob=prob,
-                mode=["bilinear" for _ in image_keys],
-                padding_mode="zeros",
-            )
-        )
-
-    if "distortion" in augment:
-        augments.append(monai.transforms.RandGridDistortion(image_keys))
-
-    if "trivial" in augment:
-        augments = monai.transforms.OneOf(augments)
-    else:
-        augments = monai.transforms.Compose(augments)
-    return augments
 
 
 def get_augmentations_ssl(

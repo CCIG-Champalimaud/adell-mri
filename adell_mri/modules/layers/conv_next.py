@@ -235,21 +235,6 @@ class ConvNeXtBackbone(torch.nn.Module):
             return self.forward_regular(X, batch_idx=batch_idx)
 
 
-class ConvNeXtBackboneDetection(ConvNeXtBackbone):
-    """
-    Default ConvNeXt backbone for detection. Replaces the input layer with
-    a convolutional operation that does not lead to such a large decrease in
-    resolution.
-    """
-
-    def init_input_layer(self):
-        f = self.structure[0][0]
-        return torch.nn.Sequential(
-            self.conv_op(self.in_channels, f, 2, stride=2),
-            LayerNorm(f, data_format="channels_first"),
-        )
-
-
 class ConvNeXtV2Backbone(torch.nn.Module):
     """
     Default ConvNeXtV2 backbone. Takes a `structure` and `maxpool_structure`

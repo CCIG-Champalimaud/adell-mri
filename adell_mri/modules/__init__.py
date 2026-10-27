@@ -9,7 +9,6 @@ from adell_mri.modules import (
     layers,
     learning_rate,
     losses,
-    object_detection,
     segmentation,
     self_supervised,
 )

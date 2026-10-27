@@ -10,9 +10,7 @@ import os
 from functools import wraps
 from typing import Any, Callable
 
-import numpy as np
 import torch
-import torch.nn.functional as F
 from lightning.pytorch import LightningModule
 
 from adell_mri.constants import DEFAULT_SEED
@@ -38,10 +36,6 @@ from adell_mri.modules.diffusion.embedder import Embedder
 # gan
 from adell_mri.modules.gan.pl import GANPL
 from adell_mri.modules.layers.adn_fn import get_adn_fn
-
-# detection
-from adell_mri.modules.object_detection.losses import complete_iou_loss
-from adell_mri.modules.object_detection.pl import YOLONet3dPL
 
 # segmentation
 from adell_mri.modules.segmentation.pl import (
@@ -78,7 +72,6 @@ from adell_mri.modules.semi_supervised_segmentation.pl import (
     UNetContrastiveSemiSL,
 )
 from adell_mri.utils.batch_preprocessing import BatchPreprocessing
-from adell_mri.utils.generic_utils import get_loss_param_dict, loss_factory
 from adell_mri.utils.optimizer_factory import OPTIMIZER_EPS_DEFAULT
 from adell_mri.utils.python_logging import get_logger
 from adell_mri.utils.torch_utils import ExponentialMovingAverage
@@ -396,128 +389,6 @@ def get_deconfounded_classification_network(
         exclude_surrogate_variables=exclude_surrogate_variables,
         **boilerplate_args,
         **network_config,
-    )
-
-    return network
-
-
-@compile_if_necessary
-def get_detection_network(
-    network_config: dict[str, Any],
-    dropout_param: float,
-    loss_gamma: float,
-    loss_comb: float,
-    class_weights: torch.Tensor,
-    train_loader_call: Callable,
-    iou_threshold: float,
-    n_classes: int,
-    anchor_array: np.ndarray,
-    n_epochs: int,
-    warmup_steps: int,
-    boxes_key: str,
-    box_class_key: str,
-    dev: str,
-    optimizer_eps: float = OPTIMIZER_EPS_DEFAULT,
-) -> LightningModule:
-    """
-    Builds a YOLO-based 3D detection network wrapped in a LightningModule.
-
-    Args:
-        network_config (dict[str, Any]): network configuration. May include
-            ``activation_fn``, ``classification_loss_fn`` and
-            ``object_loss_fn`` keys (the latter two index ``loss_factory``).
-        dropout_param (float): dropout parameter for the activation/ADN blocks.
-        loss_gamma (float): focusing parameter for the object loss.
-        loss_comb (float): combination parameter for the object loss.
-        class_weights (torch.Tensor): class weights.
-        train_loader_call (Callable): callable returning the training dataloader.
-        iou_threshold (float): IoU threshold used for anchor matching.
-        n_classes (int): number of box classes.
-        anchor_array (np.ndarray): array of anchor sizes.
-        n_epochs (int): number of training epochs.
-        warmup_steps (int): number of LR warmup steps.
-        boxes_key (str): key corresponding to the boxes in the batch.
-        box_class_key (str): key corresponding to the box classes in the batch.
-        dev (str): device string.
-        optimizer_eps (float, optional): optimizer epsilon. Defaults to
-            `OPTIMIZER_EPS_DEFAULT`.
-
-    Returns:
-        LightningModule: the detection LightningModule.
-
-    Raises:
-        ValueError: if an unknown loss or optimizer key is supplied.
-    """
-    if "activation_fn" in network_config:
-        act_fn = network_config["activation_fn"]
-    else:
-        act_fn = "swish"
-
-    if "classification_loss_fn" in network_config:
-        k = "binary" if n_classes == 2 else "categorical"
-        classification_loss_fn = loss_factory[k][
-            network_config["classification_loss_fn"]
-        ]
-    else:
-        if n_classes == 2:
-            classification_loss_fn = F.binary_cross_entropy
-        else:
-            classification_loss_fn = F.cross_entropy
-
-    if "object_loss_fn" in network_config:
-        object_loss_key = network_config["object_loss_fn"]
-        object_loss_fn = loss_factory["binary"][
-            network_config["object_loss_fn"]
-        ]
-    else:
-        object_loss_fn = F.binary_cross_entropy
-
-    net_cfg = {
-        k: network_config[k]
-        for k in network_config
-        if k
-        not in ["activation_fn", "classification_loss_fn", "object_loss_fn"]
-    }
-
-    if "batch_size" not in net_cfg:
-        net_cfg["batch_size"] = 1
-
-    classification_loss_params = {}
-    if (loss_gamma is None) or (loss_comb is None) or (class_weights is None):
-        object_loss_params = {}
-    else:
-        if "object_loss_fn" not in network_config:
-            object_loss_key = "cross_entropy"
-        object_loss_params = get_loss_param_dict(
-            loss_key=object_loss_key,
-            weight=1.0,
-            gamma=loss_gamma,
-            comb=loss_comb,
-            scale=0.5,
-        )
-
-    adn_fn = get_adn_fn(
-        3, norm_fn="batch", act_fn=act_fn, dropout_param=dropout_param
-    )
-    network = YOLONet3dPL(
-        training_dataloader_call=train_loader_call,
-        image_key="image",
-        label_key="bb_map",
-        boxes_key=boxes_key,
-        box_label_key=box_class_key,
-        anchor_sizes=anchor_array,
-        adn_fn=adn_fn,
-        iou_threshold=iou_threshold,
-        classification_loss_fn=classification_loss_fn,
-        object_loss_fn=object_loss_fn,
-        reg_loss_fn=complete_iou_loss,
-        object_loss_params=object_loss_params,
-        classification_loss_params=classification_loss_params,
-        n_epochs=n_epochs,
-        warmup_steps=warmup_steps,
-        n_classes=n_classes,
-        optimizer_eps=optimizer_eps,
-        **net_cfg,
     )
 
     return network

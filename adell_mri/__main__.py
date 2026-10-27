@@ -17,7 +17,6 @@ TASK_PACKAGES = {
         "adell_mri.entrypoints.segmentation_from_2d_module"
     ),
     "ssl": "adell_mri.entrypoints.ssl",
-    "detection": "adell_mri.entrypoints.detection",
     "utils": "adell_mri.entrypoints.utils",
 }
 

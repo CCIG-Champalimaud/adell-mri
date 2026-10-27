@@ -8,7 +8,6 @@ import torch
 
 from adell_mri.utils.monai_transforms import (
     AdjustSizesd,
-    BBToAdjustedAnchorsd,
     CombineBinaryLabelsd,
     ConditionalRescalingd,
     ConvexHulld,
@@ -17,7 +16,6 @@ from adell_mri.utils.monai_transforms import (
     CropFromMaskd,
     LabelOperatord,
     LabelOperatorSegmentationd,
-    MasksToBBd,
     Offsetd,
     SampleChannelDimd,
 )
@@ -260,107 +258,6 @@ class SegmentationTransforms(TransformMixin):
                 )
             )
 
-        return transforms
-
-
-@dataclass
-class DetectionTransforms(TransformMixin):
-    keys: tuple[str]
-    adc_keys: tuple[str]
-    pad_size: tuple[int]
-    crop_size: tuple[int]
-    box_class_key: str
-    shape_key: str
-    box_key: str
-    mask_key: str
-    anchor_array: np.ndarray | None = None
-    input_size: tuple[int] | None = None
-    output_size: tuple[int] | None = None
-    iou_threshold: float | None = 0.5
-    mask_mode: str = "mask_is_labels"
-    target_spacing: tuple[float] = None
-    predict: bool = False
-
-    def __post_init__(self):
-        self.non_adc_keys = [k for k in self.keys if k not in self.adc_keys]
-        self.image_keys = (
-            self.keys + [self.mask_key]
-            if self.mask_key is not None
-            else self.keys
-        )
-        self.interpolation = [
-            IMAGE_INTERPOLATION if k != self.mask_key else "nearest"
-            for k in self.image_keys
-        ]
-
-    def pre_transforms(self):
-        transforms = [
-            monai.transforms.LoadImaged(
-                self.image_keys, ensure_channel_first=True
-            ),
-            monai.transforms.Orientationd(
-                self.image_keys,
-                "RAS",
-                labels=(("L", "R"), ("P", "A"), ("I", "S")),
-            ),
-        ]
-        if self.target_spacing is not None:
-            transforms.append(
-                monai.transforms.Spacingd(
-                    self.image_keys,
-                    self.target_spacing,
-                    mode=self.interpolation,
-                )
-            )
-        if self.non_adc_keys:
-            transforms.append(
-                monai.transforms.ScaleIntensityd(
-                    self.non_adc_keys, minv=0.0, maxv=1.0
-                )
-            )
-        if self.adc_keys:
-            transforms.append(ConditionalRescalingd(self.adc_keys, 500, 0.001))
-            transforms.append(Offsetd(self.adc_keys, None))
-            transforms.append(
-                monai.transforms.ScaleIntensityd(
-                    self.adc_keys, None, None, ADC_FACTOR
-                )
-            )
-        transforms.extend(
-            [
-                monai.transforms.SpatialPadd(self.keys, self.pad_size),
-                monai.transforms.CenterSpatialCropd(self.keys, self.crop_size),
-            ]
-        )
-        if self.mask_key is not None:
-            transforms.append(
-                MasksToBBd(
-                    keys=[self.mask_key],
-                    bounding_box_key=self.box_key,
-                    classes_key=self.box_class_key,
-                    shape_key=self.shape_key,
-                    mask_mode=self.mask_mode,
-                )
-            )
-        return transforms
-
-    def post_transforms(self):
-        transforms = []
-        if self.predict is False:
-            transforms.append(
-                BBToAdjustedAnchorsd(
-                    anchor_sizes=self.anchor_array,
-                    input_sh=self.input_size,
-                    output_sh=self.output_size,
-                    iou_thresh=self.iou_threshold,
-                    bb_key=self.box_key,
-                    class_key=self.box_class_key,
-                    shape_key=self.shape_key,
-                    output_key="bb_map",
-                )
-            )
-        transforms.append(monai.transforms.ConcatItemsd(self.keys, "image"))
-        transforms.append(monai.transforms.EnsureTyped(self.keys))
         return transforms
 
 

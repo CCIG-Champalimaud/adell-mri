@@ -493,37 +493,8 @@ argument_factory = {
         nargs="+",
         help="Paths to torchscript modules",
     ),
-    # detection-specific
-    "box_key": dict(type=str, default="boxes", help="Box key in dataset JSON"),
-    "box_class_key": dict(
-        type=str, default="box_classes", help="Box class key in dataset JSON"
-    ),
-    "shape_key": dict(
-        type=str, default="shape", help="Shape key in dataset JSON"
-    ),
     "mask_key": dict(type=str, default=None, help="Mask key in dataset JSON"),
-    "mask_mode": dict(
-        type=str,
-        default="mask_is_labels",
-        choices=["mask_is_labels", "infer_labels", "single_object"],
-        help="If using mask_key, defines how boxes are inferred. mask_is_labels\
-            uses the mask as labels; infer_labels infers connected components \
-            using skimage.measure.label; single_object assumes the mask represents\
-            a single, not necessarily connected, object.",
-    ),
-    "anchor_csv": dict(
-        type=str, required=True, help="Path to CSV file containing anchors"
-    ),
-    "min_anchor_area": dict(
-        type=float, default=None, help="Minimum anchor area (filters anchors)"
-    ),
-    "detection_net_type": dict(
-        default="cat", choices=["yolo"], help="Network type"
-    ),
-    "iou_threshold": dict(
-        type=float, default=0.5, help="IoU threshold for pred-gt overlaps."
-    ),
-    # detection/segmentation-specific
+    # segmentation-specific
     "loss_gamma": dict(default=2.0, type=float, help="Gamma for focal loss"),
     "loss_comb": dict(
         default=0.5, type=float, help="Relative weight for combined losses"

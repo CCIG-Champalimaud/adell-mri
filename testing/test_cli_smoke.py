@@ -19,7 +19,6 @@ TASK_MODES = {
     "classification_ensemble": ["train", "test", "predict"],
     "segmentation": ["train", "test", "predict", "test_from_predictions"],
     "ssl": ["train_2d", "train_3d", "model_to_torchscript", "predict_folder"],
-    "detection": ["train", "predict"],
     "generative": ["train_2d", "train_3d", "generate"],
     "segmentation_from_2d_module": ["train"],
 }

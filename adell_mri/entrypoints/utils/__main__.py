@@ -13,8 +13,6 @@ supported_modes = {
     "get_label_size": ".statistics.get_label_size",
     "match_to_mask": ".statistics.match_to_mask",
     # dataset
-    "bb_to_anchors": ".dataset.bb_to_anchors",
-    "bb_to_distances": ".dataset.bb_to_distances",
     "fill_with_condition": ".dataset.fill_with_condition",
     "generate_dataset_json": ".dataset.generate_dataset_json",
     "generate_dicom_dataset_json": ".dataset.generate_dicom_dataset_json",

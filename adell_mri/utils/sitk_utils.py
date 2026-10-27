@@ -91,33 +91,6 @@ def get_spacing_quantile(
     return output
 
 
-def spacing_from_dataset_json(
-    dataset_dict: DatasetDict,
-    key: str,
-    quantile: float = 0.5,
-    n_workers: int = 1,
-) -> List[float]:
-    """
-    Calculates the spacing at a given quantile using a dataset dictionary and a
-    key.
-
-    Args:
-        dataset_dict (DatasetDict): dictionary containing study IDs as values
-            and a dictionary of SITK-readable paths as values.
-        key (str): key for the value that will be used to extract the spacing.
-        quantile (float, optional): spacing quantile that will be returned.
-            Defaults to 0.5.
-
-    Returns:
-        List[float]: spacing at the specified quantile.
-    """
-    spacing_values = spacing_values_from_dataset_json(
-        dataset_dict=dataset_dict, key=key, n_workers=n_workers
-    )
-    output = get_spacing_quantile(spacing_values, quantile)
-    return output
-
-
 def resample_image(
     sitk_image: sitk.Image,
     out_spacing: List[float] = [1.0, 1.0, 1.0],
