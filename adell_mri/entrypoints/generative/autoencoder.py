@@ -13,8 +13,9 @@ from lightning.pytorch.callbacks import RichProgressBar
 
 from adell_mri.modules.gan.pl.ae import AutoEncoderPL, VariationalAutoEncoderPL
 from adell_mri.utils.generic_utils import safe_collate
-from adell_mri.utils.pl_callbacks import EMACallback
+from adell_mri.utils.pl_callbacks import EMACallback, SetSamplerEpoch
 from adell_mri.utils.pl_utils import get_ckpt_callback
+from adell_mri.utils.samplers import DistributedRandomSampler
 from adell_mri.utils.torch_utils import (
     get_global_rank,
     load_checkpoint_to_model,
@@ -213,6 +214,9 @@ def make_autoencoder_loader(
     n_workers: int,
     seed: int,
     shuffle: bool = True,
+    steps_per_epoch: int | None = None,
+    n_devices: int = 1,
+    rank: int = 0,
 ) -> monai.data.ThreadDataLoader:
     """
     Builds the dataloader used to train the autoencoder.
@@ -225,6 +229,10 @@ def make_autoencoder_loader(
         seed (int): random seed.
         shuffle (bool, optional): whether the dataset is shuffled. Defaults to
             True.
+        steps_per_epoch (int | None, optional): number of batches per rank.
+            Defaults to None (iterates the full dataset).
+        n_devices (int, optional): number of devices. Defaults to 1.
+        rank (int, optional): rank of the current process. Defaults to 0.
 
     Returns:
         monai.data.ThreadDataLoader: dataloader.
@@ -237,10 +245,29 @@ def make_autoencoder_loader(
         "num_workers": n_workers,
         "collate_fn": safe_collate,
         "pin_memory": True,
-        "drop_last": shuffle and len(dataset) > batch_size,
+        "drop_last": shuffle and steps_per_epoch is not None,
         "shuffle": shuffle,
         "generator": generator,
     }
+    if steps_per_epoch is not None:
+        num_samples = steps_per_epoch * batch_size
+        if n_devices > 1:
+            kwargs["sampler"] = DistributedRandomSampler(
+                dataset,
+                num_samples=num_samples * n_devices,
+                num_replicas=n_devices,
+                rank=rank,
+                replacement=(num_samples * n_devices) > len(dataset),
+                seed=seed,
+            )
+        else:
+            kwargs["sampler"] = torch.utils.data.RandomSampler(
+                dataset,
+                replacement=num_samples > len(dataset),
+                num_samples=num_samples,
+                generator=generator,
+            )
+        kwargs["shuffle"] = False
     if n_workers > 0:
         kwargs["persistent_workers"] = True
         kwargs["prefetch_factor"] = 8
@@ -369,6 +396,7 @@ def ensure_autoencoder(
         callbacks.append(
             EMACallback(decay=args.ema_decay, use_ema_weights=True)
         )
+    callbacks.append(SetSamplerEpoch())
 
     accumulate_grad_batches = args.accumulate_grad_batches
     if parsed_config["loss_weights"].get("adversarial", 0.0) > 0.0:
@@ -380,12 +408,18 @@ def ensure_autoencoder(
         accumulate_grad_batches = 1
 
     batch_size = max(1, parsed_config["batch_size"] // n_devices)
+    steps_per_epoch = args.steps_per_epoch or max(
+        1, len(train_list) // batch_size
+    )
     train_loader = make_autoencoder_loader(
         train_list,
         transforms,
         batch_size=batch_size,
         n_workers=args.n_workers,
         seed=args.seed,
+        steps_per_epoch=steps_per_epoch,
+        n_devices=n_devices,
+        rank=get_global_rank(),
     )
     val_loader = make_autoencoder_loader(
         val_list,
@@ -416,6 +450,8 @@ def ensure_autoencoder(
         check_val_every_n_epoch=args.check_val_every_n_epoch,
         precision=args.precision,
         deterministic="warn",
+        limit_train_batches=steps_per_epoch,
+        use_distributed_sampler=n_devices == 1,
     )
     trainer.fit(autoencoder, train_loader, val_loader, ckpt_path=ckpt_path)
 

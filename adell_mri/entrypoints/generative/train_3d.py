@@ -196,6 +196,8 @@ def main(arguments):
 
     accelerator, devices, strategy = get_devices(args.dev)
     n_devices = len(devices) if isinstance(devices, list) else 1
+    if n_devices > 1 and args.model_type in ["ae", "ldm"]:
+        strategy = "ddp_find_unused_parameters_true"
 
     output_file = open(args.metric_path, "w")
 
