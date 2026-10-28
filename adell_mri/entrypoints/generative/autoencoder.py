@@ -437,6 +437,17 @@ def ensure_autoencoder(
         seed=args.seed,
         shuffle=False,
     )
+    logger.info(
+        "Training autoencoder with steps_per_epoch=%s (train batches=%s, "
+        "batch_size=%s, devices=%s, samples_per_epoch=%s, train_size=%s)",
+        steps_per_epoch,
+        len(train_loader),
+        batch_size,
+        n_devices,
+        steps_per_epoch * batch_size * n_devices,
+        len(train_list),
+    )
+
     trainer = Trainer(
         accelerator=accelerator,
         devices=devices,
