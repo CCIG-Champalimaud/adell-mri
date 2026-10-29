@@ -255,7 +255,10 @@ def parse_config_ae(
     :class:`adell_mri.modules.gan.vae.VariationalAutoEncoder`, an optional
     ``losses`` section with the loss weights and reconstruction loss, an
     optional ``discriminator`` section with the keyword arguments for the patch
-    discriminator and an optional ``optimizer`` section.
+    discriminator and an optional ``optimizer`` section. Reconstruction logging
+    options (``reconstruction_every_n_epochs`` and
+    ``reconstruction_max_batches``) can be set at the top level or inside the
+    ``ae`` section.
 
     Args:
         config_file (str | dict[str, Any]): path to the YAML configuration
@@ -273,7 +276,9 @@ def parse_config_ae(
         dict[str, Any]: parsed configuration with the ``model``,
             ``is_variational``, ``loss_weights``, ``rec_loss``,
             ``perceptual_kwargs``, ``discriminator``, ``optimizer``,
-            ``batch_size`` and ``spatial_dims`` keys.
+            ``batch_size``, ``spatial_dims``,
+            ``reconstruction_every_n_epochs`` and
+            ``reconstruction_max_batches`` keys.
 
     Raises:
         ValueError: if the ``model`` section is missing.
@@ -282,8 +287,16 @@ def parse_config_ae(
         config = _load_yaml(config_file)
     else:
         config = dict(config_file)
+    parent_config = config
     if "ae" in config and "model" not in config:
         config = dict(config["ae"])
+        for key in [
+            "reconstruction_every_n_epochs",
+            "reconstruction_max_batches",
+            "reconstruction_timestep",
+        ]:
+            if key in parent_config and key not in config:
+                config[key] = parent_config[key]
     model_config = config.get("model")
     if model_config is None:
         raise ValueError(
@@ -316,6 +329,12 @@ def parse_config_ae(
         "optimizer": dict(config.get("optimizer") or {}),
         "batch_size": config.get("batch_size", 1),
         "spatial_dims": spatial_dims,
+        "reconstruction_every_n_epochs": config.get(
+            "reconstruction_every_n_epochs", 0
+        ),
+        "reconstruction_max_batches": config.get(
+            "reconstruction_max_batches", 1
+        ),
     }
     for key in kwargs:
         if kwargs[key] is not None:

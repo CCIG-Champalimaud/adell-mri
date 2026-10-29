@@ -16,9 +16,29 @@ from adell_mri.utils.torch_utils import ExponentialMovingAverage
 logger = get_logger(__name__)
 
 
-def coerce_to_uint8(x: np.ndarray):
-    x = (x - x.min()) / (x.max() - x.min()) * 255
-    return x.astype(np.uint8)
+def coerce_to_uint8(x: np.ndarray) -> np.ndarray:
+    """
+    Scales an array to uint8 using its own minimum and maximum.
+
+    Non-finite values are replaced and constant arrays are mapped to zeros so
+    that the result is always a valid image for logging.
+
+    Args:
+        x (np.ndarray): input array.
+
+    Returns:
+        np.ndarray: uint8 array with values in the ``[0, 255]`` range.
+    """
+    x = np.asarray(x, dtype=np.float32)
+    x = np.nan_to_num(x, nan=0.0, posinf=1.0, neginf=0.0)
+    if x.size == 0:
+        return np.zeros(x.shape, dtype=np.uint8)
+    x_min = float(x.min())
+    x_max = float(x.max())
+    if x_max <= x_min:
+        return np.zeros(x.shape, dtype=np.uint8)
+    x = (x - x_min) / (x_max - x_min) * 255.0
+    return np.clip(np.rint(x), 0, 255).astype(np.uint8)
 
 
 def split_and_cat(x: np.ndarray, split_dim: int, cat_dim: int) -> np.ndarray:
@@ -30,38 +50,51 @@ def split_and_cat(x: np.ndarray, split_dim: int, cat_dim: int) -> np.ndarray:
 def log_image(
     trainer: Trainer,
     key: str,
-    images: list[torch.Tensor],
+    images: torch.Tensor,
     slice_dim: int | None = None,
     n_slices_out: int | None = None,
-    caption: list[str] = None,
+    caption: list[str] | None = None,
     rgb: bool = False,
-):
+) -> None:
     """
     Logs images to the PyTorch Lightning logger.
 
-    This callback takes a batch of images, slices them along the provided
-    slice dimension, converts them to uint8, creates PIL images, and logs
-    them to the PyTorch Lightning logger.
+    This function takes a batch of images, optionally slices them along the
+    provided slice dimension, converts each channel to uint8, creates PIL
+    images, and logs them to the PyTorch Lightning logger. Unless ``rgb`` is
+    True and the image has three or four channels, every channel is logged as
+    a separate grayscale image and scaled independently.
 
     Args:
         trainer (Trainer): PyTorch Lightning Trainer instance.
         key (str): key for the logged images.
-        images (list[torch.Tensor]): list of images to log as a list of torch
-            Tensors.
+        images (torch.Tensor): batch of images with shape
+            ``(batch, channels, ...)``.
         slice_dim (int, optional): dimension to slice the images along (if
-            images are 3D). Defaults to None but must be specified for 3D
-            images.
-        n_slices_out (int, optional): number of image slices to output.
-            Defaults to None but must be specified for 3D images.
-        caption (list[str], optional): Optional list of captions, one for each
-            image.
-        RGB (bool, optional): Whether 3-channel images should be considered
-            RGB. Defaults to False.
+            images are 3D). Must be specified for 5D inputs. Defaults to None.
+        n_slices_out (int, optional): number of image slices to output. Must be
+            specified for 5D inputs. Defaults to None.
+        caption (list[str], optional): optional list of captions, one for each
+            image in the batch. Defaults to None.
+        rgb (bool, optional): if True, images with three or four channels are
+            treated as RGB or RGBA. Otherwise, channels are logged separately.
+            Defaults to False.
+
+    Raises:
+        ValueError: if a 5D input is provided without ``slice_dim`` or
+            ``n_slices_out``, or if the input cannot be interpreted as an
+            image batch.
     """
     if hasattr(trainer.logger, "log_image") is False:
-        return None
-    images = images.detach().to("cpu")
-    if len(images.shape) == 5:
+        return
+    images = images.detach().float().to("cpu")
+    if images.ndim == 3:
+        images = images.unsqueeze(0)
+    if images.ndim == 5:
+        if slice_dim is None or n_slices_out is None:
+            raise ValueError(
+                "slice_dim and n_slices_out must be specified for 3D images"
+            )
         n_slices = images.shape[slice_dim]
         slice_idxs = np.linspace(
             0, n_slices, num=n_slices_out + 2, dtype=np.int32
@@ -71,32 +104,46 @@ def log_image(
         )
         images = torch.split(images, 1, dim=slice_dim)
         images = torch.cat(images, -2).squeeze(-1)
-    # do some form of acceptable conversion here if images are not BW, RGB or
-    # RGBA
-    if images.shape[1] not in [1, 3, 4]:
-        images = torch.argmax(images, dim=1, keepdim=True)
-    images = torch.split(images, 1, 0)
-    # squeeze only  if necessary
-    images = [x.squeeze(0) if len(x.shape) > 3 else x for x in images]
-    images = [x.permute(1, 2, 0).numpy() for x in images]
-    images = [
-        (
-            coerce_to_uint8(split_and_cat(x, -1, 0))
-            if rgb is False
-            else coerce_to_uint8(x)
+    if images.ndim != 4:
+        raise ValueError(
+            "images should have shape (batch, channels, ...) or "
+            "(batch, channels, depth, height, width)"
         )
-        for x in images
-    ]
-    images = [x.squeeze(-1) if x.shape[-1] == 1 else x for x in images]
-    images = [Image.fromarray(x) for x in images]
 
+    pil_images: list[Image.Image] = []
+    pil_captions: list[str] | None = [] if caption is not None else None
+    for batch_idx in range(images.shape[0]):
+        image = images[batch_idx]
+        n_channels = image.shape[0]
+        if rgb is True and n_channels in [3, 4]:
+            array = image.permute(1, 2, 0).contiguous().numpy()
+            pil_images.append(Image.fromarray(coerce_to_uint8(array)))
+            if pil_captions is not None:
+                pil_captions.append(
+                    caption[batch_idx] if batch_idx < len(caption) else ""
+                )
+            continue
+        for channel_idx in range(n_channels):
+            array = image[channel_idx].contiguous().numpy()
+            pil_images.append(Image.fromarray(coerce_to_uint8(array)))
+            if pil_captions is not None:
+                label = caption[batch_idx] if batch_idx < len(caption) else ""
+                if n_channels > 1:
+                    channel_label = f"channel {channel_idx}"
+                    label = (
+                        f"{label} ({channel_label})" if label else channel_label
+                    )
+                pil_captions.append(label)
+
+    if len(pil_images) == 0:
+        return
     step = trainer.global_step
-    if caption is not None:
+    if pil_captions is not None:
         trainer.logger.log_image(
-            key=key, images=images, caption=caption, step=step
+            key=key, images=pil_images, caption=pil_captions, step=step
         )
     else:
-        trainer.logger.log_image(key=key, images=images, step=step)
+        trainer.logger.log_image(key=key, images=pil_images, step=step)
 
 
 def reshape_weight_to_matrix(

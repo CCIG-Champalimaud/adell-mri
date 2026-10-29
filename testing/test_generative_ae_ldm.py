@@ -6,7 +6,6 @@ sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 import nibabel as nib
 import numpy as np
 import pytest
-import torch
 import yaml
 
 from adell_mri.entrypoints.generative.generate import main as generate_main
@@ -24,6 +23,7 @@ AE_CONFIG = {
         "no_skip_connection": True,
         "latent_channels": 3,
         "is_variational": True,
+        "strides": [2, 1],
     },
     "losses": {
         "weights": {

@@ -58,6 +58,12 @@ def build_autoencoder(parsed_config: dict[str, Any]) -> torch.nn.Module:
         "rec_loss": parsed_config["rec_loss"],
         "perceptual_kwargs": parsed_config["perceptual_kwargs"],
         "discriminator_config": parsed_config["discriminator"],
+        "reconstruction_every_n_epochs": parsed_config.get(
+            "reconstruction_every_n_epochs", 0
+        ),
+        "reconstruction_max_batches": parsed_config.get(
+            "reconstruction_max_batches", 1
+        ),
     }
     common_args.update(parsed_config.get("optimizer", {}))
     module_class = (
@@ -192,18 +198,25 @@ def get_latent_shape(
 
     Args:
         autoencoder (torch.nn.Module): autoencoder with a
-            ``latent_downsample_factor`` attribute and either
-            ``latent_channels`` or ``block_out_channels``.
+            ``latent_downsample_factor`` attribute (an int or a per-axis
+            tuple) and either ``latent_channels`` or ``block_out_channels``.
         spatial_shape (list[int] | tuple[int]): spatial shape of the input.
 
     Returns:
         tuple[int, ...]: latent shape, excluding the batch dimension.
     """
     factor = autoencoder.latent_downsample_factor
+    if isinstance(factor, int):
+        factors = (factor,) * len(spatial_shape)
+    else:
+        factors = factor
     channels = autoencoder.latent_channels
     if channels is None:
         channels = autoencoder.block_out_channels[-1]
-    spatial = tuple(int(size) // (2**factor) for size in spatial_shape)
+    spatial = tuple(
+        int(size) // int(axis_factor)
+        for size, axis_factor in zip(spatial_shape, factors)
+    )
     return (channels, *spatial)
 
 

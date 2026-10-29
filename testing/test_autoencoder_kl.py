@@ -49,8 +49,12 @@ def test_encode_decode_roundtrip(model_class, latent_channels, model_config):
     )
     assert latent.shape[0] == x.shape[0]
     assert latent.shape[1] == expected_channels
+    factor = model.latent_downsample_factor
+    factors = (
+        (factor,) * len(x.shape[2:]) if isinstance(factor, int) else factor
+    )
     assert latent.shape[2:] == tuple(
-        size // (2**model.latent_downsample_factor) for size in x.shape[2:]
+        size // axis_factor for size, axis_factor in zip(x.shape[2:], factors)
     )
 
     reconstruction = model.decode(latent)

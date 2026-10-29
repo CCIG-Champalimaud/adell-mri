@@ -377,10 +377,11 @@ def main(arguments):
                     "--config_file"
                 )
             ae_config = parse_config_ae(
-                network_config.pop("ae"),
+                network_config,
                 args.image_keys,
                 spatial_dims=args.spatial_dims or 3,
             )
+            network_config.pop("ae", None)
         else:
             ae_config = parse_config_ae(
                 args.config_file,

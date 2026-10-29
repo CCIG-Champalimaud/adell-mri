@@ -244,6 +244,56 @@ class _AutoEncoderLossMixin:
                 on_step=False,
             )
 
+    def maybe_log_reconstruction(
+        self,
+        images: torch.Tensor,
+        reconstruction: torch.Tensor,
+        batch_idx: int,
+        prefix: str = "val",
+    ) -> None:
+        """
+        Logs input and reconstructed images every N epochs.
+
+        Args:
+            images (torch.Tensor): input images.
+            reconstruction (torch.Tensor): reconstructed images.
+            batch_idx (int): batch index.
+            prefix (str, optional): prefix for the logged image keys. Defaults
+                to "val".
+        """
+        if self.reconstruction_every_n_epochs <= 0:
+            return
+        if (
+            self.current_epoch % self.reconstruction_every_n_epochs != 0
+            or batch_idx >= self.reconstruction_max_batches
+        ):
+            return
+        trainer = getattr(self, "trainer", None)
+        if trainer is None or getattr(trainer, "is_global_zero", True) is False:
+            return
+        logger = getattr(trainer, "logger", None)
+        if logger is None or hasattr(logger, "log_image") is False:
+            return
+
+        from adell_mri.utils.pl_callbacks import log_image
+
+        slice_dim = 4 if images.ndim == 5 else None
+        n_slices_out = 3 if images.ndim == 5 else None
+        log_image(
+            trainer,
+            f"{prefix}_input_images",
+            images,
+            slice_dim=slice_dim,
+            n_slices_out=n_slices_out,
+        )
+        log_image(
+            trainer,
+            f"{prefix}_reconstructed_images",
+            reconstruction,
+            slice_dim=slice_dim,
+            n_slices_out=n_slices_out,
+        )
+
     def training_step(
         self, batch: dict[str, Any], batch_idx: int
     ) -> torch.Tensor:
@@ -303,7 +353,9 @@ class _AutoEncoderLossMixin:
             torch.Tensor: loss value.
         """
         x = batch[self.input_image_key]
-        losses, _ = self.compute_losses(x, include_adversarial=False)
+        losses, output = self.compute_losses(x, include_adversarial=False)
+        reconstruction, _, _ = self.unpack_output(output)
+        self.maybe_log_reconstruction(x, reconstruction, batch_idx, "val")
         self.log_losses(losses, prefix="val_")
         self.log("val_loss", losses["loss"], on_epoch=True, prog_bar=True)
         return losses["loss"]
@@ -320,7 +372,9 @@ class _AutoEncoderLossMixin:
             torch.Tensor: loss value.
         """
         x = batch[self.input_image_key]
-        losses, _ = self.compute_losses(x, include_adversarial=False)
+        losses, output = self.compute_losses(x, include_adversarial=False)
+        reconstruction, _, _ = self.unpack_output(output)
+        self.maybe_log_reconstruction(x, reconstruction, batch_idx, "test")
         self.log_losses(losses, prefix="test_")
         self.log("test_loss", losses["loss"], on_epoch=True)
         return losses["loss"]
@@ -395,6 +449,8 @@ class AutoEncoderPL(_AutoEncoderLossMixin, AutoEncoder, pl.LightningModule):
         discriminator_config: dict[str, Any] | None = None,
         perceptual_kwargs: dict[str, Any] | None = None,
         discriminator_learning_rate: float | None = None,
+        reconstruction_every_n_epochs: int = 0,
+        reconstruction_max_batches: int = 1,
         *args,
         **kwargs,
     ):
@@ -422,6 +478,12 @@ class AutoEncoderPL(_AutoEncoderLossMixin, AutoEncoder, pl.LightningModule):
             discriminator_learning_rate (float | None, optional): learning
                 rate for the discriminator. Defaults to None (uses
                 ``learning_rate``).
+            reconstruction_every_n_epochs (int, optional): logs validation
+                reconstructions every N epochs. A value of 0 disables
+                reconstruction logging. Defaults to 0.
+            reconstruction_max_batches (int, optional): maximum number of
+                validation batches logged per reconstruction epoch. Defaults to
+                1.
             *args: positional arguments passed to :class:`AutoEncoder`.
             **kwargs: keyword arguments passed to :class:`AutoEncoder`.
         """
@@ -437,6 +499,8 @@ class AutoEncoderPL(_AutoEncoderLossMixin, AutoEncoder, pl.LightningModule):
             else learning_rate
         )
         self.is_variational = False
+        self.reconstruction_every_n_epochs = reconstruction_every_n_epochs
+        self.reconstruction_max_batches = reconstruction_max_batches
         self.init_losses(
             loss_weights, rec_loss, discriminator_config, perceptual_kwargs
         )
@@ -463,6 +527,8 @@ class VariationalAutoEncoderPL(
         discriminator_config: dict[str, Any] | None = None,
         perceptual_kwargs: dict[str, Any] | None = None,
         discriminator_learning_rate: float | None = None,
+        reconstruction_every_n_epochs: int = 0,
+        reconstruction_max_batches: int = 1,
         *args,
         **kwargs,
     ):
@@ -492,6 +558,12 @@ class VariationalAutoEncoderPL(
             discriminator_learning_rate (float | None, optional): learning
                 rate for the discriminator. Defaults to None (uses
                 ``learning_rate``).
+            reconstruction_every_n_epochs (int, optional): logs validation
+                reconstructions every N epochs. A value of 0 disables
+                reconstruction logging. Defaults to 0.
+            reconstruction_max_batches (int, optional): maximum number of
+                validation batches logged per reconstruction epoch. Defaults to
+                1.
             *args: positional arguments passed to
                 :class:`VariationalAutoEncoder`.
             **kwargs: keyword arguments passed to
@@ -510,6 +582,8 @@ class VariationalAutoEncoderPL(
             else learning_rate
         )
         self.is_variational = True
+        self.reconstruction_every_n_epochs = reconstruction_every_n_epochs
+        self.reconstruction_max_batches = reconstruction_max_batches
         if loss_weights is None:
             loss_weights = {"rec": 1.0, "kl": var_loss_mult}
         self.init_losses(
