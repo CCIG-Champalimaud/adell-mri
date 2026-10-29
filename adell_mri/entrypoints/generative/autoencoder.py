@@ -464,7 +464,13 @@ def ensure_autoencoder(
         limit_train_batches=steps_per_epoch,
         use_distributed_sampler=n_devices == 1,
     )
-    trainer.fit(autoencoder, train_loader, val_loader, ckpt_path=ckpt_path)
+    trainer.fit(
+        autoencoder,
+        train_loader,
+        val_loader,
+        ckpt_path=ckpt_path,
+        weights_only=False,
+    )
 
     if os.path.exists(last_checkpoint) is True:
         autoencoder = load_autoencoder(
