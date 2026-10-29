@@ -7,7 +7,7 @@ So this is essentially repackaging what the MONAI team did as a GAN generator.
 
 import importlib
 import math
-from typing import Sequence
+from collections.abc import Sequence
 
 import torch
 import torch.nn.functional as F
@@ -39,6 +39,46 @@ def zero_module(module: torch.nn.Module) -> torch.nn.Module:
     for p in module.parameters():
         p.detach().zero_()
     return module
+
+
+def _resolve_stride(
+    stride: int | Sequence[int], spatial_dims: int
+) -> tuple[int, ...]:
+    """
+    Normalizes a stride specification to a tuple with one value per spatial
+    dimension.
+
+    Args:
+        stride (int | Sequence[int]): stride specification. A single int is
+            applied to every spatial dimension.
+        spatial_dims (int): number of spatial dimensions.
+
+    Raises:
+        ValueError: if the stride is not positive or if the tuple length does
+            not match ``spatial_dims``.
+
+    Returns:
+        tuple[int, ...]: stride per spatial dimension.
+    """
+    if isinstance(stride, int):
+        resolved = (stride,) * spatial_dims
+    else:
+        resolved = tuple(stride)
+        if len(resolved) != spatial_dims:
+            raise ValueError(
+                f"stride should have {spatial_dims} elements but has "
+                f"{len(resolved)}"
+            )
+    if any(value < 1 for value in resolved):
+        raise ValueError("stride values should be greater than or equal to 1")
+    return resolved
+
+
+def _is_identity_stride(stride: Sequence[int]) -> bool:
+    """
+    Returns True if the stride does not change the spatial shape.
+    """
+    return all(value == 1 for value in stride)
 
 
 def get_timestep_embedding(
@@ -587,6 +627,7 @@ class Downsample(torch.nn.Module):
         use_conv: bool,
         out_channels: int | None = None,
         padding: int = 1,
+        stride: int | Sequence[int] = 2,
     ) -> None:
         """
         Args:
@@ -601,17 +642,21 @@ class Downsample(torch.nn.Module):
             padding (int, optional): controls the amount of implicit
                 zero-paddings on both sides for padding number of points for
                 each dimension. Defaults to 1.
+            stride (int | Sequence[int], optional): downsampling stride. A
+                single int is applied to every spatial dimension. Defaults to
+                2.
         """
         super().__init__()
         self.num_channels = num_channels
         self.out_channels = out_channels or num_channels
         self.use_conv = use_conv
+        self.stride = _resolve_stride(stride, spatial_dims)
         if use_conv:
             self.op = Convolution(
                 spatial_dims=spatial_dims,
                 in_channels=self.num_channels,
                 out_channels=self.out_channels,
-                strides=2,
+                strides=self.stride,
                 kernel_size=3,
                 padding=padding,
                 conv_only=True,
@@ -621,7 +666,9 @@ class Downsample(torch.nn.Module):
                 raise ValueError(
                     "num_channels and out_channels must be equal when use_conv=False"
                 )
-            self.op = Pool[Pool.AVG, spatial_dims](kernel_size=2, stride=2)
+            self.op = Pool[Pool.AVG, spatial_dims](
+                kernel_size=self.stride, stride=self.stride
+            )
 
     def forward(
         self, x: torch.Tensor, emb: torch.Tensor | None = None
@@ -647,6 +694,7 @@ class Upsample(torch.nn.Module):
         use_conv: bool,
         out_channels: int | None = None,
         padding: int = 1,
+        stride: int | Sequence[int] = 2,
     ) -> None:
         """
 
@@ -660,11 +708,15 @@ class Upsample(torch.nn.Module):
             padding (int, optional): controls the amount of implicit
                 zero-paddings on both sides for padding number of points for
                 each dimension. Defaults to 1.
+            stride (int | Sequence[int], optional): upsampling stride (scale
+                factor). A single int is applied to every spatial dimension.
+                Defaults to 2.
         """
         super().__init__()
         self.num_channels = num_channels
         self.out_channels = out_channels or num_channels
         self.use_conv = use_conv
+        self.stride = _resolve_stride(stride, spatial_dims)
         if use_conv:
             self.conv = Convolution(
                 spatial_dims=spatial_dims,
@@ -691,7 +743,7 @@ class Upsample(torch.nn.Module):
         if dtype == torch.bfloat16:
             x = x.to(torch.float32)
 
-        x = F.interpolate(x, scale_factor=2.0, mode="nearest")
+        x = F.interpolate(x, scale_factor=self.stride, mode="nearest")
 
         # If the input is bfloat16, we cast back to bfloat16
         if dtype == torch.bfloat16:
@@ -713,8 +765,8 @@ class ResnetBlock(torch.nn.Module):
         in_channels: int,
         class_emb_channels: int,
         out_channels: int | None = None,
-        up: bool = False,
-        down: bool = False,
+        upsample_stride: int | Sequence[int] = 1,
+        downsample_stride: int | Sequence[int] = 1,
         norm_num_groups: int = 32,
         norm_eps: float = 1e-6,
     ) -> None:
@@ -725,10 +777,11 @@ class ResnetBlock(torch.nn.Module):
             class_emb_channels (int): number of class embedding channels.
             out_channels (int | None, optional): number of output channels.
                 Defaults to None.
-            up (bool, optional): if True, performs upsampling. Defaults to
-                False.
-            down (bool, optional): if True, performs downsampling. Defaults to
-                False.
+            upsample_stride (int | Sequence[int], optional): upsampling stride
+                (scale factor). A value of 1 disables upsampling. Defaults to
+                1.
+            downsample_stride (int | Sequence[int], optional): downsampling
+                stride. A value of 1 disables downsampling. Defaults to 1.
             norm_num_groups (int, optional): number of groups for the group
                 normalization. Defaults to 32.
             norm_eps (float, optional): epsilon for the group normalization.
@@ -739,8 +792,17 @@ class ResnetBlock(torch.nn.Module):
         self.channels = in_channels
         self.class_emb_channels = class_emb_channels
         self.out_channels = out_channels or in_channels
-        self.up = up
-        self.down = down
+        self.upsample_stride = _resolve_stride(upsample_stride, spatial_dims)
+        self.downsample_stride = _resolve_stride(
+            downsample_stride, spatial_dims
+        )
+        if not _is_identity_stride(self.upsample_stride) and not (
+            _is_identity_stride(self.downsample_stride)
+        ):
+            raise ValueError(
+                "upsample_stride and downsample_stride cannot both be "
+                "greater than 1"
+            )
 
         self.norm1 = torch.nn.GroupNorm(
             num_groups=norm_num_groups,
@@ -760,11 +822,19 @@ class ResnetBlock(torch.nn.Module):
         )
 
         self.upsample = self.downsample = None
-        if self.up:
-            self.upsample = Upsample(spatial_dims, in_channels, use_conv=False)
-        elif down:
+        if not _is_identity_stride(self.upsample_stride):
+            self.upsample = Upsample(
+                spatial_dims,
+                in_channels,
+                use_conv=False,
+                stride=self.upsample_stride,
+            )
+        elif not _is_identity_stride(self.downsample_stride):
             self.downsample = Downsample(
-                spatial_dims, in_channels, use_conv=False
+                spatial_dims,
+                in_channels,
+                use_conv=False,
+                stride=self.downsample_stride,
             )
 
         if self.class_emb_channels is not None:
@@ -854,7 +924,7 @@ class DownBlock(torch.nn.Module):
         num_res_blocks: int = 1,
         norm_num_groups: int = 32,
         norm_eps: float = 1e-6,
-        add_downsample: bool = True,
+        stride: int | Sequence[int] = 2,
         resblock_updown: bool = False,
         downsample_padding: int = 1,
     ) -> None:
@@ -870,8 +940,8 @@ class DownBlock(torch.nn.Module):
                 normalization. Defaults to 32.
             norm_eps (float, optional): epsilon for the group normalization.
                 Defaults to 1e-6.
-            add_downsample (bool, True): if True add downsample block. Defaults
-                to True.
+            stride (int | Sequence[int], optional): downsampling stride. A
+                value of 1 disables downsampling. Defaults to 2.
             resblock_updown (bool, False): if True use residual blocks for
                 downsampling. Defaults to False.
             downsample_padding (int, optional): padding used in the
@@ -879,6 +949,7 @@ class DownBlock(torch.nn.Module):
         """
         super().__init__()
         self.resblock_updown = resblock_updown
+        self.stride = _resolve_stride(stride, spatial_dims)
 
         resnets = []
 
@@ -897,7 +968,8 @@ class DownBlock(torch.nn.Module):
 
         self.resnets = torch.nn.ModuleList(resnets)
 
-        if add_downsample:
+        self.downsampler = None
+        if not _is_identity_stride(self.stride):
             if resblock_updown:
                 self.downsampler = ResnetBlock(
                     spatial_dims=spatial_dims,
@@ -906,7 +978,7 @@ class DownBlock(torch.nn.Module):
                     class_emb_channels=class_emb_channels,
                     norm_num_groups=norm_num_groups,
                     norm_eps=norm_eps,
-                    down=True,
+                    downsample_stride=self.stride,
                 )
             else:
                 self.downsampler = Downsample(
@@ -915,9 +987,8 @@ class DownBlock(torch.nn.Module):
                     use_conv=True,
                     out_channels=out_channels,
                     padding=downsample_padding,
+                    stride=self.stride,
                 )
-        else:
-            self.downsampler = None
 
     def forward(
         self,
@@ -953,7 +1024,7 @@ class AttnDownBlock(torch.nn.Module):
         num_res_blocks: int = 1,
         norm_num_groups: int = 32,
         norm_eps: float = 1e-6,
-        add_downsample: bool = True,
+        stride: int | Sequence[int] = 2,
         resblock_updown: bool = False,
         downsample_padding: int = 1,
         num_head_channels: int = 1,
@@ -971,8 +1042,8 @@ class AttnDownBlock(torch.nn.Module):
                 normalization. Defaults to 32.
             norm_eps (float, optional): epsilon for the group normalization.
                 Defaults to 1e-6.
-            add_downsample (bool, optional): if True add downsample block.
-                Defaults to True.
+            stride (int | Sequence[int], optional): downsampling stride. A
+                value of 1 disables downsampling. Defaults to 2.
             resblock_updown (bool, optional): if True use residual blocks for
                 downsampling. Defaults to False.
             downsample_padding (int, optional): padding used in the downsampling
@@ -984,6 +1055,7 @@ class AttnDownBlock(torch.nn.Module):
         """
         super().__init__()
         self.resblock_updown = resblock_updown
+        self.stride = _resolve_stride(stride, spatial_dims)
 
         resnets = []
         attentions = []
@@ -1014,7 +1086,8 @@ class AttnDownBlock(torch.nn.Module):
         self.attentions = torch.nn.ModuleList(attentions)
         self.resnets = torch.nn.ModuleList(resnets)
 
-        if add_downsample:
+        self.downsampler = None
+        if not _is_identity_stride(self.stride):
             if resblock_updown:
                 self.downsampler = ResnetBlock(
                     spatial_dims=spatial_dims,
@@ -1023,7 +1096,7 @@ class AttnDownBlock(torch.nn.Module):
                     class_emb_channels=class_emb_channels,
                     norm_num_groups=norm_num_groups,
                     norm_eps=norm_eps,
-                    down=True,
+                    downsample_stride=self.stride,
                 )
             else:
                 self.downsampler = Downsample(
@@ -1032,9 +1105,8 @@ class AttnDownBlock(torch.nn.Module):
                     use_conv=True,
                     out_channels=out_channels,
                     padding=downsample_padding,
+                    stride=self.stride,
                 )
-        else:
-            self.downsampler = None
 
     def forward(
         self,
@@ -1071,7 +1143,7 @@ class CrossAttnDownBlock(torch.nn.Module):
         num_res_blocks: int = 1,
         norm_num_groups: int = 32,
         norm_eps: float = 1e-6,
-        add_downsample: bool = True,
+        stride: int | Sequence[int] = 2,
         resblock_updown: bool = False,
         downsample_padding: int = 1,
         num_head_channels: int = 1,
@@ -1092,8 +1164,8 @@ class CrossAttnDownBlock(torch.nn.Module):
                 normalization. Defaults to 32.
             norm_eps (float, optional): epsilon for the group normalization.
                 Defaults to 1e-6.
-            add_downsample (bool, optional): if True add downsample block.
-                Defaults to True.
+            stride (int | Sequence[int], optional): downsampling stride. A
+                value of 1 disables downsampling. Defaults to 2.
             resblock_updown (bool, optional): if True use residual blocks for
                 downsampling. Defaults to False.
             downsample_padding (int, optional): padding used in the downsampling
@@ -1111,6 +1183,7 @@ class CrossAttnDownBlock(torch.nn.Module):
         """
         super().__init__()
         self.resblock_updown = resblock_updown
+        self.stride = _resolve_stride(stride, spatial_dims)
 
         resnets = []
         attentions = []
@@ -1146,7 +1219,8 @@ class CrossAttnDownBlock(torch.nn.Module):
         self.attentions = torch.nn.ModuleList(attentions)
         self.resnets = torch.nn.ModuleList(resnets)
 
-        if add_downsample:
+        self.downsampler = None
+        if not _is_identity_stride(self.stride):
             if resblock_updown:
                 self.downsampler = ResnetBlock(
                     spatial_dims=spatial_dims,
@@ -1155,7 +1229,7 @@ class CrossAttnDownBlock(torch.nn.Module):
                     class_emb_channels=class_emb_channels,
                     norm_num_groups=norm_num_groups,
                     norm_eps=norm_eps,
-                    down=True,
+                    downsample_stride=self.stride,
                 )
             else:
                 self.downsampler = Downsample(
@@ -1164,9 +1238,8 @@ class CrossAttnDownBlock(torch.nn.Module):
                     use_conv=True,
                     out_channels=out_channels,
                     padding=downsample_padding,
+                    stride=self.stride,
                 )
-        else:
-            self.downsampler = None
 
     def forward(
         self,
@@ -1359,7 +1432,7 @@ class UpBlock(torch.nn.Module):
         num_res_blocks: int = 1,
         norm_num_groups: int = 32,
         norm_eps: float = 1e-6,
-        add_upsample: bool = True,
+        stride: int | Sequence[int] = 2,
         resblock_updown: bool = False,
         no_skip_connection: bool = False,
     ) -> None:
@@ -1376,14 +1449,15 @@ class UpBlock(torch.nn.Module):
                 normalization. Defaults to 32.
             norm_eps (float, optional): epsilon for the group normalization.
                 Defaults to 1e-6.
-            add_upsample (bool, optional): if True add downsample block.
-                Defaults to False.
+            stride (int | Sequence[int], optional): upsampling stride (scale
+                factor). A value of 1 disables upsampling. Defaults to 2.
             resblock_updown (bool, optional): if True use residual blocks for
                 upsampling. Defaults to False.
         """
         super().__init__()
         self.resblock_updown = resblock_updown
         self.no_skip_connection = no_skip_connection
+        self.stride = _resolve_stride(stride, spatial_dims)
         resnets = []
 
         for i in range(num_res_blocks):
@@ -1407,7 +1481,8 @@ class UpBlock(torch.nn.Module):
 
         self.resnets = torch.nn.ModuleList(resnets)
 
-        if add_upsample:
+        self.upsampler = None
+        if not _is_identity_stride(self.stride):
             if resblock_updown:
                 self.upsampler = ResnetBlock(
                     spatial_dims=spatial_dims,
@@ -1416,7 +1491,7 @@ class UpBlock(torch.nn.Module):
                     class_emb_channels=class_emb_channels,
                     norm_num_groups=norm_num_groups,
                     norm_eps=norm_eps,
-                    up=True,
+                    upsample_stride=self.stride,
                 )
             else:
                 self.upsampler = Upsample(
@@ -1424,9 +1499,8 @@ class UpBlock(torch.nn.Module):
                     num_channels=out_channels,
                     use_conv=True,
                     out_channels=out_channels,
+                    stride=self.stride,
                 )
-        else:
-            self.upsampler = None
 
     def forward(
         self,
@@ -1468,7 +1542,7 @@ class AttnUpBlock(torch.nn.Module):
         num_res_blocks: int = 1,
         norm_num_groups: int = 32,
         norm_eps: float = 1e-6,
-        add_upsample: bool = True,
+        stride: int | Sequence[int] = 2,
         resblock_updown: bool = False,
         num_head_channels: int = 1,
         use_flash_attention: bool = False,
@@ -1488,10 +1562,10 @@ class AttnUpBlock(torch.nn.Module):
                 normalization. Defaults to 32.
             norm_eps (float, optional): epsilon for the group normalization.
                 Defaults to 1e-6.
-            add_upsample (bool, optional): if True add upsample block. Defaults
-                to True.
+            stride (int | Sequence[int], optional): upsampling stride (scale
+                factor). A value of 1 disables upsampling. Defaults to 2.
             resblock_updown (bool, optional): if True use residual blocks for
-                downsampling. Defaults to False.
+                upsampling. Defaults to False.
             num_head_channels (int, optional): number of channels in each
                 attention head. Defaults to 1.
             use_flash_attention (bool, optional): if True, use flash attention
@@ -1500,6 +1574,7 @@ class AttnUpBlock(torch.nn.Module):
         super().__init__()
         self.resblock_updown = resblock_updown
         self.no_skip_connection = no_skip_connection
+        self.stride = _resolve_stride(stride, spatial_dims)
 
         resnets = []
         attentions = []
@@ -1536,7 +1611,8 @@ class AttnUpBlock(torch.nn.Module):
         self.resnets = torch.nn.ModuleList(resnets)
         self.attentions = torch.nn.ModuleList(attentions)
 
-        if add_upsample:
+        self.upsampler = None
+        if not _is_identity_stride(self.stride):
             if resblock_updown:
                 self.upsampler = ResnetBlock(
                     spatial_dims=spatial_dims,
@@ -1545,7 +1621,7 @@ class AttnUpBlock(torch.nn.Module):
                     class_emb_channels=class_emb_channels,
                     norm_num_groups=norm_num_groups,
                     norm_eps=norm_eps,
-                    up=True,
+                    upsample_stride=self.stride,
                 )
             else:
                 self.upsampler = Upsample(
@@ -1553,9 +1629,8 @@ class AttnUpBlock(torch.nn.Module):
                     num_channels=out_channels,
                     use_conv=True,
                     out_channels=out_channels,
+                    stride=self.stride,
                 )
-        else:
-            self.upsampler = None
 
     def forward(
         self,
@@ -1598,7 +1673,7 @@ class CrossAttnUpBlock(torch.nn.Module):
         num_res_blocks: int = 1,
         norm_num_groups: int = 32,
         norm_eps: float = 1e-6,
-        add_upsample: bool = True,
+        stride: int | Sequence[int] = 2,
         resblock_updown: bool = False,
         num_head_channels: int = 1,
         transformer_num_layers: int = 1,
@@ -1621,10 +1696,10 @@ class CrossAttnUpBlock(torch.nn.Module):
                 normalization. Defaults to 32.
             norm_eps (float, optional): epsilon for the group normalization.
                 Defaults to 1e-6.
-            add_upsample (bool, optional): if True add upsample block. Defaults
-                to True.
+            stride (int | Sequence[int], optional): upsampling stride (scale
+                factor). A value of 1 disables upsampling. Defaults to 2.
             resblock_updown (bool, optional): if True use residual blocks for
-                downsampling. Defaults to False.
+                upsampling. Defaults to False.
             num_head_channels (int, optional): number of channels in each
                 attention head. Defaults to 1.
             transformer_num_layers (int, optional): number of layers of
@@ -1639,6 +1714,7 @@ class CrossAttnUpBlock(torch.nn.Module):
         super().__init__()
         self.resblock_updown = resblock_updown
         self.no_skip_connection = no_skip_connection
+        self.stride = _resolve_stride(stride, spatial_dims)
 
         resnets = []
         attentions = []
@@ -1679,7 +1755,8 @@ class CrossAttnUpBlock(torch.nn.Module):
         self.attentions = torch.nn.ModuleList(attentions)
         self.resnets = torch.nn.ModuleList(resnets)
 
-        if add_upsample:
+        self.upsampler = None
+        if not _is_identity_stride(self.stride):
             if resblock_updown:
                 self.upsampler = ResnetBlock(
                     spatial_dims=spatial_dims,
@@ -1688,7 +1765,7 @@ class CrossAttnUpBlock(torch.nn.Module):
                     class_emb_channels=class_emb_channels,
                     norm_num_groups=norm_num_groups,
                     norm_eps=norm_eps,
-                    up=True,
+                    upsample_stride=self.stride,
                 )
             else:
                 self.upsampler = Upsample(
@@ -1696,9 +1773,8 @@ class CrossAttnUpBlock(torch.nn.Module):
                     num_channels=out_channels,
                     use_conv=True,
                     out_channels=out_channels,
+                    stride=self.stride,
                 )
-        else:
-            self.upsampler = None
 
     def forward(
         self,
@@ -1733,7 +1809,7 @@ def get_down_block(
     num_res_blocks: int,
     norm_num_groups: int,
     norm_eps: float,
-    add_downsample: bool,
+    stride: int | Sequence[int],
     resblock_updown: bool,
     with_attn: bool,
     with_cross_attn: bool,
@@ -1755,8 +1831,8 @@ def get_down_block(
             normalization. Defaults to 32.
         norm_eps (float, optional): epsilon for the group normalization.
             Defaults to 1e-6.
-        add_downsample (bool, optional): if True add downsample block. Defaults
-            to True.
+        stride (int | Sequence[int]): downsampling stride. A value of 1
+            disables downsampling.
         resblock_updown (bool, optional): if True use residual blocks for
             downsampling. Defaults to False.
         with_attn (bool): if True adds attention.
@@ -1784,7 +1860,7 @@ def get_down_block(
             num_res_blocks=num_res_blocks,
             norm_num_groups=norm_num_groups,
             norm_eps=norm_eps,
-            add_downsample=add_downsample,
+            stride=stride,
             resblock_updown=resblock_updown,
             num_head_channels=num_head_channels,
             use_flash_attention=use_flash_attention,
@@ -1798,7 +1874,7 @@ def get_down_block(
             num_res_blocks=num_res_blocks,
             norm_num_groups=norm_num_groups,
             norm_eps=norm_eps,
-            add_downsample=add_downsample,
+            stride=stride,
             resblock_updown=resblock_updown,
             num_head_channels=num_head_channels,
             transformer_num_layers=transformer_num_layers,
@@ -1815,7 +1891,7 @@ def get_down_block(
             num_res_blocks=num_res_blocks,
             norm_num_groups=norm_num_groups,
             norm_eps=norm_eps,
-            add_downsample=add_downsample,
+            stride=stride,
             resblock_updown=resblock_updown,
         )
 
@@ -1892,7 +1968,7 @@ def get_up_block(
     num_res_blocks: int,
     norm_num_groups: int,
     norm_eps: float,
-    add_upsample: bool,
+    stride: int | Sequence[int],
     resblock_updown: bool,
     with_attn: bool,
     with_cross_attn: bool,
@@ -1917,10 +1993,10 @@ def get_up_block(
             normalization. Defaults to 32.
         norm_eps (float, optional): epsilon for the group normalization.
             Defaults to 1e-6.
-        add_upsample (bool, optional): if True add upsample block. Defaults
-            to True.
+        stride (int | Sequence[int]): upsampling stride (scale factor). A
+            value of 1 disables upsampling.
         resblock_updown (bool, optional): if True use residual blocks for
-            downsampling. Defaults to False.
+            upsampling. Defaults to False.
         with_attn (bool): if True adds attention.
         with_cross_attn (bool): if True adds cross-attention.
         num_head_channels (int, optional): number of channels in each
@@ -1949,7 +2025,7 @@ def get_up_block(
             num_res_blocks=num_res_blocks,
             norm_num_groups=norm_num_groups,
             norm_eps=norm_eps,
-            add_upsample=add_upsample,
+            stride=stride,
             resblock_updown=resblock_updown,
             num_head_channels=num_head_channels,
             use_flash_attention=use_flash_attention,
@@ -1965,7 +2041,7 @@ def get_up_block(
             num_res_blocks=num_res_blocks,
             norm_num_groups=norm_num_groups,
             norm_eps=norm_eps,
-            add_upsample=add_upsample,
+            stride=stride,
             resblock_updown=resblock_updown,
             num_head_channels=num_head_channels,
             transformer_num_layers=transformer_num_layers,
@@ -1984,7 +2060,7 @@ def get_up_block(
             num_res_blocks=num_res_blocks,
             norm_num_groups=norm_num_groups,
             norm_eps=norm_eps,
-            add_upsample=add_upsample,
+            stride=stride,
             resblock_updown=resblock_updown,
             no_skip_connection=no_skip_connection,
         )
@@ -2007,6 +2083,7 @@ class Generator(torch.nn.Module):
         norm_num_groups: int = 32,
         norm_eps: float = 1e-6,
         resblock_updown: bool = False,
+        strides: Sequence[int | Sequence[int]] | None = None,
         num_head_channels: int | Sequence[int] = 8,
         with_conditioning: bool = False,
         transformer_num_layers: int = 1,
@@ -2029,6 +2106,12 @@ class Generator(torch.nn.Module):
             norm_eps (float): epsilon for the normalization.
             resblock_updown (bool): if True use residual blocks for
                 up/downsampling.
+            strides (Sequence[int | Sequence[int]] | None): stride for each
+                block. Must contain one entry per block, where each entry is
+                either an int or a per-spatial-dimension tuple. For example,
+                ``(2, 2, 2, 1)`` or ``((2, 2), (2, 2), (2, 2), 1)``. The
+                upsampling blocks use the strides in reverse order. If None,
+                a stride of 2 is used for every block. Defaults to None.
             num_head_channels (int | Sequence[int]): number of channels in each
                 attention head.
             with_conditioning (bool): if True add spatial transformers to
@@ -2093,6 +2176,17 @@ class Generator(torch.nn.Module):
                 "`num_channels`."
             )
 
+        if strides is None:
+            strides = [2] * len(num_channels)
+        elif len(strides) != len(num_channels):
+            raise ValueError(
+                "`strides` should have the same length as `num_channels`."
+            )
+        strides = [
+            _resolve_stride(block_stride, spatial_dims)
+            for block_stride in strides
+        ]
+
         if use_flash_attention and not has_xformers:
             raise ValueError(
                 "use_flash_attention is True but xformers is not installed."
@@ -2105,6 +2199,7 @@ class Generator(torch.nn.Module):
 
         self.in_channels = in_channels
         self.spatial_dims = spatial_dims
+        self.strides = list(strides)
         self.block_out_channels = num_channels
         self.out_channels = out_channels
         self.num_res_blocks = num_res_blocks
@@ -2142,7 +2237,6 @@ class Generator(torch.nn.Module):
         for i in range(len(num_channels)):
             input_channel = output_channel
             output_channel = num_channels[i]
-            is_final_block = i == len(num_channels) - 1
 
             down_block = get_down_block(
                 spatial_dims=spatial_dims,
@@ -2152,7 +2246,7 @@ class Generator(torch.nn.Module):
                 num_res_blocks=num_res_blocks[i],
                 norm_num_groups=norm_num_groups,
                 norm_eps=norm_eps,
-                add_downsample=not is_final_block,
+                stride=self.strides[i],
                 resblock_updown=resblock_updown,
                 with_attn=(attention_levels[i] and not with_conditioning),
                 with_cross_attn=(attention_levels[i] and with_conditioning),
@@ -2194,7 +2288,18 @@ class Generator(torch.nn.Module):
                 min(i + 1, len(num_channels) - 1)
             ]
 
-            is_final_block = i == len(num_channels) - 1
+            # Up blocks are built in reverse order. The up block at level j
+            # consumes the residual samples from down level j plus the
+            # downsampler output from level j - 1 (or, for j == 0, the input
+            # convolution sample). Its upsampling stride is the one that
+            # inverted the corresponding downsampler.
+            down_index = len(num_channels) - 1 - i
+            if down_index == 0:
+                block_stride = (1,) * spatial_dims
+                extra_res_block = 1
+            else:
+                block_stride = self.strides[down_index - 1]
+                extra_res_block = 0 if _is_identity_stride(block_stride) else 1
 
             up_block = get_up_block(
                 spatial_dims=spatial_dims,
@@ -2202,10 +2307,10 @@ class Generator(torch.nn.Module):
                 prev_output_channel=prev_output_channel,
                 out_channels=output_channel,
                 class_emb_channels=class_embedding_dim,
-                num_res_blocks=reversed_num_res_blocks[i] + 1,
+                num_res_blocks=reversed_num_res_blocks[i] + extra_res_block,
                 norm_num_groups=norm_num_groups,
                 norm_eps=norm_eps,
-                add_upsample=not is_final_block,
+                stride=block_stride,
                 resblock_updown=resblock_updown,
                 with_attn=(
                     reversed_attention_levels[i] and not with_conditioning
@@ -2222,6 +2327,18 @@ class Generator(torch.nn.Module):
             )
 
             self.up_blocks.append(up_block)
+
+        # If the final down block downsamples, the decoder first needs to
+        # return to the final encoder level before consuming skip connections.
+        if _is_identity_stride(self.strides[-1]):
+            self.bottleneck_upsampler = None
+        else:
+            self.bottleneck_upsampler = Upsample(
+                spatial_dims=spatial_dims,
+                num_channels=num_channels[-1],
+                use_conv=False,
+                stride=self.strides[-1],
+            )
 
         # out
         self.out = torch.nn.Sequential(
@@ -2247,14 +2364,22 @@ class Generator(torch.nn.Module):
         self.out_activation = torch.nn.Tanh()
 
     @property
-    def latent_downsample_factor(self) -> int:
+    def latent_downsample_factor(self) -> int | tuple[int, ...]:
         """
-        Number of spatial downsampling stages applied by the encoder.
+        Spatial downsampling factor applied by the encoder.
 
         Returns:
-            int: downsampling factor, e.g. 3 for a factor of 8 per dimension.
+            int | tuple[int, ...]: downsampling factor, e.g. 3 for a factor of
+                8 per dimension. If the factor differs between spatial
+                dimensions, a tuple is returned.
         """
-        return len(self.block_out_channels) - 1
+        factors = tuple(
+            math.prod(stride[axis] for stride in self.strides)
+            for axis in range(self.spatial_dims)
+        )
+        if len(set(factors)) == 1:
+            return factors[0]
+        return factors
 
     def get_class_embeddings(
         self, x: torch.Tensor, class_labels: torch.Tensor | None
@@ -2398,6 +2523,14 @@ class Generator(torch.nn.Module):
                     "skip connections are required to decode from a bottleneck"
                 )
             down_block_res_samples = []
+        # The final downsampler output is the bottleneck input, not a skip
+        # connection, so it should not be consumed by the up blocks.
+        if len(down_block_res_samples) > 0 and not _is_identity_stride(
+            self.strides[-1]
+        ):
+            down_block_res_samples = down_block_res_samples[:-1]
+        if self.bottleneck_upsampler is not None:
+            h = self.bottleneck_upsampler(h)
         for upsample_block in self.up_blocks:
             if len(down_block_res_samples) > 0:
                 res_samples = down_block_res_samples[

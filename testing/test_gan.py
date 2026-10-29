@@ -96,6 +96,30 @@ def test_generator_with_cross_attention_and_class_embeddings(context_dim):
     )
 
 
+@pytest.mark.parametrize(
+    "strides",
+    [
+        [2, 2, 2, 1],
+        [2, 1, 2, 1],
+        [1, 2, 2, 1],
+        [(2, 2), (2, 2), 1, 1],
+    ],
+)
+def test_generator_per_block_strides(strides):
+    input_tensor = torch.rand(1, 1, 32, 32)
+    generator = Generator(
+        spatial_dims=2,
+        in_channels=1,
+        out_channels=1,
+        num_channels=(32, 32, 32, 32),
+        num_res_blocks=1,
+        attention_levels=(False, False, False, False),
+        strides=strides,
+    )
+    output = generator(input_tensor)
+    assert output.shape == input_tensor.shape
+
+
 def test_discriminator_convnext():
     disc = Discriminator(
         "convnext",
