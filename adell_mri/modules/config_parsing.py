@@ -258,7 +258,8 @@ def parse_config_ae(
     discriminator and an optional ``optimizer`` section. Reconstruction logging
     options (``reconstruction_every_n_epochs`` and
     ``reconstruction_max_batches``) can be set at the top level or inside the
-    ``ae`` section.
+    ``ae`` section. Reconstruction logging defaults to every 5 epochs and can
+    be disabled with ``reconstruction_every_n_epochs: 0``.
 
     Args:
         config_file (str | dict[str, Any]): path to the YAML configuration
@@ -330,7 +331,7 @@ def parse_config_ae(
         "batch_size": config.get("batch_size", 1),
         "spatial_dims": spatial_dims,
         "reconstruction_every_n_epochs": config.get(
-            "reconstruction_every_n_epochs", 0
+            "reconstruction_every_n_epochs", 5
         ),
         "reconstruction_max_batches": config.get(
             "reconstruction_max_batches", 1

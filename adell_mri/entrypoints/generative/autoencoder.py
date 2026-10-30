@@ -401,6 +401,16 @@ def ensure_autoencoder(
         )
         return autoencoder, last_checkpoint, False
 
+    if parsed_config.get("reconstruction_every_n_epochs", 0) > 0 and (
+        pl_logger is None or hasattr(pl_logger, "log_image") is False
+    ):
+        logger.warning(
+            "Autoencoder reconstruction images will not be logged because no "
+            "image-capable Lightning logger is configured. Set both "
+            "--project_name and --summary_name (and optionally "
+            "--logger_type wandb) to enable image logging."
+        )
+
     autoencoder = build_autoencoder(parsed_config)
     callbacks = [RichProgressBar()]
     if ckpt_callback is not None:

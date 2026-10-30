@@ -89,6 +89,13 @@ def test_log_image_captions_include_channel_index():
     assert call["caption"] == ["case (channel 0)", "case (channel 1)"]
 
 
+def test_parse_config_ae_defaults_reconstruction_logging():
+    parsed = parse_config_ae({"model": AE_MODEL_CONFIG}, ["t1"], spatial_dims=2)
+
+    assert parsed["reconstruction_every_n_epochs"] == 5
+    assert parsed["reconstruction_max_batches"] == 1
+
+
 def test_parse_config_ae_reads_reconstruction_settings():
     config = {
         "model": AE_MODEL_CONFIG,
