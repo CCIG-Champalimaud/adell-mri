@@ -34,6 +34,8 @@ class _AutoEncoderLossMixin:
     """
 
     is_variational: bool = False
+    adversarial_start_epoch: int = 0
+    adversarial_warmup_epochs: int = 0
 
     def init_losses(
         self,
@@ -123,6 +125,28 @@ class _AutoEncoderLossMixin:
             )
         self.automatic_optimization = not self.adversarial_on
 
+    def init_adversarial_schedule(
+        self, start_epoch: int, warmup_epochs: int
+    ) -> None:
+        """
+        Configures the delay and warm-up for the adversarial loss.
+
+        Args:
+            start_epoch (int): epoch at which the adversarial loss starts.
+            warmup_epochs (int): number of epochs over which the adversarial
+                loss is linearly ramped up after ``start_epoch``.
+
+        Raises:
+            ValueError: if either value is negative.
+        """
+        if start_epoch < 0 or warmup_epochs < 0:
+            raise ValueError(
+                "adversarial_start_epoch and adversarial_warmup_epochs must "
+                "be non-negative"
+            )
+        self.adversarial_start_epoch = start_epoch
+        self.adversarial_warmup_epochs = warmup_epochs
+
     @property
     def adversarial_on(self) -> bool:
         """
@@ -132,6 +156,26 @@ class _AutoEncoderLossMixin:
             bool: True if the adversarial loss weight is positive.
         """
         return self.loss_weights["adversarial"] > 0.0
+
+    @property
+    def adversarial_scale(self) -> float:
+        """
+        Scale applied to the adversarial loss at the current epoch.
+
+        The scale is zero before ``adversarial_start_epoch`` and then ramps
+        linearly to one over ``adversarial_warmup_epochs`` epochs.
+
+        Returns:
+            float: adversarial loss scale in the ``[0, 1]`` range.
+        """
+        if self.adversarial_on is False:
+            return 0.0
+        if self.current_epoch < self.adversarial_start_epoch:
+            return 0.0
+        if self.adversarial_warmup_epochs <= 0:
+            return 1.0
+        elapsed = self.current_epoch - self.adversarial_start_epoch
+        return min(1.0, elapsed / self.adversarial_warmup_epochs)
 
     def unpack_output(
         self, output: torch.Tensor | tuple[torch.Tensor, ...]
@@ -188,14 +232,15 @@ class _AutoEncoderLossMixin:
             losses["adv_loss"] = self.adversarial_loss(
                 logits_fake, target_is_real=True, for_discriminator=False
             )
-        total = sum(
-            [
-                self.loss_weights[LOSS_WEIGHT_KEYS[key]] * losses[key]
-                for key in losses
-                if key in LOSS_WEIGHT_KEYS
-            ]
-        )
-        losses["loss"] = total
+        total = []
+        for key, value in losses.items():
+            if key not in LOSS_WEIGHT_KEYS:
+                continue
+            weight = self.loss_weights[LOSS_WEIGHT_KEYS[key]]
+            if key == "adv_loss":
+                weight = weight * self.adversarial_scale
+            total.append(weight * value)
+        losses["loss"] = sum(total)
         return losses, output
 
     def compute_discriminator_losses(
@@ -310,7 +355,10 @@ class _AutoEncoderLossMixin:
         x = batch[self.input_image_key]
         if self.adversarial_on:
             opt_g, opt_d = self.optimizers()
-            losses, output = self.compute_losses(x)
+            adversarial_scale = self.adversarial_scale
+            losses, output = self.compute_losses(
+                x, include_adversarial=adversarial_scale > 0.0
+            )
             opt_g.zero_grad()
             self.manual_backward(losses["loss"])
             self.clip_gradients(
@@ -318,19 +366,25 @@ class _AutoEncoderLossMixin:
             )
             opt_g.step()
 
-            recon, _, _ = self.unpack_output(output)
-            disc_losses = self.compute_discriminator_losses(x, recon.detach())
-            opt_d.zero_grad()
-            self.manual_backward(
-                self.loss_weights["adversarial"] * disc_losses["disc_loss"]
-            )
-            self.clip_gradients(
-                opt_d, gradient_clip_val=1.0, gradient_clip_algorithm="norm"
-            )
-            opt_d.step()
+            if adversarial_scale > 0.0:
+                recon, _, _ = self.unpack_output(output)
+                disc_losses = self.compute_discriminator_losses(
+                    x, recon.detach()
+                )
+                opt_d.zero_grad()
+                self.manual_backward(
+                    self.loss_weights["adversarial"]
+                    * adversarial_scale
+                    * disc_losses["disc_loss"]
+                )
+                self.clip_gradients(
+                    opt_d, gradient_clip_val=1.0, gradient_clip_algorithm="norm"
+                )
+                opt_d.step()
+                self.log_losses(disc_losses)
 
             self.log_losses(losses)
-            self.log_losses(disc_losses)
+            self.log("adversarial_scale", adversarial_scale, on_epoch=True)
             self.log("loss", losses["loss"].detach(), on_epoch=True)
             return losses["loss"].detach()
 
@@ -451,6 +505,8 @@ class AutoEncoderPL(_AutoEncoderLossMixin, AutoEncoder, pl.LightningModule):
         discriminator_learning_rate: float | None = None,
         reconstruction_every_n_epochs: int = 0,
         reconstruction_max_batches: int = 1,
+        adversarial_start_epoch: int = 0,
+        adversarial_warmup_epochs: int = 0,
         *args,
         **kwargs,
     ):
@@ -484,6 +540,11 @@ class AutoEncoderPL(_AutoEncoderLossMixin, AutoEncoder, pl.LightningModule):
             reconstruction_max_batches (int, optional): maximum number of
                 validation batches logged per reconstruction epoch. Defaults to
                 1.
+            adversarial_start_epoch (int, optional): epoch at which the
+                adversarial loss starts. Defaults to 0 (immediately).
+            adversarial_warmup_epochs (int, optional): number of epochs over
+                which the adversarial loss is linearly ramped up after
+                ``adversarial_start_epoch``. Defaults to 0 (no warm-up).
             *args: positional arguments passed to :class:`AutoEncoder`.
             **kwargs: keyword arguments passed to :class:`AutoEncoder`.
         """
@@ -501,6 +562,9 @@ class AutoEncoderPL(_AutoEncoderLossMixin, AutoEncoder, pl.LightningModule):
         self.is_variational = False
         self.reconstruction_every_n_epochs = reconstruction_every_n_epochs
         self.reconstruction_max_batches = reconstruction_max_batches
+        self.init_adversarial_schedule(
+            adversarial_start_epoch, adversarial_warmup_epochs
+        )
         self.init_losses(
             loss_weights, rec_loss, discriminator_config, perceptual_kwargs
         )
@@ -529,6 +593,8 @@ class VariationalAutoEncoderPL(
         discriminator_learning_rate: float | None = None,
         reconstruction_every_n_epochs: int = 0,
         reconstruction_max_batches: int = 1,
+        adversarial_start_epoch: int = 0,
+        adversarial_warmup_epochs: int = 0,
         *args,
         **kwargs,
     ):
@@ -564,6 +630,11 @@ class VariationalAutoEncoderPL(
             reconstruction_max_batches (int, optional): maximum number of
                 validation batches logged per reconstruction epoch. Defaults to
                 1.
+            adversarial_start_epoch (int, optional): epoch at which the
+                adversarial loss starts. Defaults to 0 (immediately).
+            adversarial_warmup_epochs (int, optional): number of epochs over
+                which the adversarial loss is linearly ramped up after
+                ``adversarial_start_epoch``. Defaults to 0 (no warm-up).
             *args: positional arguments passed to
                 :class:`VariationalAutoEncoder`.
             **kwargs: keyword arguments passed to
@@ -584,6 +655,9 @@ class VariationalAutoEncoderPL(
         self.is_variational = True
         self.reconstruction_every_n_epochs = reconstruction_every_n_epochs
         self.reconstruction_max_batches = reconstruction_max_batches
+        self.init_adversarial_schedule(
+            adversarial_start_epoch, adversarial_warmup_epochs
+        )
         if loss_weights is None:
             loss_weights = {"rec": 1.0, "kl": var_loss_mult}
         self.init_losses(

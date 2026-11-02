@@ -1,5 +1,6 @@
 import os
 import sys
+from types import SimpleNamespace
 
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 import pytest
@@ -139,6 +140,45 @@ def test_adversarial_weight_adds_optimizer(model_class, model_config):
     recon = model.unpack_output(output)[0]
     disc_losses = model.compute_discriminator_losses(x, recon.detach())
     assert "disc_loss" in disc_losses
+
+
+@pytest.mark.parametrize("model_class", MODEL_CLASSES)
+def test_adversarial_schedule(model_class, model_config):
+    module_class = (
+        AutoEncoderPL
+        if model_class is AutoEncoder
+        else VariationalAutoEncoderPL
+    )
+    model = module_class(
+        **model_config,
+        loss_weights={"rec": 1.0, "adversarial": 0.025},
+        adversarial_start_epoch=5,
+        adversarial_warmup_epochs=10,
+    )
+
+    expected_scales = {
+        4: 0.0,
+        5: 0.0,
+        10: 0.5,
+        15: 1.0,
+        20: 1.0,
+    }
+    for epoch, expected in expected_scales.items():
+        model._trainer = SimpleNamespace(current_epoch=epoch)
+        assert model.adversarial_scale == pytest.approx(expected)
+
+
+def test_negative_adversarial_schedule_raises(model_config):
+    with pytest.raises(ValueError):
+        AutoEncoderPL(
+            **model_config,
+            adversarial_start_epoch=-1,
+        )
+    with pytest.raises(ValueError):
+        AutoEncoderPL(
+            **model_config,
+            adversarial_warmup_epochs=-1,
+        )
 
 
 def test_vae_kl_weight_defaults_to_var_loss_mult(model_config):

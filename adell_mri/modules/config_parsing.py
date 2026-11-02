@@ -259,7 +259,9 @@ def parse_config_ae(
     options (``reconstruction_every_n_epochs`` and
     ``reconstruction_max_batches``) can be set at the top level or inside the
     ``ae`` section. Reconstruction logging defaults to every 5 epochs and can
-    be disabled with ``reconstruction_every_n_epochs: 0``.
+    be disabled with ``reconstruction_every_n_epochs: 0``. Adversarial loss
+    scheduling is controlled with ``adversarial_start_epoch`` and
+    ``adversarial_warmup_epochs``.
 
     Args:
         config_file (str | dict[str, Any]): path to the YAML configuration
@@ -278,8 +280,9 @@ def parse_config_ae(
             ``is_variational``, ``loss_weights``, ``rec_loss``,
             ``perceptual_kwargs``, ``discriminator``, ``optimizer``,
             ``batch_size``, ``spatial_dims``,
-            ``reconstruction_every_n_epochs`` and
-            ``reconstruction_max_batches`` keys.
+            ``reconstruction_every_n_epochs``,
+            ``reconstruction_max_batches``, ``adversarial_start_epoch`` and
+            ``adversarial_warmup_epochs`` keys.
 
     Raises:
         ValueError: if the ``model`` section is missing.
@@ -295,6 +298,8 @@ def parse_config_ae(
             "reconstruction_every_n_epochs",
             "reconstruction_max_batches",
             "reconstruction_timestep",
+            "adversarial_start_epoch",
+            "adversarial_warmup_epochs",
         ]:
             if key in parent_config and key not in config:
                 config[key] = parent_config[key]
@@ -336,6 +341,8 @@ def parse_config_ae(
         "reconstruction_max_batches": config.get(
             "reconstruction_max_batches", 1
         ),
+        "adversarial_start_epoch": config.get("adversarial_start_epoch", 0),
+        "adversarial_warmup_epochs": config.get("adversarial_warmup_epochs", 0),
     }
     for key in kwargs:
         if kwargs[key] is not None:

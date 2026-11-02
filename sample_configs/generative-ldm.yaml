@@ -31,6 +31,8 @@ ae:
     momentum_beta1: 0.9
     momentum_beta2: 0.99
   batch_size: 1
+  adversarial_start_epoch: 0
+  adversarial_warmup_epochs: 0
 
 # Latent diffusion model
 # in_channels and out_channels are overridden with the latent channel count

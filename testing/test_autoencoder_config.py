@@ -36,6 +36,8 @@ CONFIG = {
         "discriminator_learning_rate": 1.0e-4,
     },
     "batch_size": 2,
+    "adversarial_start_epoch": 10,
+    "adversarial_warmup_epochs": 5,
 }
 
 
@@ -60,6 +62,8 @@ def test_parse_config_ae(config_file):
     assert parsed["optimizer"]["discriminator_learning_rate"] == 1.0e-4
     assert parsed["batch_size"] == 2
     assert parsed["spatial_dims"] == 3
+    assert parsed["adversarial_start_epoch"] == 10
+    assert parsed["adversarial_warmup_epochs"] == 5
 
 
 def test_parse_config_ae_multichannel_targets(config_file):

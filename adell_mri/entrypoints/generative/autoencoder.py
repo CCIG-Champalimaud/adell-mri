@@ -64,6 +64,12 @@ def build_autoencoder(parsed_config: dict[str, Any]) -> torch.nn.Module:
         "reconstruction_max_batches": parsed_config.get(
             "reconstruction_max_batches", 1
         ),
+        "adversarial_start_epoch": parsed_config.get(
+            "adversarial_start_epoch", 0
+        ),
+        "adversarial_warmup_epochs": parsed_config.get(
+            "adversarial_warmup_epochs", 0
+        ),
     }
     common_args.update(parsed_config.get("optimizer", {}))
     module_class = (
