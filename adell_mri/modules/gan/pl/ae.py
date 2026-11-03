@@ -88,9 +88,13 @@ class _AutoEncoderLossMixin:
                 raise ImportError(
                     "PerceptualLoss requires the generative package and lpips"
                 ) from exc
+            if self.spatial_dims == 2:
+                network_type = "squeeze"
+            else:
+                network_type = "medicalnet_resnet10_23datasets"
             perceptual_config = {
                 "spatial_dims": self.spatial_dims,
-                "network_type": "squeeze",
+                "network_type": network_type,
                 "fake_3d_ratio": 0.5,
             }
             if perceptual_kwargs is not None:
@@ -378,7 +382,9 @@ class _AutoEncoderLossMixin:
                     * disc_losses["disc_loss"]
                 )
                 self.clip_gradients(
-                    opt_d, gradient_clip_val=1.0, gradient_clip_algorithm="norm"
+                    opt_d,
+                    gradient_clip_val=1.0,
+                    gradient_clip_algorithm="norm",
                 )
                 opt_d.step()
                 self.log_losses(disc_losses)

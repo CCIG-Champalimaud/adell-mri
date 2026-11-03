@@ -468,9 +468,13 @@ class DiffusionUNetPL(DiffusionModelUNet, pl.LightningModule):
 
             if "lpips" not in self.reconstruction_metrics:
                 try:
+                    if images.ndim - 2 == 2:
+                        network_type = "squeeze"
+                    else:
+                        network_type = "medicalnet_resnet10_23datasets"
                     self.reconstruction_metrics["lpips"] = PerceptualLoss(
                         spatial_dims=images.ndim - 2,
-                        network_type="squeeze",
+                        network_type=network_type,
                         fake_3d_ratio=0.5,
                     ).to(images.device)
                 except Exception:
