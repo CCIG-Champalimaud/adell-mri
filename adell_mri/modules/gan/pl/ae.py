@@ -201,7 +201,10 @@ class _AutoEncoderLossMixin:
         return output, None, None
 
     def compute_losses(
-        self, x: torch.Tensor, include_adversarial: bool = True
+        self,
+        x: torch.Tensor,
+        include_adversarial: bool = True,
+        include_perceptual: bool = True,
     ) -> tuple[
         dict[str, torch.Tensor], torch.Tensor | tuple[torch.Tensor, ...]
     ]:
@@ -212,6 +215,11 @@ class _AutoEncoderLossMixin:
             x (torch.Tensor): input image.
             include_adversarial (bool, optional): whether the adversarial
                 generator loss should be computed. Defaults to True.
+            include_perceptual (bool, optional): whether the perceptual
+                generator loss should be computed. This is relevant only because
+                the first training iteration might produce a constant vector
+                with std=0, which produces nan after normalising for MedicalNet.
+                Defaults to True.
 
         Returns:
             tuple[dict[str, torch.Tensor], torch.Tensor | tuple[torch.Tensor,
@@ -225,7 +233,7 @@ class _AutoEncoderLossMixin:
         }
         if mu is not None and logvar is not None:
             losses["kl_loss"] = self.variational_loss_fn(mu, logvar)
-        if self.perceptual_loss is not None:
+        if self.perceptual_loss is not None and include_perceptual:
             losses["perceptual_loss"] = self.perceptual_loss(recon, x)
         if (
             include_adversarial
@@ -361,7 +369,9 @@ class _AutoEncoderLossMixin:
             opt_g, opt_d = self.optimizers()
             adversarial_scale = self.adversarial_scale
             losses, output = self.compute_losses(
-                x, include_adversarial=adversarial_scale > 0.0
+                x,
+                include_adversarial=adversarial_scale > 0.0,
+                include_perceptual=self.global_step > 0,
             )
             opt_g.zero_grad()
             self.manual_backward(losses["loss"])
@@ -394,7 +404,11 @@ class _AutoEncoderLossMixin:
             self.log("loss", losses["loss"].detach(), on_epoch=True)
             return losses["loss"].detach()
 
-        losses, _ = self.compute_losses(x, include_adversarial=False)
+        losses, _ = self.compute_losses(
+            x,
+            include_adversarial=False,
+            include_perceptual=self.global_step > 0,
+        )
         self.log_losses(losses)
         self.log("loss", losses["loss"], on_epoch=True, prog_bar=True)
         return losses["loss"]
