@@ -36,6 +36,7 @@ class _AutoEncoderLossMixin:
     is_variational: bool = False
     adversarial_start_epoch: int = 0
     adversarial_warmup_epochs: int = 0
+    discriminator_update_every_n_steps: int = 1
 
     def init_losses(
         self,
@@ -124,32 +125,45 @@ class _AutoEncoderLossMixin:
             }
             disc_config.update(discriminator_config)
             self.discriminator = PatchDiscriminator(**disc_config)
-            self.adversarial_loss = PatchAdversarialLoss(
-                criterion="least_squares", no_activation_leastsq=True
-            )
+            self.adversarial_loss = PatchAdversarialLoss(criterion="hinge")
         self.automatic_optimization = not self.adversarial_on
 
     def init_adversarial_schedule(
-        self, start_epoch: int, warmup_epochs: int
+        self,
+        start_epoch: int,
+        warmup_epochs: int,
+        discriminator_update_every_n_steps: int,
     ) -> None:
         """
-        Configures the delay and warm-up for the adversarial loss.
+        Configures the delay, warm-up and update frequency for the adversarial
+        loss.
 
         Args:
             start_epoch (int): epoch at which the adversarial loss starts.
             warmup_epochs (int): number of epochs over which the adversarial
                 loss is linearly ramped up after ``start_epoch``.
+            discriminator_update_every_n_steps (int): update the discriminator
+                once every N training steps.
 
         Raises:
-            ValueError: if either value is negative.
+            ValueError: if any value is negative or if the discriminator update
+                frequency is less than one.
         """
         if start_epoch < 0 or warmup_epochs < 0:
             raise ValueError(
                 "adversarial_start_epoch and adversarial_warmup_epochs must "
                 "be non-negative"
             )
+        if discriminator_update_every_n_steps < 1:
+            raise ValueError(
+                "discriminator_update_every_n_steps must be greater than or "
+                "equal to 1"
+            )
         self.adversarial_start_epoch = start_epoch
         self.adversarial_warmup_epochs = warmup_epochs
+        self.discriminator_update_every_n_steps = (
+            discriminator_update_every_n_steps
+        )
 
     @property
     def adversarial_on(self) -> bool:
@@ -180,6 +194,19 @@ class _AutoEncoderLossMixin:
             return 1.0
         elapsed = self.current_epoch - self.adversarial_start_epoch
         return min(1.0, elapsed / self.adversarial_warmup_epochs)
+
+    @property
+    def discriminator_update_due(self) -> bool:
+        """
+        Whether the discriminator should be updated on the current step.
+
+        Returns:
+            bool: True if the current global step is a discriminator update
+                step.
+        """
+        if self.discriminator_update_every_n_steps <= 1:
+            return True
+        return self.global_step % self.discriminator_update_every_n_steps == 0
 
     def unpack_output(
         self, output: torch.Tensor | tuple[torch.Tensor, ...]
@@ -380,7 +407,7 @@ class _AutoEncoderLossMixin:
             )
             opt_g.step()
 
-            if adversarial_scale > 0.0:
+            if adversarial_scale > 0.0 and self.discriminator_update_due:
                 recon, _, _ = self.unpack_output(output)
                 disc_losses = self.compute_discriminator_losses(
                     x, recon.detach()
@@ -527,6 +554,7 @@ class AutoEncoderPL(_AutoEncoderLossMixin, AutoEncoder, pl.LightningModule):
         reconstruction_max_batches: int = 1,
         adversarial_start_epoch: int = 0,
         adversarial_warmup_epochs: int = 0,
+        discriminator_update_every_n_steps: int = 1,
         *args,
         **kwargs,
     ):
@@ -565,6 +593,9 @@ class AutoEncoderPL(_AutoEncoderLossMixin, AutoEncoder, pl.LightningModule):
             adversarial_warmup_epochs (int, optional): number of epochs over
                 which the adversarial loss is linearly ramped up after
                 ``adversarial_start_epoch``. Defaults to 0 (no warm-up).
+            discriminator_update_every_n_steps (int, optional): update the
+                discriminator once every N training steps. Defaults to 1
+                (every step).
             *args: positional arguments passed to :class:`AutoEncoder`.
             **kwargs: keyword arguments passed to :class:`AutoEncoder`.
         """
@@ -583,7 +614,9 @@ class AutoEncoderPL(_AutoEncoderLossMixin, AutoEncoder, pl.LightningModule):
         self.reconstruction_every_n_epochs = reconstruction_every_n_epochs
         self.reconstruction_max_batches = reconstruction_max_batches
         self.init_adversarial_schedule(
-            adversarial_start_epoch, adversarial_warmup_epochs
+            adversarial_start_epoch,
+            adversarial_warmup_epochs,
+            discriminator_update_every_n_steps,
         )
         self.init_losses(
             loss_weights, rec_loss, discriminator_config, perceptual_kwargs
@@ -615,6 +648,7 @@ class VariationalAutoEncoderPL(
         reconstruction_max_batches: int = 1,
         adversarial_start_epoch: int = 0,
         adversarial_warmup_epochs: int = 0,
+        discriminator_update_every_n_steps: int = 1,
         *args,
         **kwargs,
     ):
@@ -655,6 +689,9 @@ class VariationalAutoEncoderPL(
             adversarial_warmup_epochs (int, optional): number of epochs over
                 which the adversarial loss is linearly ramped up after
                 ``adversarial_start_epoch``. Defaults to 0 (no warm-up).
+            discriminator_update_every_n_steps (int, optional): update the
+                discriminator once every N training steps. Defaults to 1
+                (every step).
             *args: positional arguments passed to
                 :class:`VariationalAutoEncoder`.
             **kwargs: keyword arguments passed to
@@ -676,7 +713,9 @@ class VariationalAutoEncoderPL(
         self.reconstruction_every_n_epochs = reconstruction_every_n_epochs
         self.reconstruction_max_batches = reconstruction_max_batches
         self.init_adversarial_schedule(
-            adversarial_start_epoch, adversarial_warmup_epochs
+            adversarial_start_epoch,
+            adversarial_warmup_epochs,
+            discriminator_update_every_n_steps,
         )
         if loss_weights is None:
             loss_weights = {"rec": 1.0, "kl": var_loss_mult}

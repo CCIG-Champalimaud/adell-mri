@@ -261,7 +261,8 @@ def parse_config_ae(
     ``ae`` section. Reconstruction logging defaults to every 5 epochs and can
     be disabled with ``reconstruction_every_n_epochs: 0``. Adversarial loss
     scheduling is controlled with ``adversarial_start_epoch`` and
-    ``adversarial_warmup_epochs``.
+    ``adversarial_warmup_epochs``. The discriminator update frequency is
+    controlled with ``discriminator_update_every_n_steps``.
 
     Args:
         config_file (str | dict[str, Any]): path to the YAML configuration
@@ -281,8 +282,9 @@ def parse_config_ae(
             ``perceptual_kwargs``, ``discriminator``, ``optimizer``,
             ``batch_size``, ``spatial_dims``,
             ``reconstruction_every_n_epochs``,
-            ``reconstruction_max_batches``, ``adversarial_start_epoch`` and
-            ``adversarial_warmup_epochs`` keys.
+            ``reconstruction_max_batches``, ``adversarial_start_epoch``,
+            ``adversarial_warmup_epochs`` and
+            ``discriminator_update_every_n_steps`` keys.
 
     Raises:
         ValueError: if the ``model`` section is missing.
@@ -300,6 +302,7 @@ def parse_config_ae(
             "reconstruction_timestep",
             "adversarial_start_epoch",
             "adversarial_warmup_epochs",
+            "discriminator_update_every_n_steps",
         ]:
             if key in parent_config and key not in config:
                 config[key] = parent_config[key]
@@ -343,6 +346,9 @@ def parse_config_ae(
         ),
         "adversarial_start_epoch": config.get("adversarial_start_epoch", 0),
         "adversarial_warmup_epochs": config.get("adversarial_warmup_epochs", 0),
+        "discriminator_update_every_n_steps": config.get(
+            "discriminator_update_every_n_steps", 1
+        ),
     }
     for key in kwargs:
         if kwargs[key] is not None:

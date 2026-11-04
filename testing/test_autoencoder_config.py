@@ -38,6 +38,7 @@ CONFIG = {
     "batch_size": 2,
     "adversarial_start_epoch": 10,
     "adversarial_warmup_epochs": 5,
+    "discriminator_update_every_n_steps": 2,
 }
 
 
@@ -64,6 +65,7 @@ def test_parse_config_ae(config_file):
     assert parsed["spatial_dims"] == 3
     assert parsed["adversarial_start_epoch"] == 10
     assert parsed["adversarial_warmup_epochs"] == 5
+    assert parsed["discriminator_update_every_n_steps"] == 2
 
 
 def test_parse_config_ae_multichannel_targets(config_file):

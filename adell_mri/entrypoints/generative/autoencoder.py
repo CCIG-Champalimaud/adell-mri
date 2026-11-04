@@ -70,6 +70,9 @@ def build_autoencoder(parsed_config: dict[str, Any]) -> torch.nn.Module:
         "adversarial_warmup_epochs": parsed_config.get(
             "adversarial_warmup_epochs", 0
         ),
+        "discriminator_update_every_n_steps": parsed_config.get(
+            "discriminator_update_every_n_steps", 1
+        ),
     }
     common_args.update(parsed_config.get("optimizer", {}))
     module_class = (

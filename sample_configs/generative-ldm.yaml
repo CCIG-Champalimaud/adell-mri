@@ -33,6 +33,7 @@ ae:
   batch_size: 1
   adversarial_start_epoch: 0
   adversarial_warmup_epochs: 0
+  discriminator_update_every_n_steps: 1
 
 # Latent diffusion model
 # in_channels and out_channels are overridden with the latent channel count

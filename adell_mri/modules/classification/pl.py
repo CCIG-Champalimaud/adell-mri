@@ -2506,7 +2506,7 @@ class DeconfoundedNetPL(DeconfoundedNetGeneric, ClassPLABC):
                 "weight_decay": self.weight_decay,
             },
         ]
-        optimizer = torch.optim.Adam(
+        optimizer = torch.optim.AdamW(
             parameters,
             lr=self.learning_rate,
             eps=self.optimizer_eps,

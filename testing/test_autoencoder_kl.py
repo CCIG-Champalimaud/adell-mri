@@ -168,6 +168,31 @@ def test_adversarial_schedule(model_class, model_config):
         assert model.adversarial_scale == pytest.approx(expected)
 
 
+@pytest.mark.parametrize("model_class", MODEL_CLASSES)
+def test_discriminator_update_frequency(model_class, model_config):
+    module_class = (
+        AutoEncoderPL
+        if model_class is AutoEncoder
+        else VariationalAutoEncoderPL
+    )
+    model = module_class(
+        **model_config,
+        loss_weights={"rec": 1.0, "adversarial": 0.025},
+        discriminator_update_every_n_steps=3,
+    )
+
+    expected_due = {
+        0: True,
+        1: False,
+        2: False,
+        3: True,
+        4: False,
+    }
+    for step, expected in expected_due.items():
+        model._trainer = SimpleNamespace(current_epoch=0, global_step=step)
+        assert model.discriminator_update_due is expected
+
+
 def test_negative_adversarial_schedule_raises(model_config):
     with pytest.raises(ValueError):
         AutoEncoderPL(
@@ -178,6 +203,11 @@ def test_negative_adversarial_schedule_raises(model_config):
         AutoEncoderPL(
             **model_config,
             adversarial_warmup_epochs=-1,
+        )
+    with pytest.raises(ValueError):
+        AutoEncoderPL(
+            **model_config,
+            discriminator_update_every_n_steps=0,
         )
 
 
