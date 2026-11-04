@@ -10,6 +10,25 @@ class _Model(torch.nn.Module):
         self.discriminator = torch.nn.Linear(2, 2, bias=False)
 
 
+def test_ema_validation_before_training_is_noop():
+    model = _Model()
+    callback = EMACallback(
+        decay=0.5,
+        use_ema_weights=True,
+        exclude_prefixes=["discriminator"],
+    )
+    callback.on_fit_start(None, model)
+    initial_generator = model.generator.weight.clone()
+    initial_discriminator = model.discriminator.weight.clone()
+
+    callback.on_validation_epoch_start(None, model)
+    callback.on_validation_end(None, model)
+    callback.on_train_end(None, model)
+
+    assert torch.equal(model.generator.weight, initial_generator)
+    assert torch.equal(model.discriminator.weight, initial_discriminator)
+
+
 def test_ema_excludes_discriminator():
     model = _Model()
     callback = EMACallback(

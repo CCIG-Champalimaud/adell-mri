@@ -736,6 +736,12 @@ class EMACallback(Callback):
             for prefix in self.exclude_prefixes
         )
 
+    def _has_ema_shadow(self) -> bool:
+        """
+        Returns whether the EMA shadow model has been initialized.
+        """
+        return self.ema is not None and self.ema.shadow is not None
+
     def _named_parameters(
         self, module: torch.nn.Module
     ) -> dict[str, torch.nn.Parameter]:
@@ -785,7 +791,7 @@ class EMACallback(Callback):
         """
         Validation is performed using EMA parameters.
         """
-        if self.update_train_weights is False:
+        if self.update_train_weights is False and self._has_ema_shadow():
             self.store(pl_module)
             self.copy_to(self.ema.shadow, pl_module)
 
@@ -793,14 +799,14 @@ class EMACallback(Callback):
         """
         Restores original parameters after validation.
         """
-        if self.update_train_weights is False:
+        if self.update_train_weights is False and self._has_ema_shadow():
             self.restore(pl_module)
 
     def on_train_end(self, trainer: Trainer, pl_module: LightningModule):
         """
         Update module weights to EMA version.
         """
-        if self.use_ema_weights:
+        if self.use_ema_weights and self._has_ema_shadow():
             self.copy_to(self.ema.shadow, pl_module)
 
     def on_save_checkpoint(self, trainer, pl_module, checkpoint):
@@ -811,6 +817,8 @@ class EMACallback(Callback):
         from the live module because they are not part of the parameter
         average.
         """
+        if self._has_ema_shadow() is False:
+            return
         ema_state = {
             name: value
             for name, value in self.ema.state_dict().items()
@@ -825,7 +833,7 @@ class EMACallback(Callback):
         """
         Restores EMA weights.
         """
-        if self.ema is not None and "state_dict_ema" in checkpoint:
+        if self._has_ema_shadow() and "state_dict_ema" in checkpoint:
             shadow_keys = set(self.ema.shadow.state_dict().keys())
             ema_state = {
                 name: value
