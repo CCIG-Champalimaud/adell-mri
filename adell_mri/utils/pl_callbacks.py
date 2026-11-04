@@ -701,13 +701,52 @@ class EMACallback(Callback):
         n_steps: int = None,
         use_ema_weights: bool = True,
         update_train_weights: bool = False,
+        exclude_prefixes: list[str] | None = None,
     ):
+        """
+        Args:
+            decay (float, optional): initial EMA decay. Defaults to 0.9999.
+            final_decay (float | None, optional): final EMA decay when using
+                a linearly changing decay. Defaults to None.
+            n_steps (int | None, optional): number of steps over which the
+                decay changes to ``final_decay``. Defaults to None.
+            use_ema_weights (bool, optional): copy EMA weights into the module
+                at the end of training. Defaults to True.
+            update_train_weights (bool, optional): update the live module
+                weights instead of only the EMA shadow. Defaults to False.
+            exclude_prefixes (list[str] | None, optional): parameter name
+                prefixes excluded from the EMA. Defaults to None.
+        """
         self.decay = decay
         self.final_decay = final_decay
         self.n_steps = n_steps
         self.ema = None
         self.use_ema_weights = use_ema_weights
         self.update_train_weights = update_train_weights
+        self.exclude_prefixes = [
+            prefix.rstrip(".") for prefix in (exclude_prefixes or [])
+        ]
+
+    def _is_excluded(self, name: str) -> bool:
+        """
+        Returns whether a parameter or buffer name is excluded from the EMA.
+        """
+        return any(
+            name == prefix or name.startswith(f"{prefix}.")
+            for prefix in self.exclude_prefixes
+        )
+
+    def _named_parameters(
+        self, module: torch.nn.Module
+    ) -> dict[str, torch.nn.Parameter]:
+        """
+        Returns the module parameters that are not excluded from the EMA.
+        """
+        return {
+            name: parameter
+            for name, parameter in module.named_parameters()
+            if self._is_excluded(name) is False
+        }
 
     def on_fit_start(self, trainer: Trainer, pl_module: LightningModule):
         """
@@ -731,9 +770,14 @@ class EMACallback(Callback):
         Updates EMA of the model.
         """
         # Update currently maintained parameters.
-        self.ema.update(pl_module)
+        exclude_keys = [
+            name
+            for name, _ in pl_module.named_parameters()
+            if self._is_excluded(name)
+        ]
+        self.ema.update(pl_module, exclude_keys=exclude_keys)
         if self.update_train_weights:
-            self.copy_to(self.ema.parameters(), pl_module.parameters())
+            self.copy_to(self.ema.shadow, pl_module)
 
     def on_validation_epoch_start(
         self, trainer: Trainer, pl_module: LightningModule
@@ -742,22 +786,22 @@ class EMACallback(Callback):
         Validation is performed using EMA parameters.
         """
         if self.update_train_weights is False:
-            self.store(pl_module.parameters())
-            self.copy_to(self.ema.parameters(), pl_module.parameters())
+            self.store(pl_module)
+            self.copy_to(self.ema.shadow, pl_module)
 
     def on_validation_end(self, trainer, pl_module):
         """
         Restores original parameters after validation.
         """
         if self.update_train_weights is False:
-            self.restore(pl_module.parameters())
+            self.restore(pl_module)
 
     def on_train_end(self, trainer: Trainer, pl_module: LightningModule):
         """
         Update module weights to EMA version.
         """
         if self.use_ema_weights:
-            self.copy_to(self.ema.parameters(), pl_module.parameters())
+            self.copy_to(self.ema.shadow, pl_module)
 
     def on_save_checkpoint(self, trainer, pl_module, checkpoint):
         """
@@ -767,9 +811,13 @@ class EMACallback(Callback):
         from the live module because they are not part of the parameter
         average.
         """
-        ema_state = self.ema.state_dict()
+        ema_state = {
+            name: value
+            for name, value in self.ema.state_dict().items()
+            if self._is_excluded(name) is False
+        }
         for name, buffer in pl_module.named_buffers():
-            if name in ema_state:
+            if name in ema_state and self._is_excluded(name) is False:
                 ema_state[name] = buffer.detach().clone()
         checkpoint["state_dict_ema"] = ema_state
 
@@ -777,28 +825,38 @@ class EMACallback(Callback):
         """
         Restores EMA weights.
         """
-        if self.ema is not None:
-            self.ema.load_state_dict(checkpoint["state_dict_ema"])
+        if self.ema is not None and "state_dict_ema" in checkpoint:
+            shadow_keys = set(self.ema.shadow.state_dict().keys())
+            ema_state = {
+                name: value
+                for name, value in checkpoint["state_dict_ema"].items()
+                if name in shadow_keys and self._is_excluded(name) is False
+            }
+            self.ema.shadow.load_state_dict(ema_state, strict=False)
 
-    def store(self, parameters):
+    def store(self, module: torch.nn.Module) -> None:
         """
-        Saves EMA weights in ``self.collected_params``.
+        Saves the module parameters in ``self.collected_params``.
         """
-        self.collected_params = [param.clone() for param in parameters]
+        self.collected_params = {
+            name: parameter.clone()
+            for name, parameter in self._named_parameters(module).items()
+        }
 
-    def restore(self, parameters):
+    def restore(self, module: torch.nn.Module) -> None:
         """
-        Restore the parameters stored with the `store` method.
+        Restores the parameters stored with the ``store`` method.
         Useful to validate the model with EMA parameters without affecting the
         original optimization process.
         """
-        for c_param, param in zip(self.collected_params, parameters):
-            param.data.copy_(c_param.data)
+        for name, parameter in self._named_parameters(module).items():
+            parameter.data.copy_(self.collected_params[name].data)
 
-    def copy_to(self, shadow_parameters, parameters):
+    def copy_to(self, source: torch.nn.Module, target: torch.nn.Module) -> None:
         """
-        Copy current parameters into given collection of parameters.
+        Copies the non-excluded parameters from ``source`` into ``target``.
         """
-        for s_param, param in zip(shadow_parameters, parameters):
-            if param.requires_grad:
-                param.data.copy_(s_param.data)
+        source_params = self._named_parameters(source)
+        for name, parameter in self._named_parameters(target).items():
+            if parameter.requires_grad:
+                parameter.data.copy_(source_params[name].data)

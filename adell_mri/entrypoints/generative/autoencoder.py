@@ -426,7 +426,11 @@ def ensure_autoencoder(
         callbacks.append(ckpt_callback)
     if args.ema_decay is not None:
         callbacks.append(
-            EMACallback(decay=args.ema_decay, use_ema_weights=True)
+            EMACallback(
+                decay=args.ema_decay,
+                use_ema_weights=True,
+                exclude_prefixes=["discriminator"],
+            )
         )
     callbacks.append(SetSamplerEpoch())
 
