@@ -5,6 +5,7 @@ sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 import pytest
 import yaml
 
+from adell_mri.entrypoints.generative.autoencoder import build_autoencoder
 from adell_mri.modules.config_parsing import parse_config_ae
 
 CONFIG = {
@@ -98,6 +99,29 @@ def test_parse_config_ae_from_nested_section(tmp_path):
 
     parsed_from_dict = parse_config_ae({"ae": CONFIG}, ["t1"])
     assert parsed_from_dict["model"]["latent_channels"] == 3
+
+
+def test_model_args_use_constructor_defaults_and_yaml_overrides():
+    model_config = {
+        "spatial_dims": 2,
+        "num_channels": [8, 8],
+        "num_res_blocks": 1,
+        "attention_levels": [False, False],
+        "norm_num_groups": 8,
+        "no_skip_connection": True,
+    }
+
+    parsed = parse_config_ae({"model": model_config}, ["t1"], spatial_dims=2)
+    autoencoder = build_autoencoder(parsed)
+    assert autoencoder.latent_channels is None
+
+    parsed = parse_config_ae(
+        {"model": {**model_config, "latent_channels": 4}},
+        ["t1"],
+        spatial_dims=2,
+    )
+    autoencoder = build_autoencoder(parsed)
+    assert autoencoder.latent_channels == 4
 
 
 def test_parse_config_ae_optional_sections(tmp_path):

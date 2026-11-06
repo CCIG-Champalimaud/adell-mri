@@ -91,9 +91,12 @@ def test_log_image_captions_include_channel_index():
 
 def test_parse_config_ae_defaults_reconstruction_logging():
     parsed = parse_config_ae({"model": AE_MODEL_CONFIG}, ["t1"], spatial_dims=2)
+    autoencoder = build_autoencoder(parsed)
 
-    assert parsed["reconstruction_every_n_epochs"] == 5
-    assert parsed["reconstruction_max_batches"] == 1
+    assert "reconstruction_every_n_epochs" not in parsed
+    assert "reconstruction_max_batches" not in parsed
+    assert autoencoder.reconstruction_every_n_epochs == 5
+    assert autoencoder.reconstruction_max_batches == 1
 
 
 def test_parse_config_ae_reads_reconstruction_settings():
@@ -104,16 +107,21 @@ def test_parse_config_ae_reads_reconstruction_settings():
     }
 
     parsed = parse_config_ae(config, ["t1"], spatial_dims=2)
+    autoencoder = build_autoencoder(parsed)
 
     assert parsed["reconstruction_every_n_epochs"] == 5
     assert parsed["reconstruction_max_batches"] == 2
+    assert autoencoder.reconstruction_every_n_epochs == 5
+    assert autoencoder.reconstruction_max_batches == 2
 
 
-def test_parse_config_ae_inherits_reconstruction_settings_from_ldm_config():
+def test_parse_config_ae_reads_reconstruction_settings_from_ae_section():
     config = {
-        "ae": {"model": AE_MODEL_CONFIG},
-        "reconstruction_every_n_epochs": 5,
-        "reconstruction_max_batches": 2,
+        "ae": {
+            "model": AE_MODEL_CONFIG,
+            "reconstruction_every_n_epochs": 5,
+            "reconstruction_max_batches": 2,
+        },
     }
 
     parsed = parse_config_ae(config, ["t1"], spatial_dims=2)

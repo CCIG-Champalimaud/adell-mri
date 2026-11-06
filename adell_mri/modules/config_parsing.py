@@ -241,6 +241,18 @@ def parse_config_gan(
     return network_config, generator_config, discriminator_config
 
 
+_AE_STRUCTURAL_KEYS = {
+    "model",
+    "losses",
+    "discriminator",
+    "optimizer",
+    "batch_size",
+    "spatial_dims",
+    "is_variational",
+    "ae",
+}
+
+
 def parse_config_ae(
     config_file: str | dict[str, Any],
     target_keys: list[str],
@@ -255,14 +267,10 @@ def parse_config_ae(
     :class:`adell_mri.modules.gan.vae.VariationalAutoEncoder`, an optional
     ``losses`` section with the loss weights and reconstruction loss, an
     optional ``discriminator`` section with the keyword arguments for the patch
-    discriminator and an optional ``optimizer`` section. Reconstruction logging
-    options (``reconstruction_every_n_epochs`` and
-    ``reconstruction_max_batches``) can be set at the top level or inside the
-    ``ae`` section. Reconstruction logging defaults to every 5 epochs and can
-    be disabled with ``reconstruction_every_n_epochs: 0``. Adversarial loss
-    scheduling is controlled with ``adversarial_start_epoch`` and
-    ``adversarial_warmup_epochs``. The discriminator update frequency is
-    controlled with ``discriminator_update_every_n_steps``.
+    discriminator and an optional ``optimizer`` section. Every other key is
+    passed through unchanged, so new module parameters only need to be added
+    to the corresponding constructor signature and the configuration file.
+    Constructor defaults are always used when a key is absent.
 
     Args:
         config_file (str | dict[str, Any]): path to the YAML configuration
@@ -280,11 +288,8 @@ def parse_config_ae(
         dict[str, Any]: parsed configuration with the ``model``,
             ``is_variational``, ``loss_weights``, ``rec_loss``,
             ``perceptual_kwargs``, ``discriminator``, ``optimizer``,
-            ``batch_size``, ``spatial_dims``,
-            ``reconstruction_every_n_epochs``,
-            ``reconstruction_max_batches``, ``adversarial_start_epoch``,
-            ``adversarial_warmup_epochs`` and
-            ``discriminator_update_every_n_steps`` keys.
+            ``batch_size`` and ``spatial_dims`` keys. All other keys are
+            forwarded to the autoencoder Lightning module.
 
     Raises:
         ValueError: if the ``model`` section is missing.
@@ -293,19 +298,8 @@ def parse_config_ae(
         config = _load_yaml(config_file)
     else:
         config = dict(config_file)
-    parent_config = config
     if "ae" in config and "model" not in config:
         config = dict(config["ae"])
-        for key in [
-            "reconstruction_every_n_epochs",
-            "reconstruction_max_batches",
-            "reconstruction_timestep",
-            "adversarial_start_epoch",
-            "adversarial_warmup_epochs",
-            "discriminator_update_every_n_steps",
-        ]:
-            if key in parent_config and key not in config:
-                config[key] = parent_config[key]
     model_config = config.get("model")
     if model_config is None:
         raise ValueError(
@@ -338,19 +332,11 @@ def parse_config_ae(
         "optimizer": dict(config.get("optimizer") or {}),
         "batch_size": config.get("batch_size", 1),
         "spatial_dims": spatial_dims,
-        "reconstruction_every_n_epochs": config.get(
-            "reconstruction_every_n_epochs", 5
-        ),
-        "reconstruction_max_batches": config.get(
-            "reconstruction_max_batches", 1
-        ),
-        "adversarial_start_epoch": config.get("adversarial_start_epoch", 0),
-        "adversarial_warmup_epochs": config.get("adversarial_warmup_epochs", 0),
-        "discriminator_update_every_n_steps": config.get(
-            "discriminator_update_every_n_steps", 1
-        ),
     }
-    for key in kwargs:
-        if kwargs[key] is not None:
-            parsed[key] = kwargs[key]
+    for key, value in config.items():
+        if key not in _AE_STRUCTURAL_KEYS:
+            parsed[key] = value
+    for key, value in kwargs.items():
+        if value is not None:
+            parsed[key] = value
     return parsed

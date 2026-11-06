@@ -555,7 +555,7 @@ class AutoEncoderPL(_AutoEncoderLossMixin, AutoEncoder, pl.LightningModule):
         discriminator_config: dict[str, Any] | None = None,
         perceptual_kwargs: dict[str, Any] | None = None,
         discriminator_learning_rate: float | None = None,
-        reconstruction_every_n_epochs: int = 0,
+        reconstruction_every_n_epochs: int = 5,
         reconstruction_max_batches: int = 1,
         adversarial_start_epoch: int = 0,
         adversarial_warmup_epochs: int = 0,
@@ -590,7 +590,7 @@ class AutoEncoderPL(_AutoEncoderLossMixin, AutoEncoder, pl.LightningModule):
                 ``learning_rate``).
             reconstruction_every_n_epochs (int, optional): logs validation
                 reconstructions every N epochs. A value of 0 disables
-                reconstruction logging. Defaults to 0.
+                reconstruction logging. Defaults to 5.
             reconstruction_max_batches (int, optional): maximum number of
                 validation batches logged per reconstruction epoch. Defaults to
                 1.
@@ -657,7 +657,7 @@ class VariationalAutoEncoderPL(
         discriminator_config: dict[str, Any] | None = None,
         perceptual_kwargs: dict[str, Any] | None = None,
         discriminator_learning_rate: float | None = None,
-        reconstruction_every_n_epochs: int = 0,
+        reconstruction_every_n_epochs: int = 5,
         reconstruction_max_batches: int = 1,
         adversarial_start_epoch: int = 0,
         adversarial_warmup_epochs: int = 0,
@@ -694,7 +694,7 @@ class VariationalAutoEncoderPL(
                 ``learning_rate``).
             reconstruction_every_n_epochs (int, optional): logs validation
                 reconstructions every N epochs. A value of 0 disables
-                reconstruction logging. Defaults to 0.
+                reconstruction logging. Defaults to 5.
             reconstruction_max_batches (int, optional): maximum number of
                 validation batches logged per reconstruction epoch. Defaults to
                 1.

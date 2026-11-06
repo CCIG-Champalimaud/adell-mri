@@ -23,6 +23,19 @@ from adell_mri.utils.torch_utils import (
 
 AUTOENCODER_SUFFIX = "_ae"
 
+# Keys in the parsed configuration that are not passed to the autoencoder
+# Lightning module. Everything else is forwarded as a keyword argument, so new
+# module parameters do not need to be listed here.
+_AE_NON_MODULE_KEYS = {
+    "model",
+    "is_variational",
+    "discriminator",
+    "optimizer",
+    "batch_size",
+    "spatial_dims",
+    "ae",
+}
+
 
 def resolve_device(device: str) -> str | torch.device:
     """
@@ -52,35 +65,20 @@ def build_autoencoder(parsed_config: dict[str, Any]) -> torch.nn.Module:
         torch.nn.Module: the autoencoder lightning module.
     """
     model_config = dict(parsed_config["model"])
-    common_args = {
-        "input_image_key": "image",
-        "loss_weights": parsed_config["loss_weights"],
-        "rec_loss": parsed_config["rec_loss"],
-        "perceptual_kwargs": parsed_config["perceptual_kwargs"],
-        "discriminator_config": parsed_config["discriminator"],
-        "reconstruction_every_n_epochs": parsed_config.get(
-            "reconstruction_every_n_epochs", 0
-        ),
-        "reconstruction_max_batches": parsed_config.get(
-            "reconstruction_max_batches", 1
-        ),
-        "adversarial_start_epoch": parsed_config.get(
-            "adversarial_start_epoch", 0
-        ),
-        "adversarial_warmup_epochs": parsed_config.get(
-            "adversarial_warmup_epochs", 0
-        ),
-        "discriminator_update_every_n_steps": parsed_config.get(
-            "discriminator_update_every_n_steps", 1
-        ),
+    module_config = {
+        key: value
+        for key, value in parsed_config.items()
+        if key not in _AE_NON_MODULE_KEYS
     }
-    common_args.update(parsed_config.get("optimizer", {}))
+    module_config["discriminator_config"] = parsed_config.get("discriminator")
+    module_config.update(parsed_config.get("optimizer") or {})
+    module_config.setdefault("input_image_key", "image")
     module_class = (
         VariationalAutoEncoderPL
         if parsed_config["is_variational"]
         else AutoEncoderPL
     )
-    return module_class(**model_config, **common_args)
+    return module_class(**model_config, **module_config)
 
 
 def get_autoencoder_checkpoint_name(checkpoint_name: str) -> str:
@@ -410,7 +408,8 @@ def ensure_autoencoder(
         )
         return autoencoder, last_checkpoint, False
 
-    if parsed_config.get("reconstruction_every_n_epochs", 0) > 0 and (
+    autoencoder = build_autoencoder(parsed_config)
+    if autoencoder.reconstruction_every_n_epochs > 0 and (
         pl_logger is None or hasattr(pl_logger, "log_image") is False
     ):
         logger.warning(
@@ -419,8 +418,6 @@ def ensure_autoencoder(
             "--project_name and --summary_name (and optionally "
             "--logger_type wandb) to enable image logging."
         )
-
-    autoencoder = build_autoencoder(parsed_config)
     callbacks = [RichProgressBar()]
     if ckpt_callback is not None:
         callbacks.append(ckpt_callback)
