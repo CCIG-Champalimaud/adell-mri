@@ -11,6 +11,7 @@ import torch.nn.functional as F
 from adell_mri.modules.gan.ae import AutoEncoder
 from adell_mri.modules.gan.losses import GaussianKLLoss
 from adell_mri.modules.gan.vae import VariationalAutoEncoder
+from adell_mri.modules.learning_rate import CosineAnnealingWithWarmupLR
 from adell_mri.utils.optimizer_factory import OPTIMIZER_EPS_DEFAULT
 
 DEFAULT_LOSS_WEIGHTS = {
@@ -513,8 +514,7 @@ class _AutoEncoderLossMixin:
         Configures the optimiser(s).
 
         Returns:
-            Any: a single optimizer, or a tuple with the generator and
-                discriminator optimizers when adversarial training is enabled.
+            Any: the optimizer(s) and learning rate scheduler(s).
         """
         optimizer_g = torch.optim.AdamW(
             self.generator_parameters(),
@@ -522,15 +522,47 @@ class _AutoEncoderLossMixin:
             betas=(self.momentum_beta1, self.momentum_beta2),
             eps=self.optimizer_eps,
         )
+        scheduler_g = CosineAnnealingWithWarmupLR(
+            optimizer_g,
+            T_max=self.n_epochs,
+            start_decay=self.start_decay,
+            n_warmup_steps=self.warmup_steps,
+            eta_min=0.0,
+        )
         if not self.adversarial_on:
-            return optimizer_g
+            return {
+                "optimizer": optimizer_g,
+                "lr_scheduler": scheduler_g,
+                "monitor": "val_loss",
+            }
         optimizer_d = torch.optim.AdamW(
             self.discriminator.parameters(),
             lr=self.discriminator_learning_rate,
             betas=(self.momentum_beta1, self.momentum_beta2),
             eps=self.optimizer_eps,
         )
-        return optimizer_g, optimizer_d
+        scheduler_d = CosineAnnealingWithWarmupLR(
+            optimizer_d,
+            T_max=self.n_epochs,
+            start_decay=self.start_decay,
+            n_warmup_steps=self.warmup_steps,
+            eta_min=0.0,
+        )
+        return [optimizer_g, optimizer_d], [scheduler_g, scheduler_d]
+
+    def on_train_epoch_end(self) -> None:
+        """
+        Steps the learning rate schedulers when using manual optimization.
+        """
+        if self.automatic_optimization:
+            return
+        schedulers = self.lr_schedulers()
+        if schedulers is None:
+            return
+        if not isinstance(schedulers, (list, tuple)):
+            schedulers = [schedulers]
+        for scheduler in schedulers:
+            scheduler.step()
 
     def generator_parameters(self):
         """
@@ -559,6 +591,9 @@ class AutoEncoderPL(_AutoEncoderLossMixin, AutoEncoder, pl.LightningModule):
         momentum_beta1: float = 0.5,
         momentum_beta2: float = 0.99,
         optimizer_eps: float = OPTIMIZER_EPS_DEFAULT,
+        n_epochs: int = 1000,
+        warmup_steps: float = 0.0,
+        start_decay: float | None = None,
         loss_weights: dict[str, float] | None = None,
         rec_loss: str = "mse",
         discriminator_config: dict[str, Any] | None = None,
@@ -585,6 +620,13 @@ class AutoEncoderPL(_AutoEncoderLossMixin, AutoEncoder, pl.LightningModule):
                 optimizer. Defaults to 0.99.
             optimizer_eps (float, optional): epsilon term used by the optimizer
                 for numerical stability. Defaults to the AdamW default (1e-8).
+            n_epochs (int, optional): total number of training epochs, used by
+                the learning rate scheduler. Defaults to 1000.
+            warmup_steps (float, optional): learning rate warmup, in epochs or
+                as a fraction of ``n_epochs``. Defaults to 0.0.
+            start_decay (float | None, optional): epoch or fraction of
+                ``n_epochs`` at which decay starts. Defaults to None (right
+                after warmup).
             loss_weights (dict[str, float] | None, optional): weights for the
                 reconstruction (``rec``), perceptual (``perceptual``) and
                 adversarial (``adversarial``) losses. Defaults to None
@@ -626,6 +668,9 @@ class AutoEncoderPL(_AutoEncoderLossMixin, AutoEncoder, pl.LightningModule):
         self.momentum_beta1 = momentum_beta1
         self.momentum_beta2 = momentum_beta2
         self.optimizer_eps = optimizer_eps
+        self.n_epochs = n_epochs
+        self.warmup_steps = warmup_steps
+        self.start_decay = start_decay
         self.discriminator_learning_rate = (
             discriminator_learning_rate
             if discriminator_learning_rate is not None
@@ -665,6 +710,9 @@ class VariationalAutoEncoderPL(
         momentum_beta2: float = 0.99,
         var_loss_mult: float = 1.0,
         optimizer_eps: float = OPTIMIZER_EPS_DEFAULT,
+        n_epochs: int = 1000,
+        warmup_steps: float = 0.0,
+        start_decay: float | None = None,
         loss_weights: dict[str, float] | None = None,
         rec_loss: str = "mse",
         discriminator_config: dict[str, Any] | None = None,
@@ -693,6 +741,13 @@ class VariationalAutoEncoderPL(
                 loss. Ignored if ``loss_weights`` is provided. Defaults to 1.0.
             optimizer_eps (float, optional): epsilon term used by the optimizer
                 for numerical stability. Defaults to the AdamW default (1e-8).
+            n_epochs (int, optional): total number of training epochs, used by
+                the learning rate scheduler. Defaults to 1000.
+            warmup_steps (float, optional): learning rate warmup, in epochs or
+                as a fraction of ``n_epochs``. Defaults to 0.0.
+            start_decay (float | None, optional): epoch or fraction of
+                ``n_epochs`` at which decay starts. Defaults to None (right
+                after warmup).
             loss_weights (dict[str, float] | None, optional): weights for the
                 reconstruction (``rec``), KL (``kl``), perceptual
                 (``perceptual``) and adversarial (``adversarial``) losses.
@@ -737,6 +792,9 @@ class VariationalAutoEncoderPL(
         self.momentum_beta2 = momentum_beta2
         self.var_loss_mult = var_loss_mult
         self.optimizer_eps = optimizer_eps
+        self.n_epochs = n_epochs
+        self.warmup_steps = warmup_steps
+        self.start_decay = start_decay
         self.discriminator_learning_rate = (
             discriminator_learning_rate
             if discriminator_learning_rate is not None

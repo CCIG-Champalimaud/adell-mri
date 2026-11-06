@@ -115,7 +115,10 @@ def test_loss_terms_are_selected_by_weight(model_class, model_config):
         assert "kl_loss" in losses
         assert model.loss_weights["kl"] == 0.0
     assert isinstance(losses["loss"], torch.Tensor)
-    assert len(model.configure_optimizers().param_groups) == 1
+    optimizer_config = model.configure_optimizers()
+    if isinstance(optimizer_config, dict):
+        optimizer_config = optimizer_config["optimizer"]
+    assert len(optimizer_config.param_groups) == 1
 
 
 @pytest.mark.parametrize("model_class", MODEL_CLASSES)
@@ -278,6 +281,31 @@ def test_negative_adversarial_schedule_raises(model_config):
             **model_config,
             discriminator_update_every_n_steps=0,
         )
+
+
+def test_configure_optimizers_includes_lr_scheduler(model_config):
+    model = AutoEncoderPL(
+        **model_config,
+        loss_weights={"rec": 1.0},
+        n_epochs=50,
+        warmup_steps=0.1,
+        start_decay=10,
+    )
+    config = model.configure_optimizers()
+    assert "optimizer" in config
+    assert "lr_scheduler" in config
+    assert config["lr_scheduler"].T_max == 50
+
+
+def test_adversarial_configure_optimizers_returns_both_schedulers(model_config):
+    model = AutoEncoderPL(
+        **model_config,
+        loss_weights={"rec": 1.0, "adversarial": 0.01},
+        n_epochs=50,
+    )
+    optimizers, schedulers = model.configure_optimizers()
+    assert len(optimizers) == 2
+    assert len(schedulers) == 2
 
 
 def test_vae_kl_weight_defaults_to_var_loss_mult(model_config):
