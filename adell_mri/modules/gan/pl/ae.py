@@ -59,6 +59,9 @@ class _AutoEncoderLossMixin:
                 for :class:`generative.networks.nets.PatchDiscriminator`.
             perceptual_kwargs (dict[str, Any] | None): keyword arguments for
                 :class:`generative.losses.PerceptualLoss`.
+            spectrally_normalize_discriminator (bool, optional): applies
+                spectral normalization to the discriminator convolutions.
+                Defaults to False.
 
         Raises:
             ValueError: if an unknown loss weight, an invalid reconstruction
@@ -128,7 +131,7 @@ class _AutoEncoderLossMixin:
             self.discriminator = PatchDiscriminator(**disc_config)
             if spectrally_normalize_discriminator:
                 for module in self.discriminator.modules():
-                    if isinstance(module, (torch.nn.Conv2d, torch.nn.Conv3d)):
+                    if isinstance(module, torch.nn.Conv3d):
                         torch.nn.utils.parametrizations.spectral_norm(module)
             self.adversarial_loss = PatchAdversarialLoss(criterion="hinge")
         self.automatic_optimization = not self.adversarial_on

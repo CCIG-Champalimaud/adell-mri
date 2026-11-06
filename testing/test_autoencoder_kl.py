@@ -187,6 +187,30 @@ def test_discriminator_spectral_norm(model_class, model_config):
 
 
 @pytest.mark.parametrize("model_class", MODEL_CLASSES)
+def test_discriminator_spectral_norm_only_applies_to_conv3d(
+    model_class, model_config
+):
+    module_class = (
+        AutoEncoderPL
+        if model_class is AutoEncoder
+        else VariationalAutoEncoderPL
+    )
+    model = module_class(
+        **{**model_config, "spatial_dims": 3},
+        loss_weights={"rec": 1.0, "adversarial": 0.025},
+        spectrally_normalize_discriminator=True,
+    )
+    convolutions = [
+        module
+        for module in model.discriminator.modules()
+        if isinstance(module, (torch.nn.Conv2d, torch.nn.Conv3d))
+    ]
+    assert len(convolutions) > 0
+    assert all(isinstance(module, torch.nn.Conv3d) for module in convolutions)
+    assert all("weight" in module.parametrizations for module in convolutions)
+
+
+@pytest.mark.parametrize("model_class", MODEL_CLASSES)
 def test_discriminator_update_frequency(model_class, model_config):
     module_class = (
         AutoEncoderPL
