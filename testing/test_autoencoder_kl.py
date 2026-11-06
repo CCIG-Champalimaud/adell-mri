@@ -210,6 +210,33 @@ def test_discriminator_spectral_norm_only_applies_to_conv3d(
     assert all("weight" in module.parametrizations for module in convolutions)
 
 
+def test_adversarial_criterion_defaults_to_bce(model_config):
+    model = AutoEncoderPL(
+        **model_config,
+        loss_weights={"rec": 1.0, "adversarial": 0.025},
+    )
+    assert model.adversarial_loss.criterion == "bce"
+
+
+@pytest.mark.parametrize("criterion", ["bce", "hinge"])
+def test_adversarial_criterion_is_configurable(model_config, criterion):
+    model = AutoEncoderPL(
+        **model_config,
+        loss_weights={"rec": 1.0, "adversarial": 0.025},
+        adversarial_criterion=criterion,
+    )
+    assert model.adversarial_loss.criterion == criterion
+
+
+def test_invalid_adversarial_criterion_raises(model_config):
+    with pytest.raises(ValueError):
+        AutoEncoderPL(
+            **model_config,
+            loss_weights={"rec": 1.0, "adversarial": 0.025},
+            adversarial_criterion="wasserstein",
+        )
+
+
 @pytest.mark.parametrize("model_class", MODEL_CLASSES)
 def test_discriminator_update_frequency(model_class, model_config):
     module_class = (

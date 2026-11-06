@@ -45,6 +45,7 @@ class _AutoEncoderLossMixin:
         discriminator_config: dict[str, Any] | None,
         perceptual_kwargs: dict[str, Any] | None,
         spectrally_normalize_discriminator: bool = False,
+        adversarial_criterion: str = "bce",
     ) -> None:
         """
         Sets up the reconstruction, perceptual and adversarial losses.
@@ -62,6 +63,8 @@ class _AutoEncoderLossMixin:
             spectrally_normalize_discriminator (bool, optional): applies
                 spectral normalization to the discriminator convolutions.
                 Defaults to False.
+            adversarial_criterion (str, optional): adversarial loss criterion,
+                either ``bce`` or ``hinge``. Defaults to "bce".
 
         Raises:
             ValueError: if an unknown loss weight, an invalid reconstruction
@@ -116,6 +119,11 @@ class _AutoEncoderLossMixin:
                 raise ImportError(
                     "PatchAdversarialLoss requires the generative package"
                 ) from exc
+            if adversarial_criterion not in ["bce", "hinge"]:
+                raise ValueError(
+                    "adversarial_criterion must be either 'bce' or 'hinge', "
+                    f"got '{adversarial_criterion}'"
+                )
             discriminator_config = discriminator_config or {}
             disc_config = {
                 "spatial_dims": self.spatial_dims,
@@ -133,7 +141,9 @@ class _AutoEncoderLossMixin:
                 for module in self.discriminator.modules():
                     if isinstance(module, torch.nn.Conv3d):
                         torch.nn.utils.parametrizations.spectral_norm(module)
-            self.adversarial_loss = PatchAdversarialLoss(criterion="hinge")
+            self.adversarial_loss = PatchAdversarialLoss(
+                criterion=adversarial_criterion
+            )
         self.automatic_optimization = not self.adversarial_on
 
     def init_adversarial_schedule(
@@ -564,6 +574,7 @@ class AutoEncoderPL(_AutoEncoderLossMixin, AutoEncoder, pl.LightningModule):
         adversarial_warmup_epochs: int = 0,
         discriminator_update_every_n_steps: int = 1,
         spectrally_normalize_discriminator: bool = False,
+        adversarial_criterion: str = "bce",
         *args,
         **kwargs,
     ):
@@ -608,6 +619,8 @@ class AutoEncoderPL(_AutoEncoderLossMixin, AutoEncoder, pl.LightningModule):
             spectrally_normalize_discriminator (bool, optional): applies
                 spectral normalization to the weights in the adversarial
                 discriminator. Defaults to False.
+            adversarial_criterion (str, optional): adversarial loss criterion,
+                either ``bce`` or ``hinge``. Defaults to "bce".
             *args: positional arguments passed to :class:`AutoEncoder`.
             **kwargs: keyword arguments passed to :class:`AutoEncoder`.
         """
@@ -636,6 +649,7 @@ class AutoEncoderPL(_AutoEncoderLossMixin, AutoEncoder, pl.LightningModule):
             discriminator_config,
             perceptual_kwargs,
             spectrally_normalize_discriminator,
+            adversarial_criterion,
         )
         self.init_routine()
 
@@ -666,6 +680,7 @@ class VariationalAutoEncoderPL(
         adversarial_warmup_epochs: int = 0,
         discriminator_update_every_n_steps: int = 1,
         spectrally_normalize_discriminator: bool = False,
+        adversarial_criterion: str = "bce",
         *args,
         **kwargs,
     ):
@@ -712,6 +727,8 @@ class VariationalAutoEncoderPL(
             spectrally_normalize_discriminator (bool, optional): applies
                 spectral normalization to the weights in the adversarial
                 discriminator. Defaults to False.
+            adversarial_criterion (str, optional): adversarial loss criterion,
+                either ``bce`` or ``hinge``. Defaults to "bce".
             *args: positional arguments passed to
                 :class:`VariationalAutoEncoder`.
             **kwargs: keyword arguments passed to
@@ -745,5 +762,6 @@ class VariationalAutoEncoderPL(
             discriminator_config,
             perceptual_kwargs,
             spectrally_normalize_discriminator,
+            adversarial_criterion,
         )
         self.init_routine()
