@@ -44,6 +44,7 @@ class _AutoEncoderLossMixin:
         rec_loss: str,
         discriminator_config: dict[str, Any] | None,
         perceptual_kwargs: dict[str, Any] | None,
+        spectrally_normalize_discriminator: bool = False,
     ) -> None:
         """
         Sets up the reconstruction, perceptual and adversarial losses.
@@ -125,6 +126,10 @@ class _AutoEncoderLossMixin:
             }
             disc_config.update(discriminator_config)
             self.discriminator = PatchDiscriminator(**disc_config)
+            if spectrally_normalize_discriminator:
+                for module in self.discriminator.modules():
+                    if isinstance(module, (torch.nn.Conv2d, torch.nn.Conv3d)):
+                        torch.nn.utils.parametrizations.spectral_norm(module)
             self.adversarial_loss = PatchAdversarialLoss(criterion="hinge")
         self.automatic_optimization = not self.adversarial_on
 
@@ -555,6 +560,7 @@ class AutoEncoderPL(_AutoEncoderLossMixin, AutoEncoder, pl.LightningModule):
         adversarial_start_epoch: int = 0,
         adversarial_warmup_epochs: int = 0,
         discriminator_update_every_n_steps: int = 1,
+        spectrally_normalize_discriminator: bool = False,
         *args,
         **kwargs,
     ):
@@ -596,6 +602,9 @@ class AutoEncoderPL(_AutoEncoderLossMixin, AutoEncoder, pl.LightningModule):
             discriminator_update_every_n_steps (int, optional): update the
                 discriminator once every N training steps. Defaults to 1
                 (every step).
+            spectrally_normalize_discriminator (bool, optional): applies
+                spectral normalization to the weights in the adversarial
+                discriminator. Defaults to False.
             *args: positional arguments passed to :class:`AutoEncoder`.
             **kwargs: keyword arguments passed to :class:`AutoEncoder`.
         """
@@ -619,7 +628,11 @@ class AutoEncoderPL(_AutoEncoderLossMixin, AutoEncoder, pl.LightningModule):
             discriminator_update_every_n_steps,
         )
         self.init_losses(
-            loss_weights, rec_loss, discriminator_config, perceptual_kwargs
+            loss_weights,
+            rec_loss,
+            discriminator_config,
+            perceptual_kwargs,
+            spectrally_normalize_discriminator,
         )
         self.init_routine()
 
@@ -649,6 +662,7 @@ class VariationalAutoEncoderPL(
         adversarial_start_epoch: int = 0,
         adversarial_warmup_epochs: int = 0,
         discriminator_update_every_n_steps: int = 1,
+        spectrally_normalize_discriminator: bool = False,
         *args,
         **kwargs,
     ):
@@ -692,6 +706,9 @@ class VariationalAutoEncoderPL(
             discriminator_update_every_n_steps (int, optional): update the
                 discriminator once every N training steps. Defaults to 1
                 (every step).
+            spectrally_normalize_discriminator (bool, optional): applies
+                spectral normalization to the weights in the adversarial
+                discriminator. Defaults to False.
             *args: positional arguments passed to
                 :class:`VariationalAutoEncoder`.
             **kwargs: keyword arguments passed to
@@ -720,6 +737,10 @@ class VariationalAutoEncoderPL(
         if loss_weights is None:
             loss_weights = {"rec": 1.0, "kl": var_loss_mult}
         self.init_losses(
-            loss_weights, rec_loss, discriminator_config, perceptual_kwargs
+            loss_weights,
+            rec_loss,
+            discriminator_config,
+            perceptual_kwargs,
+            spectrally_normalize_discriminator,
         )
         self.init_routine()

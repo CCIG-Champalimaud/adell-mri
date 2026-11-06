@@ -169,6 +169,24 @@ def test_adversarial_schedule(model_class, model_config):
 
 
 @pytest.mark.parametrize("model_class", MODEL_CLASSES)
+def test_discriminator_spectral_norm(model_class, model_config):
+    module_class = (
+        AutoEncoderPL
+        if model_class is AutoEncoder
+        else VariationalAutoEncoderPL
+    )
+    model = module_class(
+        **model_config,
+        loss_weights={"rec": 1.0, "adversarial": 0.025},
+        spectrally_normalize_discriminator=True,
+    )
+    x = torch.rand(2, 1, 32, 32)
+    losses, output = model.compute_losses(x)
+    recon = model.unpack_output(output)[0]
+    disc_losses = model.compute_discriminator_losses(x, recon.detach())
+
+
+@pytest.mark.parametrize("model_class", MODEL_CLASSES)
 def test_discriminator_update_frequency(model_class, model_config):
     module_class = (
         AutoEncoderPL
