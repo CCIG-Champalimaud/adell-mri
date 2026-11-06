@@ -124,7 +124,7 @@ class _AutoEncoderLossMixin:
                 "out_channels": self.out_channels,
                 "num_layers_d": 3,
                 "kernel_size": 4,
-                "norm": "BATCH",
+                "norm": "INSTANCE",
                 "padding": 1,
             }
             disc_config.update(discriminator_config)

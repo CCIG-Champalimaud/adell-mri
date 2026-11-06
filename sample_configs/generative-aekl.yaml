@@ -23,6 +23,7 @@ losses:
 discriminator:
   channels: 64
   num_layers_d: 3
+  norm: INSTANCE
 optimizer:
   learning_rate: 5.0e-5
   discriminator_learning_rate: 1.0e-4
