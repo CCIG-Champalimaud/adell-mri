@@ -15,7 +15,7 @@ losses:
     rec: 1.0
     kl: 1.0e-07
     perceptual: 0.001
-    adversarial: 0.025
+    adversarial: 0.01
   rec_loss: l1
   perceptual_kwargs:
     network_type: squeeze
@@ -29,11 +29,11 @@ optimizer:
   discriminator_learning_rate: 1.0e-4
   momentum_beta1: 0.9
   momentum_beta2: 0.99
-batch_size: 1
+batch_size: 2
 reconstruction_every_n_epochs: 5
 reconstruction_max_batches: 1
-adversarial_start_epoch: 0
-adversarial_warmup_epochs: 0
+adversarial_start_epoch: 30
+adversarial_warmup_epochs: 10
 adversarial_criterion: bce
 discriminator_update_every_n_steps: 1
-spectrally_normalize_discriminator: False
+spectrally_normalize_discriminator: True

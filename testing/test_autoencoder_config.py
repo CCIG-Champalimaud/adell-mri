@@ -81,6 +81,23 @@ def test_parse_config_ae_spatial_dims_override(config_file):
     assert parsed["spatial_dims"] == 2
 
 
+def test_parse_config_ae_kwargs_override_training_arguments(config_file):
+    parsed = parse_config_ae(
+        config_file,
+        ["t1"],
+        batch_size=8,
+        learning_rate=5.0e-5,
+        n_epochs=50,
+        warmup_steps=10,
+        start_decay=20,
+    )
+    assert parsed["batch_size"] == 8
+    assert parsed["learning_rate"] == 5.0e-5
+    assert parsed["n_epochs"] == 50
+    assert parsed["warmup_steps"] == 10
+    assert parsed["start_decay"] == 20
+
+
 def test_parse_config_ae_missing_model_section(tmp_path):
     path = tmp_path / "autoencoder.yaml"
     path.write_text(yaml.safe_dump({"batch_size": 1}))

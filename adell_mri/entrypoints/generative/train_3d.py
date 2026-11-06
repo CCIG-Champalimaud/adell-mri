@@ -358,6 +358,21 @@ def main(arguments):
 
     logger.info("Train set size=%s", len(train_list))
 
+    cli_keys = {
+        argument.lstrip("-").split("=")[0]
+        for argument in (arguments or sys.argv[1:])
+        if argument.startswith("--")
+    }
+    ae_overrides = {
+        "batch_size": args.batch_size,
+        "learning_rate": args.learning_rate,
+        "n_epochs": args.max_epochs,
+    }
+    if "warmup_steps" in cli_keys:
+        ae_overrides["warmup_steps"] = args.warmup_steps
+    if "start_decay" in cli_keys:
+        ae_overrides["start_decay"] = args.start_decay
+
     ae_config = None
     ae_checkpoint = None
     latent_channels = None
@@ -380,6 +395,7 @@ def main(arguments):
                 network_config,
                 args.image_keys,
                 spatial_dims=args.spatial_dims or 3,
+                **ae_overrides,
             )
             network_config.pop("ae", None)
         else:
@@ -387,6 +403,7 @@ def main(arguments):
                 args.config_file,
                 args.image_keys,
                 spatial_dims=args.spatial_dims or 3,
+                **ae_overrides,
             )
         ae_logger_name = (
             args.summary_name or args.checkpoint_name or "generative"
