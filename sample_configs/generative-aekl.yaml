@@ -32,8 +32,8 @@ optimizer:
 batch_size: 2
 reconstruction_every_n_epochs: 5
 reconstruction_max_batches: 1
-adversarial_start_epoch: 30
-adversarial_warmup_epochs: 10
+adversarial_start_epoch: 0
+adversarial_warmup_epochs: 0
 adversarial_criterion: bce
 discriminator_update_every_n_steps: 1
 spectrally_normalize_discriminator: True

@@ -59,7 +59,7 @@ class VICRegLoss(torch.nn.Module):
 
     def variance_loss(self, X: torch.Tensor) -> torch.Tensor:
         """
-        Calculates the VICReg variance loss (a Hinge loss for the variance
+        Calculates the VICReg variance loss (a hinge loss for the variance
         which keeps it above `self.min_var`)
 
         Args:

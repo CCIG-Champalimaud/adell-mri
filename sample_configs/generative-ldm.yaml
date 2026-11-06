@@ -32,8 +32,8 @@ ae:
     momentum_beta1: 0.9
     momentum_beta2: 0.99
   batch_size: 2
-  adversarial_start_epoch: 30
-  adversarial_warmup_epochs: 10
+  adversarial_start_epoch: 0
+  adversarial_warmup_epochs: 0
   adversarial_criterion: bce
   discriminator_update_every_n_steps: 1
   spectrally_normalize_discriminator: True

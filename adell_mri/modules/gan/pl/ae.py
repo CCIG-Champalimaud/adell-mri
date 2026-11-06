@@ -120,10 +120,10 @@ class _AutoEncoderLossMixin:
                 raise ImportError(
                     "PatchAdversarialLoss requires the generative package"
                 ) from exc
-            if adversarial_criterion not in ["bce", "hinge"]:
+            if adversarial_criterion not in ["bce", "hinge", "least_squares"]:
                 raise ValueError(
-                    "adversarial_criterion must be either 'bce' or 'hinge', "
-                    f"got '{adversarial_criterion}'"
+                    "adversarial_criterion must be 'bce', 'least_squares' "
+                    f"or 'hinge', got '{adversarial_criterion}'"
                 )
             discriminator_config = discriminator_config or {}
             disc_config = {
