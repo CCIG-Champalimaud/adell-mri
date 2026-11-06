@@ -431,11 +431,7 @@ class _AutoEncoderLossMixin:
                     x, recon.detach()
                 )
                 opt_d.zero_grad()
-                self.manual_backward(
-                    self.loss_weights["adversarial"]
-                    * adversarial_scale
-                    * disc_losses["disc_loss"]
-                )
+                self.manual_backward(disc_losses["disc_loss"])
                 self.clip_gradients(
                     opt_d,
                     gradient_clip_val=1.0,
