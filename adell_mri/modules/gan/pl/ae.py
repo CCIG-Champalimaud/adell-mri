@@ -65,7 +65,8 @@ class _AutoEncoderLossMixin:
                 spectral normalization to the discriminator convolutions.
                 Defaults to False.
             adversarial_criterion (str, optional): adversarial loss criterion,
-                either ``bce`` or ``hinge``. Defaults to "bce".
+                either ``bce``, ``least_squares`` or ``hinge``. Defaults to
+                "bce".
 
         Raises:
             ValueError: if an unknown loss weight, an invalid reconstruction
@@ -246,6 +247,36 @@ class _AutoEncoderLossMixin:
             return output[0], output[1], output[2]
         return output, None, None
 
+    def compute_adversarial_loss(
+        self,
+        logits: torch.Tensor,
+        target_is_real: bool,
+        for_discriminator: bool,
+    ) -> torch.Tensor:
+        """
+        Computes the adversarial loss outside autocast.
+
+        ``PatchAdversarialLoss`` with the ``bce`` criterion uses
+        ``torch.nn.BCELoss``, which is unsafe under autocast. Running it in
+        float32 keeps mixed-precision training stable while preserving the
+        gradient path to the discriminator.
+
+        Args:
+            logits (torch.Tensor): discriminator output.
+            target_is_real (bool): whether the target is real.
+            for_discriminator (bool): whether the loss is for the discriminator.
+
+        Returns:
+            torch.Tensor: adversarial loss.
+        """
+        device_type = "cuda" if logits.is_cuda else "cpu"
+        with torch.autocast(device_type=device_type, enabled=False):
+            return self.adversarial_loss(
+                logits.float(),
+                target_is_real=target_is_real,
+                for_discriminator=for_discriminator,
+            )
+
     def compute_losses(
         self,
         x: torch.Tensor,
@@ -287,7 +318,7 @@ class _AutoEncoderLossMixin:
             and self.adversarial_loss is not None
         ):
             logits_fake = self.discriminator(recon)[-1]
-            losses["adv_loss"] = self.adversarial_loss(
+            losses["adv_loss"] = self.compute_adversarial_loss(
                 logits_fake, target_is_real=True, for_discriminator=False
             )
         total = []
@@ -315,11 +346,11 @@ class _AutoEncoderLossMixin:
             dict[str, torch.Tensor]: dictionary with the discriminator loss.
         """
         logits_fake = self.discriminator(recon)[-1]
-        loss_fake = self.adversarial_loss(
+        loss_fake = self.compute_adversarial_loss(
             logits_fake, target_is_real=False, for_discriminator=True
         )
         logits_real = self.discriminator(x)[-1]
-        loss_real = self.adversarial_loss(
+        loss_real = self.compute_adversarial_loss(
             logits_real, target_is_real=True, for_discriminator=True
         )
         loss = 0.5 * (loss_fake + loss_real)

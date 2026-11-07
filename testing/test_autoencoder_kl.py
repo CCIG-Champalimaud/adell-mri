@@ -283,6 +283,27 @@ def test_negative_adversarial_schedule_raises(model_config):
         )
 
 
+@pytest.mark.skipif(
+    not torch.cuda.is_available(), reason="CUDA autocast is required"
+)
+def test_bce_adversarial_loss_is_safe_under_autocast(model_config):
+    model = AutoEncoderPL(
+        **model_config,
+        loss_weights={"rec": 1.0, "adversarial": 0.01},
+        adversarial_criterion="bce",
+    ).cuda()
+    x = torch.rand(2, 1, 32, 32, device="cuda")
+
+    with torch.autocast(device_type="cuda", dtype=torch.float16):
+        losses, _ = model.compute_losses(x)
+        disc_losses = model.compute_discriminator_losses(
+            x, model.forward(x)[0].detach()
+        )
+
+    assert torch.isfinite(losses["adv_loss"])
+    assert torch.isfinite(disc_losses["disc_loss"])
+
+
 def test_configure_optimizers_includes_lr_scheduler(model_config):
     model = AutoEncoderPL(
         **model_config,
