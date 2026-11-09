@@ -2366,9 +2366,9 @@ class Generator(torch.nn.Module):
             ),
         )
         if isinstance(out_activation, str):
-            self.out_activation = eval(out_activation)
+            self.out_activation = eval(out_activation)()
         else:
-            self.out_activation = out_activation
+            self.out_activation = out_activation()
 
     @property
     def latent_downsample_factor(self) -> int | tuple[int, ...]:
