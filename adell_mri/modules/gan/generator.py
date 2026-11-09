@@ -7,7 +7,7 @@ So this is essentially repackaging what the MONAI team did as a GAN generator.
 
 import importlib
 import math
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 
 import torch
 import torch.nn.functional as F
@@ -2092,6 +2092,7 @@ class Generator(torch.nn.Module):
         upcast_attention: bool = False,
         use_flash_attention: bool = False,
         no_skip_connection: bool = False,
+        out_activation: str | Callable = torch.nn.Tanh,
     ) -> None:
         """
         Args:
@@ -2129,6 +2130,9 @@ class Generator(torch.nn.Module):
                 memory efficient attention mechanism.
             no_skip_connection (bool): if True, do not add skip connections
                 between up/down blocks.
+            out_activation (str | Callable): the activation for the output
+                layer. It can be specified as a string which is executed as is
+                using `eval()`. Defaults to torch.nn.Tanh.
         """
         super().__init__()
         if with_conditioning is True:
@@ -2361,7 +2365,10 @@ class Generator(torch.nn.Module):
                 )
             ),
         )
-        self.out_activation = torch.nn.Tanh()
+        if isinstance(out_activation, str):
+            self.out_activation = eval(out_activation)
+        else:
+            self.out_activation = out_activation
 
     @property
     def latent_downsample_factor(self) -> int | tuple[int, ...]:
