@@ -5,7 +5,6 @@ package but replacing mandatory time embeddings with optional class embeddings.
 So this is essentially repackaging what the MONAI team did as a GAN generator.
 """
 
-import importlib
 import math
 from collections.abc import Callable, Sequence
 
@@ -36,16 +35,6 @@ from monai.networks.nets.diffusion_model_unet import DownBlock as MONAIDownBlock
 from monai.networks.nets.diffusion_model_unet import SpatialTransformer
 from monai.networks.nets.diffusion_model_unet import UpBlock as MONAIUpBlock
 from monai.utils import ensure_tuple_rep
-
-# To install xformers, use pip install xformers==0.0.16rc401
-if importlib.util.find_spec("xformers") is not None:
-    import xformers
-    import xformers.ops
-
-    has_xformers = True
-else:
-    xformers = None
-    has_xformers = False
 
 
 def zero_module(module: torch.nn.Module) -> torch.nn.Module:
@@ -123,39 +112,6 @@ def _neutralize_unconditional(module: torch.nn.Module) -> None:
             zero_module(submodule.time_emb_proj)
             for parameter in submodule.time_emb_proj.parameters():
                 parameter.requires_grad_(False)
-
-
-def get_timestep_embedding(
-    timesteps: torch.Tensor, embedding_dim: int, max_period: int = 10000
-) -> torch.Tensor:
-    """
-    Create sinusoidal timestep embeddings following the implementation in [1].
-
-    [1] https://arxiv.org/abs/2006.11239
-
-    Args:
-        timesteps (int): a 1-D Tensor of N indices, one per batch element.
-        embedding_dim (int): the dimension of the output.
-        max_period (int, optional): controls the minimum frequency of the
-            embeddings. Defaults to 10000.
-    """
-    if timesteps.ndim != 1:
-        raise ValueError("Timesteps should be a 1d-array")
-
-    half_dim = embedding_dim // 2
-    exponent = -math.log(max_period) * torch.arange(
-        start=0, end=half_dim, dtype=torch.float32, device=timesteps.device
-    )
-    freqs = torch.exp(exponent / half_dim)
-
-    args = timesteps[:, None].float() * freqs[None, :]
-    embedding = torch.cat([torch.cos(args), torch.sin(args)], dim=-1)
-
-    # zero pad
-    if embedding_dim % 2 == 1:
-        embedding = torch.nn.functional.pad(embedding, (0, 1, 0, 0))
-
-    return embedding
 
 
 class Downsample(torch.nn.Module):
@@ -1376,11 +1332,6 @@ class Generator(torch.nn.Module):
             _resolve_stride(block_stride, spatial_dims)
             for block_stride in strides
         ]
-
-        if use_flash_attention and not has_xformers:
-            raise ValueError(
-                "use_flash_attention is True but xformers is not installed."
-            )
 
         if use_flash_attention is True and not torch.cuda.is_available():
             raise ValueError(
