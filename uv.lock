@@ -71,7 +71,7 @@ requires-dist = [
     { name = "kiwisolver", specifier = ">=1.4.7" },
     { name = "lightning", specifier = ">=2.6.6" },
     { name = "lpips", specifier = ">=0.1.4" },
-    { name = "monai", specifier = ">=1.5.2" },
+    { name = "monai", specifier = ">=1.6.1,<1.7" },
     { name = "multiprocess", specifier = ">=0.70.13" },
     { name = "nibabel", specifier = ">=5.1.0" },
     { name = "numpy", specifier = ">=1.26" },
