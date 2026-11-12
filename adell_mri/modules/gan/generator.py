@@ -13,7 +13,10 @@ import torch
 import torch.nn.functional as F
 from monai.networks.blocks import Convolution, SpatialAttentionBlock
 from monai.networks.layers.factories import Pool
-from monai.networks.nets.diffusion_model_unet import SpatialTransformer
+from monai.networks.nets.diffusion_model_unet import (
+    DiffusionUNetResnetBlock,
+    SpatialTransformer,
+)
 from monai.utils import ensure_tuple_rep
 
 # To install xformers, use pip install xformers==0.0.16rc401
@@ -254,160 +257,88 @@ class Upsample(torch.nn.Module):
         return x
 
 
-class ResnetBlock(torch.nn.Module):
+class ResnetBlock(DiffusionUNetResnetBlock):
     """
-    Residual block with class conditioning.
+    Residual block with optional class conditioning and arbitrary strides.
+
+    This reuses MONAI's residual block and only adds:
+    - optional class conditioning;
+    - stride-aware up/down sampling for strides other than 2.
     """
 
     def __init__(
         self,
         spatial_dims: int,
         in_channels: int,
-        class_emb_channels: int,
+        class_emb_channels: int | None,
         out_channels: int | None = None,
         upsample_stride: int | Sequence[int] = 1,
         downsample_stride: int | Sequence[int] = 1,
         norm_num_groups: int = 32,
         norm_eps: float = 1e-6,
     ) -> None:
-        """
-        Args:
-            spatial_dims (int): The number of spatial dimensions.
-            in_channels (int): number of input channels.
-            class_emb_channels (int): number of class embedding channels.
-            out_channels (int | None, optional): number of output channels.
-                Defaults to None.
-            upsample_stride (int | Sequence[int], optional): upsampling stride
-                (scale factor). A value of 1 disables upsampling. Defaults to
-                1.
-            downsample_stride (int | Sequence[int], optional): downsampling
-                stride. A value of 1 disables downsampling. Defaults to 1.
-            norm_num_groups (int, optional): number of groups for the group
-                normalization. Defaults to 32.
-            norm_eps (float, optional): epsilon for the group normalization.
-                Defaults to 1e-6.
-        """
-        super().__init__()
-        self.spatial_dims = spatial_dims
-        self.channels = in_channels
-        self.class_emb_channels = class_emb_channels
-        self.out_channels = out_channels or in_channels
-        self.upsample_stride = _resolve_stride(upsample_stride, spatial_dims)
-        self.downsample_stride = _resolve_stride(
-            downsample_stride, spatial_dims
-        )
-        if not _is_identity_stride(self.upsample_stride) and not (
-            _is_identity_stride(self.downsample_stride)
+        upsample_stride = _resolve_stride(upsample_stride, spatial_dims)
+        downsample_stride = _resolve_stride(downsample_stride, spatial_dims)
+        if not _is_identity_stride(upsample_stride) and not (
+            _is_identity_stride(downsample_stride)
         ):
             raise ValueError(
                 "upsample_stride and downsample_stride cannot both be "
                 "greater than 1"
             )
 
-        self.norm1 = torch.nn.GroupNorm(
-            num_groups=norm_num_groups,
-            num_channels=in_channels,
-            eps=norm_eps,
-            affine=True,
+        self.class_emb_channels = class_emb_channels
+        self.upsample_stride = upsample_stride
+        self.downsample_stride = downsample_stride
+        emb_channels = (
+            class_emb_channels if class_emb_channels is not None else 1
         )
-        self.nonlinearity = torch.nn.SiLU()
-        self.conv1 = Convolution(
-            spatial_dims=spatial_dims,
-            in_channels=in_channels,
-            out_channels=self.out_channels,
-            strides=1,
-            kernel_size=3,
-            padding=1,
-            conv_only=True,
+        self._emb_channels = emb_channels
+
+        is_upsample = not _is_identity_stride(upsample_stride)
+        is_downsample = not _is_identity_stride(downsample_stride)
+        native_upsample = is_upsample and upsample_stride == (2,) * spatial_dims
+        native_downsample = (
+            is_downsample and downsample_stride == (2,) * spatial_dims
         )
 
-        self.upsample = self.downsample = None
-        if not _is_identity_stride(self.upsample_stride):
+        super().__init__(
+            spatial_dims=spatial_dims,
+            in_channels=in_channels,
+            temb_channels=emb_channels,
+            out_channels=out_channels,
+            up=native_upsample,
+            down=native_downsample,
+            norm_num_groups=norm_num_groups,
+            norm_eps=norm_eps,
+        )
+
+        if is_upsample and not native_upsample:
             self.upsample = Upsample(
                 spatial_dims,
                 in_channels,
                 use_conv=False,
-                stride=self.upsample_stride,
+                stride=upsample_stride,
             )
-        elif not _is_identity_stride(self.downsample_stride):
+        elif is_downsample and not native_downsample:
             self.downsample = Downsample(
                 spatial_dims,
                 in_channels,
                 use_conv=False,
-                stride=self.downsample_stride,
+                stride=downsample_stride,
             )
 
-        if self.class_emb_channels is not None:
-            self.class_emb_proj = torch.nn.Linear(
-                class_emb_channels, self.out_channels
-            )
-        else:
-            self.class_emb_proj = None
+        if class_emb_channels is None:
+            zero_module(self.time_emb_proj)
+            for parameter in self.time_emb_proj.parameters():
+                parameter.requires_grad_(False)
 
-        self.norm2 = torch.nn.GroupNorm(
-            num_groups=norm_num_groups,
-            num_channels=self.out_channels,
-            eps=norm_eps,
-            affine=True,
-        )
-        self.conv2 = zero_module(
-            Convolution(
-                spatial_dims=spatial_dims,
-                in_channels=self.out_channels,
-                out_channels=self.out_channels,
-                strides=1,
-                kernel_size=3,
-                padding=1,
-                conv_only=True,
-            )
-        )
-
-        if self.out_channels == in_channels:
-            self.skip_connection = torch.nn.Identity()
-        else:
-            self.skip_connection = Convolution(
-                spatial_dims=spatial_dims,
-                in_channels=in_channels,
-                out_channels=self.out_channels,
-                strides=1,
-                kernel_size=1,
-                padding=0,
-                conv_only=True,
-            )
-
-    def forward(self, x: torch.Tensor, emb: torch.Tensor) -> torch.Tensor:
-        h = x
-        h = self.norm1(h)
-        h = self.nonlinearity(h)
-
-        if self.upsample is not None:
-            if h.shape[0] >= 64:
-                x = x.contiguous()
-                h = h.contiguous()
-            x = self.upsample(x)
-            h = self.upsample(h)
-        elif self.downsample is not None:
-            x = self.downsample(x)
-            h = self.downsample(h)
-
-        h = self.conv1(h)
-
-        if self.class_emb_proj is not None:
-            if self.spatial_dims == 2:
-                class_emb = self.class_emb_proj(self.nonlinearity(emb))[
-                    :, :, None, None
-                ]
-            else:
-                class_emb = self.class_emb_proj(self.nonlinearity(emb))[
-                    :, :, None, None, None
-                ]
-            h = h + class_emb
-
-        h = self.norm2(h)
-        h = self.nonlinearity(h)
-        h = self.conv2(h)
-
-        return self.skip_connection(x) + h
+    def forward(
+        self, x: torch.Tensor, emb: torch.Tensor | None
+    ) -> torch.Tensor:
+        if emb is None:
+            emb = x.new_zeros(x.shape[0], self._emb_channels)
+        return super().forward(x, emb)
 
 
 class DownBlock(torch.nn.Module):
