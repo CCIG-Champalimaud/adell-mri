@@ -17,7 +17,13 @@ from monai.networks.nets.diffusion_model_unet import (
     AttnDownBlock as MONAIAttnDownBlock,
 )
 from monai.networks.nets.diffusion_model_unet import (
+    AttnMidBlock as MONAIAttnMidBlock,
+)
+from monai.networks.nets.diffusion_model_unet import (
     CrossAttnDownBlock as MONAICrossAttnDownBlock,
+)
+from monai.networks.nets.diffusion_model_unet import (
+    CrossAttnMidBlock as MONAICrossAttnMidBlock,
 )
 from monai.networks.nets.diffusion_model_unet import DiffusionUNetResnetBlock
 from monai.networks.nets.diffusion_model_unet import DownBlock as MONAIDownBlock
@@ -562,88 +568,59 @@ class CrossAttnDownBlock(MONAICrossAttnDownBlock):
         return super().forward(hidden_states, emb, context)
 
 
-class AttnMidBlock(torch.nn.Module):
+class AttnMidBlock(MONAIAttnMidBlock):
     """
-    Unet's mid block containing resnet and self-attention blocks.
+    MONAI self-attention mid block with optional class conditioning.
     """
 
     def __init__(
         self,
         spatial_dims: int,
         in_channels: int,
-        class_emb_channels: int,
+        class_emb_channels: int | None,
         norm_num_groups: int = 32,
         norm_eps: float = 1e-6,
         num_head_channels: int = 1,
         use_flash_attention: bool = False,
     ) -> None:
-        """
-        Args:
-            spatial_dims (int): The number of spatial dimensions.
-            in_channels (int): number of input channels.
-            class_emb_channels (int): number of class embedding channels.
-            norm_num_groups (int, optional): number of groups for the group
-                normalization. Defaults to 32.
-            norm_eps (float, optional): epsilon for the group normalization.
-                Defaults to 1e-6.
-            num_head_channels (int, optional): number of channels in each
-                attention head. Defaults to 1.
-            use_flash_attention (bool, optional): if True, use flash attention
-                for a memory efficient attention mechanism. Defaults to False.
-        """
-        super().__init__()
-        self.attention = None
+        emb_channels = (
+            class_emb_channels if class_emb_channels is not None else 1
+        )
+        self._emb_channels = emb_channels
 
-        self.resnet_1 = ResnetBlock(
+        super().__init__(
             spatial_dims=spatial_dims,
             in_channels=in_channels,
-            out_channels=in_channels,
-            class_emb_channels=class_emb_channels,
+            temb_channels=emb_channels,
             norm_num_groups=norm_num_groups,
             norm_eps=norm_eps,
-        )
-        self.attention = SpatialAttentionBlock(
-            spatial_dims=spatial_dims,
-            num_channels=in_channels,
             num_head_channels=num_head_channels,
-            norm_num_groups=norm_num_groups,
-            norm_eps=norm_eps,
             use_flash_attention=use_flash_attention,
         )
 
-        self.resnet_2 = ResnetBlock(
-            spatial_dims=spatial_dims,
-            in_channels=in_channels,
-            out_channels=in_channels,
-            class_emb_channels=class_emb_channels,
-            norm_num_groups=norm_num_groups,
-            norm_eps=norm_eps,
-        )
+        if class_emb_channels is None:
+            _neutralize_unconditional(self)
 
     def forward(
         self,
         hidden_states: torch.Tensor,
-        emb: torch.Tensor,
+        emb: torch.Tensor | None,
         context: torch.Tensor | None = None,
     ) -> torch.Tensor:
-        del context
-        hidden_states = self.resnet_1(hidden_states, emb)
-        hidden_states = self.attention(hidden_states)
-        hidden_states = self.resnet_2(hidden_states, emb)
-
-        return hidden_states
+        emb = _resolve_emb(emb, hidden_states, self._emb_channels)
+        return super().forward(hidden_states, emb, context)
 
 
-class CrossAttnMidBlock(torch.nn.Module):
+class CrossAttnMidBlock(MONAICrossAttnMidBlock):
     """
-    Unet's mid block containing resnet and cross-attention blocks.
+    MONAI cross-attention mid block with optional class conditioning.
     """
 
     def __init__(
         self,
         spatial_dims: int,
         in_channels: int,
-        class_emb_channels: int,
+        class_emb_channels: int | None,
         norm_num_groups: int = 32,
         norm_eps: float = 1e-6,
         num_head_channels: int = 1,
@@ -652,70 +629,35 @@ class CrossAttnMidBlock(torch.nn.Module):
         upcast_attention: bool = False,
         use_flash_attention: bool = False,
     ) -> None:
-        """
-        Args:
-            spatial_dims (int): The number of spatial dimensions.
-            in_channels (int): number of input channels.
-            out_channels (int): number of output channels.
-            class_emb_channels (int): number of class embedding channels.
-            norm_num_groups (int, optional): number of groups for the group
-                normalization. Defaults to 32.
-            norm_eps (float, optional): epsilon for the group normalization.
-                Defaults to 1e-6.
-            num_head_channels (int, optional): number of channels in each
-                attention head. Defaults to 1.
-            transformer_num_layers (int, optional): number of layers of
-                Transformer blocks to use. Defaults to 1.
-            cross_attention_dim (int | None, optional): number of context
-                dimensions to use. Defaults to None.
-            upcast_attention (bool, optional): if True, upcast attention
-                operations to full precision. Defaults to False.
-            use_flash_attention (bool, optional): if True, use flash attention
-                for a memory efficient attention mechanism. Defaults to False.
-        """
-        super().__init__()
-        self.attention = None
-
-        self.resnet_1 = ResnetBlock(
-            spatial_dims=spatial_dims,
-            in_channels=in_channels,
-            out_channels=in_channels,
-            class_emb_channels=class_emb_channels,
-            norm_num_groups=norm_num_groups,
-            norm_eps=norm_eps,
+        emb_channels = (
+            class_emb_channels if class_emb_channels is not None else 1
         )
-        self.attention = SpatialTransformer(
+        self._emb_channels = emb_channels
+
+        super().__init__(
             spatial_dims=spatial_dims,
             in_channels=in_channels,
-            num_attention_heads=in_channels // num_head_channels,
-            num_head_channels=num_head_channels,
-            num_layers=transformer_num_layers,
+            temb_channels=emb_channels,
             norm_num_groups=norm_num_groups,
             norm_eps=norm_eps,
+            num_head_channels=num_head_channels,
+            transformer_num_layers=transformer_num_layers,
             cross_attention_dim=cross_attention_dim,
             upcast_attention=upcast_attention,
             use_flash_attention=use_flash_attention,
         )
-        self.resnet_2 = ResnetBlock(
-            spatial_dims=spatial_dims,
-            in_channels=in_channels,
-            out_channels=in_channels,
-            class_emb_channels=class_emb_channels,
-            norm_num_groups=norm_num_groups,
-            norm_eps=norm_eps,
-        )
+
+        if class_emb_channels is None:
+            _neutralize_unconditional(self)
 
     def forward(
         self,
         hidden_states: torch.Tensor,
-        emb: torch.Tensor,
+        emb: torch.Tensor | None,
         context: torch.Tensor | None = None,
     ) -> torch.Tensor:
-        hidden_states = self.resnet_1(hidden_states, emb)
-        hidden_states = self.attention(hidden_states, context=context)
-        hidden_states = self.resnet_2(hidden_states, emb)
-
-        return hidden_states
+        emb = _resolve_emb(emb, hidden_states, self._emb_channels)
+        return super().forward(hidden_states, emb, context)
 
 
 class UpBlock(torch.nn.Module):
