@@ -14,9 +14,14 @@ import torch.nn.functional as F
 from monai.networks.blocks import Convolution, SpatialAttentionBlock
 from monai.networks.layers.factories import Pool
 from monai.networks.nets.diffusion_model_unet import (
-    DiffusionUNetResnetBlock,
-    SpatialTransformer,
+    AttnDownBlock as MONAIAttnDownBlock,
 )
+from monai.networks.nets.diffusion_model_unet import (
+    CrossAttnDownBlock as MONAICrossAttnDownBlock,
+)
+from monai.networks.nets.diffusion_model_unet import DiffusionUNetResnetBlock
+from monai.networks.nets.diffusion_model_unet import DownBlock as MONAIDownBlock
+from monai.networks.nets.diffusion_model_unet import SpatialTransformer
 from monai.utils import ensure_tuple_rep
 
 # To install xformers, use pip install xformers==0.0.16rc401
@@ -83,6 +88,28 @@ def _is_identity_stride(stride: Sequence[int]) -> bool:
     Returns True if the stride does not change the spatial shape.
     """
     return all(value == 1 for value in stride)
+
+
+def _resolve_emb(
+    emb: torch.Tensor | None, reference: torch.Tensor, emb_channels: int
+) -> torch.Tensor:
+    """
+    Returns a zero conditioning tensor when no class embedding is provided.
+    """
+    if emb is not None:
+        return emb
+    return reference.new_zeros(reference.shape[0], emb_channels)
+
+
+def _neutralize_unconditional(module: torch.nn.Module) -> None:
+    """
+    Disables the unused embedding projection of unconditional MONAI resnets.
+    """
+    for submodule in module.modules():
+        if isinstance(submodule, DiffusionUNetResnetBlock):
+            zero_module(submodule.time_emb_proj)
+            for parameter in submodule.time_emb_proj.parameters():
+                parameter.requires_grad_(False)
 
 
 def get_timestep_embedding(
@@ -341,9 +368,9 @@ class ResnetBlock(DiffusionUNetResnetBlock):
         return super().forward(x, emb)
 
 
-class DownBlock(torch.nn.Module):
+class DownBlock(MONAIDownBlock):
     """
-    Unet's down block containing resnet and downsamplers blocks.
+    MONAI down block with class conditioning and arbitrary strides.
     """
 
     def __init__(
@@ -351,7 +378,7 @@ class DownBlock(torch.nn.Module):
         spatial_dims: int,
         in_channels: int,
         out_channels: int,
-        class_emb_channels: int,
+        class_emb_channels: int | None,
         num_res_blocks: int = 1,
         norm_num_groups: int = 32,
         norm_eps: float = 1e-6,
@@ -359,91 +386,51 @@ class DownBlock(torch.nn.Module):
         resblock_updown: bool = False,
         downsample_padding: int = 1,
     ) -> None:
-        """
-        Args:
-            spatial_dims (int): The number of spatial dimensions.
-            in_channels  (int): number of input channels.
-            out_channels (int): number of output channels.
-            class_emb_channels (int): number of class embedding channels.
-            num_res_blocks (int, optional): number of residual blocks. Defaults
-                to 1.
-            norm_num_groups (int, optional): number of groups for the group
-                normalization. Defaults to 32.
-            norm_eps (float, optional): epsilon for the group normalization.
-                Defaults to 1e-6.
-            stride (int | Sequence[int], optional): downsampling stride. A
-                value of 1 disables downsampling. Defaults to 2.
-            resblock_updown (bool, False): if True use residual blocks for
-                downsampling. Defaults to False.
-            downsample_padding (int, optional): padding used in the
-                downsampling block. Defaults to 1.
-        """
-        super().__init__()
-        self.resblock_updown = resblock_updown
-        self.stride = _resolve_stride(stride, spatial_dims)
+        stride = _resolve_stride(stride, spatial_dims)
+        emb_channels = (
+            class_emb_channels if class_emb_channels is not None else 1
+        )
+        self._emb_channels = emb_channels
 
-        resnets = []
+        super().__init__(
+            spatial_dims=spatial_dims,
+            in_channels=in_channels,
+            out_channels=out_channels,
+            temb_channels=emb_channels,
+            num_res_blocks=num_res_blocks,
+            norm_num_groups=norm_num_groups,
+            norm_eps=norm_eps,
+            add_downsample=not _is_identity_stride(stride),
+            resblock_updown=resblock_updown,
+            downsample_padding=downsample_padding,
+        )
 
-        for i in range(num_res_blocks):
-            in_channels = in_channels if i == 0 else out_channels
-            resnets.append(
-                ResnetBlock(
-                    spatial_dims=spatial_dims,
-                    in_channels=in_channels,
-                    out_channels=out_channels,
-                    class_emb_channels=class_emb_channels,
-                    norm_num_groups=norm_num_groups,
-                    norm_eps=norm_eps,
-                )
+        if not _is_identity_stride(stride) and stride != (2,) * spatial_dims:
+            self.downsampler = Downsample(
+                spatial_dims=spatial_dims,
+                num_channels=out_channels,
+                use_conv=True,
+                out_channels=out_channels,
+                padding=downsample_padding,
+                stride=stride,
             )
 
-        self.resnets = torch.nn.ModuleList(resnets)
-
-        self.downsampler = None
-        if not _is_identity_stride(self.stride):
-            if resblock_updown:
-                self.downsampler = ResnetBlock(
-                    spatial_dims=spatial_dims,
-                    in_channels=out_channels,
-                    out_channels=out_channels,
-                    class_emb_channels=class_emb_channels,
-                    norm_num_groups=norm_num_groups,
-                    norm_eps=norm_eps,
-                    downsample_stride=self.stride,
-                )
-            else:
-                self.downsampler = Downsample(
-                    spatial_dims=spatial_dims,
-                    num_channels=out_channels,
-                    use_conv=True,
-                    out_channels=out_channels,
-                    padding=downsample_padding,
-                    stride=self.stride,
-                )
+        if class_emb_channels is None:
+            _neutralize_unconditional(self)
 
     def forward(
         self,
         hidden_states: torch.Tensor,
-        emb: torch.Tensor,
+        emb: torch.Tensor | None,
         context: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, list[torch.Tensor]]:
-        del context
-        output_states = []
-
-        for resnet in self.resnets:
-            hidden_states = resnet(hidden_states, emb)
-            output_states.append(hidden_states)
-
-        if self.downsampler is not None:
-            hidden_states = self.downsampler(hidden_states, emb)
-            output_states.append(hidden_states)
-
-        return hidden_states, output_states
+        emb = _resolve_emb(emb, hidden_states, self._emb_channels)
+        return super().forward(hidden_states, emb, context)
 
 
-class AttnDownBlock(torch.nn.Module):
+class AttnDownBlock(MONAIAttnDownBlock):
     """
-    Unet's down block containing resnet, downsamplers and self-attention blocks.
+    MONAI self-attention down block with class conditioning and strides.
     """
 
     def __init__(
@@ -451,7 +438,7 @@ class AttnDownBlock(torch.nn.Module):
         spatial_dims: int,
         in_channels: int,
         out_channels: int,
-        class_emb_channels: int,
+        class_emb_channels: int | None,
         num_res_blocks: int = 1,
         norm_num_groups: int = 32,
         norm_eps: float = 1e-6,
@@ -461,108 +448,53 @@ class AttnDownBlock(torch.nn.Module):
         num_head_channels: int = 1,
         use_flash_attention: bool = False,
     ) -> None:
-        """
-        Args:
-            spatial_dims (int): The number of spatial dimensions.
-            in_channels (int): number of input channels.
-            out_channels (int): number of output channels.
-            class_emb_channels (int): number of class embedding channels.
-            num_res_blocks (int, optional): number of residual blocks. Defaults
-                to 1.
-            norm_num_groups (int, optional): number of groups for the group
-                normalization. Defaults to 32.
-            norm_eps (float, optional): epsilon for the group normalization.
-                Defaults to 1e-6.
-            stride (int | Sequence[int], optional): downsampling stride. A
-                value of 1 disables downsampling. Defaults to 2.
-            resblock_updown (bool, optional): if True use residual blocks for
-                downsampling. Defaults to False.
-            downsample_padding (int, optional): padding used in the downsampling
-                block. Defaults to 1.
-            num_head_channels (int, optional): number of channels in each
-                attention head. Defaults to 1.
-            use_flash_attention (bool, optional): if True, use flash attention
-                for a memory efficient attention mechanism. Defaults to False.
-        """
-        super().__init__()
-        self.resblock_updown = resblock_updown
-        self.stride = _resolve_stride(stride, spatial_dims)
+        stride = _resolve_stride(stride, spatial_dims)
+        emb_channels = (
+            class_emb_channels if class_emb_channels is not None else 1
+        )
+        self._emb_channels = emb_channels
 
-        resnets = []
-        attentions = []
+        super().__init__(
+            spatial_dims=spatial_dims,
+            in_channels=in_channels,
+            out_channels=out_channels,
+            temb_channels=emb_channels,
+            num_res_blocks=num_res_blocks,
+            norm_num_groups=norm_num_groups,
+            norm_eps=norm_eps,
+            add_downsample=not _is_identity_stride(stride),
+            resblock_updown=resblock_updown,
+            downsample_padding=downsample_padding,
+            num_head_channels=num_head_channels,
+            use_flash_attention=use_flash_attention,
+        )
 
-        for i in range(num_res_blocks):
-            in_channels = in_channels if i == 0 else out_channels
-            resnets.append(
-                ResnetBlock(
-                    spatial_dims=spatial_dims,
-                    in_channels=in_channels,
-                    out_channels=out_channels,
-                    class_emb_channels=class_emb_channels,
-                    norm_num_groups=norm_num_groups,
-                    norm_eps=norm_eps,
-                )
-            )
-            attentions.append(
-                SpatialAttentionBlock(
-                    spatial_dims=spatial_dims,
-                    num_channels=out_channels,
-                    num_head_channels=num_head_channels,
-                    norm_num_groups=norm_num_groups,
-                    norm_eps=norm_eps,
-                    use_flash_attention=use_flash_attention,
-                )
+        if not _is_identity_stride(stride) and stride != (2,) * spatial_dims:
+            self.downsampler = Downsample(
+                spatial_dims=spatial_dims,
+                num_channels=out_channels,
+                use_conv=True,
+                out_channels=out_channels,
+                padding=downsample_padding,
+                stride=stride,
             )
 
-        self.attentions = torch.nn.ModuleList(attentions)
-        self.resnets = torch.nn.ModuleList(resnets)
-
-        self.downsampler = None
-        if not _is_identity_stride(self.stride):
-            if resblock_updown:
-                self.downsampler = ResnetBlock(
-                    spatial_dims=spatial_dims,
-                    in_channels=out_channels,
-                    out_channels=out_channels,
-                    class_emb_channels=class_emb_channels,
-                    norm_num_groups=norm_num_groups,
-                    norm_eps=norm_eps,
-                    downsample_stride=self.stride,
-                )
-            else:
-                self.downsampler = Downsample(
-                    spatial_dims=spatial_dims,
-                    num_channels=out_channels,
-                    use_conv=True,
-                    out_channels=out_channels,
-                    padding=downsample_padding,
-                    stride=self.stride,
-                )
+        if class_emb_channels is None:
+            _neutralize_unconditional(self)
 
     def forward(
         self,
         hidden_states: torch.Tensor,
-        emb: torch.Tensor,
+        emb: torch.Tensor | None,
         context: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, list[torch.Tensor]]:
-        del context
-        output_states = []
-
-        for resnet, attn in zip(self.resnets, self.attentions):
-            hidden_states = resnet(hidden_states, emb)
-            hidden_states = attn(hidden_states)
-            output_states.append(hidden_states)
-
-        if self.downsampler is not None:
-            hidden_states = self.downsampler(hidden_states, emb)
-            output_states.append(hidden_states)
-
-        return hidden_states, output_states
+        emb = _resolve_emb(emb, hidden_states, self._emb_channels)
+        return super().forward(hidden_states, emb, context)
 
 
-class CrossAttnDownBlock(torch.nn.Module):
+class CrossAttnDownBlock(MONAICrossAttnDownBlock):
     """
-    Unet's down block containing resnet, downsamplers and cross-attention blocks.
+    MONAI cross-attention down block with class conditioning and strides.
     """
 
     def __init__(
@@ -570,7 +502,7 @@ class CrossAttnDownBlock(torch.nn.Module):
         spatial_dims: int,
         in_channels: int,
         out_channels: int,
-        class_emb_channels: int,
+        class_emb_channels: int | None,
         num_res_blocks: int = 1,
         norm_num_groups: int = 32,
         norm_eps: float = 1e-6,
@@ -583,113 +515,51 @@ class CrossAttnDownBlock(torch.nn.Module):
         upcast_attention: bool = False,
         use_flash_attention: bool = False,
     ) -> None:
-        """
-        Args:
-            spatial_dims (int): The number of spatial dimensions.
-            in_channels (int): number of input channels.
-            out_channels (int): number of output channels.
-            class_emb_channels (int): number of class embedding channels.
-            num_res_blocks (int, optional): number of residual blocks. Defaults
-                to 1.
-            norm_num_groups (int, optional): number of groups for the group
-                normalization. Defaults to 32.
-            norm_eps (float, optional): epsilon for the group normalization.
-                Defaults to 1e-6.
-            stride (int | Sequence[int], optional): downsampling stride. A
-                value of 1 disables downsampling. Defaults to 2.
-            resblock_updown (bool, optional): if True use residual blocks for
-                downsampling. Defaults to False.
-            downsample_padding (int, optional): padding used in the downsampling
-                block. Defaults to 1.
-            num_head_channels (int, optional): number of channels in each
-                attention head. Defaults to 1.
-            transformer_num_layers (int, optional): number of layers of
-                Transformer blocks to use. Defaults to 1.
-            cross_attention_dim (int | None, optional): number of context
-                dimensions to use. Defaults to None.
-            upcast_attention (bool, optional): if True, upcast attention
-                operations to full precision. Defaults to False.
-            use_flash_attention (bool, optional): if True, use flash attention
-                for a memory efficient attention mechanism. Defaults to False.
-        """
-        super().__init__()
-        self.resblock_updown = resblock_updown
-        self.stride = _resolve_stride(stride, spatial_dims)
+        stride = _resolve_stride(stride, spatial_dims)
+        emb_channels = (
+            class_emb_channels if class_emb_channels is not None else 1
+        )
+        self._emb_channels = emb_channels
 
-        resnets = []
-        attentions = []
+        super().__init__(
+            spatial_dims=spatial_dims,
+            in_channels=in_channels,
+            out_channels=out_channels,
+            temb_channels=emb_channels,
+            num_res_blocks=num_res_blocks,
+            norm_num_groups=norm_num_groups,
+            norm_eps=norm_eps,
+            add_downsample=not _is_identity_stride(stride),
+            resblock_updown=resblock_updown,
+            downsample_padding=downsample_padding,
+            num_head_channels=num_head_channels,
+            transformer_num_layers=transformer_num_layers,
+            cross_attention_dim=cross_attention_dim,
+            upcast_attention=upcast_attention,
+            use_flash_attention=use_flash_attention,
+        )
 
-        for i in range(num_res_blocks):
-            in_channels = in_channels if i == 0 else out_channels
-            resnets.append(
-                ResnetBlock(
-                    spatial_dims=spatial_dims,
-                    in_channels=in_channels,
-                    out_channels=out_channels,
-                    class_emb_channels=class_emb_channels,
-                    norm_num_groups=norm_num_groups,
-                    norm_eps=norm_eps,
-                )
+        if not _is_identity_stride(stride) and stride != (2,) * spatial_dims:
+            self.downsampler = Downsample(
+                spatial_dims=spatial_dims,
+                num_channels=out_channels,
+                use_conv=True,
+                out_channels=out_channels,
+                padding=downsample_padding,
+                stride=stride,
             )
 
-            attentions.append(
-                SpatialTransformer(
-                    spatial_dims=spatial_dims,
-                    in_channels=out_channels,
-                    num_attention_heads=out_channels // num_head_channels,
-                    num_head_channels=num_head_channels,
-                    num_layers=transformer_num_layers,
-                    norm_num_groups=norm_num_groups,
-                    norm_eps=norm_eps,
-                    cross_attention_dim=cross_attention_dim,
-                    upcast_attention=upcast_attention,
-                    use_flash_attention=use_flash_attention,
-                )
-            )
-
-        self.attentions = torch.nn.ModuleList(attentions)
-        self.resnets = torch.nn.ModuleList(resnets)
-
-        self.downsampler = None
-        if not _is_identity_stride(self.stride):
-            if resblock_updown:
-                self.downsampler = ResnetBlock(
-                    spatial_dims=spatial_dims,
-                    in_channels=out_channels,
-                    out_channels=out_channels,
-                    class_emb_channels=class_emb_channels,
-                    norm_num_groups=norm_num_groups,
-                    norm_eps=norm_eps,
-                    downsample_stride=self.stride,
-                )
-            else:
-                self.downsampler = Downsample(
-                    spatial_dims=spatial_dims,
-                    num_channels=out_channels,
-                    use_conv=True,
-                    out_channels=out_channels,
-                    padding=downsample_padding,
-                    stride=self.stride,
-                )
+        if class_emb_channels is None:
+            _neutralize_unconditional(self)
 
     def forward(
         self,
         hidden_states: torch.Tensor,
-        emb: torch.Tensor,
+        emb: torch.Tensor | None,
         context: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, list[torch.Tensor]]:
-        output_states = []
-
-        for resnet, attn in zip(self.resnets, self.attentions):
-            hidden_states = resnet(hidden_states, emb)
-            hidden_states = attn(hidden_states, context=context)
-            output_states.append(hidden_states)
-
-        if self.downsampler is not None:
-            hidden_states = self.downsampler(hidden_states, emb)
-            output_states.append(hidden_states)
-
-        return hidden_states, output_states
+        emb = _resolve_emb(emb, hidden_states, self._emb_channels)
+        return super().forward(hidden_states, emb, context)
 
 
 class AttnMidBlock(torch.nn.Module):
