@@ -375,14 +375,25 @@ class DownBlock(MONAIDownBlock):
         )
 
         if not _is_identity_stride(stride) and stride != (2,) * spatial_dims:
-            self.downsampler = Downsample(
-                spatial_dims=spatial_dims,
-                num_channels=out_channels,
-                use_conv=True,
-                out_channels=out_channels,
-                padding=downsample_padding,
-                stride=stride,
-            )
+            if resblock_updown:
+                self.downsampler = ResnetBlock(
+                    spatial_dims=spatial_dims,
+                    in_channels=out_channels,
+                    out_channels=out_channels,
+                    class_emb_channels=class_emb_channels,
+                    norm_num_groups=norm_num_groups,
+                    norm_eps=norm_eps,
+                    downsample_stride=stride,
+                )
+            else:
+                self.downsampler = Downsample(
+                    spatial_dims=spatial_dims,
+                    num_channels=out_channels,
+                    use_conv=True,
+                    out_channels=out_channels,
+                    padding=downsample_padding,
+                    stride=stride,
+                )
 
         if class_emb_channels is None:
             _neutralize_unconditional(self)
@@ -439,14 +450,25 @@ class AttnDownBlock(MONAIAttnDownBlock):
         )
 
         if not _is_identity_stride(stride) and stride != (2,) * spatial_dims:
-            self.downsampler = Downsample(
-                spatial_dims=spatial_dims,
-                num_channels=out_channels,
-                use_conv=True,
-                out_channels=out_channels,
-                padding=downsample_padding,
-                stride=stride,
-            )
+            if resblock_updown:
+                self.downsampler = ResnetBlock(
+                    spatial_dims=spatial_dims,
+                    in_channels=out_channels,
+                    out_channels=out_channels,
+                    class_emb_channels=class_emb_channels,
+                    norm_num_groups=norm_num_groups,
+                    norm_eps=norm_eps,
+                    downsample_stride=stride,
+                )
+            else:
+                self.downsampler = Downsample(
+                    spatial_dims=spatial_dims,
+                    num_channels=out_channels,
+                    use_conv=True,
+                    out_channels=out_channels,
+                    padding=downsample_padding,
+                    stride=stride,
+                )
 
         if class_emb_channels is None:
             _neutralize_unconditional(self)
@@ -509,14 +531,25 @@ class CrossAttnDownBlock(MONAICrossAttnDownBlock):
         )
 
         if not _is_identity_stride(stride) and stride != (2,) * spatial_dims:
-            self.downsampler = Downsample(
-                spatial_dims=spatial_dims,
-                num_channels=out_channels,
-                use_conv=True,
-                out_channels=out_channels,
-                padding=downsample_padding,
-                stride=stride,
-            )
+            if resblock_updown:
+                self.downsampler = ResnetBlock(
+                    spatial_dims=spatial_dims,
+                    in_channels=out_channels,
+                    out_channels=out_channels,
+                    class_emb_channels=class_emb_channels,
+                    norm_num_groups=norm_num_groups,
+                    norm_eps=norm_eps,
+                    downsample_stride=stride,
+                )
+            else:
+                self.downsampler = Downsample(
+                    spatial_dims=spatial_dims,
+                    num_channels=out_channels,
+                    use_conv=True,
+                    out_channels=out_channels,
+                    padding=downsample_padding,
+                    stride=stride,
+                )
 
         if class_emb_channels is None:
             _neutralize_unconditional(self)
@@ -661,13 +694,24 @@ class UpBlock(MONAIUpBlock):
         )
 
         if not _is_identity_stride(stride) and stride != (2,) * spatial_dims:
-            self.upsampler = Upsample(
-                spatial_dims=spatial_dims,
-                num_channels=out_channels,
-                use_conv=True,
-                out_channels=out_channels,
-                stride=stride,
-            )
+            if resblock_updown:
+                self.upsampler = ResnetBlock(
+                    spatial_dims=spatial_dims,
+                    in_channels=out_channels,
+                    out_channels=out_channels,
+                    class_emb_channels=class_emb_channels,
+                    norm_num_groups=norm_num_groups,
+                    norm_eps=norm_eps,
+                    upsample_stride=stride,
+                )
+            else:
+                self.upsampler = Upsample(
+                    spatial_dims=spatial_dims,
+                    num_channels=out_channels,
+                    use_conv=True,
+                    out_channels=out_channels,
+                    stride=stride,
+                )
 
         if class_emb_channels is None:
             _neutralize_unconditional(self)
@@ -730,13 +774,24 @@ class AttnUpBlock(MONAIAttnUpBlock):
         )
 
         if not _is_identity_stride(stride) and stride != (2,) * spatial_dims:
-            self.upsampler = Upsample(
-                spatial_dims=spatial_dims,
-                num_channels=out_channels,
-                use_conv=True,
-                out_channels=out_channels,
-                stride=stride,
-            )
+            if resblock_updown:
+                self.upsampler = ResnetBlock(
+                    spatial_dims=spatial_dims,
+                    in_channels=out_channels,
+                    out_channels=out_channels,
+                    class_emb_channels=class_emb_channels,
+                    norm_num_groups=norm_num_groups,
+                    norm_eps=norm_eps,
+                    upsample_stride=stride,
+                )
+            else:
+                self.upsampler = Upsample(
+                    spatial_dims=spatial_dims,
+                    num_channels=out_channels,
+                    use_conv=True,
+                    out_channels=out_channels,
+                    stride=stride,
+                )
 
         if class_emb_channels is None:
             _neutralize_unconditional(self)
@@ -805,13 +860,24 @@ class CrossAttnUpBlock(MONAICrossAttnUpBlock):
         )
 
         if not _is_identity_stride(stride) and stride != (2,) * spatial_dims:
-            self.upsampler = Upsample(
-                spatial_dims=spatial_dims,
-                num_channels=out_channels,
-                use_conv=True,
-                out_channels=out_channels,
-                stride=stride,
-            )
+            if resblock_updown:
+                self.upsampler = ResnetBlock(
+                    spatial_dims=spatial_dims,
+                    in_channels=out_channels,
+                    out_channels=out_channels,
+                    class_emb_channels=class_emb_channels,
+                    norm_num_groups=norm_num_groups,
+                    norm_eps=norm_eps,
+                    upsample_stride=stride,
+                )
+            else:
+                self.upsampler = Upsample(
+                    spatial_dims=spatial_dims,
+                    num_channels=out_channels,
+                    use_conv=True,
+                    out_channels=out_channels,
+                    stride=stride,
+                )
 
         if class_emb_channels is None:
             _neutralize_unconditional(self)

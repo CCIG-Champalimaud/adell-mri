@@ -50,6 +50,20 @@ def test_generator_latent_contract(spatial_dims, no_skip_connection):
             model.decode(latent)
 
 
+@pytest.mark.parametrize("strides", [(2, 2), (2, 1)])
+def test_generator_resblock_updown_strides(strides):
+    kwargs = _generator_kwargs(2)
+    kwargs["strides"] = strides
+    model = Generator(
+        **kwargs,
+        resblock_updown=True,
+        no_skip_connection=True,
+    )
+    x = torch.rand(1, 1, 16, 16)
+
+    assert model(x).shape == x.shape
+
+
 @pytest.mark.parametrize("spatial_dims", [2, 3])
 def test_generator_class_conditioning(spatial_dims):
     model = Generator(
