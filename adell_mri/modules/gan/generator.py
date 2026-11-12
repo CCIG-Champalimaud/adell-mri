@@ -1,8 +1,9 @@
 """
-Straightforward re-implementation of diffusion models in the MONAI generative
-package but replacing mandatory time embeddings with optional class embeddings.
+Generator built on MONAI's diffusion U-Net blocks.
 
-So this is essentially repackaging what the MONAI team did as a GAN generator.
+MONAI's blocks are reused directly. This module only adds the functionality
+the GAN/autoencoder workflows need: optional class conditioning, arbitrary
+strides, optional skip connections, bottleneck decoding and output activation.
 """
 
 import math
