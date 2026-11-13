@@ -575,6 +575,51 @@ class CrossAttnDownBlock(MONAICrossAttnDownBlock):
         return super().forward(hidden_states, emb, context)
 
 
+class ResnetMidBlock(torch.nn.Module):
+    """
+    Residual mid block without attention.
+    """
+
+    def __init__(
+        self,
+        spatial_dims: int,
+        in_channels: int,
+        class_emb_channels: int | None,
+        norm_num_groups: int = 32,
+        norm_eps: float = 1e-6,
+    ) -> None:
+        super().__init__()
+        emb_channels = (
+            class_emb_channels if class_emb_channels is not None else 1
+        )
+        self._emb_channels = emb_channels
+        self.resnets = torch.nn.ModuleList(
+            [
+                ResnetBlock(
+                    spatial_dims=spatial_dims,
+                    in_channels=in_channels,
+                    out_channels=in_channels,
+                    class_emb_channels=class_emb_channels,
+                    norm_num_groups=norm_num_groups,
+                    norm_eps=norm_eps,
+                )
+                for _ in range(2)
+            ]
+        )
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        emb: torch.Tensor | None,
+        context: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        del context
+        emb = _resolve_emb(emb, hidden_states, self._emb_channels)
+        for resnet in self.resnets:
+            hidden_states = resnet(hidden_states, emb)
+        return hidden_states
+
+
 class AttnMidBlock(MONAIAttnMidBlock):
     """
     MONAI self-attention mid block with optional class conditioning.
@@ -1182,6 +1227,7 @@ def get_mid_block(
     include_fc: bool = True,
     use_combined_linear: bool = False,
     use_flash_attention: bool = False,
+    mid_block_attention: bool = True,
 ) -> torch.nn.Module:
     """
     Args:
@@ -1204,10 +1250,20 @@ def get_mid_block(
             operations to full precision. Defaults to False.
         use_flash_attention (bool, optional): if True, use flash attention
             for a memory efficient attention mechanism. Defaults to False.
+        mid_block_attention (bool, optional): if False, use only residual
+            blocks in the middle block. Defaults to True.
 
     Returns:
         torch.nn.Module: middle block.
     """
+    if not mid_block_attention:
+        return ResnetMidBlock(
+            spatial_dims=spatial_dims,
+            in_channels=in_channels,
+            class_emb_channels=class_emb_channels,
+            norm_num_groups=norm_num_groups,
+            norm_eps=norm_eps,
+        )
     if with_conditioning:
         return CrossAttnMidBlock(
             spatial_dims=spatial_dims,
@@ -1371,6 +1427,7 @@ class Generator(torch.nn.Module):
         dropout_cattn: float = 0.0,
         include_fc: bool = True,
         use_combined_linear: bool = False,
+        mid_block_attention: bool = True,
     ) -> None:
         """
         Args:
@@ -1419,6 +1476,8 @@ class Generator(torch.nn.Module):
                 linear projection. Defaults to True.
             use_combined_linear (bool): whether attention blocks use a
                 combined qkv projection. Defaults to False.
+            mid_block_attention (bool): if False, the middle block uses only
+                residual blocks and no attention. Defaults to True.
         """
         super().__init__()
         if channels is not None:
@@ -1567,6 +1626,7 @@ class Generator(torch.nn.Module):
             include_fc=include_fc,
             use_combined_linear=use_combined_linear,
             use_flash_attention=use_flash_attention,
+            mid_block_attention=mid_block_attention,
         )
 
         # up

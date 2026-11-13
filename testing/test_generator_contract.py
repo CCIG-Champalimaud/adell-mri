@@ -1,10 +1,12 @@
 import pytest
 import torch
+from monai.networks.blocks import SpatialAttentionBlock
 
 from adell_mri.modules.gan.generator import (
     AttnMidBlock,
     CrossAttnMidBlock,
     Generator,
+    ResnetMidBlock,
 )
 
 
@@ -141,3 +143,27 @@ def test_generator_self_attention_mid_block(spatial_dims):
     model = Generator(**_generator_kwargs(spatial_dims))
 
     assert isinstance(model.middle_block, AttnMidBlock)
+
+
+@pytest.mark.parametrize("spatial_dims", [2, 3])
+def test_generator_mid_block_without_attention(spatial_dims):
+    model = Generator(
+        **_generator_kwargs(spatial_dims),
+        mid_block_attention=False,
+    )
+    x = torch.rand(1, 1, *([16] * spatial_dims))
+
+    assert isinstance(model.middle_block, ResnetMidBlock)
+    assert not any(
+        isinstance(module, SpatialAttentionBlock)
+        for module in model.middle_block.modules()
+    )
+    assert model(x).shape == x.shape
+
+    conditional_model = Generator(
+        **_generator_kwargs(spatial_dims),
+        num_class_embeds=4,
+        mid_block_attention=False,
+    )
+    labels = torch.tensor([0])
+    assert conditional_model(x, class_labels=labels).shape == x.shape
