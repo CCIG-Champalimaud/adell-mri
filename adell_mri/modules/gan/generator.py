@@ -427,6 +427,8 @@ class AttnDownBlock(MONAIAttnDownBlock):
         resblock_updown: bool = False,
         downsample_padding: int = 1,
         num_head_channels: int = 1,
+        include_fc: bool = True,
+        use_combined_linear: bool = False,
         use_flash_attention: bool = False,
     ) -> None:
         stride = _resolve_stride(stride, spatial_dims)
@@ -447,6 +449,8 @@ class AttnDownBlock(MONAIAttnDownBlock):
             resblock_updown=resblock_updown,
             downsample_padding=downsample_padding,
             num_head_channels=num_head_channels,
+            include_fc=include_fc,
+            use_combined_linear=use_combined_linear,
             use_flash_attention=use_flash_attention,
         )
 
@@ -505,6 +509,9 @@ class CrossAttnDownBlock(MONAICrossAttnDownBlock):
         transformer_num_layers: int = 1,
         cross_attention_dim: int | None = None,
         upcast_attention: bool = False,
+        dropout_cattn: float = 0.0,
+        include_fc: bool = True,
+        use_combined_linear: bool = False,
         use_flash_attention: bool = False,
     ) -> None:
         stride = _resolve_stride(stride, spatial_dims)
@@ -528,6 +535,9 @@ class CrossAttnDownBlock(MONAICrossAttnDownBlock):
             transformer_num_layers=transformer_num_layers,
             cross_attention_dim=cross_attention_dim,
             upcast_attention=upcast_attention,
+            dropout_cattn=dropout_cattn,
+            include_fc=include_fc,
+            use_combined_linear=use_combined_linear,
             use_flash_attention=use_flash_attention,
         )
 
@@ -578,6 +588,8 @@ class AttnMidBlock(MONAIAttnMidBlock):
         norm_num_groups: int = 32,
         norm_eps: float = 1e-6,
         num_head_channels: int = 1,
+        include_fc: bool = True,
+        use_combined_linear: bool = False,
         use_flash_attention: bool = False,
     ) -> None:
         emb_channels = (
@@ -592,6 +604,8 @@ class AttnMidBlock(MONAIAttnMidBlock):
             norm_num_groups=norm_num_groups,
             norm_eps=norm_eps,
             num_head_channels=num_head_channels,
+            include_fc=include_fc,
+            use_combined_linear=use_combined_linear,
             use_flash_attention=use_flash_attention,
         )
 
@@ -624,6 +638,9 @@ class CrossAttnMidBlock(MONAICrossAttnMidBlock):
         transformer_num_layers: int = 1,
         cross_attention_dim: int | None = None,
         upcast_attention: bool = False,
+        dropout_cattn: float = 0.0,
+        include_fc: bool = True,
+        use_combined_linear: bool = False,
         use_flash_attention: bool = False,
     ) -> None:
         emb_channels = (
@@ -641,6 +658,9 @@ class CrossAttnMidBlock(MONAICrossAttnMidBlock):
             transformer_num_layers=transformer_num_layers,
             cross_attention_dim=cross_attention_dim,
             upcast_attention=upcast_attention,
+            dropout_cattn=dropout_cattn,
+            include_fc=include_fc,
+            use_combined_linear=use_combined_linear,
             use_flash_attention=use_flash_attention,
         )
 
@@ -751,6 +771,8 @@ class AttnUpBlock(MONAIAttnUpBlock):
         stride: int | Sequence[int] = 2,
         resblock_updown: bool = False,
         num_head_channels: int = 1,
+        include_fc: bool = True,
+        use_combined_linear: bool = False,
         use_flash_attention: bool = False,
     ) -> None:
         stride = _resolve_stride(stride, spatial_dims)
@@ -771,6 +793,8 @@ class AttnUpBlock(MONAIAttnUpBlock):
             add_upsample=not _is_identity_stride(stride),
             resblock_updown=resblock_updown,
             num_head_channels=num_head_channels,
+            include_fc=include_fc,
+            use_combined_linear=use_combined_linear,
             use_flash_attention=use_flash_attention,
         )
 
@@ -834,6 +858,9 @@ class CrossAttnUpBlock(MONAICrossAttnUpBlock):
         transformer_num_layers: int = 1,
         cross_attention_dim: int | None = None,
         upcast_attention: bool = False,
+        dropout_cattn: float = 0.0,
+        include_fc: bool = True,
+        use_combined_linear: bool = False,
         use_flash_attention: bool = False,
     ) -> None:
         stride = _resolve_stride(stride, spatial_dims)
@@ -857,6 +884,9 @@ class CrossAttnUpBlock(MONAICrossAttnUpBlock):
             transformer_num_layers=transformer_num_layers,
             cross_attention_dim=cross_attention_dim,
             upcast_attention=upcast_attention,
+            dropout_cattn=dropout_cattn,
+            include_fc=include_fc,
+            use_combined_linear=use_combined_linear,
             use_flash_attention=use_flash_attention,
         )
 
@@ -925,6 +955,9 @@ class NoSkipUpBlock(torch.nn.Module):
         transformer_num_layers: int = 1,
         cross_attention_dim: int | None = None,
         upcast_attention: bool = False,
+        dropout_cattn: float = 0.0,
+        include_fc: bool = True,
+        use_combined_linear: bool = False,
         use_flash_attention: bool = False,
     ) -> None:
         super().__init__()
@@ -957,6 +990,8 @@ class NoSkipUpBlock(torch.nn.Module):
                         num_head_channels=num_head_channels,
                         norm_num_groups=norm_num_groups,
                         norm_eps=norm_eps,
+                        include_fc=include_fc,
+                        use_combined_linear=use_combined_linear,
                         use_flash_attention=use_flash_attention,
                     )
                 )
@@ -972,6 +1007,9 @@ class NoSkipUpBlock(torch.nn.Module):
                         norm_eps=norm_eps,
                         cross_attention_dim=cross_attention_dim,
                         upcast_attention=upcast_attention,
+                        dropout=dropout_cattn,
+                        include_fc=include_fc,
+                        use_combined_linear=use_combined_linear,
                         use_flash_attention=use_flash_attention,
                     )
                 )
@@ -1042,6 +1080,9 @@ def get_down_block(
     transformer_num_layers: int,
     cross_attention_dim: int | None,
     upcast_attention: bool = False,
+    dropout_cattn: float = 0.0,
+    include_fc: bool = True,
+    use_combined_linear: bool = False,
     use_flash_attention: bool = False,
 ) -> torch.nn.Module:
     """
@@ -1088,6 +1129,8 @@ def get_down_block(
             stride=stride,
             resblock_updown=resblock_updown,
             num_head_channels=num_head_channels,
+            include_fc=include_fc,
+            use_combined_linear=use_combined_linear,
             use_flash_attention=use_flash_attention,
         )
     elif with_cross_attn:
@@ -1105,6 +1148,9 @@ def get_down_block(
             transformer_num_layers=transformer_num_layers,
             cross_attention_dim=cross_attention_dim,
             upcast_attention=upcast_attention,
+            dropout_cattn=dropout_cattn,
+            include_fc=include_fc,
+            use_combined_linear=use_combined_linear,
             use_flash_attention=use_flash_attention,
         )
     else:
@@ -1132,6 +1178,9 @@ def get_mid_block(
     transformer_num_layers: int,
     cross_attention_dim: int | None,
     upcast_attention: bool = False,
+    dropout_cattn: float = 0.0,
+    include_fc: bool = True,
+    use_combined_linear: bool = False,
     use_flash_attention: bool = False,
 ) -> torch.nn.Module:
     """
@@ -1170,6 +1219,9 @@ def get_mid_block(
             transformer_num_layers=transformer_num_layers,
             cross_attention_dim=cross_attention_dim,
             upcast_attention=upcast_attention,
+            dropout_cattn=dropout_cattn,
+            include_fc=include_fc,
+            use_combined_linear=use_combined_linear,
             use_flash_attention=use_flash_attention,
         )
     else:
@@ -1180,6 +1232,8 @@ def get_mid_block(
             norm_num_groups=norm_num_groups,
             norm_eps=norm_eps,
             num_head_channels=num_head_channels,
+            include_fc=include_fc,
+            use_combined_linear=use_combined_linear,
             use_flash_attention=use_flash_attention,
         )
 
@@ -1201,6 +1255,9 @@ def get_up_block(
     transformer_num_layers: int,
     cross_attention_dim: int | None,
     upcast_attention: bool = False,
+    dropout_cattn: float = 0.0,
+    include_fc: bool = True,
+    use_combined_linear: bool = False,
     use_flash_attention: bool = False,
     no_skip_connection: bool = False,
 ) -> torch.nn.Module:
@@ -1225,6 +1282,9 @@ def get_up_block(
             transformer_num_layers=transformer_num_layers,
             cross_attention_dim=cross_attention_dim,
             upcast_attention=upcast_attention,
+            dropout_cattn=dropout_cattn,
+            include_fc=include_fc,
+            use_combined_linear=use_combined_linear,
             use_flash_attention=use_flash_attention,
         )
     if with_attn:
@@ -1240,6 +1300,8 @@ def get_up_block(
             stride=stride,
             resblock_updown=resblock_updown,
             num_head_channels=num_head_channels,
+            include_fc=include_fc,
+            use_combined_linear=use_combined_linear,
             use_flash_attention=use_flash_attention,
         )
     elif with_cross_attn:
@@ -1258,6 +1320,9 @@ def get_up_block(
             transformer_num_layers=transformer_num_layers,
             cross_attention_dim=cross_attention_dim,
             upcast_attention=upcast_attention,
+            dropout_cattn=dropout_cattn,
+            include_fc=include_fc,
+            use_combined_linear=use_combined_linear,
             use_flash_attention=use_flash_attention,
         )
     else:
@@ -1302,6 +1367,10 @@ class Generator(torch.nn.Module):
         use_flash_attention: bool = False,
         no_skip_connection: bool = False,
         out_activation: str | Callable = torch.nn.Tanh,
+        channels: Sequence[int] | None = None,
+        dropout_cattn: float = 0.0,
+        include_fc: bool = True,
+        use_combined_linear: bool = False,
     ) -> None:
         """
         Args:
@@ -1342,8 +1411,20 @@ class Generator(torch.nn.Module):
             out_activation (str | Callable): the activation for the output
                 layer. It can be specified as a string which is executed as is
                 using `eval()`. Defaults to torch.nn.Tanh.
+            channels (Sequence[int] | None): alias for ``num_channels``,
+                matching MONAI's ``DiffusionModelUNet``. Defaults to None.
+            dropout_cattn (float): dropout for cross-attention layers.
+                Defaults to 0.0.
+            include_fc (bool): whether attention blocks include a final
+                linear projection. Defaults to True.
+            use_combined_linear (bool): whether attention blocks use a
+                combined qkv projection. Defaults to False.
         """
         super().__init__()
+        if channels is not None:
+            num_channels = channels
+        if dropout_cattn > 1.0 or dropout_cattn < 0.0:
+            raise ValueError("Dropout cannot be negative or >1.0!")
         if with_conditioning is True:
             if cross_attention_dim is None and num_class_embeds is None:
                 raise ValueError(
@@ -1462,6 +1543,9 @@ class Generator(torch.nn.Module):
                 transformer_num_layers=transformer_num_layers,
                 cross_attention_dim=cross_attention_dim,
                 upcast_attention=upcast_attention,
+                dropout_cattn=dropout_cattn,
+                include_fc=include_fc,
+                use_combined_linear=use_combined_linear,
                 use_flash_attention=use_flash_attention,
             )
 
@@ -1479,6 +1563,9 @@ class Generator(torch.nn.Module):
             transformer_num_layers=transformer_num_layers,
             cross_attention_dim=cross_attention_dim,
             upcast_attention=upcast_attention,
+            dropout_cattn=dropout_cattn,
+            include_fc=include_fc,
+            use_combined_linear=use_combined_linear,
             use_flash_attention=use_flash_attention,
         )
 
@@ -1530,6 +1617,9 @@ class Generator(torch.nn.Module):
                 transformer_num_layers=transformer_num_layers,
                 cross_attention_dim=cross_attention_dim,
                 upcast_attention=upcast_attention,
+                dropout_cattn=dropout_cattn,
+                include_fc=include_fc,
+                use_combined_linear=use_combined_linear,
                 use_flash_attention=use_flash_attention,
                 no_skip_connection=self.no_skip_connection,
             )

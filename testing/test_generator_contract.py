@@ -64,6 +64,47 @@ def test_generator_resblock_updown_strides(strides):
     assert model(x).shape == x.shape
 
 
+def test_generator_accepts_monai_channels_alias():
+    model = Generator(
+        spatial_dims=2,
+        in_channels=1,
+        out_channels=1,
+        channels=(8, 8),
+        num_res_blocks=1,
+        attention_levels=(False, False),
+        norm_num_groups=8,
+    )
+
+    assert tuple(model.block_out_channels) == (8, 8)
+
+
+def test_generator_accepts_monai_attention_options():
+    model = Generator(
+        spatial_dims=2,
+        in_channels=1,
+        out_channels=1,
+        num_channels=(8, 8),
+        num_res_blocks=1,
+        attention_levels=(True, True),
+        norm_num_groups=8,
+        strides=(2, 1),
+        with_conditioning=True,
+        cross_attention_dim=8,
+        dropout_cattn=0.25,
+        include_fc=False,
+        use_combined_linear=True,
+    )
+    attention = model.middle_block.attention.transformer_blocks[0]
+
+    assert attention.attn1.use_combined_linear is True
+    assert isinstance(attention.attn1.out_proj, torch.nn.Identity)
+    assert attention.attn2.dropout_rate == 0.25
+
+    x = torch.rand(1, 1, 16, 16)
+    context = torch.rand(1, 1, 8)
+    assert model(x, context=context).shape == x.shape
+
+
 @pytest.mark.parametrize("spatial_dims", [2, 3])
 def test_generator_class_conditioning(spatial_dims):
     model = Generator(
