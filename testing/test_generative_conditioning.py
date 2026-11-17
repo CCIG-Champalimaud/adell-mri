@@ -14,8 +14,8 @@ from adell_mri.modules.config_parsing import parse_config_gan
 from adell_mri.modules.diffusion.inferer import DiffusionInfererSkipSteps
 from adell_mri.modules.diffusion.pl import DiffusionUNetPL
 from adell_mri.modules.gan.discriminator import Discriminator
-from adell_mri.modules.gan.generator import Generator
 from adell_mri.modules.gan.pl import GANPL
+from adell_mri.modules.gan.unet_generator import UNetGenerator
 from adell_mri.transform_factory import GenerationTransforms
 from adell_mri.utils.network_factories import get_generative_network
 
@@ -368,7 +368,7 @@ def test_generative_network_factory_concat():
 def test_ganpl_mask_conditional_training_loop():
     cond_channels = 3
     size = [1, 16, 16]
-    generator = Generator(
+    generator = UNetGenerator(
         spatial_dims=2,
         in_channels=cond_channels,
         out_channels=1,

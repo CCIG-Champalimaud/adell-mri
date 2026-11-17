@@ -14,12 +14,12 @@ import torch.optim
 
 from adell_mri.modules.diffusion.embedder import Embedder
 from adell_mri.modules.gan.discriminator import Discriminator
-from adell_mri.modules.gan.generator import Generator
 from adell_mri.modules.gan.losses import (
     SemiSLAdversarialLoss,
     SemiSLRelativisticGANLoss,
     SemiSLWGANGPLoss,
 )
+from adell_mri.modules.gan.unet_generator import UNetGenerator
 from adell_mri.utils.optimizer_factory import OPTIMIZER_EPS_DEFAULT
 
 
@@ -139,9 +139,9 @@ class GANPL(pl.LightningModule):
 
     def __init__(
         self,
-        generator: Generator,
+        generator: UNetGenerator,
         discriminator: Discriminator,
-        generator_cycle: Generator | None = None,
+        generator_cycle: UNetGenerator | None = None,
         discriminator_cycle: Discriminator | None = None,
         real_image_key: str = "real_image",
         input_image_key: str = None,
@@ -173,9 +173,9 @@ class GANPL(pl.LightningModule):
     ):
         """
         Args:
-            generator (Generator): generator.
+            generator (UNetGenerator): generator.
             discriminator (Discriminator): discriminator.
-            generator_cycle (Generator | None, optional): generator for cycle
+            generator_cycle (UNetGenerator | None, optional): generator for cycle
                 consistency. Should have the same input/output signature as
                 ``generator``. Defaults to None.
             discriminator_cycle (Discriminator | None, optional): discriminator
