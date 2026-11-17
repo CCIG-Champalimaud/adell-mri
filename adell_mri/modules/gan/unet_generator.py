@@ -973,141 +973,6 @@ class CrossAttnUpBlock(MONAICrossAttnUpBlock):
         )
 
 
-class NoSkipUpBlock(torch.nn.Module):
-    """
-    Up block without skip connections.
-
-    This is the only up-block implementation that cannot reuse MONAI's block
-    directly, because MONAI's up blocks always consume skip tensors.
-    """
-
-    def __init__(
-        self,
-        spatial_dims: int,
-        in_channels: int,
-        prev_output_channel: int,
-        out_channels: int,
-        class_emb_channels: int | None,
-        num_res_blocks: int = 1,
-        norm_num_groups: int = 32,
-        norm_eps: float = 1e-6,
-        stride: int | Sequence[int] = 2,
-        resblock_updown: bool = False,
-        with_attn: bool = False,
-        with_cross_attn: bool = False,
-        num_head_channels: int = 1,
-        transformer_num_layers: int = 1,
-        cross_attention_dim: int | None = None,
-        upcast_attention: bool = False,
-        dropout_cattn: float = 0.0,
-        include_fc: bool = True,
-        use_combined_linear: bool = False,
-        use_flash_attention: bool = False,
-    ) -> None:
-        super().__init__()
-        stride = _resolve_stride(stride, spatial_dims)
-        emb_channels = (
-            class_emb_channels if class_emb_channels is not None else 1
-        )
-        self._emb_channels = emb_channels
-        self.no_skip_connection = True
-
-        self.resnets = torch.nn.ModuleList()
-        self.attentions = torch.nn.ModuleList()
-        for i in range(num_res_blocks):
-            resnet_in_channels = prev_output_channel if i == 0 else out_channels
-            self.resnets.append(
-                ResnetBlock(
-                    spatial_dims=spatial_dims,
-                    in_channels=resnet_in_channels,
-                    out_channels=out_channels,
-                    class_emb_channels=class_emb_channels,
-                    norm_num_groups=norm_num_groups,
-                    norm_eps=norm_eps,
-                )
-            )
-            if with_attn:
-                self.attentions.append(
-                    SpatialAttentionBlock(
-                        spatial_dims=spatial_dims,
-                        num_channels=out_channels,
-                        num_head_channels=num_head_channels,
-                        norm_num_groups=norm_num_groups,
-                        norm_eps=norm_eps,
-                        include_fc=include_fc,
-                        use_combined_linear=use_combined_linear,
-                        use_flash_attention=use_flash_attention,
-                    )
-                )
-            elif with_cross_attn:
-                self.attentions.append(
-                    SpatialTransformer(
-                        spatial_dims=spatial_dims,
-                        in_channels=out_channels,
-                        num_attention_heads=out_channels // num_head_channels,
-                        num_head_channels=num_head_channels,
-                        num_layers=transformer_num_layers,
-                        norm_num_groups=norm_num_groups,
-                        norm_eps=norm_eps,
-                        cross_attention_dim=cross_attention_dim,
-                        upcast_attention=upcast_attention,
-                        dropout=dropout_cattn,
-                        include_fc=include_fc,
-                        use_combined_linear=use_combined_linear,
-                        use_flash_attention=use_flash_attention,
-                    )
-                )
-
-        self.upsampler = None
-        if not _is_identity_stride(stride):
-            if resblock_updown:
-                self.upsampler = ResnetBlock(
-                    spatial_dims=spatial_dims,
-                    in_channels=out_channels,
-                    out_channels=out_channels,
-                    class_emb_channels=class_emb_channels,
-                    norm_num_groups=norm_num_groups,
-                    norm_eps=norm_eps,
-                    upsample_stride=stride,
-                )
-            else:
-                self.upsampler = Upsample(
-                    spatial_dims=spatial_dims,
-                    num_channels=out_channels,
-                    use_conv=True,
-                    out_channels=out_channels,
-                    stride=stride,
-                )
-
-    def forward(
-        self,
-        hidden_states: torch.Tensor,
-        emb: torch.Tensor | None,
-        res_hidden_states_list: list[torch.Tensor] | None = None,
-        context: torch.Tensor | None = None,
-    ) -> torch.Tensor:
-        del res_hidden_states_list
-        emb = _resolve_emb(emb, hidden_states, self._emb_channels)
-        for index, resnet in enumerate(self.resnets):
-            hidden_states = resnet(hidden_states, emb)
-            if len(self.attentions) > 0:
-                attention = self.attentions[index]
-                if isinstance(attention, SpatialTransformer):
-                    hidden_states = attention(
-                        hidden_states, context=context
-                    ).contiguous()
-                else:
-                    hidden_states = attention(hidden_states).contiguous()
-
-        if self.upsampler is not None:
-            if isinstance(self.upsampler, ResnetBlock):
-                hidden_states = self.upsampler(hidden_states, emb)
-            else:
-                hidden_states = self.upsampler(hidden_states, emb)
-
-        return hidden_states
-
-
 def get_down_block(
     spatial_dims: int,
     in_channels: int,
@@ -1314,34 +1179,10 @@ def get_up_block(
     include_fc: bool = True,
     use_combined_linear: bool = False,
     use_flash_attention: bool = False,
-    no_skip_connection: bool = False,
 ) -> torch.nn.Module:
     """
     Returns an upsampling block with optional attention and skip connections.
     """
-    if no_skip_connection:
-        return NoSkipUpBlock(
-            spatial_dims=spatial_dims,
-            in_channels=in_channels,
-            prev_output_channel=prev_output_channel,
-            out_channels=out_channels,
-            class_emb_channels=class_emb_channels,
-            num_res_blocks=num_res_blocks,
-            norm_num_groups=norm_num_groups,
-            norm_eps=norm_eps,
-            stride=stride,
-            resblock_updown=resblock_updown,
-            with_attn=with_attn,
-            with_cross_attn=with_cross_attn,
-            num_head_channels=num_head_channels,
-            transformer_num_layers=transformer_num_layers,
-            cross_attention_dim=cross_attention_dim,
-            upcast_attention=upcast_attention,
-            dropout_cattn=dropout_cattn,
-            include_fc=include_fc,
-            use_combined_linear=use_combined_linear,
-            use_flash_attention=use_flash_attention,
-        )
     if with_attn:
         return AttnUpBlock(
             spatial_dims=spatial_dims,
@@ -1551,8 +1392,6 @@ class UNetGenerator(torch.nn.Module):
         self.num_head_channels = num_head_channels
         self.with_conditioning = with_conditioning
         self.cross_attention_dim = cross_attention_dim
-        self.no_skip_connection = False
-
         # input
         self.conv_in = Convolution(
             spatial_dims=spatial_dims,
@@ -1675,7 +1514,6 @@ class UNetGenerator(torch.nn.Module):
                 include_fc=include_fc,
                 use_combined_linear=use_combined_linear,
                 use_flash_attention=use_flash_attention,
-                no_skip_connection=self.no_skip_connection,
             )
 
             self.up_blocks.append(up_block)
@@ -1843,7 +1681,6 @@ class UNetGenerator(torch.nn.Module):
             context (torch.Tensor | None): context tensor for cross-attention.
             down_block_res_samples (list[torch.Tensor] | None, optional):
                 skip connection tensors produced by the encoder. If
-                ``no_skip_connection`` is True these are ignored. Defaults to
                 None.
 
         Returns:
@@ -1854,11 +1691,9 @@ class UNetGenerator(torch.nn.Module):
             ValueError: if skip connections are required but not provided.
         """
         if down_block_res_samples is None:
-            if self.no_skip_connection is False:
-                raise ValueError(
-                    "skip connections are required to decode from a bottleneck"
-                )
-            down_block_res_samples = []
+            raise ValueError(
+                "skip connections are required to decode from a bottleneck"
+            )
         # The final downsampler output is the bottleneck input, not a skip
         # connection, so it should not be consumed by the up blocks.
         if len(down_block_res_samples) > 0 and not _is_identity_stride(
@@ -1876,8 +1711,6 @@ class UNetGenerator(torch.nn.Module):
                     : -len(upsample_block.resnets)
                 ]
             else:
-                res_samples = None
-            if self.no_skip_connection:
                 res_samples = None
             h = upsample_block(
                 hidden_states=h,
