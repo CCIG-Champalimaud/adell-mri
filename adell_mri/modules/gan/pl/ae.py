@@ -144,7 +144,8 @@ class _AutoEncoderLossMixin:
                     if isinstance(module, torch.nn.Conv3d):
                         torch.nn.utils.parametrizations.spectral_norm(module)
             self.adversarial_loss = PatchAdversarialLoss(
-                criterion=adversarial_criterion
+                criterion=adversarial_criterion,
+                no_activation_leastsq=True,
             )
         self.automatic_optimization = not self.adversarial_on
 
