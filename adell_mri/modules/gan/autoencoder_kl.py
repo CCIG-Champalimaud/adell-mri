@@ -3,7 +3,7 @@ Strided adaptation of MONAI's AutoencoderKL.
 """
 
 import math
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 
 import torch
 from monai.networks.blocks import Convolution, SpatialAttentionBlock, UpSample
@@ -436,6 +436,7 @@ class StridedAutoencoderKL(AutoencoderKL):
         include_fc: bool = True,
         use_combined_linear: bool = False,
         use_flash_attention: bool = False,
+        output_activation: str | Callable = torch.nn.Identity,
     ) -> None:
         if isinstance(num_res_blocks, int):
             num_res_blocks = ensure_tuple_rep(num_res_blocks, len(num_channels))
@@ -506,6 +507,10 @@ class StridedAutoencoderKL(AutoencoderKL):
         )
         self.latent_channels = latent_channels
 
+        if isinstance(output_activation, str):
+            output_activation = eval(output_activation)
+        self.output_activation = output_activation()
+
     @property
     def latent_downsample_factor(self) -> int | tuple[int, ...]:
         """
@@ -518,3 +523,22 @@ class StridedAutoencoderKL(AutoencoderKL):
         if len(set(factors)) == 1:
             return factors[0]
         return factors
+
+    def forward(
+        self, x: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """
+        Forward pass for auto-encoder with output activation.
+
+        Args:
+            x (torch.Tensor): a torch tensor.
+
+        Returns:
+            reconstruction (torch.Tensor): the reconstructed tensor after the
+                output activation.
+            z_mu (torch.Tensor): the inferred mean.
+            z_sigma (torch.Tensor): the inferred standard deviation.
+        """
+        reconstruction, z_mu, z_sigma = super().forward(x)
+        reconstruction = self.output_activation(reconstruction)
+        return reconstruction, z_mu, z_sigma
