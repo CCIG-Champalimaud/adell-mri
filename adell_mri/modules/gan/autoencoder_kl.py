@@ -6,10 +6,10 @@ import math
 from collections.abc import Sequence
 
 import torch
-import torch.nn as nn
 from monai.networks.blocks import Convolution, SpatialAttentionBlock, UpSample
 from monai.networks.nets.autoencoderkl import AEKLResBlock, AutoencoderKL
 from monai.utils import ensure_tuple_rep
+from torch import nn
 
 
 def _resolve_stride(

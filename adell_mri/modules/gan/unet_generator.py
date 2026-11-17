@@ -5,12 +5,11 @@ Built from MONAI's diffusion U-Net blocks with class conditioning, arbitrary
 strides and standard skip connections.
 """
 
-import math
 from collections.abc import Callable, Sequence
 
 import torch
 import torch.nn.functional as F
-from monai.networks.blocks import Convolution, SpatialAttentionBlock
+from monai.networks.blocks import Convolution
 from monai.networks.layers.factories import Pool
 from monai.networks.nets.diffusion_model_unet import (
     AttnDownBlock as MONAIAttnDownBlock,
@@ -32,7 +31,6 @@ from monai.networks.nets.diffusion_model_unet import (
 )
 from monai.networks.nets.diffusion_model_unet import DiffusionUNetResnetBlock
 from monai.networks.nets.diffusion_model_unet import DownBlock as MONAIDownBlock
-from monai.networks.nets.diffusion_model_unet import SpatialTransformer
 from monai.networks.nets.diffusion_model_unet import UpBlock as MONAIUpBlock
 from monai.utils import ensure_tuple_rep
 
