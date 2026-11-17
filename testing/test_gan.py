@@ -7,7 +7,6 @@ import pytest
 import torch
 
 from adell_mri.modules.gan.discriminator import Discriminator
-from adell_mri.modules.gan.generator import Generator
 from adell_mri.modules.gan.losses import (
     AdversarialLoss,
     RelativisticGANLoss,
@@ -18,6 +17,7 @@ from adell_mri.modules.gan.losses import (
     reduce_losses,
 )
 from adell_mri.modules.gan.pl import GANPL, RelativisticGANPL
+from adell_mri.modules.gan.unet_generator import UNetGenerator
 
 context_dim = 32
 n_class_embeds = 4
@@ -25,7 +25,7 @@ n_class_embeds = 4
 
 def test_generator_standard():
     input_tensor = torch.rand(1, 1, 32, 32)
-    generator = Generator(
+    generator = UNetGenerator(
         spatial_dims=2,
         in_channels=1,
         out_channels=1,
@@ -35,7 +35,7 @@ def test_generator_standard():
 
 def test_generator_with_class_embeddings():
     input_tensor = torch.rand(1, 1, 32, 32)
-    generator = Generator(
+    generator = UNetGenerator(
         spatial_dims=2,
         in_channels=1,
         out_channels=1,
@@ -49,7 +49,7 @@ def test_generator_with_class_embeddings():
 
 def test_generator_with_cross_attention():
     input_tensor = torch.rand(1, 1, 32, 32)
-    generator = Generator(
+    generator = UNetGenerator(
         spatial_dims=2,
         in_channels=1,
         out_channels=1,
@@ -62,7 +62,7 @@ def test_generator_with_cross_attention():
 def test_generator_with_cross_attention_and_class_embeddings():
     input_tensor = torch.rand(1, 1, 32, 32)
     context_dim = 64
-    generator = Generator(
+    generator = UNetGenerator(
         spatial_dims=2,
         in_channels=1,
         out_channels=1,
@@ -81,7 +81,7 @@ def test_generator_with_cross_attention_and_class_embeddings():
 def test_generator_with_cross_attention_and_class_embeddings(context_dim):
     input_tensor = torch.rand(1, 1, 32, 32)
     context_dim = 32
-    generator = Generator(
+    generator = UNetGenerator(
         spatial_dims=2,
         in_channels=1,
         out_channels=1,
@@ -107,7 +107,7 @@ def test_generator_with_cross_attention_and_class_embeddings(context_dim):
 )
 def test_generator_per_block_strides(strides):
     input_tensor = torch.rand(1, 1, 32, 32)
-    generator = Generator(
+    generator = UNetGenerator(
         spatial_dims=2,
         in_channels=1,
         out_channels=1,
@@ -203,7 +203,7 @@ def test_discriminator_convnext_additional_classifiers_and_features():
 
 
 def test_gan_complete():
-    generator = Generator(
+    generator = UNetGenerator(
         spatial_dims=2,
         in_channels=1,
         out_channels=1,
@@ -234,7 +234,7 @@ def test_gan_complete():
 
 
 def make_gan_pair(n_dim=2):
-    generator = Generator(
+    generator = UNetGenerator(
         spatial_dims=n_dim,
         in_channels=1,
         out_channels=1,
@@ -379,7 +379,7 @@ def test_semisupervised_gan_losses_class_and_reg():
 @pytest.mark.parametrize("n_dim", [2, 3])
 def test_ganpl_training_loop(n_dim):
     size = [1, 16, 16] if n_dim == 2 else [1, 16, 16, 16]
-    generator = Generator(
+    generator = UNetGenerator(
         spatial_dims=n_dim,
         in_channels=1,
         out_channels=1,
@@ -423,7 +423,7 @@ def test_ganpl_training_loop(n_dim):
 @pytest.mark.parametrize("n_dim", [2, 3])
 def test_ganpl_training_loop_wgan(n_dim):
     size = [1, 16, 16] if n_dim == 2 else [1, 16, 16, 16]
-    generator = Generator(
+    generator = UNetGenerator(
         spatial_dims=n_dim,
         in_channels=1,
         out_channels=1,
@@ -468,7 +468,7 @@ def test_ganpl_training_loop_wgan(n_dim):
 @pytest.mark.parametrize("n_dim", [2, 3])
 def test_relativistic_ganpl_training_loop(n_dim):
     size = [1, 16, 16] if n_dim == 2 else [1, 16, 16, 16]
-    generator = Generator(
+    generator = UNetGenerator(
         spatial_dims=n_dim,
         in_channels=1,
         out_channels=1,
@@ -512,7 +512,7 @@ def test_relativistic_ganpl_training_loop(n_dim):
 
 def test_ganpl_conditional_training_loop():
     size = [1, 16, 16]
-    generator = Generator(
+    generator = UNetGenerator(
         spatial_dims=2,
         in_channels=1,
         out_channels=1,

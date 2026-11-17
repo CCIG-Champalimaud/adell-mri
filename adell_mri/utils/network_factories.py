@@ -1103,7 +1103,7 @@ def get_gan_network(
     """
     try:
         from adell_mri.modules.gan.discriminator import Discriminator
-        from adell_mri.modules.gan.generator import Generator
+        from adell_mri.modules.gan.unet_generator import UNetGenerator
     except ImportError:
         raise ImportError(
             "Please install the generative package to use gan models"
@@ -1152,7 +1152,7 @@ def get_gan_network(
     if input_image_key is not None:
         boilerplate_args["input_image_key"] = input_image_key
 
-    boilerplate_args["generator"] = Generator(**generator_config)
+    boilerplate_args["generator"] = UNetGenerator(**generator_config)
     boilerplate_args["discriminator"] = Discriminator(**discriminator_config)
 
     if network_config.get("cycle_consistency", False) is True:
@@ -1170,7 +1170,7 @@ def get_gan_network(
             cycle_gen_conf["out_channels"] = generator_config["in_channels"]
             boilerplate_args = {
                 **boilerplate_args,
-                "generator_cycle": Generator(**cycle_gen_conf),
+                "generator_cycle": UNetGenerator(**cycle_gen_conf),
                 "discriminator_cycle": Discriminator(**discriminator_config),
                 "cycle_consistency": True,
             }

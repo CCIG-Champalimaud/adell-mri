@@ -20,7 +20,6 @@ AE_CONFIG = {
         "num_res_blocks": 1,
         "attention_levels": [False, False],
         "norm_num_groups": 8,
-        "no_skip_connection": True,
         "latent_channels": 3,
         "is_variational": True,
         "strides": [2, 1],

@@ -449,9 +449,7 @@ def main(arguments):
                 "concat conditioning is not supported for --model_type ldm; "
                 "use --cat_condition_keys or --num_condition_keys"
             )
-        latent_channels = (
-            autoencoder.latent_channels or autoencoder.block_out_channels[-1]
-        )
+        latent_channels = autoencoder.latent_channels
         network_config["batch_size"] = return_first_not_none(
             args.batch_size, network_config.get("batch_size")
         )

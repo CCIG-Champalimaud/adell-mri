@@ -204,9 +204,8 @@ def get_latent_shape(
     spatial input shape.
 
     Args:
-        autoencoder (torch.nn.Module): autoencoder with a
-            ``latent_downsample_factor`` attribute (an int or a per-axis
-            tuple) and either ``latent_channels`` or ``block_out_channels``.
+        autoencoder (torch.nn.Module): autoencoder with
+            ``latent_downsample_factor`` and ``latent_channels`` attributes.
         spatial_shape (list[int] | tuple[int]): spatial shape of the input.
 
     Returns:
@@ -218,8 +217,6 @@ def get_latent_shape(
     else:
         factors = factor
     channels = autoencoder.latent_channels
-    if channels is None:
-        channels = autoencoder.block_out_channels[-1]
     spatial = tuple(
         int(size) // int(axis_factor)
         for size, axis_factor in zip(spatial_shape, factors)

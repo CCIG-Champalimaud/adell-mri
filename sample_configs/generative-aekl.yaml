@@ -7,7 +7,7 @@ model:
   num_res_blocks: 2
   attention_levels: [false, false, false, false]
   norm_num_groups: 32
-  no_skip_connection: true
+  strides: [2, 2, 2, 1]
   latent_channels: 3
   is_variational: true
 losses:
