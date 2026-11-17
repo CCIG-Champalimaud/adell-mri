@@ -27,15 +27,16 @@ def model_config():
         "num_res_blocks": 1,
         "attention_levels": (False, False, False),
         "norm_num_groups": 8,
-        "no_skip_connection": True,
+        "strides": (2, 1, 1),
+        "latent_channels": 3,
     }
 
 
 @pytest.mark.parametrize("model_class", MODEL_CLASSES)
-@pytest.mark.parametrize("latent_channels", [None, 3])
-def test_encode_decode_roundtrip(model_class, latent_channels, model_config):
+@pytest.mark.parametrize("strides", [(2, 1, 1), (2, 2, 1), (1, 2, 1)])
+def test_encode_decode_roundtrip(model_class, strides, model_config):
     torch.manual_seed(0)
-    model = model_class(**model_config, latent_channels=latent_channels)
+    model = model_class(**{**model_config, "strides": strides})
     x = torch.rand(2, 1, 32, 32)
     output = model(x)
     if model_class is VariationalAutoEncoder:
@@ -43,13 +44,8 @@ def test_encode_decode_roundtrip(model_class, latent_channels, model_config):
     assert list(output.shape) == list(x.shape)
 
     latent = model.encode(x)
-    expected_channels = (
-        latent_channels
-        if latent_channels is not None
-        else model.block_out_channels[-1]
-    )
     assert latent.shape[0] == x.shape[0]
-    assert latent.shape[1] == expected_channels
+    assert latent.shape[1] == model.latent_channels
     factor = model.latent_downsample_factor
     factors = (
         (factor,) * len(x.shape[2:]) if isinstance(factor, int) else factor
@@ -64,7 +60,7 @@ def test_encode_decode_roundtrip(model_class, latent_channels, model_config):
 
 @pytest.mark.parametrize("model_class", MODEL_CLASSES)
 def test_encode_is_deterministic(model_class, model_config):
-    model = model_class(**model_config, latent_channels=3)
+    model = model_class(**model_config)
     x = torch.rand(2, 1, 32, 32)
     with torch.inference_mode():
         latent_1 = model.encode(x)
@@ -73,28 +69,11 @@ def test_encode_is_deterministic(model_class, model_config):
 
 
 @pytest.mark.parametrize("model_class", MODEL_CLASSES)
-def test_latent_channels_requires_no_skip(model_class, model_config):
-    with pytest.raises(ValueError):
-        model_class(
-            **{**model_config, "no_skip_connection": False}, latent_channels=3
-        )
-
-
-def test_autoencoder_with_skip_connections(model_config):
-    model = AutoEncoder(**{**model_config, "no_skip_connection": False})
-    x = torch.rand(2, 1, 32, 32)
-    assert list(model(x).shape) == list(x.shape)
-
-
-@pytest.mark.parametrize("model_class", MODEL_CLASSES)
 def test_generate_from_latent(model_class, model_config):
-    model = model_class(**model_config, latent_channels=3)
+    model = model_class(**model_config)
     x = torch.rand(2, 1, 32, 32)
     latent = model.encode(x)
-    if model_class is AutoEncoder:
-        generated = model.generate(latent)
-    else:
-        generated = model.generate(tuple(latent.shape))
+    generated = model.generate(tuple(latent.shape))
     assert list(generated.shape) == list(x.shape)
 
 
