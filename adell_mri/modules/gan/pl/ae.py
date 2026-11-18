@@ -30,7 +30,6 @@ LOSS_WEIGHT_KEYS = {
     "kl_loss": "kl",
     "perceptual_loss": "perceptual",
     "adv_loss": "adversarial",
-    "r1_loss": "r1",
 }
 
 
