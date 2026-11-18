@@ -22,6 +22,7 @@ DEFAULT_LOSS_WEIGHTS = {
     "kl": 0.0,
     "perceptual": 0.0,
     "adversarial": 0.0,
+    "r1": 0.0,
 }
 
 LOSS_WEIGHT_KEYS = {
@@ -29,6 +30,7 @@ LOSS_WEIGHT_KEYS = {
     "kl_loss": "kl",
     "perceptual_loss": "perceptual",
     "adv_loss": "adversarial",
+    "r1_loss": "r1",
 }
 
 
@@ -358,14 +360,17 @@ class _AutoEncoderLossMixin:
             logits_real, target_is_real=True, for_discriminator=True
         )
         loss = 0.5 * (loss_fake + loss_real)
-        losses = {"disc_loss": loss}
-        if self.lambda_r1 > 0.0:
+        losses = {}
+        r1_lambda = self.loss_weights["r1"]
+        if r1_lambda > 0.0:
             r1_penalty = compute_gradient_penalty_r1(
                 real_samples=x,
                 discriminator=self.discriminator,
             )
-            losses["r1_penalty"] = self.lambda_r1 * r1_penalty
-            losses["disc_loss"] = loss + self.lambda_r1 * r1_penalty
+            losses["r1_penalty"] = r1_lambda * r1_penalty
+            losses["disc_loss"] = loss + r1_lambda * r1_penalty
+        else:
+            losses = {"disc_loss": loss}
         return losses
 
     def log_losses(
@@ -649,7 +654,6 @@ class AutoEncoderPL(_AutoEncoderLossMixin, AutoEncoder, pl.LightningModule):
         discriminator_update_every_n_steps: int = 1,
         spectrally_normalize_discriminator: bool = False,
         adversarial_criterion: str = "bce",
-        lambda_r1: float = 0.0,
         *args,
         **kwargs,
     ):
@@ -703,8 +707,6 @@ class AutoEncoderPL(_AutoEncoderLossMixin, AutoEncoder, pl.LightningModule):
                 discriminator. Defaults to False.
             adversarial_criterion (str, optional): adversarial loss criterion,
                 either ``bce`` or ``hinge``. Defaults to "bce".
-            lambda_r1 (float, optional): weight for R1 gradient
-                regularisation on real samples. Defaults to 0.0.
             *args: positional arguments passed to :class:`AutoEncoder`.
             **kwargs: keyword arguments passed to :class:`AutoEncoder`.
         """
@@ -714,9 +716,6 @@ class AutoEncoderPL(_AutoEncoderLossMixin, AutoEncoder, pl.LightningModule):
         self.momentum_beta1 = momentum_beta1
         self.momentum_beta2 = momentum_beta2
         self.optimizer_eps = optimizer_eps
-        if lambda_r1 < 0.0:
-            raise ValueError("lambda_r1 must be non-negative")
-        self.lambda_r1 = lambda_r1
         self.n_epochs = n_epochs
         self.warmup_steps = warmup_steps
         self.start_decay = start_decay
@@ -774,7 +773,6 @@ class VariationalAutoEncoderPL(
         discriminator_update_every_n_steps: int = 1,
         spectrally_normalize_discriminator: bool = False,
         adversarial_criterion: str = "bce",
-        lambda_r1: float = 0.0,
         *args,
         **kwargs,
     ):
@@ -830,8 +828,6 @@ class VariationalAutoEncoderPL(
                 discriminator. Defaults to False.
             adversarial_criterion (str, optional): adversarial loss criterion,
                 either ``bce`` or ``hinge``. Defaults to "bce".
-            lambda_r1 (float, optional): weight for R1 gradient
-                regularisation on real samples. Defaults to 0.0.
             *args: positional arguments passed to
                 :class:`VariationalAutoEncoder`.
             **kwargs: keyword arguments passed to
@@ -844,9 +840,6 @@ class VariationalAutoEncoderPL(
         self.momentum_beta2 = momentum_beta2
         self.var_loss_mult = var_loss_mult
         self.optimizer_eps = optimizer_eps
-        if lambda_r1 < 0.0:
-            raise ValueError("lambda_r1 must be non-negative")
-        self.lambda_r1 = lambda_r1
         self.n_epochs = n_epochs
         self.warmup_steps = warmup_steps
         self.start_decay = start_decay

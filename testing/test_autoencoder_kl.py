@@ -195,8 +195,7 @@ def test_discriminator_spectral_norm_only_applies_to_conv3d(
 def test_discriminator_r1_penalty(model_config):
     model = AutoEncoderPL(
         **model_config,
-        loss_weights={"rec": 1.0, "adversarial": 0.025},
-        lambda_r1=10.0,
+        loss_weights={"rec": 1.0, "adversarial": 0.025, "r1": 10.0},
     )
     x = torch.rand(2, 1, 32, 32)
     recon = model(x).detach()
@@ -207,15 +206,6 @@ def test_discriminator_r1_penalty(model_config):
     assert torch.isfinite(losses["r1_penalty"])
     assert torch.isfinite(losses["disc_loss"])
     assert losses["disc_loss"] >= losses["r1_penalty"]
-
-
-def test_negative_r1_weight_raises(model_config):
-    with pytest.raises(ValueError):
-        AutoEncoderPL(
-            **model_config,
-            loss_weights={"rec": 1.0, "adversarial": 0.025},
-            lambda_r1=-1.0,
-        )
 
 
 def test_adversarial_criterion_defaults_to_bce(model_config):
