@@ -421,16 +421,14 @@ class _AutoEncoderLossMixin:
         total_loss = 0.5 * (loss_fake + loss_real)
         losses = {}
 
-        feature_matching_lambda = self.loss_weights["feature_matching"]
-        if feature_matching_lambda > 0.0:
+        fm_lambda = self.loss_weights["feature_matching"]
+        if fm_lambda > 0.0:
             feature_matching_loss = self.compute_feature_matching_loss(
                 fake_outputs, real_outputs
             )
-            weighted_feature_matching = (
-                feature_matching_lambda * feature_matching_loss
-            )
-            losses["feature_matching_loss"] = weighted_feature_matching
-            total_loss = total_loss + weighted_feature_matching
+            weighted_fm = fm_lambda * feature_matching_loss
+            losses["feature_matching_loss"] = weighted_fm
+            total_loss = total_loss + weighted_fm
 
         r1_lambda = self.loss_weights["r1"]
         if r1_lambda > 0.0:
