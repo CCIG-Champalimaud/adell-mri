@@ -31,6 +31,7 @@ LOSS_WEIGHT_KEYS = {
     "kl_loss": "kl",
     "perceptual_loss": "perceptual",
     "adv_loss": "adversarial",
+    "feature_matching_loss": "feature_matching",
 }
 
 
@@ -324,16 +325,40 @@ class _AutoEncoderLossMixin:
             and self.discriminator is not None
             and self.adversarial_loss is not None
         ):
-            logits_fake = self.discriminator(recon)[-1]
+            fake_outputs = self.discriminator(recon)
+            logits_fake = (
+                fake_outputs[-1]
+                if isinstance(fake_outputs, (list, tuple))
+                else fake_outputs
+            )
             losses["adv_loss"] = self.compute_adversarial_loss(
                 logits_fake, target_is_real=True, for_discriminator=False
             )
+            if self.loss_weights["feature_matching"] > 0.0:
+                fake_features = (
+                    fake_outputs[:-1]
+                    if isinstance(fake_outputs, (list, tuple))
+                    and len(fake_outputs) > 1
+                    else fake_outputs
+                )
+                real_outputs = self.discriminator(x)
+                real_features = (
+                    real_outputs[:-1]
+                    if isinstance(real_outputs, (list, tuple))
+                    and len(real_outputs) > 1
+                    else real_outputs
+                )
+                losses[
+                    "feature_matching_loss"
+                ] = self.compute_feature_matching_loss(
+                    fake_features, real_features
+                )
         total = []
         for key, value in losses.items():
             if key not in LOSS_WEIGHT_KEYS:
                 continue
             weight = self.loss_weights[LOSS_WEIGHT_KEYS[key]]
-            if key == "adv_loss":
+            if key in ["adv_loss", "feature_matching_loss"]:
                 weight = weight * self.adversarial_scale
             total.append(weight * value)
         losses["loss"] = sum(total)
@@ -420,15 +445,6 @@ class _AutoEncoderLossMixin:
         )
         total_loss = 0.5 * (loss_fake + loss_real)
         losses = {}
-
-        fm_lambda = self.loss_weights["feature_matching"]
-        if fm_lambda > 0.0:
-            feature_matching_loss = self.compute_feature_matching_loss(
-                fake_outputs, real_outputs
-            )
-            weighted_fm = fm_lambda * feature_matching_loss
-            losses["feature_matching_loss"] = weighted_fm
-            total_loss = total_loss + weighted_fm
 
         r1_lambda = self.loss_weights["r1"]
         if r1_lambda > 0.0:

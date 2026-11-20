@@ -219,7 +219,7 @@ def test_feature_matching_uses_every_discriminator_output(model_config):
     torch.testing.assert_close(loss, expected)
 
 
-def test_discriminator_feature_matching_penalty(model_config):
+def test_generator_feature_matching_penalty(model_config):
     model = AutoEncoderPL(
         **model_config,
         loss_weights={
@@ -229,13 +229,14 @@ def test_discriminator_feature_matching_penalty(model_config):
         },
     )
     x = torch.rand(2, 1, 32, 32)
-    recon = model(x).detach()
 
-    losses = model.compute_discriminator_losses(x, recon)
+    losses, _ = model.compute_losses(x)
+    disc_losses = model.compute_discriminator_losses(x, model(x).detach())
 
     assert "feature_matching_loss" in losses
     assert torch.isfinite(losses["feature_matching_loss"])
-    assert torch.isfinite(losses["disc_loss"])
+    assert "feature_matching_loss" not in disc_losses
+    assert torch.isfinite(disc_losses["disc_loss"])
 
 
 def test_discriminator_r1_penalty(model_config):
