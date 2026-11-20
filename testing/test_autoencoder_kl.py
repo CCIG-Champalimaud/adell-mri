@@ -192,6 +192,52 @@ def test_discriminator_spectral_norm_only_applies_to_conv3d(
     assert all("weight" in module.parametrizations for module in convolutions)
 
 
+def test_feature_matching_uses_every_discriminator_output(model_config):
+    model = AutoEncoderPL(
+        **model_config,
+        loss_weights={
+            "rec": 1.0,
+            "adversarial": 0.025,
+            "feature_matching": 2.0,
+        },
+    )
+    fake_outputs = [
+        torch.rand(2, 4, 8, 8),
+        torch.rand(2, 8, 4, 4),
+        torch.rand(2, 1, 2, 2),
+    ]
+    real_outputs = [torch.rand_like(output) for output in fake_outputs]
+
+    loss = model.compute_feature_matching_loss(fake_outputs, real_outputs)
+    expected = torch.stack(
+        [
+            torch.nn.functional.l1_loss(fake, real.detach())
+            for fake, real in zip(fake_outputs, real_outputs)
+        ]
+    ).mean()
+
+    torch.testing.assert_close(loss, expected)
+
+
+def test_discriminator_feature_matching_penalty(model_config):
+    model = AutoEncoderPL(
+        **model_config,
+        loss_weights={
+            "rec": 1.0,
+            "adversarial": 0.025,
+            "feature_matching": 2.0,
+        },
+    )
+    x = torch.rand(2, 1, 32, 32)
+    recon = model(x).detach()
+
+    losses = model.compute_discriminator_losses(x, recon)
+
+    assert "feature_matching_loss" in losses
+    assert torch.isfinite(losses["feature_matching_loss"])
+    assert torch.isfinite(losses["disc_loss"])
+
+
 def test_discriminator_r1_penalty(model_config):
     model = AutoEncoderPL(
         **model_config,

@@ -16,6 +16,7 @@ losses:
     kl: 1.0e-07
     perceptual: 0.001
     adversarial: 0.01
+    feature_matching: 0.0
   rec_loss: l1
   perceptual_kwargs:
     network_type: squeeze

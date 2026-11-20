@@ -23,6 +23,7 @@ DEFAULT_LOSS_WEIGHTS = {
     "perceptual": 0.0,
     "adversarial": 0.0,
     "r1": 0.0,
+    "feature_matching": 0.0,
 }
 
 LOSS_WEIGHT_KEYS = {
@@ -57,9 +58,10 @@ class _AutoEncoderLossMixin:
 
         Args:
             loss_weights (dict[str, float] | None): weights for the loss
-                terms. Valid keys are ``rec``, ``kl``, ``perceptual`` and
-                ``adversarial``. Unspecified terms default to zero, except for
-                ``rec`` which defaults to 1.0.
+                terms. Valid keys are ``rec``, ``kl``, ``perceptual``,
+                ``adversarial``, ``r1`` and ``feature_matching``. Unspecified
+                terms default to zero, except for ``rec`` which defaults to
+                1.0.
             rec_loss (str): reconstruction loss, either ``mse`` or ``l1``.
             discriminator_config (dict[str, Any] | None): keyword arguments
                 for :class:`generative.networks.nets.PatchDiscriminator`.
@@ -337,6 +339,54 @@ class _AutoEncoderLossMixin:
         losses["loss"] = sum(total)
         return losses, output
 
+    def compute_feature_matching_loss(
+        self,
+        fake_outputs: torch.Tensor | list[torch.Tensor] | tuple,
+        real_outputs: torch.Tensor | list[torch.Tensor] | tuple,
+    ) -> torch.Tensor:
+        """
+        Computes L1 feature matching over every discriminator output.
+
+        Real features are detached so the discriminator cannot trivially
+        collapse both branches. The loss is averaged over all output maps to
+        keep its scale independent of the discriminator depth.
+
+        Args:
+            fake_outputs (torch.Tensor | list[torch.Tensor] | tuple): all
+                discriminator outputs for fake samples.
+            real_outputs (torch.Tensor | list[torch.Tensor] | tuple): all
+                discriminator outputs for real samples.
+
+        Returns:
+            torch.Tensor: feature matching loss.
+
+        Raises:
+            ValueError: if the output containers have different lengths or
+                if corresponding outputs have different shapes.
+        """
+        if not isinstance(fake_outputs, (list, tuple)):
+            fake_outputs = [fake_outputs]
+        if not isinstance(real_outputs, (list, tuple)):
+            real_outputs = [real_outputs]
+        if len(fake_outputs) != len(real_outputs):
+            raise ValueError(
+                "fake and real discriminator outputs must have the same length"
+            )
+
+        layer_losses = []
+        for fake, real in zip(fake_outputs, real_outputs):
+            if fake.shape != real.shape:
+                raise ValueError(
+                    "corresponding fake and real discriminator outputs must "
+                    "have the same shape"
+                )
+            device_type = "cuda" if fake.is_cuda else "cpu"
+            with torch.autocast(device_type=device_type, enabled=False):
+                layer_losses.append(
+                    F.l1_loss(fake.float(), real.detach().float())
+                )
+        return torch.stack(layer_losses).mean()
+
     def compute_discriminator_losses(
         self, x: torch.Tensor, recon: torch.Tensor
     ) -> dict[str, torch.Tensor]:
@@ -350,26 +400,49 @@ class _AutoEncoderLossMixin:
         Returns:
             dict[str, torch.Tensor]: dictionary with the discriminator loss.
         """
-        logits_fake = self.discriminator(recon)[-1]
+        fake_outputs = self.discriminator(recon)
+        real_outputs = self.discriminator(x)
+        logits_fake = (
+            fake_outputs[-1]
+            if isinstance(fake_outputs, (list, tuple))
+            else fake_outputs
+        )
+        logits_real = (
+            real_outputs[-1]
+            if isinstance(real_outputs, (list, tuple))
+            else real_outputs
+        )
         loss_fake = self.compute_adversarial_loss(
             logits_fake, target_is_real=False, for_discriminator=True
         )
-        logits_real = self.discriminator(x)[-1]
         loss_real = self.compute_adversarial_loss(
             logits_real, target_is_real=True, for_discriminator=True
         )
-        loss = 0.5 * (loss_fake + loss_real)
+        total_loss = 0.5 * (loss_fake + loss_real)
         losses = {}
+
+        feature_matching_lambda = self.loss_weights["feature_matching"]
+        if feature_matching_lambda > 0.0:
+            feature_matching_loss = self.compute_feature_matching_loss(
+                fake_outputs, real_outputs
+            )
+            weighted_feature_matching = (
+                feature_matching_lambda * feature_matching_loss
+            )
+            losses["feature_matching_loss"] = weighted_feature_matching
+            total_loss = total_loss + weighted_feature_matching
+
         r1_lambda = self.loss_weights["r1"]
         if r1_lambda > 0.0:
             r1_penalty = compute_gradient_penalty_r1(
                 real_samples=x,
                 discriminator=self.discriminator,
             )
-            losses["r1_penalty"] = r1_lambda * r1_penalty
-            losses["disc_loss"] = loss + r1_lambda * r1_penalty
-        else:
-            losses = {"disc_loss": loss}
+            weighted_r1 = r1_lambda * r1_penalty
+            losses["r1_penalty"] = weighted_r1
+            total_loss = total_loss + weighted_r1
+
+        losses["disc_loss"] = total_loss
         return losses
 
     def log_losses(
@@ -675,8 +748,9 @@ class AutoEncoderPL(_AutoEncoderLossMixin, AutoEncoder, pl.LightningModule):
                 ``n_epochs`` at which decay starts. Defaults to None (right
                 after warmup).
             loss_weights (dict[str, float] | None, optional): weights for the
-                reconstruction (``rec``), perceptual (``perceptual``) and
-                adversarial (``adversarial``) losses. Defaults to None
+                reconstruction (``rec``), perceptual (``perceptual``),
+                adversarial (``adversarial``), R1 (``r1``) and feature
+                matching (``feature_matching``) losses. Defaults to None
                 (reconstruction only).
             rec_loss (str, optional): reconstruction loss, either ``mse`` or
                 ``l1``. Defaults to "mse".
@@ -797,8 +871,9 @@ class VariationalAutoEncoderPL(
                 after warmup).
             loss_weights (dict[str, float] | None, optional): weights for the
                 reconstruction (``rec``), KL (``kl``), perceptual
-                (``perceptual``) and adversarial (``adversarial``) losses.
-                Defaults to None (``rec=1.0`` and ``kl=var_loss_mult``).
+                (``perceptual``), adversarial (``adversarial``), R1 (``r1``)
+                and feature matching (``feature_matching``) losses. Defaults
+                to None (``rec=1.0`` and ``kl=var_loss_mult``).
             rec_loss (str, optional): reconstruction loss, either ``mse`` or
                 ``l1``. Defaults to "mse".
             discriminator_config (dict[str, Any] | None, optional): keyword
