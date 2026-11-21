@@ -700,6 +700,7 @@ class EMACallback(Callback):
         final_decay: float | None = None,
         n_steps: int = None,
         start_steps: int = 0,
+        warmup_steps: int = 0,
         use_ema_weights: bool = True,
         update_train_weights: bool = False,
         exclude_prefixes: list[str] | None = None,
@@ -716,6 +717,11 @@ class EMACallback(Callback):
                 elapsed the callback leaves the model weights untouched (i.e.
                 training and validation use the raw model weights). Defaults
                 to 0.
+            warmup_steps (int, optional): number of optimizer steps over which
+                the decay linearly ramps from 0 to ``decay`` after
+                ``start_steps``. The full decay is reached after
+                ``start_steps + warmup_steps`` steps. Set to 0 to use the full
+                decay immediately. Defaults to 0.
             use_ema_weights (bool, optional): copy EMA weights into the module
                 at the end of training. Defaults to True.
             update_train_weights (bool, optional): update the live module
@@ -727,6 +733,7 @@ class EMACallback(Callback):
         self.final_decay = final_decay
         self.n_steps = n_steps
         self.start_steps = start_steps
+        self.warmup_steps = warmup_steps
         self.ema = None
         self.collected_params = None
         self.use_ema_weights = use_ema_weights
@@ -745,6 +752,22 @@ class EMACallback(Callback):
         """
         global_step = getattr(trainer, "global_step", 0)
         return global_step >= self.start_steps
+
+    def _current_decay(self, trainer: Trainer) -> float:
+        """
+        Returns the decay to use at the current step.
+
+        During warmup the decay ramps linearly from 0 up to ``self.decay``, so
+        that the full decay is reached after ``start_steps + warmup_steps``
+        optimizer steps. Without warmup the full decay is used as soon as the
+        EMA starts.
+        """
+        if self.warmup_steps <= 0:
+            return self.decay
+        global_step = getattr(trainer, "global_step", 0)
+        elapsed = global_step - self.start_steps
+        progress = min(1.0, max(0.0, elapsed / self.warmup_steps))
+        return self.decay * progress
 
     def _is_excluded(self, name: str) -> bool:
         """
@@ -799,6 +822,8 @@ class EMACallback(Callback):
         """
         if self._has_started(trainer) is False:
             return
+        if self.warmup_steps > 0:
+            self.ema.decay = self._current_decay(trainer)
         # Update currently maintained parameters.
         exclude_keys = [
             name

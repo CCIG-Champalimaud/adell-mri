@@ -98,6 +98,23 @@ def test_ema_waits_for_start_steps():
     )
 
 
+def test_ema_decay_ramps_up_during_warmup():
+    callback = EMACallback(
+        decay=0.9,
+        start_steps=1,
+        warmup_steps=4,
+        use_ema_weights=False,
+    )
+    trainer = _Trainer(global_step=1)
+    assert callback._current_decay(trainer) == 0.0
+
+    trainer.global_step = 3
+    assert callback._current_decay(trainer) == 0.45
+
+    trainer.global_step = 5
+    assert callback._current_decay(trainer) == 0.9
+
+
 def test_ema_end_does_not_overwrite_discriminator():
     model = _Model()
     callback = EMACallback(

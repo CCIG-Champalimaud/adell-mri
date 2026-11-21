@@ -104,6 +104,7 @@ def main(arguments):
             "early_stopping",
             "ema_decay",
             "ema_start_epoch",
+            "ema_warmup_epochs",
             "warmup_steps",
             "start_decay",
             "swa",
@@ -509,6 +510,7 @@ def main(arguments):
                 EMACallback(
                     decay=args.ema_decay,
                     start_steps=int(args.ema_start_epoch * steps_per_epoch),
+                    warmup_steps=int(args.ema_warmup_epochs * steps_per_epoch),
                     use_ema_weights=True,
                 )
             )

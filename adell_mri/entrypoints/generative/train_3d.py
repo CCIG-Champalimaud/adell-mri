@@ -175,6 +175,7 @@ def main(arguments):
             "diffusion_steps",
             "ema_decay",
             "ema_start_epoch",
+            "ema_warmup_epochs",
             "fill_missing_with_placeholder",
             "fill_conditional",
             "spectral_norm_power_iterations",
@@ -693,6 +694,9 @@ def main(arguments):
             EMACallback(
                 decay=args.ema_decay,
                 start_steps=int(args.ema_start_epoch * steps_per_epoch_optim),
+                warmup_steps=int(
+                    args.ema_warmup_epochs * steps_per_epoch_optim
+                ),
                 use_ema_weights=True,
             )
         )

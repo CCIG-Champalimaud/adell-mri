@@ -810,6 +810,17 @@ argument_factory = {
             "--ema_decay is specified. Defaults to 0."
         ),
     ),
+    "ema_warmup_epochs": dict(
+        action="store",
+        default=0,
+        type=int,
+        help=(
+            "Number of epochs over which the EMA decay ramps up to "
+            "--ema_decay after --ema_start_epoch. Zero uses the full decay "
+            "immediately. Only takes effect if --ema_decay is specified. "
+            "Defaults to 0."
+        ),
+    ),
     # deconfounded classifier-specific
     "cat_confounder_keys": dict(
         type=str,
