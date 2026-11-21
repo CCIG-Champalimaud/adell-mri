@@ -29,7 +29,7 @@ from adell_mri.utils.dataset import Dataset
 from adell_mri.utils.generic_utils import safe_collate
 from adell_mri.utils.logging import CSVLogger
 from adell_mri.utils.parser import get_params, merge_args, parse_ids
-from adell_mri.utils.pl_callbacks import SpectralNorm
+from adell_mri.utils.pl_callbacks import EMACallback, SpectralNorm
 from adell_mri.utils.pl_utils import (
     delete_checkpoints,
     get_ckpt_callback,
@@ -119,6 +119,8 @@ def main(arguments):
             "gradient_clip_val",
             "early_stopping",
             "swa",
+            "ema_decay",
+            "ema_start_epoch",
             "learning_rate",
             "batch_size",
             "precision",
@@ -529,6 +531,18 @@ def main(arguments):
                 swa_epoch_start=args.warmup_steps,
             )
             callbacks.append(swa_callback)
+
+        if args.ema_decay is not None:
+            steps_per_epoch = max(
+                1, len(train_loader) // args.accumulate_grad_batches
+            )
+            callbacks.append(
+                EMACallback(
+                    decay=args.ema_decay,
+                    start_steps=int(args.ema_start_epoch * steps_per_epoch),
+                    use_ema_weights=True,
+                )
+            )
 
         if args.spectral_norm_power_iterations is not None:
             spectral_norm = SpectralNorm(

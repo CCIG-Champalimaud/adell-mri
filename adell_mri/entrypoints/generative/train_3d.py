@@ -174,6 +174,7 @@ def main(arguments):
             "learning_rate",
             "diffusion_steps",
             "ema_decay",
+            "ema_start_epoch",
             "fill_missing_with_placeholder",
             "fill_conditional",
             "spectral_norm_power_iterations",
@@ -685,8 +686,15 @@ def main(arguments):
         callbacks.append(spectral_norm)
 
     if args.ema_decay is not None:
+        steps_per_epoch_optim = max(
+            1, steps_per_epoch // args.accumulate_grad_batches
+        )
         callbacks.append(
-            EMACallback(decay=args.ema_decay, use_ema_weights=True)
+            EMACallback(
+                decay=args.ema_decay,
+                start_steps=int(args.ema_start_epoch * steps_per_epoch_optim),
+                use_ema_weights=True,
+            )
         )
     callbacks.append(SetSamplerEpoch())
 

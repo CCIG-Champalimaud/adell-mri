@@ -699,6 +699,7 @@ class EMACallback(Callback):
         decay: float = 0.9999,
         final_decay: float | None = None,
         n_steps: int = None,
+        start_steps: int = 0,
         use_ema_weights: bool = True,
         update_train_weights: bool = False,
         exclude_prefixes: list[str] | None = None,
@@ -710,6 +711,11 @@ class EMACallback(Callback):
                 a linearly changing decay. Defaults to None.
             n_steps (int | None, optional): number of steps over which the
                 decay changes to ``final_decay``. Defaults to None.
+            start_steps (int, optional): number of optimizer steps to wait
+                before starting to update the EMA. Until this many steps have
+                elapsed the callback leaves the model weights untouched (i.e.
+                training and validation use the raw model weights). Defaults
+                to 0.
             use_ema_weights (bool, optional): copy EMA weights into the module
                 at the end of training. Defaults to True.
             update_train_weights (bool, optional): update the live module
@@ -720,12 +726,25 @@ class EMACallback(Callback):
         self.decay = decay
         self.final_decay = final_decay
         self.n_steps = n_steps
+        self.start_steps = start_steps
         self.ema = None
+        self.collected_params = None
         self.use_ema_weights = use_ema_weights
         self.update_train_weights = update_train_weights
         self.exclude_prefixes = [
             prefix.rstrip(".") for prefix in (exclude_prefixes or [])
         ]
+
+    def _has_started(self, trainer: Trainer) -> bool:
+        """
+        Returns whether the EMA should already be updated.
+
+        The EMA only starts after ``start_steps`` optimizer steps. Before that,
+        the raw model weights are used for training, validation and
+        checkpointing.
+        """
+        global_step = getattr(trainer, "global_step", 0)
+        return global_step >= self.start_steps
 
     def _is_excluded(self, name: str) -> bool:
         """
@@ -774,7 +793,12 @@ class EMACallback(Callback):
     ):
         """
         Updates EMA of the model.
+
+        No update is performed until ``start_steps`` optimizer steps have
+        elapsed.
         """
+        if self._has_started(trainer) is False:
+            return
         # Update currently maintained parameters.
         exclude_keys = [
             name
@@ -790,8 +814,15 @@ class EMACallback(Callback):
     ):
         """
         Validation is performed using EMA parameters.
+
+        Before ``start_steps`` optimizer steps have elapsed, validation uses
+        the raw model weights.
         """
-        if self.update_train_weights is False and self._has_ema_shadow():
+        if (
+            self._has_started(trainer)
+            and self.update_train_weights is False
+            and self._has_ema_shadow()
+        ):
             self.store(pl_module)
             self.copy_to(self.ema.shadow, pl_module)
 
@@ -799,14 +830,22 @@ class EMACallback(Callback):
         """
         Restores original parameters after validation.
         """
-        if self.update_train_weights is False and self._has_ema_shadow():
+        if (
+            self.update_train_weights is False
+            and self._has_ema_shadow()
+            and self.collected_params is not None
+        ):
             self.restore(pl_module)
 
     def on_train_end(self, trainer: Trainer, pl_module: LightningModule):
         """
         Update module weights to EMA version.
         """
-        if self.use_ema_weights and self._has_ema_shadow():
+        if (
+            self._has_started(trainer)
+            and self.use_ema_weights
+            and self._has_ema_shadow()
+        ):
             self.copy_to(self.ema.shadow, pl_module)
 
     def on_save_checkpoint(self, trainer, pl_module, checkpoint):
@@ -817,7 +856,10 @@ class EMACallback(Callback):
         from the live module because they are not part of the parameter
         average.
         """
-        if self._has_ema_shadow() is False:
+        if (
+            self._has_started(trainer) is False
+            or self._has_ema_shadow() is False
+        ):
             return
         ema_state = {
             name: value

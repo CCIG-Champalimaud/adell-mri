@@ -31,7 +31,7 @@ from adell_mri.utils.monai_transforms import (
     ScaleIntensityAlongDimd,
 )
 from adell_mri.utils.parser import get_params, merge_args, parse_ids
-from adell_mri.utils.pl_callbacks import SpectralNorm
+from adell_mri.utils.pl_callbacks import EMACallback, SpectralNorm
 from adell_mri.utils.pl_utils import (
     GPULock,
     get_ckpt_callback,
@@ -102,6 +102,8 @@ def main(arguments):
             "monitor",
             "metric_path",
             "early_stopping",
+            "ema_decay",
+            "ema_start_epoch",
             "warmup_steps",
             "start_decay",
             "swa",
@@ -498,6 +500,18 @@ def main(arguments):
                 n_power_iterations=args.spectral_norm_power_iterations
             )
             callbacks.append(spectral_norm)
+
+        if args.ema_decay is not None:
+            steps_per_epoch = max(
+                1, len(train_loader) // args.accumulate_grad_batches
+            )
+            callbacks.append(
+                EMACallback(
+                    decay=args.ema_decay,
+                    start_steps=int(args.ema_start_epoch * steps_per_epoch),
+                    use_ema_weights=True,
+                )
+            )
 
         ckpt = ckpt_callback is not None
         if status == "finished":

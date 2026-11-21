@@ -800,6 +800,16 @@ argument_factory = {
         type=float,
         help="Decay for exponential moving average (no EMA if not specified)",
     ),
+    "ema_start_epoch": dict(
+        action="store",
+        default=0,
+        type=int,
+        help=(
+            "Epoch at which exponential moving average updates start. Before "
+            "this epoch the raw model weights are used. Only takes effect if "
+            "--ema_decay is specified. Defaults to 0."
+        ),
+    ),
     # deconfounded classifier-specific
     "cat_confounder_keys": dict(
         type=str,

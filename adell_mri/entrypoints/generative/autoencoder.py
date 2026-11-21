@@ -418,14 +418,6 @@ def ensure_autoencoder(
     callbacks = [RichProgressBar()]
     if ckpt_callback is not None:
         callbacks.append(ckpt_callback)
-    if args.ema_decay is not None:
-        callbacks.append(
-            EMACallback(
-                decay=args.ema_decay,
-                use_ema_weights=True,
-                exclude_prefixes=["discriminator"],
-            )
-        )
     callbacks.append(SetSamplerEpoch())
 
     accumulate_grad_batches = args.accumulate_grad_batches
@@ -441,6 +433,18 @@ def ensure_autoencoder(
     steps_per_epoch = args.steps_per_epoch or max(
         1, len(train_list) // batch_size
     )
+    if args.ema_decay is not None:
+        steps_per_epoch_optim = max(
+            1, steps_per_epoch // accumulate_grad_batches
+        )
+        callbacks.append(
+            EMACallback(
+                decay=args.ema_decay,
+                start_steps=int(args.ema_start_epoch * steps_per_epoch_optim),
+                use_ema_weights=True,
+                exclude_prefixes=["discriminator"],
+            )
+        )
     train_loader = make_autoencoder_loader(
         train_list,
         transforms,

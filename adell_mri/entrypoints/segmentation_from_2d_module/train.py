@@ -32,7 +32,7 @@ from adell_mri.utils.monai_transforms import (
     SlicesToFirst,
 )
 from adell_mri.utils.parser import parse_ids
-from adell_mri.utils.pl_callbacks import SpectralNorm
+from adell_mri.utils.pl_callbacks import EMACallback, SpectralNorm
 from adell_mri.utils.pl_utils import get_ckpt_callback, get_devices, get_logger
 from adell_mri.utils.python_logging import get_logger as get_python_logger
 from adell_mri.utils.samplers import PartiallyRandomSampler
@@ -127,6 +127,8 @@ def main(arguments):
             "picai_eval",
             "metric_path",
             "early_stopping",
+            "ema_decay",
+            "ema_start_epoch",
             ("class_weights", "class_weights", {"default": [1.0]}),
             "cosine_decay",
             "spectral_norm_power_iterations",
@@ -488,6 +490,18 @@ def main(arguments):
             collate_fn=collate_fn_val,
             persistent_workers=True,
         )
+
+        if args.ema_decay is not None:
+            steps_per_epoch = max(
+                1, len(train_loader) // args.accumulate_grad_batches
+            )
+            callbacks.append(
+                EMACallback(
+                    decay=args.ema_decay,
+                    start_steps=int(args.ema_start_epoch * steps_per_epoch),
+                    use_ema_weights=True,
+                )
+            )
 
         # make other network configurations compatible with mimunet
         network_config_corr = deepcopy(network_config)

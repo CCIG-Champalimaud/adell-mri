@@ -124,6 +124,7 @@ def main(arguments):
             "learning_rate",
             "diffusion_steps",
             "ema_decay",
+            "ema_start_epoch",
             "uncondition_proba",
         ]
     )
@@ -392,7 +393,11 @@ def main(arguments):
 
     if args.ema_decay is not None:
         callbacks.append(
-            EMACallback(decay=args.ema_decay, use_ema_weights=True)
+            EMACallback(
+                decay=args.ema_decay,
+                start_steps=int(args.ema_start_epoch * steps_per_epoch_optim),
+                use_ema_weights=True,
+            )
         )
 
     ckpt = ckpt_callback is not None

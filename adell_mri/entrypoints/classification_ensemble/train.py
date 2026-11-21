@@ -25,7 +25,7 @@ from adell_mri.utils.logging import CSVLogger
 from adell_mri.utils.network_factories import get_classification_network
 from adell_mri.utils.optimizer_factory import optimizer_eps_from_precision
 from adell_mri.utils.parser import get_params, merge_args, parse_ids
-from adell_mri.utils.pl_callbacks import SpectralNorm
+from adell_mri.utils.pl_callbacks import EMACallback, SpectralNorm
 from adell_mri.utils.pl_utils import (
     delete_checkpoints,
     get_ckpt_callback,
@@ -109,6 +109,8 @@ def main(arguments):
             "monitor",
             "metric_path",
             "early_stopping",
+            "ema_decay",
+            "ema_start_epoch",
             "resume_from_last",
             "warmup_steps",
             "start_decay",
@@ -588,6 +590,18 @@ def main(arguments):
                 n_power_iterations=args.spectral_norm_power_iterations
             )
             callbacks.append(spectral_norm)
+
+        if args.ema_decay is not None:
+            steps_per_epoch = max(
+                1, len(train_loader) // args.accumulate_grad_batches
+            )
+            callbacks.append(
+                EMACallback(
+                    decay=args.ema_decay,
+                    start_steps=int(args.ema_start_epoch * steps_per_epoch),
+                    use_ema_weights=True,
+                )
+            )
 
         pl_logger = get_logger(
             summary_name=args.summary_name,

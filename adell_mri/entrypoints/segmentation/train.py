@@ -36,7 +36,7 @@ from adell_mri.utils.monai_transforms import (
 from adell_mri.utils.network_factories import get_segmentation_network
 from adell_mri.utils.optimizer_factory import optimizer_eps_from_precision
 from adell_mri.utils.parser import parse_ids
-from adell_mri.utils.pl_callbacks import SpectralNorm
+from adell_mri.utils.pl_callbacks import EMACallback, SpectralNorm
 from adell_mri.utils.pl_utils import get_ckpt_callback, get_devices, get_logger
 from adell_mri.utils.python_logging import get_logger as get_python_logger
 from adell_mri.utils.samplers import PartiallyRandomSampler
@@ -140,6 +140,8 @@ def main(arguments):
             "picai_eval",
             "metric_path",
             "early_stopping",
+            "ema_decay",
+            "ema_start_epoch",
             "start_decay",
             "warmup_steps",
             ("class_weights", "class_weights", {"default": [1.0]}),
@@ -673,6 +675,18 @@ def main(arguments):
             )
 
         max_steps_optim = len(iter(train_loader)) * args.max_epochs
+
+        if args.ema_decay is not None:
+            steps_per_epoch = max(
+                1, len(iter(train_loader)) // args.accumulate_grad_batches
+            )
+            callbacks.append(
+                EMACallback(
+                    decay=args.ema_decay,
+                    start_steps=int(args.ema_start_epoch * steps_per_epoch),
+                    use_ema_weights=True,
+                )
+            )
 
         if args.res_config_file is not None:
             if args.net_type in ["unetr", "swin", "monai_unetr", "monai_swin"]:
