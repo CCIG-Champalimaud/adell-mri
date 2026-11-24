@@ -121,10 +121,10 @@ def main(arguments):
                 del network_config_correct[k]
     else:
         network_config, network_config_correct = parse_config_ssl(
-            args.config_file,
-            args.dropout_param,
-            len(keys),
-            args.ssl_method == "ijepa",
+            config_file=args.config_file,
+            dropout_param=args.dropout_param,
+            n_keys=len(keys),
+            is_vit=args.ssl_method in ["ijepa", "dino", "ibot", "mae"],
         )
 
     if (args.batch_size is not None) and (args.batch_size != "tune"):
@@ -181,7 +181,7 @@ def main(arguments):
     logger.info("Training set size: %s", len(data_dict))
 
     train_pids = list(data_dict.keys())
-    train_list = [value for pid, value in data_dict.items()]
+    train_list = [data_dict[pid] for pid in train_pids]
 
     accelerator, devices, strategy = get_devices(args.dev)
 
