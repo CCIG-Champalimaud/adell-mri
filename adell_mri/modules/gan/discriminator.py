@@ -1,4 +1,10 @@
+from typing import Sequence
+
 import torch
+from monai.networks.blocks import Convolution
+from monai.networks.layers import Act
+from monai.networks.nets.patchgan_discriminator import PatchDiscriminator
+from monai.networks.utils import normal_init
 
 from adell_mri.modules.classification.classification import VGGBackbone
 from adell_mri.modules.layers.adn_fn import get_adn_fn
@@ -208,3 +214,90 @@ class Discriminator(torch.nn.Module):
             additional_regressions,
             bottleneck,
         )
+
+
+class StridedPatchDiscriminator(PatchDiscriminator):
+    """
+    Extends ``PatchDiscriminator`` to include strides.
+    """
+
+    def __init__(
+        self,
+        spatial_dims: int,
+        channels: int,
+        in_channels: int,
+        out_channels: int = 1,
+        num_layers_d: int = 3,
+        kernel_size: int = 4,
+        activation: str | tuple = (Act.LEAKYRELU, {"negative_slope": 0.2}),
+        norm: str | tuple = "BATCH",
+        bias: bool = False,
+        padding: int | Sequence[int] = 1,
+        dropout: float | tuple = 0.0,
+        last_conv_kernel_size: int | None = None,
+        strides: Sequence[int] = None,
+    ) -> None:
+        super().__init__()
+        self.num_layers_d = num_layers_d
+        self.num_channels = channels
+        if last_conv_kernel_size is None:
+            last_conv_kernel_size = kernel_size
+
+        if strides is None:
+            strides = [2 for _ in range(self.num_layers_d)]
+        strides.append(1)
+
+        self.add_module(
+            "initial_conv",
+            Convolution(
+                spatial_dims=spatial_dims,
+                kernel_size=kernel_size,
+                in_channels=in_channels,
+                out_channels=channels,
+                act=activation,
+                bias=True,
+                norm=None,
+                dropout=dropout,
+                padding=padding,
+                strides=strides[0],
+            ),
+        )
+
+        input_channels = channels
+        output_channels = channels * 2
+
+        # Initial Layer
+        for l_ in range(self.num_layers_d):
+            layer = Convolution(
+                spatial_dims=spatial_dims,
+                kernel_size=kernel_size,
+                in_channels=input_channels,
+                out_channels=output_channels,
+                act=activation,
+                bias=bias,
+                norm=norm,
+                dropout=dropout,
+                padding=padding,
+                strides=strides[l_ + 1],
+            )
+            self.add_module(f"{l_}", layer)
+            input_channels = output_channels
+            output_channels = output_channels * 2
+
+        # Final layer
+        self.add_module(
+            "final_conv",
+            Convolution(
+                spatial_dims=spatial_dims,
+                kernel_size=last_conv_kernel_size,
+                in_channels=input_channels,
+                out_channels=out_channels,
+                bias=True,
+                conv_only=True,
+                padding=int((last_conv_kernel_size - 1) / 2),
+                dropout=0.0,
+                strides=1,
+            ),
+        )
+
+        self.apply(normal_init)
