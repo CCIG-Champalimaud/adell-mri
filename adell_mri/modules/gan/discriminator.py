@@ -216,7 +216,7 @@ class Discriminator(torch.nn.Module):
         )
 
 
-class StridedPatchDiscriminator(PatchDiscriminator):
+class StridedPatchDiscriminator(torch.nn.Module):
     """
     Extends ``PatchDiscriminator`` to include strides.
     """
@@ -301,3 +301,18 @@ class StridedPatchDiscriminator(PatchDiscriminator):
         )
 
         self.apply(normal_init)
+
+    def forward(self, x: torch.Tensor) -> list[torch.Tensor]:
+        """
+        Args:
+            x: input tensor
+
+        Returns:
+            list of intermediate features, with the last element being the output.
+        """
+        out = [x]
+        for submodel in self.children():
+            intermediate_output = submodel(out[-1])
+            out.append(intermediate_output)
+
+        return out[1:]
