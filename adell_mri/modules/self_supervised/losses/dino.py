@@ -66,6 +66,16 @@ class DinoLoss(torch.nn.Module):
         self.len_teacher_output = None
         self.async_batch_center = None
 
+    def set_teacher_temperature(self, temperature: float) -> None:
+        """
+        Sets the teacher temperature (used for scheduling).
+
+        Args:
+            temperature (float): new teacher temperature.
+        """
+        self.t2 = temperature
+        self.temperatures = [self.temperatures[0], temperature]
+
     @property
     def world_size(self) -> int:
         """
