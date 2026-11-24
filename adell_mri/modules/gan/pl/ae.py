@@ -9,6 +9,7 @@ import torch
 import torch.nn.functional as F
 
 from adell_mri.modules.gan.ae import AutoEncoder
+from adell_mri.modules.gan.discriminator import StridedPatchDiscriminator
 from adell_mri.modules.gan.losses import (
     GaussianKLLoss,
     compute_gradient_penalty_r1,
@@ -145,7 +146,7 @@ class _AutoEncoderLossMixin:
                 "padding": 1,
             }
             disc_config.update(discriminator_config)
-            self.discriminator = PatchDiscriminator(**disc_config)
+            self.discriminator = StridedPatchDiscriminator(**disc_config)
             if spectrally_normalize_discriminator:
                 for module in self.discriminator.modules():
                     if isinstance(module, torch.nn.Conv3d):
