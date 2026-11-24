@@ -777,6 +777,8 @@ def get_ssl_network(
                 )
             ),
             "ssl_method": ssl_method,
+            "aug_image_key_1": "augmented_image_1",
+            "aug_image_key_2": "augmented_image_2",
             "stop_gradient": stop_gradient,
             "temperature": network_config.get("temperature", 0.1),
             "vic_reg_loss_params": network_config.get(
@@ -853,6 +855,9 @@ def get_ssl_network(
             "projection_head_args",
             {"structure": [512, 256, 128]},
         )
+        projection_head_args.setdefault(
+            "adn_fn", get_adn_fn(1, "identity", "gelu", dropout_param=0.0)
+        )
         config = {
             "aug_image_key_1": "augmented_image_1",
             "aug_image_key_2": "augmented_image_2",
@@ -884,6 +889,9 @@ def get_ssl_network(
         projection_head_args: dict = network_config.get(
             "projection_head_args",
             {"structure": [512, 256, 128]},
+        )
+        projection_head_args.setdefault(
+            "adn_fn", get_adn_fn(1, "identity", "gelu", dropout_param=0.0)
         )
         config = {
             "aug_image_key_1": "augmented_image_1",
