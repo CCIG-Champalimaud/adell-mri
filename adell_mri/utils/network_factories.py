@@ -869,6 +869,18 @@ def get_ssl_network(
             "teacher_score_method": network_config.get(
                 "teacher_score_method", "center"
             ),
+            "teacher_temperature": network_config.get(
+                "teacher_temperature", 0.04
+            ),
+            "teacher_temperature_final": network_config.get(
+                "teacher_temperature_final", 0.07
+            ),
+            "teacher_temperature_warmup_epochs": network_config.get(
+                "teacher_temperature_warmup_epochs", 30
+            ),
+            "freeze_last_layer_epochs": network_config.get(
+                "freeze_last_layer_epochs", 1
+            ),
             "stop_gradient": stop_gradient,
             "optimizer_eps": optimizer_eps,
         }
