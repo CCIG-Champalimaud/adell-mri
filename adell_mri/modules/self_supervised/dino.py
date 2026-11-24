@@ -25,6 +25,7 @@ class DINO(torch.nn.Module):
         backbone_args: Dict[str, Any],
         projection_head_args: Dict[str, Any],
         out_dim: int,
+        freeze_last_layer_epochs: int = 1,
     ):
         """
         Args:
@@ -32,11 +33,14 @@ class DINO(torch.nn.Module):
             projection_head_args (Dict[str, Any]): arguments for the projection
                 head.
             out_dim (int): output dimension for DINO.
+            freeze_last_layer_epochs (int, optional): number of epochs during
+                which the last layer is frozen. Defaults to 1.
         """
         super().__init__()
         self.backbone_args = backbone_args
         self.projection_head_args = projection_head_args
         self.out_dim = out_dim
+        self.freeze_last_layer_epochs = freeze_last_layer_epochs
 
         self.initialize_encoder()
         self.initialize_projection()
@@ -77,6 +81,21 @@ class DINO(torch.nn.Module):
             torch.nn.Linear(self.mlp_out_dim, self.out_dim, bias=False)
         )
         self.last_layer_.parametrizations.weight.original0.data.fill_(1)
+        self.freeze_last_layer()
+
+    def freeze_last_layer(self):
+        """
+        Freezes all parameters of the last layer.
+        """
+        for param in self.last_layer_.parameters():
+            param.requires_grad = False
+
+    def unfreeze_last_layer(self):
+        """
+        Unfreezes the last layer, keeping the weight-norm gain frozen.
+        """
+        for param in self.last_layer_.parameters():
+            param.requires_grad = True
         self.last_layer_.parametrizations.weight.original0.requires_grad = False
 
     def forward(self, X: torch.Tensor) -> DINOOut:
