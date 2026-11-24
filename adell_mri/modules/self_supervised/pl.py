@@ -3,7 +3,7 @@ Implements Lightning-based training utilities.
 """
 
 import warnings
-from abc import ABC, abstractmethod
+from abc import ABC
 from typing import Any
 
 import lightning.pytorch as pl
@@ -250,20 +250,20 @@ class SelfSLBasePL(pl.LightningModule, ABC):
         else:
             return op(x, **kwargs)
 
-    @abstractmethod
     def _forward_representation(self, x, ret):
         """
         Runs the network forward pass with an optional return specifier.
-        Must be implemented by subclasses whose ``forward`` signatures
-        differ.
+        Must be implemented by subclasses whose ``step`` uses it.
         """
+        raise NotImplementedError
 
-    @abstractmethod
     def _get_ret_strings(self, batch) -> tuple:
         """
         Returns the return specifiers and additional loss arguments for a
-        given batch. Must be implemented by subclasses.
+        given batch. Must be implemented by subclasses whose ``step`` uses
+        it.
         """
+        raise NotImplementedError
 
     def _log_sub_losses(self, losses, loss_str, batch_size):
         """
