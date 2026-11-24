@@ -695,13 +695,6 @@ argument_factory = {
     "max_slices": dict(
         type=int, default=None, help="Excludes studies with over max_slices"
     ),
-    "ema": dict(
-        action="store_true",
-        help="Includes exponential moving average teacher (like BYOL)",
-    ),
-    "stop_gradient": dict(
-        action="store_true", help="Stops gradient for teacher"
-    ),
     "n_series_iterations": dict(
         default=2,
         type=int,

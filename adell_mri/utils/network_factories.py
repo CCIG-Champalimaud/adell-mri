@@ -653,6 +653,43 @@ def _compute_vit_dims(
     return feature_map_dimensions, n_encoder_features
 
 
+SSL_METHODS_WITH_EMA = {"byol", "ijepa", "dino", "ibot"}
+SSL_METHODS_WITH_STOP_GRADIENT = {"byol", "ijepa", "dino", "ibot"}
+
+
+def get_ema(ssl_method: str, n_steps: int) -> ExponentialMovingAverage | None:
+    """
+    Returns the exponential moving average teacher for a given SSL method.
+
+    Args:
+        ssl_method (str): the SSL method.
+        n_steps (int): the number of optimization steps.
+
+    Returns:
+        ExponentialMovingAverage | None: the EMA module if the method uses
+            an EMA teacher, otherwise ``None``.
+    """
+    if ssl_method not in SSL_METHODS_WITH_EMA:
+        return None
+    decay = 0.99 if ssl_method == "ijepa" else 0.996
+    return ExponentialMovingAverage(
+        decay=decay, final_decay=1.0, n_steps=n_steps
+    )
+
+
+def get_stop_gradients(ssl_method: str) -> bool:
+    """
+    Returns whether gradients should be stopped for a given SSL method.
+
+    Args:
+        ssl_method (str): the SSL method.
+
+    Returns:
+        bool: ``True`` if gradients should be stopped, ``False`` otherwise.
+    """
+    return ssl_method in SSL_METHODS_WITH_STOP_GRADIENT
+
+
 @compile_if_necessary
 def get_ssl_network(
     train_loader_call: Callable,
