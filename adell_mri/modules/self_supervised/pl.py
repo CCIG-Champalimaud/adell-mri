@@ -366,15 +366,31 @@ class SelfSLBasePL(pl.LightningModule, ABC):
             n = self.n_epochs
         params_no_decay = []
         params_decay = []
+        no_decay_keywords = (
+            "bias",
+            "normalization",
+            "norm",
+            "positional_embedding",
+            "pos_embed",
+            "class_token",
+            "cls_token",
+            "registers",
+            "mask_token",
+        )
         for k, p in self.named_parameters():
-            if "normalization" in k:
+            k_lower = k.lower()
+            if p.ndim <= 1 or any(
+                keyword in k_lower for keyword in no_decay_keywords
+            ):
                 params_no_decay.append(p)
             else:
                 params_decay.append(p)
         optimizer = torch.optim.AdamW(
-            params_decay + params_no_decay,
+            [
+                {"params": params_decay, "weight_decay": self.weight_decay},
+                {"params": params_no_decay, "weight_decay": 0.0},
+            ],
             lr=self.learning_rate,
-            weight_decay=self.weight_decay,
             eps=self.optimizer_eps,
         )
         lr_schedulers = lr_schedulers = CosineAnnealingWithWarmupLR(
@@ -1111,6 +1127,10 @@ class DINOPL(DINO, SelfSLBasePL):
         ema: ExponentialMovingAverage = None,
         centers_m: float = 0.9,
         teacher_score_method: str = "center",
+        teacher_temperature: float = 0.04,
+        teacher_temperature_final: float = 0.07,
+        teacher_temperature_warmup_epochs: int = 30,
+        freeze_last_layer_epochs: int = 1,
         *args,
         **kwargs,
     ):
@@ -1130,13 +1150,23 @@ class DINOPL(DINO, SelfSLBasePL):
         self.optimizer_eps = optimizer_eps
         self.centers_m = centers_m
         self.teacher_score_method = teacher_score_method
+        self.teacher_temperature = teacher_temperature
+        self.teacher_temperature_final = teacher_temperature_final
+        self.teacher_temperature_warmup_epochs = (
+            teacher_temperature_warmup_epochs
+        )
+        self.freeze_last_layer_epochs = freeze_last_layer_epochs
 
         self.ssl_method = "dino"
 
         if channels_to_batch is True:
             kwargs["backbone_args"]["in_channels"] = 1
 
-        super().__init__(*args, **kwargs)
+        super().__init__(
+            *args,
+            freeze_last_layer_epochs=freeze_last_layer_epochs,
+            **kwargs,
+        )
 
         self.ema = ema
 
@@ -1154,11 +1184,58 @@ class DINOPL(DINO, SelfSLBasePL):
 
     def init_loss(self):
         self.loss = DinoLoss(
-            temperatures=(self.temperature, self.temperature),
+            temperatures=(self.temperature, self.teacher_temperature),
             n_features=self.out_dim,
             center_m=self.centers_m,
             teacher_score_method=self.teacher_score_method,
         )
+
+    def get_teacher_temperature(self, step: int) -> float:
+        """
+        Returns the teacher temperature for a given optimization step.
+
+        The teacher temperature is linearly warmed up from
+        ``teacher_temperature`` to ``teacher_temperature_final`` over
+        ``teacher_temperature_warmup_epochs`` epochs.
+
+        Args:
+            step (int): current optimization step.
+
+        Returns:
+            float: teacher temperature.
+        """
+        if self.teacher_temperature_warmup_epochs <= 0:
+            return self.teacher_temperature_final
+        if self.n_steps is not None and self.n_epochs not in [None, -1, 0]:
+            steps_per_epoch = self.n_steps / self.n_epochs
+            warmup_steps = (
+                self.teacher_temperature_warmup_epochs * steps_per_epoch
+            )
+        elif self.n_steps is not None:
+            warmup_steps = int(0.1 * self.n_steps)
+        else:
+            return self.teacher_temperature_final
+        if warmup_steps <= 0:
+            return self.teacher_temperature_final
+        progress = min(step / warmup_steps, 1.0)
+        return self.teacher_temperature + progress * (
+            self.teacher_temperature_final - self.teacher_temperature
+        )
+
+    def update_teacher_temperature(self):
+        """
+        Updates the teacher temperature based on the current global step.
+        """
+        trainer = getattr(self, "_trainer", None)
+        step = trainer.global_step if trainer is not None else 0
+        self.loss.set_teacher_temperature(self.get_teacher_temperature(step))
+
+    def on_train_epoch_start(self):
+        trainer = getattr(self, "_trainer", None)
+        if trainer is None:
+            return
+        if trainer.current_epoch >= self.freeze_last_layer_epochs:
+            self.unfreeze_last_layer()
 
     def calculate_loss(self, y_1, y_2, *args):
         loss = self.loss(y_1, y_2)
@@ -1167,6 +1244,8 @@ class DINOPL(DINO, SelfSLBasePL):
     def step(
         self, batch, loss_str: str, metrics: dict | None = None, train=False
     ):
+        if train is True:
+            self.update_teacher_temperature()
         x1, x2 = batch[self.aug_image_key_1], batch[self.aug_image_key_2]
         if self.channels_to_batch is True:
             x1 = x1.reshape(-1, 1, *x1.shape[2:])
@@ -1190,9 +1269,10 @@ class DINOPL(DINO, SelfSLBasePL):
         self.log(
             loss_str, loss_value, on_step=True, on_epoch=True, prog_bar=True
         )
-        if self.ema is not None and train is True:
-            self.ema.update(self, exclude_keys=["centers"])
-        self.loss.update_centers(torch.cat([t_1, t_2]))
+        if train is True:
+            if self.ema is not None:
+                self.ema.update(self, exclude_keys=["centers"])
+            self.loss.update_centers(torch.cat([t_1, t_2]))
         return loss_value
 
     def training_step(self, batch, batch_idx):
