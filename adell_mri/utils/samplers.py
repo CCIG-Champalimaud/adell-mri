@@ -5,6 +5,8 @@ import numpy as np
 import torch
 import torch.distributed as dist
 
+from adell_mri.utils.torch_utils import get_global_rank
+
 
 class PartiallyRandomSampler(torch.utils.data.Sampler):
     """
@@ -166,3 +168,47 @@ class DistributedRandomSampler(torch.utils.data.Sampler):
 
     def set_epoch(self, epoch: int):
         self.epoch = epoch
+
+
+def get_train_sampler(
+    dataset,
+    steps_per_epoch: int,
+    batch_size: int,
+    n_devices: int = 1,
+    seed: int = 0,
+    generator: torch.Generator = None,
+) -> torch.utils.data.Sampler:
+    """
+    Returns a random sampler that yields ``steps_per_epoch * batch_size``
+    samples per rank, using replacement when the requested number of samples
+    exceeds the dataset size.
+
+    Args:
+        dataset: dataset to sample from.
+        steps_per_epoch (int): number of batches per rank.
+        batch_size (int): per-device batch size.
+        n_devices (int, optional): number of devices. Defaults to 1.
+        seed (int, optional): random seed used by the distributed sampler.
+            Defaults to 0.
+        generator (torch.Generator, optional): generator for the
+            single-device sampler. Defaults to None.
+
+    Returns:
+        torch.utils.data.Sampler: sampler.
+    """
+    num_samples = steps_per_epoch * batch_size
+    if n_devices > 1:
+        return DistributedRandomSampler(
+            dataset,
+            num_samples=num_samples * n_devices,
+            num_replicas=n_devices,
+            rank=get_global_rank(),
+            replacement=(num_samples * n_devices) > len(dataset),
+            seed=seed,
+        )
+    return torch.utils.data.RandomSampler(
+        dataset,
+        replacement=num_samples > len(dataset),
+        num_samples=num_samples,
+        generator=generator,
+    )

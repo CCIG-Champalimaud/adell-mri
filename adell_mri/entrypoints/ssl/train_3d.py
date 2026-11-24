@@ -20,8 +20,15 @@ from adell_mri.utils.network_factories import (
 )
 from adell_mri.utils.optimizer_factory import optimizer_eps_from_precision
 from adell_mri.utils.pl_callbacks import SpectralNorm
-from adell_mri.utils.pl_utils import get_ckpt_callback, get_devices, get_logger
+from adell_mri.utils.pl_utils import (
+    get_batch_size_and_steps_per_epoch,
+    get_ckpt_callback,
+    get_devices,
+    get_logger,
+    log_steps_per_epoch,
+)
 from adell_mri.utils.python_logging import get_logger as get_python_logger
+from adell_mri.utils.samplers import get_train_sampler
 from adell_mri.utils.torch_utils import (
     force_cudnn_initialization,
     get_generator_and_rng,
@@ -77,6 +84,7 @@ def main(arguments):
             "n_workers",
             "seed",
             "max_epochs",
+            "steps_per_epoch",
             "accumulate_grad_batches",
             "gradient_clip_val",
             ("warmup_steps", "warmup_epochs"),
@@ -196,13 +204,19 @@ def main(arguments):
 
     n_devices = len(devices) if isinstance(devices, list) else 1
     agb = args.accumulate_grad_batches
-    bs = network_config_correct["batch_size"]
-    steps_per_epoch = len(data_dict) // (bs * n_devices)
-    steps_per_epoch = int(np.ceil(steps_per_epoch / agb))
+    bs, _, steps_per_epoch = get_batch_size_and_steps_per_epoch(
+        network_config_correct["batch_size"],
+        n_devices,
+        len(train_dataset),
+        steps_per_epoch=args.steps_per_epoch,
+        logger_=logger,
+    )
+    network_config_correct["batch_size"] = bs
+    steps_per_epoch_optim = max(1, int(np.ceil(steps_per_epoch / agb)))
     max_epochs = args.max_epochs
     max_steps = -1
-    max_steps_optim = args.max_epochs * steps_per_epoch
-    warmup_steps = args.warmup_epochs * steps_per_epoch
+    max_steps_optim = args.max_epochs * steps_per_epoch_optim
+    warmup_steps = args.warmup_epochs * steps_per_epoch_optim
     check_val_every_n_epoch = args.check_val_every_n_epoch
     val_check_interval = None
     warmup_steps = int(warmup_steps)
@@ -215,11 +229,29 @@ def main(arguments):
     else:
         n_workers = args.n_workers // devices
 
+    train_sampler = get_train_sampler(
+        train_dataset,
+        steps_per_epoch,
+        bs,
+        n_devices=n_devices,
+        seed=args.seed,
+        generator=g,
+    )
+    val_sampler = get_train_sampler(
+        train_dataset,
+        steps_per_epoch,
+        bs,
+        n_devices=n_devices,
+        seed=args.seed + 1,
+        generator=g,
+    )
+
     def train_loader_call(batch_size, shuffle=True):
         return monai.data.ThreadDataLoader(
             train_dataset,
             batch_size=batch_size,
             num_workers=n_workers,
+            sampler=train_sampler,
             collate_fn=safe_collate,
             pin_memory=True,
             persistent_workers=n_workers > 1,
@@ -227,15 +259,22 @@ def main(arguments):
             prefetch_factor=8,
         )
 
-    train_loader = train_loader_call(
-        network_config_correct["batch_size"], False
-    )
+    train_loader = train_loader_call(bs, False)
     val_loader = monai.data.ThreadDataLoader(
         train_dataset,
-        batch_size=network_config_correct["batch_size"],
+        batch_size=bs,
         num_workers=n_workers,
         collate_fn=safe_collate,
+        sampler=val_sampler,
         drop_last=True,
+    )
+    log_steps_per_epoch(
+        logger,
+        steps_per_epoch,
+        len(train_loader),
+        bs,
+        n_devices,
+        len(train_dataset),
     )
 
     stop_gradient = get_stop_gradients(args.ssl_method)
@@ -332,8 +371,9 @@ def main(arguments):
         precision=precision,
         accumulate_grad_batches=args.accumulate_grad_batches,
         gradient_clip_val=args.gradient_clip_val,
-        limit_train_batches=len(train_loader) // n_devices,
+        limit_train_batches=steps_per_epoch,
         limit_val_batches=len(val_loader) // n_devices,
+        use_distributed_sampler=False,
     )
 
     torch.cuda.empty_cache()

@@ -33,9 +33,15 @@ from adell_mri.utils.monai_transforms import (
 )
 from adell_mri.utils.parser import parse_ids
 from adell_mri.utils.pl_callbacks import EMACallback, SpectralNorm
-from adell_mri.utils.pl_utils import get_ckpt_callback, get_devices, get_logger
+from adell_mri.utils.pl_utils import (
+    get_batch_size_and_steps_per_epoch,
+    get_ckpt_callback,
+    get_devices,
+    get_logger,
+    log_steps_per_epoch,
+)
 from adell_mri.utils.python_logging import get_logger as get_python_logger
-from adell_mri.utils.samplers import PartiallyRandomSampler
+from adell_mri.utils.samplers import PartiallyRandomSampler, get_train_sampler
 from adell_mri.utils.sitk_utils import (
     get_spacing_quantile,
     spacing_values_from_dataset_json,
@@ -118,7 +124,7 @@ def main(arguments):
             "batch_size",
             "gradient_clip_val",
             "max_epochs",
-            "dataset_iterations_per_epoch",
+            "steps_per_epoch",
             "precision",
             "n_folds",
             "folds",
@@ -376,11 +382,21 @@ def main(arguments):
         )
         validation_dataset = monai.data.Dataset(val_list, transforms_val)
 
-        n_samples = int(len(train_dataset) * args.dataset_iterations_per_epoch)
-        sampler = torch.utils.data.RandomSampler(
-            ["element" for _ in train_idxs],
-            num_samples=n_samples,
-            replacement=len(train_dataset) < n_samples,
+        n_devices = len(devices) if isinstance(devices, list) else 1
+        bs, _, steps_per_epoch = get_batch_size_and_steps_per_epoch(
+            network_config["batch_size"],
+            n_devices,
+            len(train_dataset),
+            steps_per_epoch=args.steps_per_epoch,
+            logger_=logger,
+        )
+        n_samples = steps_per_epoch * bs
+        sampler = get_train_sampler(
+            train_dataset,
+            steps_per_epoch,
+            bs,
+            n_devices=n_devices,
+            seed=args.seed,
             generator=g,
         )
         if isinstance(args.class_weights[0], str):
@@ -428,6 +444,7 @@ def main(arguments):
                     non_keep_ratio=args.constant_ratio,
                     seed=args.seed + get_global_rank(),
                 )
+                sampler.set_n_samples(n_samples)
                 if args.class_weights[0] == "adaptive":
                     adaptive_weights = 1 + args.constant_ratio
         # weights to tensor
@@ -455,15 +472,12 @@ def main(arguments):
             if loss_params["eps"] < 1e-4:
                 loss_params["eps"] = 1e-4
 
-        if isinstance(devices, list):
-            nw = args.n_workers // len(devices)
-        else:
-            nw = args.n_workers
+        nw = args.n_workers // n_devices
 
-        def train_loader_call(batch_size):
+        def train_loader_call(batch_size=None):
             return monai.data.ThreadDataLoader(
                 dataset=train_dataset,  # noqa: F821
-                batch_size=batch_size,  # noqa: F821
+                batch_size=bs,  # noqa: F821
                 num_workers=nw,
                 generator=g,
                 sampler=sampler,
@@ -474,7 +488,15 @@ def main(arguments):
                 prefetch_factor=8,
             )
 
-        train_loader = train_loader_call(network_config["batch_size"])
+        train_loader = train_loader_call(bs)
+        log_steps_per_epoch(
+            logger,
+            steps_per_epoch,
+            len(train_loader),
+            bs,
+            n_devices,
+            len(train_dataset),
+        )
         train_val_loader = monai.data.ThreadDataLoader(
             train_dataset_val,
             batch_size=1,
@@ -493,14 +515,18 @@ def main(arguments):
         )
 
         if args.ema_decay is not None:
-            steps_per_epoch = max(
-                1, len(train_loader) // args.accumulate_grad_batches
+            steps_per_epoch_optim = max(
+                1, int(np.ceil(steps_per_epoch / args.accumulate_grad_batches))
             )
             callbacks.append(
                 EMACallback(
                     decay=args.ema_decay,
-                    start_steps=int(args.ema_start_epoch * steps_per_epoch),
-                    warmup_steps=int(args.ema_warmup_epochs * steps_per_epoch),
+                    start_steps=int(
+                        args.ema_start_epoch * steps_per_epoch_optim
+                    ),
+                    warmup_steps=int(
+                        args.ema_warmup_epochs * steps_per_epoch_optim
+                    ),
                     use_ema_weights=True,
                 )
             )
@@ -596,6 +622,8 @@ def main(arguments):
             precision=precision,
             gradient_clip_val=args.gradient_clip_val,
             detect_anomaly=False,
+            limit_train_batches=steps_per_epoch,
+            use_distributed_sampler=False,
         )
 
         trainer.fit(unet, train_loader, train_val_loader, ckpt_path=ckpt_path)

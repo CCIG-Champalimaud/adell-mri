@@ -1,5 +1,4 @@
 import ast
-import os
 import sys
 
 import monai
@@ -34,13 +33,18 @@ from adell_mri.utils.pl_callbacks import (
     SetSamplerEpoch,
     SpectralNorm,
 )
-from adell_mri.utils.pl_utils import get_ckpt_callback, get_devices, get_logger
+from adell_mri.utils.pl_utils import (
+    get_batch_size_and_steps_per_epoch,
+    get_ckpt_callback,
+    get_devices,
+    get_logger,
+    log_steps_per_epoch,
+)
 from adell_mri.utils.python_logging import get_logger as get_python_logger
-from adell_mri.utils.samplers import DistributedRandomSampler
+from adell_mri.utils.samplers import get_train_sampler
 from adell_mri.utils.torch_utils import (
     conditional_parameter_freezing,
     get_generator_and_rng,
-    get_global_rank,
     load_checkpoint_to_model,
 )
 
@@ -561,39 +565,24 @@ def main(arguments):
         logger.info("Latent shape inferred from the data: %s", latent_shape)
 
     n_workers = args.n_workers // n_devices
-    bs = network_config["batch_size"]
-    real_bs = bs * n_devices
-    if len(train_dataset) < real_bs:
-        new_bs = max(1, len(train_dataset) // n_devices)
-        logger.info(
-            "Batch size changed from %s to %s (dataset too small)",
-            bs,
-            new_bs,
-        )
-        bs = new_bs
-        real_bs = bs * n_devices
-    steps_per_epoch = args.steps_per_epoch or max(
-        1, len(train_dataset) // real_bs
+    bs, _, steps_per_epoch = get_batch_size_and_steps_per_epoch(
+        network_config["batch_size"],
+        n_devices,
+        len(train_dataset),
+        steps_per_epoch=args.steps_per_epoch,
+        logger_=logger,
     )
+    network_config["batch_size"] = bs
 
     def train_loader_call(batch_size):
-        num_samples = steps_per_epoch * batch_size
-        if n_devices > 1:
-            sampler = DistributedRandomSampler(
-                train_dataset,
-                num_samples=num_samples * n_devices,
-                num_replicas=n_devices,
-                rank=get_global_rank(),
-                replacement=(num_samples * n_devices) > len(train_dataset),
-                seed=args.seed,
-            )
-        else:
-            sampler = torch.utils.data.RandomSampler(
-                train_dataset,
-                replacement=num_samples > len(train_dataset),
-                num_samples=num_samples,
-                generator=g,
-            )
+        sampler = get_train_sampler(
+            train_dataset,
+            steps_per_epoch,
+            batch_size,
+            n_devices=n_devices,
+            seed=args.seed,
+            generator=g,
+        )
         loader_kwargs = {
             "batch_size": batch_size,
             "num_workers": n_workers,
@@ -738,14 +727,12 @@ def main(arguments):
                 LogImageFromDiffusionProcess(n_images=1, size=size)
             )
 
-    logger.info(
-        "Training with steps_per_epoch=%s (train batches=%s, "
-        "batch_size=%s, devices=%s, samples_per_epoch=%s, train_size=%s)",
+    log_steps_per_epoch(
+        logger,
         steps_per_epoch,
         len(train_loader),
         bs,
         n_devices,
-        steps_per_epoch * bs * n_devices,
         len(train_dataset),
     )
 

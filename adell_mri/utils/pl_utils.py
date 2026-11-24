@@ -255,6 +255,87 @@ def get_step_information(
     )
 
 
+def get_batch_size_and_steps_per_epoch(
+    batch_size: int,
+    n_devices: int,
+    dataset_size: int,
+    steps_per_epoch: int | None = None,
+    n_samples: int | None = None,
+    logger_: Any = None,
+) -> Tuple[int, int, int]:
+    """
+    Resolves the per-device batch size and the number of training batches per
+    epoch.
+
+    The batch size is reduced when it does not fit the dataset (a batch size of
+    at least one is always kept). When ``steps_per_epoch`` is not specified, it
+    is derived from the number of available samples and the global batch size.
+
+    Args:
+        batch_size (int): requested per-device batch size.
+        n_devices (int): number of training devices.
+        dataset_size (int): number of records in the training dataset.
+        steps_per_epoch (int | None, optional): explicit number of batches per
+            epoch. Defaults to None.
+        n_samples (int | None, optional): number of samples available per
+            epoch. Defaults to None (``dataset_size``).
+        logger_ (Any, optional): logger used to report batch size changes.
+            Defaults to None.
+
+    Returns:
+        tuple[int, int, int]: per-device batch size, global batch size and
+            number of batches per epoch.
+    """
+    bs = max(1, int(batch_size))
+    real_bs = bs * n_devices
+    if dataset_size < real_bs:
+        new_bs = max(1, dataset_size // n_devices)
+        if logger_ is not None:
+            logger_.info(
+                "Batch size changed from %s to %s (dataset too small)",
+                bs,
+                new_bs,
+            )
+        bs = new_bs
+        real_bs = bs * n_devices
+    if steps_per_epoch is None or steps_per_epoch <= 0:
+        if n_samples is None:
+            n_samples = dataset_size
+        steps_per_epoch = max(1, int(n_samples) // real_bs)
+    return bs, real_bs, int(steps_per_epoch)
+
+
+def log_steps_per_epoch(
+    logger_: Any,
+    steps_per_epoch: int,
+    train_batches: int,
+    batch_size: int,
+    n_devices: int,
+    dataset_size: int,
+) -> None:
+    """
+    Logs the resolved training schedule.
+
+    Args:
+        logger_ (Any): logger.
+        steps_per_epoch (int): number of batches per epoch.
+        train_batches (int): number of batches in the training loader.
+        batch_size (int): per-device batch size.
+        n_devices (int): number of training devices.
+        dataset_size (int): number of records in the training dataset.
+    """
+    logger_.info(
+        "Training with steps_per_epoch=%s (train batches=%s, "
+        "batch_size=%s, devices=%s, samples_per_epoch=%s, train_size=%s)",
+        steps_per_epoch,
+        train_batches,
+        batch_size,
+        n_devices,
+        steps_per_epoch * batch_size * n_devices,
+        dataset_size,
+    )
+
+
 def get_ckpt_callback(
     checkpoint_dir: str,
     checkpoint_name: str,

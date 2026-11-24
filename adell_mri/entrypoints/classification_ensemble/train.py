@@ -28,11 +28,14 @@ from adell_mri.utils.parser import get_params, merge_args, parse_ids
 from adell_mri.utils.pl_callbacks import EMACallback, SpectralNorm
 from adell_mri.utils.pl_utils import (
     delete_checkpoints,
+    get_batch_size_and_steps_per_epoch,
     get_ckpt_callback,
     get_devices,
     get_logger,
+    log_steps_per_epoch,
 )
 from adell_mri.utils.python_logging import get_logger as get_python_logger
+from adell_mri.utils.samplers import get_train_sampler
 from adell_mri.utils.torch_utils import (
     conditional_parameter_freezing,
     get_class_weights,
@@ -88,6 +91,7 @@ def main(arguments):
             "partial_mixup",
             "dropout_param",
             "max_epochs",
+            "steps_per_epoch",
             "n_folds",
             "folds",
             "excluded_ids",
@@ -391,6 +395,16 @@ def main(arguments):
         )
         validation_dataset = monai.data.Dataset(val_list, transforms_val)
 
+        n_workers = args.n_workers // n_devices
+        bs, _, steps_per_epoch = get_batch_size_and_steps_per_epoch(
+            ensemble_config["batch_size"],
+            n_devices,
+            len(train_dataset),
+            steps_per_epoch=args.steps_per_epoch,
+            logger_=python_logger,
+        )
+        ensemble_config["batch_size"] = bs
+
         classes = []
         for p in train_list:
             P = str(p[args.label_keys])
@@ -412,11 +426,22 @@ def main(arguments):
             weight_vector = np.array([weights[k] for k in classes])
             weight_vector = np.where(weight_vector < 0.25, 0.25, weight_vector)
             weight_vector = np.where(weight_vector > 4, 4, weight_vector)
+            num_samples = steps_per_epoch * bs
             sampler = torch.utils.data.WeightedRandomSampler(
-                weight_vector, len(weight_vector), generator=g
+                weight_vector,
+                num_samples=num_samples,
+                replacement=num_samples > len(weight_vector),
+                generator=g,
             )
         else:
-            sampler = None
+            sampler = get_train_sampler(
+                train_dataset,
+                steps_per_epoch,
+                bs,
+                n_devices=n_devices,
+                seed=args.seed,
+                generator=g,
+            )
 
         # PL needs a little hint to detect GPUs.
         torch.ones([1]).to("cuda" if "cuda" in args.dev else "cpu")
@@ -453,24 +478,11 @@ def main(arguments):
                 class_weights
             )
 
-        n_workers = args.n_workers // n_devices
-        bs = ensemble_config["batch_size"]
-        real_bs = bs * n_devices
-        if len(train_dataset) < real_bs:
-            new_bs = len(train_dataset) // n_devices
-            python_logger.info(
-                "Batch size changed from %s to %s (dataset too small)",
-                bs,
-                new_bs,
-            )
-            bs = new_bs
-            real_bs = bs * n_devices
-
         def train_loader_call(augment: bool = True):
             return monai.data.ThreadDataLoader(
                 train_dataset if augment else train_dataset_no_aug,
                 batch_size=bs,
-                shuffle=sampler is None,
+                shuffle=False,
                 num_workers=n_workers,
                 generator=g,
                 collate_fn=safe_collate,
@@ -482,16 +494,24 @@ def main(arguments):
             )
 
         train_loader = train_loader_call()
+        log_steps_per_epoch(
+            python_logger,
+            steps_per_epoch,
+            len(train_loader),
+            bs,
+            n_devices,
+            len(train_dataset),
+        )
         train_val_loader = monai.data.ThreadDataLoader(
             train_dataset_val,
-            batch_size=ensemble_config["batch_size"],
+            batch_size=bs,
             shuffle=False,
             num_workers=n_workers,
             collate_fn=safe_collate,
         )
         validation_loader = monai.data.ThreadDataLoader(
             validation_dataset,
-            batch_size=ensemble_config["batch_size"],
+            batch_size=bs,
             shuffle=False,
             num_workers=n_workers,
             collate_fn=safe_collate,
@@ -593,14 +613,18 @@ def main(arguments):
             callbacks.append(spectral_norm)
 
         if args.ema_decay is not None:
-            steps_per_epoch = max(
-                1, len(train_loader) // args.accumulate_grad_batches
+            steps_per_epoch_optim = max(
+                1, int(np.ceil(steps_per_epoch / args.accumulate_grad_batches))
             )
             callbacks.append(
                 EMACallback(
                     decay=args.ema_decay,
-                    start_steps=int(args.ema_start_epoch * steps_per_epoch),
-                    warmup_steps=int(args.ema_warmup_epochs * steps_per_epoch),
+                    start_steps=int(
+                        args.ema_start_epoch * steps_per_epoch_optim
+                    ),
+                    warmup_steps=int(
+                        args.ema_warmup_epochs * steps_per_epoch_optim
+                    ),
                     use_ema_weights=True,
                 )
             )
@@ -633,6 +657,8 @@ def main(arguments):
             accumulate_grad_batches=args.accumulate_grad_batches,
             check_val_every_n_epoch=1,
             deterministic="warn",
+            limit_train_batches=steps_per_epoch,
+            use_distributed_sampler=False,
         )
 
         trainer.fit(

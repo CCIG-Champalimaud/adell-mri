@@ -37,9 +37,15 @@ from adell_mri.utils.network_factories import get_segmentation_network
 from adell_mri.utils.optimizer_factory import optimizer_eps_from_precision
 from adell_mri.utils.parser import parse_ids
 from adell_mri.utils.pl_callbacks import EMACallback, SpectralNorm
-from adell_mri.utils.pl_utils import get_ckpt_callback, get_devices, get_logger
+from adell_mri.utils.pl_utils import (
+    get_batch_size_and_steps_per_epoch,
+    get_ckpt_callback,
+    get_devices,
+    get_logger,
+    log_steps_per_epoch,
+)
 from adell_mri.utils.python_logging import get_logger as get_python_logger
-from adell_mri.utils.samplers import PartiallyRandomSampler
+from adell_mri.utils.samplers import PartiallyRandomSampler, get_train_sampler
 from adell_mri.utils.sitk_utils import (
     get_spacing_quantile,
     spacing_values_from_dataset_json,
@@ -128,8 +134,7 @@ def main(arguments):
             "batch_size",
             "gradient_clip_val",
             "max_epochs",
-            "dataset_iterations_per_epoch",
-            "samples_per_epoch",
+            "steps_per_epoch",
             "validation_samples_per_epoch",
             "precision",
             "n_folds",
@@ -501,18 +506,41 @@ def main(arguments):
         else:
             all_feature_params = None
 
-        if args.samples_per_epoch is not None:
-            n_samples = args.samples_per_epoch
+        if isinstance(devices, list):
+            n_devices = len(devices)
+            nw = args.n_workers // n_devices
         else:
-            n_samples = int(
-                len(train_dataset) * args.dataset_iterations_per_epoch
-            )
+            n_devices = 1
+            nw = args.n_workers
+
+        n_samples_available = len(train_dataset)
+        bs, _, steps_per_epoch = get_batch_size_and_steps_per_epoch(
+            network_config["batch_size"],
+            n_devices,
+            len(train_dataset),
+            steps_per_epoch=args.steps_per_epoch,
+            n_samples=n_samples_available,
+            logger_=logger,
+        )
+        network_config["batch_size"] = bs
+        n_samples = steps_per_epoch * bs
         sampler = torch.utils.data.RandomSampler(
             ["element" for _ in train_idxs],
             num_samples=n_samples,
             replacement=len(train_dataset) < n_samples,
             generator=g,
         )
+        if args.semi_supervised is True:
+            semi_sl_sampler = get_train_sampler(
+                train_semi_sl_dataset,
+                steps_per_epoch,
+                bs,
+                n_devices=n_devices,
+                seed=args.seed,
+                generator=g,
+            )
+        else:
+            semi_sl_sampler = None
 
         val_sampler = None
         if args.validation_samples_per_epoch is not None:
@@ -559,15 +587,7 @@ def main(arguments):
                     non_keep_ratio=args.constant_ratio,
                     seed=args.seed + get_global_rank(),
                 )
-                if args.samples_per_epoch is not None:
-                    sampler.set_n_samples(args.samples_per_epoch)
-                elif args.dataset_iterations_per_epoch != 1.0:
-                    sampler.set_n_samples(
-                        int(sampler.n * args.dataset_iterations_per_epoch)
-                    )
-                    val_sampler.set_n_samples(
-                        int(val_sampler.n * args.dataset_iterations_per_epoch)
-                    )
+                sampler.set_n_samples(n_samples)
                 if args.validation_samples_per_epoch is not None:
                     val_sampler.set_n_samples(args.validation_samples_per_epoch)
                 if args.class_weights[0] == "adaptive":
@@ -602,13 +622,6 @@ def main(arguments):
         if "32" not in args.precision:
             network_config["loss_fn"].replace_item("eps", 1e-4)
 
-        if isinstance(devices, list):
-            n_devices = len(devices)
-            nw = args.n_workers // n_devices
-        else:
-            n_devices = 1
-            nw = args.n_workers
-
         def train_loader_call(batch_size):
             train_loader = torch.utils.data.DataLoader(
                 dataset=train_dataset,  # noqa: F821
@@ -631,7 +644,7 @@ def main(arguments):
                     pin_memory=True,
                     persistent_workers=True,
                     drop_last=True,
-                    shuffle=True,
+                    sampler=semi_sl_sampler,
                 )
                 train_loader = CombinedLoader(
                     {
@@ -675,17 +688,29 @@ def main(arguments):
                 "min_size",
             )
 
+        steps_per_epoch_optim = max(
+            1, int(np.ceil(steps_per_epoch / args.accumulate_grad_batches))
+        )
         max_steps_optim = len(iter(train_loader)) * args.max_epochs
+        log_steps_per_epoch(
+            logger,
+            steps_per_epoch,
+            len(iter(train_loader)),
+            bs,
+            n_devices,
+            len(train_dataset),
+        )
 
         if args.ema_decay is not None:
-            steps_per_epoch = max(
-                1, len(iter(train_loader)) // args.accumulate_grad_batches
-            )
             callbacks.append(
                 EMACallback(
                     decay=args.ema_decay,
-                    start_steps=int(args.ema_start_epoch * steps_per_epoch),
-                    warmup_steps=int(args.ema_warmup_epochs * steps_per_epoch),
+                    start_steps=int(
+                        args.ema_start_epoch * steps_per_epoch_optim
+                    ),
+                    warmup_steps=int(
+                        args.ema_warmup_epochs * steps_per_epoch_optim
+                    ),
                     use_ema_weights=True,
                 )
             )
@@ -833,8 +858,9 @@ def main(arguments):
             detect_anomaly=False,
             # some weird bug does not correctly infer the number of train/val
             # batches so below we do it explicitly
-            limit_train_batches=len(iter(train_loader)) // n_devices,
+            limit_train_batches=steps_per_epoch,
             limit_val_batches=len(iter(train_val_loader)) // n_devices,
+            use_distributed_sampler=False,
         )
 
         trainer.fit(unet, train_loader, train_val_loader, ckpt_path=ckpt_path)

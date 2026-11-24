@@ -589,14 +589,6 @@ argument_factory = {
         type=float,
         help="Sets learning rate for encoder.",
     ),
-    "dataset_iterations_per_epoch": dict(
-        default=1.0, type=float, help="Number of dataset iterations per epoch"
-    ),
-    "samples_per_epoch": dict(
-        default=None,
-        type=int,
-        help="Number of training samples per epoch",
-    ),
     "validation_samples_per_epoch": dict(
         default=None,
         type=int,

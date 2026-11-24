@@ -27,7 +27,13 @@ from adell_mri.utils.pl_callbacks import (
     LogImageFromGAN,
     SpectralNorm,
 )
-from adell_mri.utils.pl_utils import get_ckpt_callback, get_devices, get_logger
+from adell_mri.utils.pl_utils import (
+    get_batch_size_and_steps_per_epoch,
+    get_ckpt_callback,
+    get_devices,
+    get_logger,
+    log_steps_per_epoch,
+)
 from adell_mri.utils.python_logging import get_logger as get_python_logger
 from adell_mri.utils.torch_utils import (
     conditional_parameter_freezing,
@@ -271,11 +277,23 @@ def main(arguments):
     transforms.set_random_state(args.seed)
 
     train_dataset = DICOMDataset(train_list, transforms)
-    if args.steps_per_epoch is not None:
-        n_samples = args.steps_per_epoch * network_config["batch_size"]
-    else:
-        n_samples = None
+    bs, _, steps_per_epoch = get_batch_size_and_steps_per_epoch(
+        network_config["batch_size"],
+        n_devices,
+        len(train_list),
+        steps_per_epoch=args.steps_per_epoch,
+        n_samples=len(train_list) * args.n_series_iterations,
+        logger_=logger,
+    )
+    network_config["batch_size"] = bs
+    n_samples = steps_per_epoch * bs
     sampler = SliceSampler(
+        train_list,
+        n_iterations=args.n_series_iterations,
+        n_samples=n_samples,
+        seed=args.seed + get_global_rank(),
+    )
+    val_sampler = SliceSampler(
         train_list,
         n_iterations=args.n_series_iterations,
         n_samples=n_samples,
@@ -300,24 +318,26 @@ def main(arguments):
             prefetch_factor=8,
         )
 
-    train_loader = train_loader_call(network_config["batch_size"])
+    train_loader = train_loader_call(bs)
     val_loader = monai.data.ThreadDataLoader(
         train_dataset,
-        batch_size=network_config["batch_size"],
+        batch_size=bs,
         num_workers=n_workers,
         collate_fn=safe_collate,
-        sampler=sampler,
+        sampler=val_sampler,
         drop_last=True,
     )
 
-    n_devices = len(devices) if isinstance(devices, list) else 1
     agb = args.accumulate_grad_batches
-    steps_per_epoch = (
-        args.steps_per_epoch
-        if args.steps_per_epoch is not None
-        else len(train_loader) // n_devices
+    steps_per_epoch_optim = max(1, int(np.ceil(steps_per_epoch / agb)))
+    log_steps_per_epoch(
+        logger,
+        steps_per_epoch,
+        len(train_loader),
+        bs,
+        n_devices,
+        len(train_list),
     )
-    steps_per_epoch_optim = max(1, steps_per_epoch // agb)
 
     if args.model_type == "gan":
         model = get_gan_network(
@@ -330,7 +350,7 @@ def main(arguments):
             numerical_moments=(means, stds),
             input_image_key=input_image_key,
             max_epochs=args.max_epochs,
-            steps_per_epoch=steps_per_epoch_optim,
+            steps_per_epoch=steps_per_epoch,
             pct_start=args.warmup_steps,
             optimizer_eps=optimizer_eps_from_precision(args.precision),
         )
@@ -462,6 +482,7 @@ def main(arguments):
         gradient_clip_val=args.gradient_clip_val,
         limit_train_batches=steps_per_epoch,
         limit_val_batches=len(val_loader) // n_devices,
+        use_distributed_sampler=False,
     )
 
     torch.cuda.empty_cache()

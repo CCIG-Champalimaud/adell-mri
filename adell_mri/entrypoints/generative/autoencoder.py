@@ -7,6 +7,7 @@ import os
 from typing import Any
 
 import monai
+import numpy as np
 import torch
 from lightning.pytorch import Trainer
 from lightning.pytorch.callbacks import RichProgressBar
@@ -14,8 +15,12 @@ from lightning.pytorch.callbacks import RichProgressBar
 from adell_mri.modules.gan.pl.ae import AutoEncoderPL, VariationalAutoEncoderPL
 from adell_mri.utils.generic_utils import safe_collate
 from adell_mri.utils.pl_callbacks import EMACallback, SetSamplerEpoch
-from adell_mri.utils.pl_utils import get_ckpt_callback
-from adell_mri.utils.samplers import DistributedRandomSampler
+from adell_mri.utils.pl_utils import (
+    get_batch_size_and_steps_per_epoch,
+    get_ckpt_callback,
+    log_steps_per_epoch,
+)
+from adell_mri.utils.samplers import get_train_sampler
 from adell_mri.utils.torch_utils import (
     get_global_rank,
     load_checkpoint_to_model,
@@ -267,23 +272,14 @@ def make_autoencoder_loader(
         "generator": generator,
     }
     if steps_per_epoch is not None:
-        num_samples = steps_per_epoch * batch_size
-        if n_devices > 1:
-            kwargs["sampler"] = DistributedRandomSampler(
-                dataset,
-                num_samples=num_samples * n_devices,
-                num_replicas=n_devices,
-                rank=rank,
-                replacement=(num_samples * n_devices) > len(dataset),
-                seed=seed,
-            )
-        else:
-            kwargs["sampler"] = torch.utils.data.RandomSampler(
-                dataset,
-                replacement=num_samples > len(dataset),
-                num_samples=num_samples,
-                generator=generator,
-            )
+        kwargs["sampler"] = get_train_sampler(
+            dataset,
+            steps_per_epoch,
+            batch_size,
+            n_devices=n_devices,
+            seed=seed,
+            generator=generator,
+        )
         kwargs["shuffle"] = False
     if n_workers > 0:
         kwargs["persistent_workers"] = True
@@ -429,13 +425,16 @@ def ensure_autoencoder(
             )
         accumulate_grad_batches = 1
 
-    batch_size = max(1, parsed_config["batch_size"] // n_devices)
-    steps_per_epoch = args.steps_per_epoch or max(
-        1, len(train_list) // batch_size
+    batch_size, _, steps_per_epoch = get_batch_size_and_steps_per_epoch(
+        parsed_config["batch_size"],
+        n_devices,
+        len(train_list),
+        steps_per_epoch=args.steps_per_epoch,
+        logger_=logger,
     )
     if args.ema_decay is not None:
         steps_per_epoch_optim = max(
-            1, steps_per_epoch // accumulate_grad_batches
+            1, int(np.ceil(steps_per_epoch / accumulate_grad_batches))
         )
         callbacks.append(
             EMACallback(
@@ -474,14 +473,12 @@ def ensure_autoencoder(
         seed=args.seed,
         shuffle=False,
     )
-    logger.info(
-        "Training autoencoder with steps_per_epoch=%s (train batches=%s, "
-        "batch_size=%s, devices=%s, samples_per_epoch=%s, train_size=%s)",
+    log_steps_per_epoch(
+        logger,
         steps_per_epoch,
         len(train_loader),
         batch_size,
         n_devices,
-        steps_per_epoch * batch_size * n_devices,
         len(train_list),
     )
 
@@ -499,7 +496,7 @@ def ensure_autoencoder(
         precision=args.precision,
         deterministic="warn",
         limit_train_batches=steps_per_epoch,
-        use_distributed_sampler=n_devices == 1,
+        use_distributed_sampler=False,
     )
     trainer.fit(
         autoencoder,
