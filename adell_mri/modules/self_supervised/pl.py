@@ -32,6 +32,7 @@ from adell_mri.modules.self_supervised.losses import (
 from adell_mri.utils.optimizer_factory import OPTIMIZER_EPS_DEFAULT
 from adell_mri.utils.pl_utils import log_current_lr
 from adell_mri.utils.python_logging import get_logger
+from adell_mri.utils.torch_utils import ExponentialMovingAverage
 
 logger = get_logger(__name__)
 
@@ -463,7 +464,7 @@ class SelfSLResNetPL(ResNet, SelfSLBasePL):
         n_steps: int = None,
         warmup_steps: int = 0,
         start_decay: int = None,
-        ema: torch.nn.Module = None,
+        ema: ExponentialMovingAverage = None,
         ssl_method: str = "simclr",
         temperature: float = 1.0,
         vic_reg_loss_params: dict = {},
@@ -555,8 +556,6 @@ class SelfSLResNetPL(ResNet, SelfSLBasePL):
         self.init_loss()
         if self.ema is not None:
             self.ema.update(self)
-        else:
-            self.ema = None
 
         self.loss_str_dict = {
             "standard": [None],
@@ -629,7 +628,7 @@ class SelfSLUNetPL(UNet, SelfSLBasePL):
         n_steps: int = None,
         warmup_steps: int = 0,
         start_decay: int = None,
-        ema: torch.nn.Module = None,
+        ema: ExponentialMovingAverage = None,
         ssl_method: str = "simclr",
         temperature: float = 1.0,
         vic_reg_loss_params: dict = {},
@@ -722,8 +721,6 @@ class SelfSLUNetPL(UNet, SelfSLBasePL):
         self.init_loss()
         if self.ema is not None:
             self.ema.update(self)
-        else:
-            self.ema = None
 
         self.loss_str_dict = {
             "standard": [None],
@@ -788,7 +785,7 @@ class SelfSLConvNeXtPL(ConvNeXt, SelfSLBasePL):
         n_steps: int = None,
         warmup_steps: int = 0,
         start_decay: int = None,
-        ema: torch.nn.Module = None,
+        ema: ExponentialMovingAverage = None,
         ssl_method: str = "simclr",
         temperature: float = 1.0,
         vic_reg_loss_params: dict = {},
@@ -881,8 +878,6 @@ class SelfSLConvNeXtPL(ConvNeXt, SelfSLBasePL):
         self.init_loss()
         if self.ema is not None:
             self.ema.update(self)
-        else:
-            self.ema = None
 
         self.loss_str_dict = {
             "standard": [None],
@@ -930,8 +925,8 @@ class IJEPAPL(IJEPA, SelfSLBasePL):
         n_steps: int = None,
         warmup_steps: int = 0,
         start_decay: int = None,
-        ema: torch.nn.Module = None,
-        ssl_method: str = "simclr",
+        ema: ExponentialMovingAverage = None,
+        ssl_method: str | None = None,
         temperature: float = 1.0,
         vic_reg_loss_params: dict = {},
         stop_gradient: bool = True,
@@ -1011,7 +1006,8 @@ class IJEPAPL(IJEPA, SelfSLBasePL):
             )
 
         self.init_loss()
-        self.ema.update(self)
+        if self.ema is not None:
+            self.ema.update(self)
 
         self.save_hyperparameters()
         self.setup_metrics()
@@ -1112,7 +1108,7 @@ class DINOPL(DINO, SelfSLBasePL):
         stop_gradient: bool = True,
         channels_to_batch: bool = False,
         optimizer_eps: float = OPTIMIZER_EPS_DEFAULT,
-        ema: torch.nn.Module = None,
+        ema: ExponentialMovingAverage = None,
         centers_m: float = 0.9,
         teacher_score_method: str = "center",
         *args,
@@ -1229,7 +1225,7 @@ class iBOTPL(iBOT, SelfSLBasePL):
         stop_gradient: bool = True,
         channels_to_batch: bool = False,
         optimizer_eps: float = OPTIMIZER_EPS_DEFAULT,
-        ema: torch.nn.Module = None,
+        ema: ExponentialMovingAverage = None,
         centers_m: float = 0.9,
         teacher_score_method: str = "center",
         *args,
@@ -1260,6 +1256,7 @@ class iBOTPL(iBOT, SelfSLBasePL):
         super().__init__(*args, **kwargs)
 
         self.ema = ema
+        self.ema.set_shadow(self)
 
         if self.ema is None:
             raise ValueError(

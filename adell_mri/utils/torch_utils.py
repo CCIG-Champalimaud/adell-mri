@@ -67,6 +67,19 @@ class ExponentialMovingAverage(torch.nn.Module):
             if p.requires_grad is True:
                 p.requires_grad = False
 
+    def set_shadow(self, model: torch.nn.Module):
+        """
+        Sets the shadow to avoid accessing shadow during `state_dict` access
+        operations and to avoid skipping the first epoch.
+
+        Args:
+            model (torch.nn.Module): torch module.
+        """
+        logger.info("Setting shadow for EMA")
+        self.shadow = deepcopy(model)
+        self.shadow.training = False
+        self.set_requires_grad_false(self.shadow)
+
     @torch.no_grad()
     def update(self, model: torch.nn.Module, exclude_keys: list[str] = None):
         """
@@ -79,10 +92,8 @@ class ExponentialMovingAverage(torch.nn.Module):
             exclude_keys (list[str]): excludes these keys from the update.
         """
         if self.shadow is None:
-            # this effectively skips the first epoch
-            self.shadow = deepcopy(model)
-            self.shadow.training = False
-            self.set_requires_grad_false(self.shadow)
+            # skips the first epoch if self.set_shadow is not called beforehand
+            self.set_shadow(model)
         else:
             if exclude_keys is None:
                 exclude_keys = []
@@ -123,14 +134,18 @@ class ExponentialMovingAverage(torch.nn.Module):
         """
         return self.shadow.forward(*args, **kwargs)
 
-    def state_dict(self) -> dict[str, torch.Tensor]:
+    def state_dict(self, *args, **kwargs) -> dict[str, torch.Tensor]:
         """
         Wrapper for the shadow model ``state_dict`` function.
 
         Returns:
             dict[str, torch.Tensor]: returns the ``shadows``'s state dict.
+            *args, **kwargs: arguments and keyword arguments for the
+                `state_dict` call.
         """
-        return self.shadow.state_dict()
+        if self.shadow is None:
+            return {}
+        return self.shadow.state_dict(*args, **kwargs)
 
     def load_state_dict(self, state_dict: dict[str, torch.Tensor]):
         """
