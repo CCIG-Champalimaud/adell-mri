@@ -659,6 +659,7 @@ def get_segmentation_network(
             encoder=encoder,
             encoder_in_channels=manifest.get("in_channels"),
             input_shape=size,
+            encoder_config=manifest,
             image_key="image",
             deep_supervision=deep_supervision,
             **boilerplate,

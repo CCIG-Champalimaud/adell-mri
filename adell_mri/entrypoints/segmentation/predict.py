@@ -28,6 +28,25 @@ def if_none_else(x, obj):
     return x
 
 
+def _read_encoder_config_from_checkpoint(checkpoint):
+    if checkpoint is None:
+        raise ValueError(
+            "--net_type encoder_unet requires --encoder_checkpoint or a "
+            "trained checkpoint containing an encoder_config entry"
+        )
+    path = (
+        checkpoint[0] if isinstance(checkpoint, (list, tuple)) else checkpoint
+    )
+    ckpt = torch.load(path, map_location="cpu", weights_only=False)
+    encoder_config = ckpt.get("encoder_config")
+    if encoder_config is None:
+        raise ValueError(
+            "The checkpoint does not contain an encoder_config entry. "
+            "Provide --encoder_checkpoint explicitly."
+        )
+    return encoder_config
+
+
 def inter_size(a, b):
     return len(set.intersection(set(a), set(b)))
 
@@ -87,10 +106,6 @@ def main(arguments):
         raise ValueError(
             "--encoder_checkpoint can only be used with "
             "--net_type encoder_unet"
-        )
-    if args.net_type == "encoder_unet" and args.encoder_checkpoint is None:
-        raise ValueError(
-            "--net_type encoder_unet requires --encoder_checkpoint"
         )
 
     if args.possible_labels == 2 or args.positive_labels is not None:
@@ -220,6 +235,12 @@ def main(arguments):
         )
     else:
         all_feature_params = None
+
+    if args.net_type == "encoder_unet" and args.encoder_checkpoint is None:
+        encoder_config = _read_encoder_config_from_checkpoint(args.checkpoint)
+        args.encoder_checkpoint = [
+            {"state_dict": {}, "encoder_config": encoder_config}
+        ]
 
     encoding_operations = [None]
 

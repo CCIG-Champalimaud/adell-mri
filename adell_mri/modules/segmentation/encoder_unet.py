@@ -30,6 +30,7 @@ class EncoderUNet(UNet):
         input_shape: list[int] | None = None,
         depth: list[int] | None = None,
         kernel_sizes: list[int] | None = None,
+        encoder_config: dict | None = None,
         *args,
         **kwargs,
     ):
@@ -48,12 +49,16 @@ class EncoderUNet(UNet):
                 encoder channels are used).
             kernel_sizes (list[int], optional): decoder kernel sizes. Defaults
                 to None (3 in every level).
+            encoder_config (dict, optional): manifest describing the encoder.
+                Stored in checkpoints so that the encoder can be rebuilt at
+                inference time. Defaults to None.
             args: positional arguments forwarded to :class:`UNet`.
             kwargs: keyword arguments forwarded to :class:`UNet`.
         """
         super().__init__(*args, parent_class=True, **kwargs)
 
         self.encoder = encoder
+        self.encoder_config = encoder_config
         self.encoder_in_channels = encoder_in_channels or self.in_channels
         self.probe_input_shape = input_shape
         if depth is not None:

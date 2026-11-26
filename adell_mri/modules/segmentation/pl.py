@@ -803,6 +803,7 @@ class EncoderUNetPL(EncoderUNet, UNetBasePL):
         encoder: torch.nn.Module,
         encoder_in_channels: int | None = None,
         input_shape: list[int] | None = None,
+        encoder_config: dict | None = None,
         image_key: str = "image",
         label_key: str = "label",
         skip_conditioning_key: str = None,
@@ -830,6 +831,8 @@ class EncoderUNetPL(EncoderUNet, UNetBasePL):
                 the encoder. Defaults to None.
             input_shape (list[int], optional): spatial shape used to probe the
                 encoder. Defaults to None.
+            encoder_config (dict, optional): manifest describing the encoder.
+                Defaults to None.
             image_key (str): key corresponding to the input from the train
                 dataloader.
             label_key (str): key corresponding to the label map from the train
@@ -868,6 +871,7 @@ class EncoderUNetPL(EncoderUNet, UNetBasePL):
             encoder=encoder,
             encoder_in_channels=encoder_in_channels,
             input_shape=input_shape,
+            encoder_config=encoder_config,
             **kwargs,
         )
 
@@ -891,6 +895,16 @@ class EncoderUNetPL(EncoderUNet, UNetBasePL):
         )
 
         self.bn_mult = 0.1
+
+    def on_save_checkpoint(self, checkpoint: dict) -> None:
+        """
+        Stores the encoder manifest in the checkpoint.
+
+        Args:
+            checkpoint (dict): checkpoint dictionary.
+        """
+        if self.encoder_config is not None:
+            checkpoint["encoder_config"] = self.encoder_config
 
 
 class UNETRPL(UNETR, UNetBasePL):
