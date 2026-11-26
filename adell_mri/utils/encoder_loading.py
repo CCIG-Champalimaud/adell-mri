@@ -378,8 +378,12 @@ def infer_encoder_family(state_dict: dict[str, torch.Tensor]) -> str:
     if any(key.startswith("encoding_operations.") for key in keys):
         return "unet"
     if any(key.startswith("backbone.") for key in keys):
-        if any("first_layer_stride" in key for key in keys):
-            return "convnext"
+        for key, value in state_dict.items():
+            if key.endswith("backbone.input_layer.0.weight"):
+                kernel_size = value.shape[2:]
+                if kernel_size and all(size == 4 for size in kernel_size):
+                    return "convnext"
+                return "resnet"
         return "resnet"
     raise ValueError(
         "Could not infer the encoder family from the checkpoint state dict"

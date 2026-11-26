@@ -215,6 +215,44 @@ def test_manifest_falls_back_to_hyper_parameters():
     load_ssl_encoder(checkpoint)
 
 
+@pytest.mark.parametrize(
+    "checkpoint_factory,expected_family,backbone_args",
+    [
+        (
+            _resnet_checkpoint,
+            "resnet",
+            {
+                "spatial_dim": 2,
+                "in_channels": 1,
+                "structure": [[8, 8, 3, 1], [16, 16, 3, 1]],
+                "maxpool_structure": [2, 2],
+                "res_type": "resnet",
+            },
+        ),
+        (
+            _convnext_checkpoint,
+            "convnext",
+            {
+                "spatial_dim": 2,
+                "in_channels": 1,
+                "structure": [[8, 8, 3, 1], [16, 16, 3, 1]],
+                "maxpool_structure": [2, 2],
+                "first_layer_stride": 4,
+            },
+        ),
+    ],
+)
+def test_manifest_infers_convolutional_family_from_weights(
+    checkpoint_factory, expected_family, backbone_args
+):
+    checkpoint = checkpoint_factory()
+    checkpoint.pop("encoder_config")
+    checkpoint["hyper_parameters"] = {"backbone_args": backbone_args}
+    manifest = read_encoder_manifest(checkpoint)
+    assert manifest["family"] == expected_family
+    load_ssl_encoder(checkpoint)
+
+
 def test_infer_return_at_is_evenly_spaced_and_in_bounds():
     indices = infer_return_at(12, 4)
     assert indices == sorted(indices)
