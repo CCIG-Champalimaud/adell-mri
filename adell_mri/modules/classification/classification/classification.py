@@ -360,9 +360,15 @@ class CatNet(torch.nn.Module):
             self.feature_extraction = self.res_net
             self.last_size = self.resnet_structure[-1][0]
         else:
-            input_shape = [2, self.in_channels, 128, 128]
-            if self.spatial_dim == 3:
-                input_shape.append(32)
+            feature_input_shape = getattr(
+                self.feature_extraction, "input_shape", None
+            )
+            if feature_input_shape is not None:
+                input_shape = [2, *feature_input_shape]
+            else:
+                input_shape = [2, self.in_channels, 128, 128]
+                if self.spatial_dim == 3:
+                    input_shape.append(32)
             example_tensor = torch.ones(input_shape)
             self.last_size = self.feature_extraction(example_tensor).shape[1]
         self.output_features = self.last_size

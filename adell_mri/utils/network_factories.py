@@ -85,6 +85,83 @@ from adell_mri.utils.torch_utils import ExponentialMovingAverage
 
 logger = get_logger(__name__)
 
+_CLASSIFICATION_PL_KEYS = {
+    "net_type",
+    "image_key",
+    "label_key",
+    "learning_rate",
+    "batch_size",
+    "weight_decay",
+    "training_dataloader_call",
+    "loss_fn",
+    "loss_params",
+    "n_epochs",
+    "warmup_steps",
+    "start_decay",
+    "training_batch_preproc",
+    "optimizer_eps",
+}
+
+_CATNET_KEYS = {
+    "spatial_dimensions",
+    "in_channels",
+    "classification_structure",
+    "resnet_structure",
+    "maxpool_structure",
+    "res_type",
+    "batch_ensemble",
+    "skip_last_activation",
+    "gaussian_process",
+    "feature_extraction",
+}
+
+_DECONFOUNDED_KEYS = {
+    "n_dim",
+    "n_features_deconfounder",
+    "n_cat_deconfounder",
+    "n_cont_deconfounder",
+    "exclude_surrogate_variables",
+    "deconfounder_structure",
+    "feature_extraction_module",
+}
+
+
+class _ViTFeatureExtractor(torch.nn.Module):
+    """
+    Adapts a ViT encoder so that it returns a spatial feature map.
+    """
+
+    def __init__(self, vit: torch.nn.Module):
+        """
+        Args:
+            vit (torch.nn.Module): ViT encoder.
+        """
+        super().__init__()
+        self.vit = vit
+
+    def forward(self, X: torch.Tensor) -> torch.Tensor:
+        tokens, _ = self.vit(X)
+        return self.vit.tokens_to_feature_map(tokens)
+
+
+def _feature_extractor_from_encoder(
+    encoder: torch.nn.Module, family: str
+) -> torch.nn.Module:
+    """
+    Converts an encoder into a module returning a spatial feature map.
+
+    Args:
+        encoder (torch.nn.Module): pretrained encoder.
+        family (str): encoder family.
+
+    Returns:
+        torch.nn.Module: a module returning a spatial feature map.
+    """
+    if family in {"vit", "mae"}:
+        return _ViTFeatureExtractor(encoder)
+    return encoder
+
+
 ALLOWED_NET_TYPES = {
     "classification": [
         "unet",
@@ -153,6 +230,7 @@ def get_classification_network(
     partial_mixup: float | None = None,
     optimizer_eps: float = OPTIMIZER_EPS_DEFAULT,
     encoder_checkpoint: str | dict[str, Any] | None = None,
+    lr_encoder: float | None = None,
 ) -> LightningModule:
     """
     Returns a classification network.
@@ -177,6 +255,9 @@ def get_classification_network(
         partial_mixup (float): the partial mixup parameter.
         encoder_checkpoint (str | dict[str, Any], optional): self-supervised
             checkpoint used to initialise the encoder. Defaults to None.
+        lr_encoder (float, optional): learning rate for the pretrained encoder.
+            A value of 0 freezes the encoder. Defaults to None (same as the
+            network learning rate).
 
     Returns:
         A :class:`LightningModule` classification network.
@@ -227,12 +308,12 @@ def get_classification_network(
     if encoder_checkpoint is not None:
         manifest = read_encoder_manifest(encoder_checkpoint)
         manifest_family = manifest["family"]
-        if net_type == "unet":
-            if manifest_family != "unet":
-                raise ValueError(
-                    "net_type 'unet' requires an SSL checkpoint trained with "
-                    "net_type 'unet_encoder'"
-                )
+
+        if (
+            net_type == "unet"
+            and manifest_family == "unet"
+            and manifest["in_channels"] == len(keys)
+        ):
             unet_args = dict(manifest["unet_args"])
             if "activation_fn" in unet_args and isinstance(
                 unet_args["activation_fn"], str
@@ -242,36 +323,35 @@ def get_classification_network(
                 ]
             network_config.update(unet_args)
             network_config["in_channels"] = manifest["in_channels"]
-            if manifest["in_channels"] != len(keys):
-                raise ValueError(
-                    "The SSL encoder was trained with "
-                    f"{manifest['in_channels']} input channels but "
-                    f"{len(keys)} image keys were provided"
-                )
-        elif net_type == "vit":
-            if manifest_family != "vit":
-                raise ValueError(
-                    "net_type 'vit' requires an SSL checkpoint trained with "
-                    "a ViT encoder"
-                )
+        elif (
+            net_type == "vit"
+            and manifest_family in {"vit", "mae"}
+            and manifest["in_channels"] == len(keys)
+        ):
             network_config.update(manifest["backbone_args"])
             network_config.pop("in_channels", None)
             network_config.pop("spatial_dimensions", None)
-            if manifest["in_channels"] != len(keys):
-                raise ValueError(
-                    "The SSL encoder was trained with "
-                    f"{manifest['in_channels']} input channels but "
-                    f"{len(keys)} image keys were provided"
+        else:
+            if net_type not in {"cat", "ord"}:
+                logger.warning(
+                    "The SSL encoder family '%s' is not compatible with "
+                    "net_type '%s'; falling back to a %s classifier with the "
+                    "pretrained encoder as the feature extractor.",
+                    manifest_family,
+                    net_type,
+                    "ordinal" if net_type == "ord" else "categorical",
                 )
-        elif net_type in {"cat", "ord"}:
-            if manifest_family not in {"resnet", "convnext"}:
-                raise ValueError(
-                    f"net_type '{net_type}' cannot use an SSL encoder of "
-                    f"family '{manifest_family}'. Use net_type 'vit' for "
-                    "ViT encoders or 'unet' for UNet encoders."
-                )
+                net_type = "ord" if net_type == "ord" else "cat"
+            network_config = {
+                k: v
+                for k, v in network_config.items()
+                if k in _CLASSIFICATION_PL_KEYS or k in _CATNET_KEYS
+            }
             pretrained_encoder = load_ssl_encoder(
                 encoder_checkpoint, manifest=manifest
+            )
+            feature_extractor = _feature_extractor_from_encoder(
+                pretrained_encoder, manifest_family
             )
             if manifest["in_channels"] != len(keys):
                 spatial_dimensions = manifest.get("spatial_dim", 3)
@@ -281,14 +361,18 @@ def get_classification_network(
                     else torch.nn.Conv3d
                 )
                 adapter = conv_op(len(keys), manifest["in_channels"], 1)
-                pretrained_encoder = torch.nn.Sequential(
-                    adapter, pretrained_encoder
+                feature_extractor = torch.nn.Sequential(
+                    adapter, feature_extractor
                 )
-            network_config["feature_extraction"] = pretrained_encoder
-        else:
-            raise NotImplementedError(
-                f"Pretrained encoders are not supported for net_type "
-                f"'{net_type}'"
+            if manifest.get("image_size") is not None:
+                feature_extractor.input_shape = (
+                    len(keys),
+                    *[int(x) for x in manifest["image_size"]],
+                )
+            network_config["feature_extraction"] = feature_extractor
+            network_config["in_channels"] = len(keys)
+            network_config["spatial_dimensions"] = manifest.get(
+                "spatial_dim", 3
             )
 
     if net_type == "unet":
@@ -386,6 +470,7 @@ def get_classification_network(
             **boilerplate_args_hybrid,
         )
 
+    network.lr_encoder = lr_encoder
     return network
 
 
@@ -411,6 +496,7 @@ def get_deconfounded_classification_network(
     partial_mixup: float | None = None,
     optimizer_eps: float = OPTIMIZER_EPS_DEFAULT,
     encoder_checkpoint: str | dict[str, Any] | None = None,
+    lr_encoder: float | None = None,
 ) -> LightningModule:
     """
     Returns a deconfounded classification network.
@@ -436,6 +522,8 @@ def get_deconfounded_classification_network(
         partial_mixup (float): the partial mixup parameter.
         encoder_checkpoint (str | dict[str, Any], optional): self-supervised
             checkpoint used to initialise the encoder. Defaults to None.
+        lr_encoder (float, optional): learning rate for the pretrained encoder.
+            A value of 0 freezes the encoder. Defaults to None.
 
     Returns:
         A :class:`LightningModule` deconfounded classification network.
@@ -480,13 +568,20 @@ def get_deconfounded_classification_network(
     }
     if encoder_checkpoint is not None:
         manifest = read_encoder_manifest(encoder_checkpoint)
-        if manifest["family"] not in {"resnet", "convnext"}:
-            raise ValueError(
-                "Deconfounded classification only supports ResNet or "
-                "ConvNeXt SSL encoders"
-            )
+        network_config = {
+            k: v
+            for k, v in network_config.items()
+            if k in _CLASSIFICATION_PL_KEYS
+            or k in _CATNET_KEYS
+            or k in _DECONFOUNDED_KEYS
+        }
+        network_config.pop("in_channels", None)
+        network_config.pop("n_classes", None)
         pretrained_encoder = load_ssl_encoder(
             encoder_checkpoint, manifest=manifest
+        )
+        feature_extractor = _feature_extractor_from_encoder(
+            pretrained_encoder, manifest["family"]
         )
         if manifest["in_channels"] != len(keys):
             spatial_dimensions = manifest.get("spatial_dim", 3)
@@ -494,10 +589,15 @@ def get_deconfounded_classification_network(
                 torch.nn.Conv2d if spatial_dimensions == 2 else torch.nn.Conv3d
             )
             adapter = conv_op(len(keys), manifest["in_channels"], 1)
-            pretrained_encoder = torch.nn.Sequential(
-                adapter, pretrained_encoder
+            feature_extractor = torch.nn.Sequential(adapter, feature_extractor)
+        if manifest.get("image_size") is not None:
+            feature_extractor.input_shape = (
+                len(keys),
+                *[int(x) for x in manifest["image_size"]],
             )
-        network_config["feature_extraction"] = pretrained_encoder
+        network_config["feature_extraction"] = feature_extractor
+        network_config["feature_extraction_module"] = "cat"
+        network_config["n_dim"] = manifest.get("spatial_dim", 3)
 
     n_cat_deconfounder = (
         [len(x) for x in cat_vars] if cat_vars is not None else None
@@ -515,6 +615,7 @@ def get_deconfounded_classification_network(
         **network_config,
     )
 
+    network.lr_encoder = lr_encoder
     return network
 
 

@@ -220,7 +220,14 @@ class DeconfoundedNetGeneric(torch.nn.Module):
         self.gp = GlobalPooling()
 
     def get_output_feature_size(self):
-        if self.n_dim == 2:
+        feature_input_shape = getattr(
+            getattr(self.feature_extraction_module, "feature_extraction", None),
+            "input_shape",
+            None,
+        )
+        if feature_input_shape is not None:
+            example = torch.rand(1, *feature_input_shape)
+        elif self.n_dim == 2:
             example = torch.rand(1, self.in_channels, 64, 64)
         elif self.n_dim == 3:
             example = torch.rand(1, self.in_channels, 64, 64, 16)
