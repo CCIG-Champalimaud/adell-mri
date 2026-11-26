@@ -58,6 +58,25 @@ The main change you will notice if you do everything through `uv sync` is that y
 * [**VICRegL**](https://arxiv.org/abs/2210.01571) - VICReg but works better for segmentation problems. Adds a term which minimises the same as VICReg 
 * [**I-JEPA**](https://arxiv.org/abs/2301.08243) - similar to a masked auto-encoder but using a transformer architecture and masking only at the deep token features level
 
+### Reusing self-supervised encoders
+
+Checkpoints produced by `adell ssl train_2d` / `adell ssl train_3d` store an `encoder_config` manifest describing the encoder (ResNet, ConvNeXt, ViT, MAE or U-Net encoder). The downstream entrypoints can rebuild and initialise that encoder directly from the checkpoint:
+
+```
+# Classification (choose net_type according to the SSL encoder)
+adell classification train --net_type cat --encoder_checkpoint ssl.ckpt ...
+adell classification train --net_type vit --encoder_checkpoint ssl.ckpt ...
+adell classification train --net_type unet --encoder_checkpoint ssl.ckpt ...
+
+# Classification ensemble (one checkpoint is reused or one per sub-network)
+adell classification_ensemble train --encoder_checkpoint ssl.ckpt ...
+
+# Segmentation with the generic encoder U-Net
+adell segmentation train --net_type encoder_unet --encoder_checkpoint ssl.ckpt ...
+```
+
+`--encoder_checkpoint` is only accepted with `--net_type encoder_unet` in the segmentation entrypoints. The previous `res_config_file` argument has been removed. Segmentation checkpoints trained with `encoder_unet` also persist the encoder manifest, so `test` and `predict` can rebuild the architecture from the trained checkpoint alone.
+
 ## Simplified library map
 
 ### Modules and networks
