@@ -108,6 +108,51 @@ def _vit_checkpoint() -> dict:
     return {"state_dict": state_dict, "encoder_config": manifest}
 
 
+def _mae_checkpoint() -> dict:
+    from adell_mri.modules.self_supervised.autoencoders import (
+        ViTMaskedAutoEncoder,
+    )
+
+    encoder_args = {
+        "number_of_blocks": 2,
+        "hidden_dim": 16,
+        "n_heads": 4,
+        "mlp_structure": [32],
+    }
+    decoder_args = {
+        "number_of_blocks": 1,
+        "hidden_dim": 16,
+        "n_heads": 4,
+        "mlp_structure": [32],
+    }
+    network = ViTMaskedAutoEncoder(
+        image_size=[32, 32],
+        patch_size=[8, 8],
+        in_channels=1,
+        input_dim_size=16,
+        encoder_args=encoder_args,
+        decoder_args=decoder_args,
+    )
+    manifest = build_encoder_manifest(
+        net_type="vit",
+        ssl_method="mae",
+        network_config={
+            "image_size": [32, 32],
+            "patch_size": [8, 8],
+            "in_channels": 1,
+            "input_dim_size": 16,
+            "encoder_args": encoder_args,
+            "decoder_args": decoder_args,
+        },
+        spatial_dim=2,
+        in_channels=1,
+    )
+    state_dict = {
+        f"model.{key}": value for key, value in network.state_dict().items()
+    }
+    return {"state_dict": state_dict, "encoder_config": manifest}
+
+
 def _unet_checkpoint() -> dict:
     unet_args = {
         "spatial_dimensions": 2,
@@ -134,6 +179,7 @@ def _unet_checkpoint() -> dict:
         (_resnet_checkpoint, "resnet"),
         (_convnext_checkpoint, "convnext"),
         (_vit_checkpoint, "vit"),
+        (_mae_checkpoint, "mae"),
         (_unet_checkpoint, "unet"),
     ],
 )

@@ -13,6 +13,7 @@ import re
 from copy import deepcopy
 from typing import Any
 
+import numpy as np
 import torch
 
 from adell_mri.modules.activations import activation_factory
@@ -438,14 +439,15 @@ def _backbone_args_with_adn(manifest: dict[str, Any]) -> dict[str, Any]:
 def _instantiate_mae_encoder(manifest: dict[str, Any]) -> torch.nn.Module:
     mae_args = manifest["mae_args"]
     encoder_args = mae_args["encoder_args"]
+    n_features = int(np.prod(mae_args["patch_size"])) * mae_args["in_channels"]
     vit_args = {
         "image_size": mae_args["image_size"],
         "patch_size": mae_args["patch_size"],
         "in_channels": mae_args["in_channels"],
         "number_of_blocks": encoder_args["number_of_blocks"],
-        "attention_dim": mae_args["input_dim_size"],
+        "attention_dim": n_features,
         "hidden_dim": encoder_args.get("hidden_dim"),
-        "embedding_size": mae_args["input_dim_size"],
+        "embedding_size": None,
         "n_heads": encoder_args["n_heads"],
         "mlp_structure": encoder_args.get("mlp_structure", [128]),
         "dropout_rate": mae_args.get("dropout_rate", 0.0),
