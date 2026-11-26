@@ -128,6 +128,7 @@ def main(arguments):
             "ema_start_epoch",
             "ema_warmup_epochs",
             "learning_rate",
+            "lr_encoder",
             "batch_size",
             "precision",
             "class_weights",
@@ -518,6 +519,7 @@ def main(arguments):
             clinical_feature_means=clinical_feature_means,
             clinical_feature_stds=clinical_feature_stds,
             encoder_checkpoint=args.encoder_checkpoint,
+            lr_encoder=args.lr_encoder,
         )
 
         checkpoint = None

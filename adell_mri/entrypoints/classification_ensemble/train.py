@@ -127,6 +127,7 @@ def main(arguments):
             "correct_classification_bias",
             "batch_size",
             "learning_rate",
+            "lr_encoder",
             "spectral_norm_power_iterations",
         ]
     )
@@ -540,6 +541,7 @@ def main(arguments):
                     net_type=net_type,
                     network_config=network_config,
                     encoder_checkpoint=encoder_checkpoint,
+                    lr_encoder=args.lr_encoder,
                     dropout_param=args.dropout_param,
                     seed=args.seed,
                     n_classes=n_classes,

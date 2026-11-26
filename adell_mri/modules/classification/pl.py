@@ -163,6 +163,31 @@ def get_metric_dict(
     return metric_dict
 
 
+_ENCODER_PARAMETER_KEYS = (
+    "feature_extraction",
+    "encoder",
+    "encoding",
+    "network.embedding",
+    "network.tbs",
+    "network.res_net",
+    "embedding",
+    "tbs",
+)
+
+
+def _is_encoder_parameter(name: str) -> bool:
+    """
+    Checks whether a parameter name belongs to a pretrained encoder.
+
+    Args:
+        name (str): parameter name.
+
+    Returns:
+        bool: whether the parameter belongs to an encoder.
+    """
+    return any(key in name for key in _ENCODER_PARAMETER_KEYS)
+
+
 class ClassPLABC(pl.LightningModule, ABC):
     """
     Abstract classification class for LightningModules.
@@ -176,6 +201,16 @@ class ClassPLABC(pl.LightningModule, ABC):
         self.gaussian_process = False
         self.net_type = "cat"
         self.optimizer_eps = OPTIMIZER_EPS_DEFAULT
+        self.lr_encoder = None
+
+    def on_train_epoch_start(self):
+        """
+        Keeps the encoder in evaluation mode when it is frozen.
+        """
+        if self.lr_encoder == 0:
+            for name, module in self.named_modules():
+                if name and _is_encoder_parameter(name):
+                    module.eval()
 
     def calculate_loss(
         self,
@@ -632,6 +667,17 @@ class ClassPLABC(pl.LightningModule, ABC):
             dict: A dictionary containing the optimizer, learning rate scheduler,
                 and the name of the metric to monitor for early stopping.
         """
+        if self.lr_encoder == 0:
+            for name, parameter in self.named_parameters():
+                if _is_encoder_parameter(name):
+                    parameter.requires_grad = False
+
+        encoder_param_ids = {
+            id(parameter)
+            for name, parameter in self.named_parameters()
+            if _is_encoder_parameter(name)
+        }
+
         gaussian_process_param_ids = set()
         for _, module in self.named_modules():
             if isinstance(module, GaussianProcessLayer):
@@ -684,6 +730,30 @@ class ClassPLABC(pl.LightningModule, ABC):
                 {"params": normal_decay_params, "weight_decay": wd},
             ]
             base_wd = wd / 100
+
+        if self.lr_encoder not in (None, 0):
+            grouped_parameters = []
+            for group in parameters:
+                encoder_params = [
+                    p for p in group["params"] if id(p) in encoder_param_ids
+                ]
+                other_params = [
+                    p for p in group["params"] if id(p) not in encoder_param_ids
+                ]
+                for params, lr in (
+                    (encoder_params, self.lr_encoder),
+                    (other_params, None),
+                ):
+                    if not params:
+                        continue
+                    new_group = {
+                        k: v for k, v in group.items() if k != "params"
+                    }
+                    new_group["params"] = params
+                    if lr is not None:
+                        new_group["lr"] = lr
+                    grouped_parameters.append(new_group)
+            parameters = grouped_parameters
 
         optimizer = torch.optim.AdamW(
             parameters,
@@ -2489,11 +2559,21 @@ class DeconfoundedNetPL(DeconfoundedNetGeneric, ClassPLABC):
                 self.log(k, metrics[k], **kwargs)
 
     def configure_optimizers(self) -> dict:
+        if self.lr_encoder == 0:
+            for n, p in self.named_parameters():
+                if _is_encoder_parameter(n):
+                    p.requires_grad = False
+
         params_confounder = []
         params_classifier = []
+        params_encoder = []
         for n, p in self.named_parameters():
+            if not p.requires_grad:
+                continue
             if "confound" in n:
                 params_confounder.append(p)
+            elif _is_encoder_parameter(n):
+                params_encoder.append(p)
             else:
                 params_classifier.append(p)
         parameters = [
@@ -2501,11 +2581,23 @@ class DeconfoundedNetPL(DeconfoundedNetGeneric, ClassPLABC):
                 "params": params_confounder,
                 "weight_decay": 0,
             },
+        ]
+        if self.lr_encoder is None:
+            params_classifier.extend(params_encoder)
+        elif len(params_encoder) > 0:
+            parameters.append(
+                {
+                    "params": params_encoder,
+                    "weight_decay": self.weight_decay,
+                    "lr": self.lr_encoder,
+                }
+            )
+        parameters.append(
             {
                 "params": params_classifier,
                 "weight_decay": self.weight_decay,
-            },
-        ]
+            }
+        )
         optimizer = torch.optim.AdamW(
             parameters,
             lr=self.learning_rate,

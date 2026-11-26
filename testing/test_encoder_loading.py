@@ -14,6 +14,7 @@ from adell_mri.utils.encoder_loading import (
 )
 from adell_mri.utils.network_factories import (
     get_classification_network,
+    get_deconfounded_classification_network,
     get_segmentation_network,
 )
 
@@ -389,6 +390,114 @@ def test_classification_vit_uses_ssl_encoder():
     )
     output = network(torch.rand(2, 1, 32, 32))
     assert output.shape == (2, 1)
+
+
+@pytest.mark.parametrize(
+    "net_type,checkpoint_factory",
+    [
+        ("unet", _resnet_checkpoint),
+        ("vit", _resnet_checkpoint),
+        ("vgg", _convnext_checkpoint),
+        ("cat", _vit_checkpoint),
+        ("ord", _unet_checkpoint),
+    ],
+)
+def test_classification_accepts_any_encoder(net_type, checkpoint_factory):
+    network = get_classification_network(
+        net_type=net_type,
+        network_config={
+            "spatial_dimensions": 2,
+            "loss_fn": torch.nn.BCEWithLogitsLoss(),
+            "classification_structure": [16, 8],
+            "batch_size": 2,
+            "learning_rate": 1e-4,
+            "activation_fn": torch.nn.ReLU,
+            "depth": [8, 16, 32],
+            "kernel_sizes": [3, 3, 3],
+            "strides": [2, 2, 2],
+        },
+        dropout_param=0.0,
+        seed=42,
+        n_classes=2,
+        keys=["image"],
+        clinical_feature_keys=[],
+        train_loader_call=None,
+        max_epochs=1,
+        warmup_steps=0,
+        start_decay=1,
+        crop_size=[32, 32],
+        encoder_checkpoint=checkpoint_factory(),
+    )
+    assert network(torch.rand(2, 1, 32, 32)).shape == (2, 1)
+
+
+@pytest.mark.parametrize("lr_encoder", [0, 1e-5])
+def test_classification_encoder_learning_rate(lr_encoder):
+    network = get_classification_network(
+        net_type="cat",
+        network_config={
+            "spatial_dimensions": 2,
+            "loss_fn": torch.nn.BCEWithLogitsLoss(),
+            "classification_structure": [16, 8],
+            "batch_size": 2,
+            "learning_rate": 1e-4,
+        },
+        dropout_param=0.0,
+        seed=42,
+        n_classes=2,
+        keys=["image"],
+        clinical_feature_keys=[],
+        train_loader_call=None,
+        max_epochs=1,
+        warmup_steps=0,
+        start_decay=1,
+        crop_size=[32, 32],
+        encoder_checkpoint=_resnet_checkpoint(),
+        lr_encoder=lr_encoder,
+    )
+    network.configure_optimizers()
+    encoder_parameters = [
+        parameter
+        for name, parameter in network.named_parameters()
+        if "feature_extraction" in name
+    ]
+    assert len(encoder_parameters) > 0
+    if lr_encoder == 0:
+        assert all(not p.requires_grad for p in encoder_parameters)
+    else:
+        assert all(p.requires_grad for p in encoder_parameters)
+
+
+def test_deconfounded_classification_accepts_vit_encoder():
+    network = get_deconfounded_classification_network(
+        network_config={
+            "spatial_dimensions": 2,
+            "loss_fn": torch.nn.BCEWithLogitsLoss(),
+            "classification_structure": [16, 8],
+            "batch_size": 2,
+            "learning_rate": 1e-4,
+            "activation_fn": torch.nn.ReLU,
+            "depth": [8, 16, 32],
+            "kernel_sizes": [3, 3, 3],
+            "strides": [2, 2, 2],
+        },
+        dropout_param=0.0,
+        seed=42,
+        n_classes=2,
+        keys=["image"],
+        cat_confounder_key=None,
+        cont_confounder_key=None,
+        cat_vars=None,
+        cont_vars=0,
+        train_loader_call=None,
+        max_epochs=1,
+        warmup_steps=0,
+        start_decay=1,
+        encoder_checkpoint=_vit_checkpoint(),
+        lr_encoder=0,
+    )
+    output = network(torch.rand(2, 1, 32, 32))
+    assert output[0].shape == (2, 1)
 
 
 def test_encoder_unet_input_adapter():

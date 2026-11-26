@@ -212,6 +212,15 @@ class UNetBasePL(pl.LightningModule, ABC):
         self.feature_conditioning_key = None
         self.skip_conditioning_key = None
 
+    def on_train_epoch_start(self):
+        """
+        Keeps the encoder in evaluation mode when it is frozen.
+        """
+        if getattr(self, "lr_encoder", None) == 0:
+            for name, module in self.named_modules():
+                if name and ("encoder" in name or "encoding" in name):
+                    module.eval()
+
     @property
     def device(self):
         return next(self.parameters()).device
@@ -575,9 +584,16 @@ class UNetBasePL(pl.LightningModule, ABC):
         return self.training_dataloader_call(self.batch_size)
 
     def configure_optimizers(self) -> dict:
+        if self.lr_encoder == 0:
+            for k, p in self.named_parameters():
+                if "encoding" in k or "encoder" in k:
+                    p.requires_grad = False
+
         encoder_params = []
         rest_of_params = []
         for k, p in self.named_parameters():
+            if not p.requires_grad:
+                continue
             if "encoding" in k or "encoder" in k:
                 encoder_params.append(p)
             else:
@@ -587,10 +603,10 @@ class UNetBasePL(pl.LightningModule, ABC):
             parameters = encoder_params + rest_of_params
         else:
             lr_encoder = self.lr_encoder
-            parameters = [
-                {"params": encoder_params, "lr": lr_encoder},
-                {"params": rest_of_params},
-            ]
+            parameters = []
+            if len(encoder_params) > 0:
+                parameters.append({"params": encoder_params, "lr": lr_encoder})
+            parameters.append({"params": rest_of_params})
         if hasattr(self, "optimizer_str"):
             if hasattr(self, "optimizer_parmas"):
                 optimizer_params = self.optimizer_params
