@@ -254,6 +254,23 @@ def test_manifest_infers_convolutional_family_from_weights(
     load_ssl_encoder(checkpoint)
 
 
+def test_manifest_recovers_norm_and_activation_from_adn_builder():
+    checkpoint = _resnet_checkpoint()
+    checkpoint.pop("encoder_config")
+    checkpoint["hyper_parameters"] = {
+        "backbone_args": {
+            "spatial_dim": 2,
+            "in_channels": 1,
+            "structure": [[8, 8, 3, 1], [16, 16, 3, 1]],
+            "maxpool_structure": [2, 2],
+            "adn_fn": get_adn_fn(2, "instance", "leaky_relu", 0.0),
+        }
+    }
+    manifest = read_encoder_manifest(checkpoint)
+    assert manifest["norm_fn"] == "instance"
+    assert manifest["act_fn"] == "leaky_relu"
+
+
 def test_infer_return_at_is_evenly_spaced_and_in_bounds():
     indices = infer_return_at(12, 4)
     assert indices == sorted(indices)

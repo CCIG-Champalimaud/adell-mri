@@ -17,7 +17,7 @@ import numpy as np
 import torch
 
 from adell_mri.modules.activations import activation_factory
-from adell_mri.modules.layers.adn_fn import get_adn_fn
+from adell_mri.modules.layers.adn_fn import get_adn_fn, norm_fn_dict
 from adell_mri.modules.layers.conv_next import ConvNeXt
 from adell_mri.modules.layers.res_net import ResNet
 from adell_mri.modules.layers.vit import ViT
@@ -104,6 +104,24 @@ def _activation_from_name(activation: Any) -> Any:
     return activation
 
 
+def _norm_name(norm_fn: Any) -> Any:
+    """
+    Converts a normalization class into its registered name.
+
+    Args:
+        norm_fn (Any): normalization class or ``None``.
+
+    Returns:
+        Any: the registered normalization name or the input value.
+    """
+    if norm_fn is None or isinstance(norm_fn, str):
+        return norm_fn
+    for name, fns in norm_fn_dict.items():
+        if any(fn is norm_fn for fn in fns.values()):
+            return name
+    return norm_fn
+
+
 def build_encoder_manifest(
     net_type: str,
     ssl_method: str,
@@ -170,7 +188,15 @@ def _build_conv_or_vit_manifest(
     spatial_dim: int | None,
     in_channels: int | None,
 ) -> dict[str, Any]:
-    backbone_args.pop("adn_fn", None)
+    adn_fn = backbone_args.pop("adn_fn", None)
+    norm_fn = config.get("norm_fn")
+    act_fn = config.get("act_fn")
+    dropout_param = config.get("dropout_param", 0.0)
+    if adn_fn is not None:
+        norm_fn = norm_fn or _norm_name(getattr(adn_fn, "norm_fn", None))
+        act_fn = act_fn or _activation_name(getattr(adn_fn, "act_fn", None))
+        dropout_param = getattr(adn_fn, "dropout_param", dropout_param)
+
     if "patch_size" in backbone_args:
         family = "vit"
         spatial_dim = spatial_dim or len(backbone_args["patch_size"])
@@ -193,9 +219,9 @@ def _build_conv_or_vit_manifest(
         "spatial_dim": spatial_dim,
         "in_channels": backbone_args.get("in_channels", in_channels),
         "backbone_args": backbone_args,
-        "norm_fn": config.get("norm_fn", "batch"),
-        "act_fn": config.get("act_fn", "swish"),
-        "dropout_param": config.get("dropout_param", 0.0),
+        "norm_fn": norm_fn or "batch",
+        "act_fn": act_fn or "swish",
+        "dropout_param": dropout_param,
         "state_dict_prefix": prefix,
     }
     if family == "vit":
