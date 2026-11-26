@@ -63,8 +63,19 @@ class BarlowTwinsPL(ResNet, pl.LightningModule):
         self.loss_lam = loss_lam
 
         self.loss = BarlowTwinsLoss(moving=True, lam=self.loss_lam)
+        self.encoder_config = None
 
         self.setup_metrics()
+
+    def on_save_checkpoint(self, checkpoint: dict) -> None:
+        """
+        Stores the encoder manifest in the checkpoint.
+
+        Args:
+            checkpoint (dict): checkpoint dictionary.
+        """
+        if self.encoder_config is not None:
+            checkpoint["encoder_config"] = self.encoder_config
 
     def calculate_loss(self, y1, y2, update=True):
         loss = self.loss(y1, y2, update=True)
@@ -177,6 +188,17 @@ class SelfSLBasePL(pl.LightningModule, ABC):
         super().__init__()
 
         self.optimizer_eps = OPTIMIZER_EPS_DEFAULT
+        self.encoder_config = None
+
+    def on_save_checkpoint(self, checkpoint: dict) -> None:
+        """
+        Stores the encoder manifest in the checkpoint.
+
+        Args:
+            checkpoint (dict): checkpoint dictionary.
+        """
+        if self.encoder_config is not None:
+            checkpoint["encoder_config"] = self.encoder_config
 
     def train_dataloader(self) -> torch.utils.data.DataLoader:
         return self.training_dataloader_call(self.batch_size)
@@ -1490,6 +1512,7 @@ class ViTMaskedAutoEncoderPL(pl.LightningModule):
         """
         super().__init__()
         self.save_hyperparameters()
+        self.encoder_config = None
 
         self.model = ViTMaskedAutoEncoder(
             image_size=image_size,
@@ -1517,6 +1540,16 @@ class ViTMaskedAutoEncoderPL(pl.LightningModule):
         self.n_epochs = n_epochs
         self.start_decay = start_decay
         self.optimizer_eps = optimizer_eps
+
+    def on_save_checkpoint(self, checkpoint: dict) -> None:
+        """
+        Stores the encoder manifest in the checkpoint.
+
+        Args:
+            checkpoint (dict): checkpoint dictionary.
+        """
+        if self.encoder_config is not None:
+            checkpoint["encoder_config"] = self.encoder_config
 
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """

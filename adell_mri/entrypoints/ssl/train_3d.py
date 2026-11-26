@@ -12,6 +12,7 @@ from adell_mri.entrypoints.cli_utils import fail
 from adell_mri.modules.config_parsing import parse_config_ssl, parse_config_unet
 from adell_mri.transform_factory import SSLTransforms, get_augmentations_ssl
 from adell_mri.utils.dataset import Dataset
+from adell_mri.utils.encoder_loading import build_encoder_manifest
 from adell_mri.utils.generic_utils import safe_collate
 from adell_mri.utils.network_factories import (
     get_ema,
@@ -289,6 +290,13 @@ def main(arguments):
         network_config=network_config_correct,
         stop_gradient=stop_gradient,
         optimizer_eps=optimizer_eps_from_precision(args.precision),
+    )
+    ssl.encoder_config = build_encoder_manifest(
+        net_type=args.net_type,
+        ssl_method=args.ssl_method,
+        network_config=network_config,
+        spatial_dim=3,
+        in_channels=len(keys),
     )
 
     if args.checkpoint is not None:

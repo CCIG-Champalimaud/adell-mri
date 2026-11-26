@@ -1016,6 +1016,10 @@ def get_ssl_network_no_pl(
     else:
         if net_type == "unet_encoder":
             ssl = UNet(**network_config)
+        elif net_type == "vit":
+            from adell_mri.modules.layers.vit import ViT
+
+            ssl = ViT(**network_config)
         elif net_type == "convnext":
             network_config["backbone_args"] = {
                 k: network_config["backbone_args"][k]

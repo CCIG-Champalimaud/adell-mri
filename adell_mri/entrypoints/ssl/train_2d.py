@@ -19,6 +19,7 @@ from adell_mri.utils.dicom_dataset import (
     filter_dicom_dict_on_presence,
 )
 from adell_mri.utils.dicom_loader import DICOMDataset, SliceSampler
+from adell_mri.utils.encoder_loading import build_encoder_manifest
 from adell_mri.utils.generic_utils import safe_collate
 from adell_mri.utils.network_factories import (
     get_ema,
@@ -358,6 +359,13 @@ def main(arguments):
         network_config=network_config_correct,
         stop_gradient=stop_gradient,
         optimizer_eps=optimizer_eps_from_precision(args.precision),
+    )
+    ssl.encoder_config = build_encoder_manifest(
+        net_type=args.net_type,
+        ssl_method=args.ssl_method,
+        network_config=network_config,
+        spatial_dim=2,
+        in_channels=len(keys),
     )
 
     if args.checkpoint is not None:
