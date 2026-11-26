@@ -277,7 +277,7 @@ def test_classification_cat_uses_ssl_encoder():
         warmup_steps=0,
         start_decay=1,
         crop_size=[32, 32],
-        encoder_checkpoint=_resnet_checkpoint(),
+        encoder_checkpoint=[_resnet_checkpoint()],
     )
     output = network(torch.rand(2, 1, 32, 32))
     assert output.shape == (2, 1)

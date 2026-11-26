@@ -242,7 +242,7 @@ def create_classification_network(
     start_decay: float | None = None,
     clinical_feature_means: torch.Tensor | None = None,
     clinical_feature_stds: torch.Tensor | None = None,
-    encoder_checkpoint: str | None = None,
+    encoder_checkpoint: Any = None,
 ):
     """
     Create a classification or deconfounded classification network.

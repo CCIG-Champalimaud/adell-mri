@@ -216,6 +216,13 @@ def get_classification_network(
         "start_decay": start_decay,
         "optimizer_eps": optimizer_eps,
     }
+    if isinstance(encoder_checkpoint, (list, tuple)):
+        if len(encoder_checkpoint) != 1:
+            raise ValueError(
+                "Only one encoder checkpoint can be used for classification"
+            )
+        encoder_checkpoint = encoder_checkpoint[0]
+
     manifest = None
     if encoder_checkpoint is not None:
         manifest = read_encoder_manifest(encoder_checkpoint)
@@ -433,6 +440,14 @@ def get_deconfounded_classification_network(
     Returns:
         A :class:`LightningModule` deconfounded classification network.
     """
+    if isinstance(encoder_checkpoint, (list, tuple)):
+        if len(encoder_checkpoint) != 1:
+            raise ValueError(
+                "Only one encoder checkpoint can be used for "
+                "deconfounded classification"
+            )
+        encoder_checkpoint = encoder_checkpoint[0]
+
     if "act_fn" in network_config:
         act_fn = network_config["act_fn"]
         del network_config["act_fn"]
