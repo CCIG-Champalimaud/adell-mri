@@ -63,7 +63,7 @@ The main change you will notice if you do everything through `uv sync` is that y
 Checkpoints produced by `adell ssl train_2d` / `adell ssl train_3d` store an `encoder_config` manifest describing the encoder (ResNet, ConvNeXt, ViT, MAE or U-Net encoder). The downstream entrypoints can rebuild and initialise that encoder directly from the checkpoint:
 
 ```
-# Classification (choose net_type according to the SSL encoder)
+# Classification (any SSL encoder family can be used)
 adell classification train --net_type cat --encoder_checkpoint ssl.ckpt ...
 adell classification train --net_type vit --encoder_checkpoint ssl.ckpt ...
 adell classification train --net_type unet --encoder_checkpoint ssl.ckpt ...
@@ -75,7 +75,15 @@ adell classification_ensemble train --encoder_checkpoint ssl.ckpt ...
 adell segmentation train --net_type encoder_unet --encoder_checkpoint ssl.ckpt ...
 ```
 
+For classification, if the requested `--net_type` does not match the encoder family, the classifier falls back to a categorical/ordinal network that uses the pretrained encoder as its feature extractor. Use `--lr_encoder` to set a separate learning rate for the encoder; `--lr_encoder 0` freezes it.
+
 `--encoder_checkpoint` is only accepted with `--net_type encoder_unet` in the segmentation entrypoints. The previous `res_config_file` argument has been removed. Segmentation checkpoints trained with `encoder_unet` also persist the encoder manifest, so `test` and `predict` can rebuild the architecture from the trained checkpoint alone.
+
+Older checkpoints can be converted with:
+
+```
+python utils/add-encoder-config.py --checkpoint old_ssl.ckpt
+```
 
 ## Simplified library map
 
