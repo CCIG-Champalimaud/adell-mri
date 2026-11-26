@@ -576,8 +576,8 @@ argument_factory = {
         action="store",
         default=None,
         nargs="+",
-        help="Self-supervised checkpoint used to initialise the encoder. \
-            Requires --net_type encoder_unet for segmentation.",
+        help="Self-supervised checkpoint used to initialise the encoder. In "
+        "segmentation this requires --net_type encoder_unet.",
     ),
     "lr_encoder": dict(
         action="store",
