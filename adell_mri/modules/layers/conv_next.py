@@ -4,6 +4,7 @@ Implements ConvNeXt blocks.
 
 from typing import List, Tuple, Union
 
+import numpy as np
 import torch
 
 from adell_mri.modules.layers.batch_ensemble import BatchEnsembleWrapper
@@ -136,6 +137,14 @@ class ConvNeXtBackbone(torch.nn.Module):
         self.init_layers()
 
         self.output_features = self.structure[-1][0]
+        self.input_stride = first_layer_stride
+        self.output_channels = [s[0] for s in self.structure]
+        self.output_strides = []
+        current_stride = first_layer_stride
+        for mp in self.maxpool_structure:
+            self.output_strides.append(current_stride)
+            current_stride *= int(np.prod(mp))
+        self.bottleneck_stride = current_stride
 
     def get_ops(self):
         if self.spatial_dim == 2:
@@ -277,6 +286,15 @@ class ConvNeXtV2Backbone(torch.nn.Module):
 
         self.get_ops()
         self.init_layers()
+
+        self.input_stride = 4
+        self.output_channels = [s[0] for s in self.structure]
+        self.output_strides = []
+        current_stride = 4
+        for mp in self.maxpool_structure:
+            self.output_strides.append(current_stride)
+            current_stride *= int(np.prod(mp))
+        self.bottleneck_stride = current_stride
 
     def get_ops(self):
         if self.spatial_dim == 2:

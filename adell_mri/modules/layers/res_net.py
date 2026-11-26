@@ -4,6 +4,7 @@ ResNet backbone and ResNet backbone.
 
 from typing import OrderedDict
 
+import numpy as np
 import torch
 
 from adell_mri.custom_types import List, ModuleList, Tuple, Union
@@ -106,6 +107,17 @@ class ResNetBackbone(torch.nn.Module):
         self.init_layers()
 
         self.output_features = self.structure[-1][0]
+        self.input_stride = 1
+        self.output_channels = [
+            self.structure[0][0],
+            *[s[0] for s in self.structure],
+        ]
+        self.output_strides = [1]
+        current_stride = 2
+        for mp in self.maxpool_structure:
+            self.output_strides.append(current_stride)
+            current_stride *= int(np.prod(mp))
+        self.bottleneck_stride = current_stride
 
     def get_ops(self):
         if self.spatial_dim == 2:
@@ -208,30 +220,9 @@ class ResNetBackbone(torch.nn.Module):
             self.be_operations.append(be_op)
             self.pooling_operations.append(self.max_pool_op(mp, mp))
 
-    def forward_with_intermediate(
+    def _forward_intermediate(
         self, X: torch.Tensor, after_pool: bool = False, batch_idx: int = None
-    ):
-        X = self.input_layer(X)
-        X = self.first_pooling(X)
-        output_list = []
-        for op, be_op, pool_op in zip(
-            self.operations, self.be_operations, self.pooling_operations
-        ):
-            if self.batch_ensemble > 0:
-                X = be_op(X, batch_idx, mod=op)
-            else:
-                X = op(X)
-            pooled_X = pool_op(X)
-            if after_pool is True:
-                output_list.append(pooled_X)
-            else:
-                output_list.append(X)
-            X = pooled_X
-        return X, output_list
-
-    def forward_intermediate(
-        self, X: torch.Tensor, after_pool: bool = False, batch_idx: int = None
-    ):
+    ) -> tuple[torch.Tensor, list[torch.Tensor]]:
         output_list = []
         X = self.input_layer(X)
         if after_pool is False:
@@ -252,6 +243,33 @@ class ResNetBackbone(torch.nn.Module):
             else:
                 output_list.append(X)
             X = pooled_X
+        return X, output_list
+
+    def forward_with_intermediate(
+        self, X: torch.Tensor, after_pool: bool = False, batch_idx: int = None
+    ) -> tuple[torch.Tensor, list[torch.Tensor]]:
+        """
+        Runs the backbone and returns the bottleneck alongside one feature map
+        per resolution.
+
+        Args:
+            X (torch.Tensor): input tensor.
+            after_pool (bool, optional): returns the pooled feature maps rather
+                than the feature maps before pooling. Defaults to False.
+            batch_idx (int, optional): index used by batch-ensemble layers.
+                Defaults to None.
+
+        Returns:
+            tuple[torch.Tensor, list[torch.Tensor]]: the bottleneck tensor and
+                the list of intermediate feature maps, ordered from the highest
+                to the lowest resolution.
+        """
+        return self._forward_intermediate(X, after_pool, batch_idx)
+
+    def forward_intermediate(
+        self, X: torch.Tensor, after_pool: bool = False, batch_idx: int = None
+    ):
+        X, output_list = self._forward_intermediate(X, after_pool, batch_idx)
         return output_list
 
     def forward_regular(

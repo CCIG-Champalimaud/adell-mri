@@ -223,7 +223,7 @@ def _build_unet_manifest(
         "spatial_dim": spatial_dim or unet_args.get("spatial_dimensions", 3),
         "in_channels": unet_args.get("in_channels", in_channels),
         "unet_args": unet_args,
-        "state_dict_prefix": "encoding_operations.",
+        "state_dict_prefix": "",
     }
 
 

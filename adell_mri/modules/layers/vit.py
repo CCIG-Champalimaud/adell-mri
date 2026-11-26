@@ -20,6 +20,30 @@ from adell_mri.modules.layers.linear_blocks import MLP, MultiHeadSelfAttention
 from adell_mri.modules.layers.regularization import ChannelDropout
 
 
+def infer_return_at(number_of_blocks: int, n_levels: int) -> list[int]:
+    """
+    Infers evenly spaced transformer block indices to return.
+
+    Args:
+        number_of_blocks (int): total number of transformer blocks.
+        n_levels (int): number of intermediate feature maps requested.
+
+    Returns:
+        list[int]: block indices to return. The final block is reserved for the
+            bottleneck whenever possible.
+    """
+    if n_levels <= 0:
+        return []
+    n_levels = min(n_levels, number_of_blocks)
+    max_index = (
+        number_of_blocks - 2
+        if n_levels < number_of_blocks
+        else number_of_blocks - 1
+    )
+    indices = np.linspace(0, max(0, max_index), n_levels)
+    return [int(round(index)) for index in indices]
+
+
 def move_axis(X: torch.Tensor, axis1: int, axis2: int) -> torch.Tensor:
     axes = [i for i in range(len(X.shape))]
     if axis1 < 0:
@@ -1783,6 +1807,78 @@ class ViT(torch.nn.Module):
             if i in return_at:
                 outputs.append(embeded_X)
         return embeded_X, outputs
+
+    def tokens_to_feature_map(self, X: torch.Tensor) -> torch.Tensor:
+        """
+        Reshapes a sequence of transformer tokens into a spatial feature map.
+
+        Args:
+            X (torch.Tensor): token tensor of shape ``(b, n_tokens, n_features)``.
+
+        Returns:
+            torch.Tensor: feature map of shape ``(b, n_features, *grid)``.
+
+        Raises:
+            NotImplementedError: if the embedding maps channels to tokens.
+        """
+        if self.channel_to_token is True:
+            raise NotImplementedError(
+                "forward_with_intermediate is not supported when "
+                "channel_to_token=True"
+            )
+        if self.n_registers > 0:
+            X = X[:, self.n_registers :]
+        if self.use_class_token is True:
+            X = X[:, 1:]
+        grid = [
+            size // patch
+            for size, patch in zip(
+                self.embedding.image_size, self.embedding.patch_size
+            )
+        ]
+        if len(grid) == 2:
+            return einops.rearrange(
+                X, "b (h w) e -> b e h w", h=grid[0], w=grid[1]
+            )
+        return einops.rearrange(
+            X,
+            "b (h w d) e -> b e h w d",
+            h=grid[0],
+            w=grid[1],
+            d=grid[2],
+        )
+
+    def forward_with_intermediate(
+        self,
+        X: torch.Tensor,
+        return_at: Union[str, List[int]] = None,
+        n_levels: int | None = None,
+    ) -> tuple[torch.Tensor, list[torch.Tensor]]:
+        """
+        Runs the ViT and returns the bottleneck alongside one spatial feature
+        map per requested resolution.
+
+        Args:
+            X (torch.Tensor): input tensor.
+            return_at (Union[str, List[int]], optional): transformer blocks whose
+                outputs should be returned. When absent, ``n_levels`` evenly
+                spaced blocks are selected. Defaults to None.
+            n_levels (int, optional): number of intermediate feature maps to
+                return. Only used when ``return_at`` is absent. Defaults to None.
+
+        Returns:
+            tuple[torch.Tensor, list[torch.Tensor]]: the bottleneck feature map
+                and the list of intermediate feature maps.
+        """
+        if return_at is None:
+            return_at = infer_return_at(
+                self.number_of_blocks, n_levels if n_levels is not None else 4
+            )
+        final, outputs = self.forward(X, return_at=return_at)
+        return (
+            self.tokens_to_feature_map(final),
+            [self.tokens_to_feature_map(output) for output in outputs],
+        )
 
 
 class FactorizedViT(torch.nn.Module):

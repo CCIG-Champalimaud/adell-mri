@@ -41,6 +41,7 @@ from adell_mri.modules.layers.adn_fn import get_adn_fn
 from adell_mri.modules.segmentation.pl import (
     UNETRPL,
     BrUNetPL,
+    EncoderUNetPL,
     MonaiSWINUNetPL,
     MonaiUNETRPL,
     SWINUNetPL,
@@ -72,6 +73,10 @@ from adell_mri.modules.semi_supervised_segmentation.pl import (
     UNetContrastiveSemiSL,
 )
 from adell_mri.utils.batch_preprocessing import BatchPreprocessing
+from adell_mri.utils.encoder_loading import (
+    load_ssl_encoder,
+    read_encoder_manifest,
+)
 from adell_mri.utils.optimizer_factory import OPTIMIZER_EPS_DEFAULT
 from adell_mri.utils.python_logging import get_logger
 from adell_mri.utils.torch_utils import ExponentialMovingAverage
@@ -95,6 +100,7 @@ ALLOWED_NET_TYPES = {
         "monai_unetr",
         "swin",
         "monai_swin",
+        "encoder_unet",
     ],
 }
 
@@ -540,6 +546,28 @@ def get_segmentation_network(
                 encoder.load_state_dict(
                     torch.load(ckpt, weights_only=False)["state_dict"]
                 )
+
+    elif net_type == "encoder_unet":
+        if encoder_checkpoint is None:
+            raise ValueError(
+                "net_type 'encoder_unet' requires --encoder_checkpoint"
+            )
+        checkpoint = (
+            encoder_checkpoint[0]
+            if isinstance(encoder_checkpoint, (list, tuple))
+            else encoder_checkpoint
+        )
+        manifest = read_encoder_manifest(checkpoint)
+        encoder = load_ssl_encoder(checkpoint, manifest=manifest)
+        unet = EncoderUNetPL(
+            encoder=encoder,
+            encoder_in_channels=manifest.get("in_channels"),
+            input_shape=size,
+            image_key="image",
+            deep_supervision=deep_supervision,
+            **boilerplate,
+            **network_config,
+        )
 
     elif net_type == "unetpp":
         encoding_operations = encoding_operations[0]

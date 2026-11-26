@@ -748,6 +748,83 @@ class UNet(torch.nn.Module):
                 X = X.unsqueeze(-1)
         return X
 
+    def _forward_decoder(
+        self,
+        curr: torch.Tensor,
+        encoding_out: list[torch.Tensor],
+        X_skip_layer: torch.Tensor = None,
+        X_feature_conditioning: torch.Tensor = None,
+    ) -> tuple[torch.Tensor, list[torch.Tensor]]:
+        """
+        Runs the decoder.
+
+        Args:
+            curr (torch.Tensor): bottleneck tensor.
+            encoding_out (list[torch.Tensor]): encoder outputs including the
+                bottleneck as the last element.
+            X_skip_layer (torch.Tensor, optional): skip conditioning tensor.
+                Defaults to None.
+            X_feature_conditioning (torch.Tensor, optional): feature
+                conditioning tensor. Defaults to None.
+
+        Returns:
+            tuple[torch.Tensor, list[torch.Tensor]]: the decoder output and the
+                outputs of each decoder block.
+        """
+        deep_outputs = []
+        for i in range(len(self.decoding_operations)):
+            op = self.decoding_operations[i]
+            link_op = self.link_ops[i]
+            up = self.upscale_ops[i]
+            if X_skip_layer is not None:
+                S = encoding_out[-i - 2].shape[2:]
+                xfl = F.interpolate(X_skip_layer, S, mode="nearest")
+                link_op_input = torch.cat([encoding_out[-i - 2], xfl], axis=1)
+            else:
+                link_op_input = encoding_out[-i - 2]
+            encoded = link_op(link_op_input)
+            if X_feature_conditioning is not None:
+                feat_op = self.feature_conditioning_ops[i]
+                transformed_features = feat_op(X_feature_conditioning)
+                transformed_features = self.unsqueeze_to_dim(
+                    transformed_features, encoded
+                )
+                encoded = torch.multiply(encoded, transformed_features)
+            curr = up(curr)
+            sh = list(curr.shape)[2:]
+            sh2 = list(encoded.shape)[2:]
+            if np.prod(sh) < np.prod(sh2):
+                encoded = crop_to_size(encoded, sh)
+            if np.prod(sh) > np.prod(sh2):
+                curr = crop_to_size(curr, sh2)
+            curr = torch.concat((curr, encoded), dim=1)
+            curr = op(curr)
+            deep_outputs.append(curr)
+        return curr, deep_outputs
+
+    def forward_with_intermediate(
+        self, X: torch.Tensor
+    ) -> tuple[torch.Tensor, list[torch.Tensor]]:
+        """
+        Runs the encoder and returns the bottleneck alongside one feature map
+        per resolution.
+
+        Args:
+            X (torch.Tensor): input tensor.
+
+        Returns:
+            tuple[torch.Tensor, list[torch.Tensor]]: the bottleneck tensor and
+                the list of intermediate feature maps, ordered from the highest
+                to the lowest resolution.
+        """
+        encoding_out = []
+        curr = X
+        for op, op_ds in self.encoding_operations:
+            curr = op(curr)
+            encoding_out.append(curr)
+            curr = op_ds(curr)
+        return curr, encoding_out[:-1]
+
     def forward(
         self,
         X: torch.Tensor,
@@ -800,35 +877,12 @@ class UNet(torch.nn.Module):
         elif self.encoder_only is True:
             return bottleneck
 
-        deep_outputs = []
-        for i in range(len(self.decoding_operations)):
-            op = self.decoding_operations[i]
-            link_op = self.link_ops[i]
-            up = self.upscale_ops[i]
-            if X_skip_layer is not None:
-                S = encoding_out[-i - 2].shape[2:]
-                xfl = F.interpolate(X_skip_layer, S, mode="nearest")
-                link_op_input = torch.cat([encoding_out[-i - 2], xfl], axis=1)
-            else:
-                link_op_input = encoding_out[-i - 2]
-            encoded = link_op(link_op_input)
-            if X_feature_conditioning is not None:
-                feat_op = self.feature_conditioning_ops[i]
-                transformed_features = feat_op(X_feature_conditioning)
-                transformed_features = self.unsqueeze_to_dim(
-                    transformed_features, encoded
-                )
-                encoded = torch.multiply(encoded, transformed_features)
-            curr = up(curr)
-            sh = list(curr.shape)[2:]
-            sh2 = list(encoded.shape)[2:]
-            if np.prod(sh) < np.prod(sh2):
-                encoded = crop_to_size(encoded, sh)
-            if np.prod(sh) > np.prod(sh2):
-                curr = crop_to_size(curr, sh2)
-            curr = torch.concat((curr, encoded), dim=1)
-            curr = op(curr)
-            deep_outputs.append(curr)
+        curr, deep_outputs = self._forward_decoder(
+            curr,
+            encoding_out,
+            X_skip_layer=X_skip_layer,
+            X_feature_conditioning=X_feature_conditioning,
+        )
 
         final_features = curr
 

@@ -1,0 +1,229 @@
+import pytest
+import torch
+
+from adell_mri.modules.layers.adn_fn import get_adn_fn
+from adell_mri.modules.layers.conv_next import ConvNeXt
+from adell_mri.modules.layers.res_net import ResNet
+from adell_mri.modules.layers.vit import ViT, infer_return_at
+from adell_mri.modules.segmentation.encoder_unet import EncoderUNet
+from adell_mri.modules.segmentation.unet import UNet
+from adell_mri.utils.encoder_loading import (
+    build_encoder_manifest,
+    load_ssl_encoder,
+    read_encoder_manifest,
+)
+
+
+def _resnet_checkpoint() -> dict:
+    backbone_args = {
+        "spatial_dim": 2,
+        "in_channels": 1,
+        "structure": [[8, 8, 3, 1], [16, 16, 3, 1]],
+        "maxpool_structure": [2, 2],
+        "adn_fn": get_adn_fn(2, "batch", "relu", 0.0),
+    }
+    network = ResNet(
+        backbone_args=backbone_args,
+        projection_head_args={
+            "in_channels": 16,
+            "structure": [16, 8],
+            "adn_fn": torch.nn.Identity,
+        },
+    )
+    manifest = build_encoder_manifest(
+        net_type="resnet",
+        ssl_method="simclr",
+        network_config={
+            "backbone_args": backbone_args,
+            "norm_fn": "batch",
+            "act_fn": "relu",
+        },
+        spatial_dim=2,
+        in_channels=1,
+    )
+    return {"state_dict": network.state_dict(), "encoder_config": manifest}
+
+
+def _convnext_checkpoint() -> dict:
+    backbone_args = {
+        "spatial_dim": 2,
+        "in_channels": 1,
+        "structure": [[8, 8, 3, 1], [16, 16, 3, 1]],
+        "maxpool_structure": [2, 2],
+        "first_layer_stride": 4,
+    }
+    network = ConvNeXt(
+        backbone_args=backbone_args,
+        projection_head_args={
+            "in_channels": 16,
+            "structure": [16, 8],
+            "adn_fn": torch.nn.Identity,
+        },
+    )
+    manifest = build_encoder_manifest(
+        net_type="convnext",
+        ssl_method="simclr",
+        network_config={
+            "backbone_args": backbone_args,
+            "norm_fn": "batch",
+            "act_fn": "relu",
+        },
+        spatial_dim=2,
+        in_channels=1,
+    )
+    return {"state_dict": network.state_dict(), "encoder_config": manifest}
+
+
+def _vit_checkpoint() -> dict:
+    backbone_args = {
+        "image_size": [32, 32],
+        "patch_size": [8, 8],
+        "in_channels": 1,
+        "number_of_blocks": 4,
+        "attention_dim": 16,
+        "hidden_dim": 16,
+        "embedding_size": 16,
+        "n_heads": 4,
+        "use_class_token": True,
+    }
+    network = ViT(**backbone_args)
+    manifest = build_encoder_manifest(
+        net_type="vit",
+        ssl_method="dino",
+        network_config={
+            "backbone_args": backbone_args,
+            "norm_fn": "layer",
+            "act_fn": "gelu",
+        },
+        spatial_dim=2,
+        in_channels=1,
+    )
+    state_dict = {
+        f"encoder_.{key}": value for key, value in network.state_dict().items()
+    }
+    return {"state_dict": state_dict, "encoder_config": manifest}
+
+
+def _unet_checkpoint() -> dict:
+    unet_args = {
+        "spatial_dimensions": 2,
+        "in_channels": 1,
+        "depth": [8, 16, 32],
+        "kernel_sizes": [3, 3, 3],
+        "strides": [2, 2, 2],
+        "encoder_only": True,
+    }
+    network = UNet(**unet_args)
+    manifest = build_encoder_manifest(
+        net_type="unet_encoder",
+        ssl_method="simclr",
+        network_config=unet_args,
+        spatial_dim=2,
+        in_channels=1,
+    )
+    return {"state_dict": network.state_dict(), "encoder_config": manifest}
+
+
+@pytest.mark.parametrize(
+    "checkpoint_factory,expected_family",
+    [
+        (_resnet_checkpoint, "resnet"),
+        (_convnext_checkpoint, "convnext"),
+        (_vit_checkpoint, "vit"),
+        (_unet_checkpoint, "unet"),
+    ],
+)
+def test_manifest_roundtrip(checkpoint_factory, expected_family):
+    checkpoint = checkpoint_factory()
+    manifest = read_encoder_manifest(checkpoint)
+    assert manifest["family"] == expected_family
+    encoder = load_ssl_encoder(checkpoint)
+    x = torch.rand(2, 1, 32, 32)
+    with torch.no_grad():
+        bottleneck, skips = encoder.forward_with_intermediate(x)
+    assert bottleneck.ndim == 4
+    assert len(skips) > 0
+
+
+def test_manifest_falls_back_to_hyper_parameters():
+    checkpoint = _vit_checkpoint()
+    checkpoint.pop("encoder_config")
+    checkpoint["hyper_parameters"] = {
+        "backbone_args": {
+            "image_size": [32, 32],
+            "patch_size": [8, 8],
+            "in_channels": 1,
+            "number_of_blocks": 4,
+            "attention_dim": 16,
+            "embedding_size": 16,
+            "n_heads": 4,
+            "use_class_token": True,
+        }
+    }
+    manifest = read_encoder_manifest(checkpoint)
+    assert manifest["family"] == "vit"
+    load_ssl_encoder(checkpoint)
+
+
+def test_infer_return_at_is_evenly_spaced_and_in_bounds():
+    indices = infer_return_at(12, 4)
+    assert indices == sorted(indices)
+    assert indices[0] == 0
+    assert max(indices) < 12
+    assert len(indices) == 4
+
+
+@pytest.mark.parametrize(
+    "checkpoint_factory,spatial_dimensions,input_shape",
+    [
+        (_resnet_checkpoint, 2, [32, 32]),
+        (_convnext_checkpoint, 2, [32, 32]),
+        (_vit_checkpoint, 2, [32, 32]),
+        (_unet_checkpoint, 2, [32, 32]),
+    ],
+)
+def test_encoder_unet_forward(
+    checkpoint_factory, spatial_dimensions, input_shape
+):
+    encoder = load_ssl_encoder(checkpoint_factory())
+    model = EncoderUNet(
+        encoder=encoder,
+        encoder_in_channels=1,
+        input_shape=input_shape,
+        spatial_dimensions=spatial_dimensions,
+        in_channels=1,
+        depth=[8, 16, 32, 32],
+        kernel_sizes=[3, 3, 3, 3],
+        n_classes=2,
+        upscale_type="transpose",
+        link_type="identity",
+        norm_type="batch",
+        activation_fn=torch.nn.ReLU,
+        conv_type="regular",
+        padding=1,
+    )
+    x = torch.rand(2, 1, *input_shape)
+    output, _, bottleneck = model(x, return_features=True)
+    assert output.shape == (2, 1, *input_shape)
+    assert bottleneck.ndim == len(input_shape) + 2
+
+
+def test_encoder_unet_input_adapter():
+    encoder = load_ssl_encoder(_convnext_checkpoint())
+    model = EncoderUNet(
+        encoder=encoder,
+        encoder_in_channels=1,
+        input_shape=[32, 32],
+        spatial_dimensions=2,
+        in_channels=2,
+        depth=[8, 16, 32, 32],
+        kernel_sizes=[3, 3, 3, 3],
+        n_classes=2,
+        upscale_type="transpose",
+        link_type="identity",
+        norm_type="batch",
+        activation_fn=torch.nn.ReLU,
+    )
+    x = torch.rand(1, 2, 32, 32)
+    output, _ = model(x)
+    assert output.shape == (1, 1, 32, 32)
