@@ -99,6 +99,7 @@ def main(arguments):
             "checkpoint_dir",
             "checkpoint_name",
             ("checkpoint_ensemble", "checkpoint"),
+            "encoder_checkpoint",
             "freeze_regex",
             "not_freeze_regex",
             "exclude_from_state_dict",
@@ -517,11 +518,28 @@ def main(arguments):
             collate_fn=safe_collate,
         )
 
+        encoder_checkpoints = [None for _ in (network_configs or [])]
+        if getattr(args, "encoder_checkpoint", None) is not None:
+            if network_configs is None:
+                raise ValueError(
+                    "--encoder_checkpoint requires networks built from "
+                    "configurations"
+                )
+            encoder_checkpoints = list(args.encoder_checkpoint)
+            if len(encoder_checkpoints) == 1:
+                encoder_checkpoints = encoder_checkpoints * len(network_configs)
+            if len(encoder_checkpoints) != len(network_configs):
+                raise ValueError(
+                    "The number of encoder checkpoints must match the number "
+                    "of ensemble networks"
+                )
+
         if network_configs is not None:
             networks = [
                 get_classification_network(
                     net_type=net_type,
                     network_config=network_config,
+                    encoder_checkpoint=encoder_checkpoint,
                     dropout_param=args.dropout_param,
                     seed=args.seed,
                     n_classes=n_classes,
@@ -539,8 +557,8 @@ def main(arguments):
                     partial_mixup=args.partial_mixup,
                     optimizer_eps=optimizer_eps_from_precision(args.precision),
                 )
-                for net_type, network_config in zip(
-                    args.net_types, network_configs
+                for net_type, network_config, encoder_checkpoint in zip(
+                    args.net_types, network_configs, encoder_checkpoints
                 )
             ]
         else:

@@ -102,6 +102,7 @@ def main(arguments):
             "checkpoint_dir",
             "checkpoint_name",
             "checkpoint",
+            "encoder_checkpoint",
             "delete_checkpoints",
             "freeze_regex",
             "not_freeze_regex",
@@ -516,6 +517,7 @@ def main(arguments):
             start_decay=args.start_decay,
             clinical_feature_means=clinical_feature_means,
             clinical_feature_stds=clinical_feature_stds,
+            encoder_checkpoint=args.encoder_checkpoint,
         )
 
         checkpoint = None

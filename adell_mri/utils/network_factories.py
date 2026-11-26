@@ -14,6 +14,7 @@ import torch
 from lightning.pytorch import LightningModule
 
 from adell_mri.constants import DEFAULT_SEED
+from adell_mri.modules.activations import activation_factory
 
 # classification
 from adell_mri.modules.classification.classification import TabularClassifier
@@ -74,6 +75,7 @@ from adell_mri.modules.semi_supervised_segmentation.pl import (
 )
 from adell_mri.utils.batch_preprocessing import BatchPreprocessing
 from adell_mri.utils.encoder_loading import (
+    load_encoder_into,
     load_ssl_encoder,
     read_encoder_manifest,
 )
@@ -150,6 +152,7 @@ def get_classification_network(
     mixup_alpha: float | None = None,
     partial_mixup: float | None = None,
     optimizer_eps: float = OPTIMIZER_EPS_DEFAULT,
+    encoder_checkpoint: str | dict[str, Any] | None = None,
 ) -> LightningModule:
     """
     Returns a classification network.
@@ -172,6 +175,8 @@ def get_classification_network(
         label_smoothing (float): the label smoothing parameter.
         mixup_alpha (float): the mixup alpha parameter.
         partial_mixup (float): the partial mixup parameter.
+        encoder_checkpoint (str | dict[str, Any], optional): self-supervised
+            checkpoint used to initialise the encoder. Defaults to None.
 
     Returns:
         A :class:`LightningModule` classification network.
@@ -211,6 +216,74 @@ def get_classification_network(
         "start_decay": start_decay,
         "optimizer_eps": optimizer_eps,
     }
+    manifest = None
+    if encoder_checkpoint is not None:
+        manifest = read_encoder_manifest(encoder_checkpoint)
+        manifest_family = manifest["family"]
+        if net_type == "unet":
+            if manifest_family != "unet":
+                raise ValueError(
+                    "net_type 'unet' requires an SSL checkpoint trained with "
+                    "net_type 'unet_encoder'"
+                )
+            unet_args = dict(manifest["unet_args"])
+            if "activation_fn" in unet_args and isinstance(
+                unet_args["activation_fn"], str
+            ):
+                unet_args["activation_fn"] = activation_factory[
+                    unet_args["activation_fn"]
+                ]
+            network_config.update(unet_args)
+            network_config["in_channels"] = manifest["in_channels"]
+            if manifest["in_channels"] != len(keys):
+                raise ValueError(
+                    "The SSL encoder was trained with "
+                    f"{manifest['in_channels']} input channels but "
+                    f"{len(keys)} image keys were provided"
+                )
+        elif net_type == "vit":
+            if manifest_family != "vit":
+                raise ValueError(
+                    "net_type 'vit' requires an SSL checkpoint trained with "
+                    "a ViT encoder"
+                )
+            network_config.update(manifest["backbone_args"])
+            network_config.pop("in_channels", None)
+            network_config.pop("spatial_dimensions", None)
+            if manifest["in_channels"] != len(keys):
+                raise ValueError(
+                    "The SSL encoder was trained with "
+                    f"{manifest['in_channels']} input channels but "
+                    f"{len(keys)} image keys were provided"
+                )
+        elif net_type in {"cat", "ord"}:
+            if manifest_family not in {"resnet", "convnext"}:
+                raise ValueError(
+                    f"net_type '{net_type}' cannot use an SSL encoder of "
+                    f"family '{manifest_family}'. Use net_type 'vit' for "
+                    "ViT encoders or 'unet' for UNet encoders."
+                )
+            pretrained_encoder = load_ssl_encoder(
+                encoder_checkpoint, manifest=manifest
+            )
+            if manifest["in_channels"] != len(keys):
+                spatial_dimensions = manifest.get("spatial_dim", 3)
+                conv_op = (
+                    torch.nn.Conv2d
+                    if spatial_dimensions == 2
+                    else torch.nn.Conv3d
+                )
+                adapter = conv_op(len(keys), manifest["in_channels"], 1)
+                pretrained_encoder = torch.nn.Sequential(
+                    adapter, pretrained_encoder
+                )
+            network_config["feature_extraction"] = pretrained_encoder
+        else:
+            raise NotImplementedError(
+                f"Pretrained encoders are not supported for net_type "
+                f"'{net_type}'"
+            )
+
     if net_type == "unet":
         depth_val = network_config["depth"]
         if isinstance(depth_val, (list, tuple)):
@@ -226,7 +299,10 @@ def get_classification_network(
             **network_config,
         )
     elif "vit" in net_type:
-        image_size = tuple(int(x) for x in crop_size)
+        if manifest is not None and manifest.get("image_size") is not None:
+            image_size = tuple(int(x) for x in manifest["image_size"])
+        else:
+            image_size = tuple(int(x) for x in crop_size)
         if net_type == "factorized_vit" and len(image_size) != 3:
             raise ValueError(
                 f"factorized_vit requires a 3D image_size, got {image_size}"
@@ -270,6 +346,9 @@ def get_classification_network(
             **boilerplate_args,
             **network_config,
         )
+
+    if encoder_checkpoint is not None and net_type in {"unet", "vit"}:
+        load_encoder_into(network, encoder_checkpoint, prefix="")
 
     if len(clinical_feature_keys) > 0:
         boilerplate_args_hybrid = {
@@ -324,6 +403,7 @@ def get_deconfounded_classification_network(
     mixup_alpha: float | None = None,
     partial_mixup: float | None = None,
     optimizer_eps: float = OPTIMIZER_EPS_DEFAULT,
+    encoder_checkpoint: str | dict[str, Any] | None = None,
 ) -> LightningModule:
     """
     Returns a deconfounded classification network.
@@ -347,6 +427,8 @@ def get_deconfounded_classification_network(
         label_smoothing (float): the label smoothing parameter.
         mixup_alpha (float): the mixup alpha parameter.
         partial_mixup (float): the partial mixup parameter.
+        encoder_checkpoint (str | dict[str, Any], optional): self-supervised
+            checkpoint used to initialise the encoder. Defaults to None.
 
     Returns:
         A :class:`LightningModule` deconfounded classification network.
@@ -381,6 +463,27 @@ def get_deconfounded_classification_network(
         "start_decay": start_decay,
         "optimizer_eps": optimizer_eps,
     }
+    if encoder_checkpoint is not None:
+        manifest = read_encoder_manifest(encoder_checkpoint)
+        if manifest["family"] not in {"resnet", "convnext"}:
+            raise ValueError(
+                "Deconfounded classification only supports ResNet or "
+                "ConvNeXt SSL encoders"
+            )
+        pretrained_encoder = load_ssl_encoder(
+            encoder_checkpoint, manifest=manifest
+        )
+        if manifest["in_channels"] != len(keys):
+            spatial_dimensions = manifest.get("spatial_dim", 3)
+            conv_op = (
+                torch.nn.Conv2d if spatial_dimensions == 2 else torch.nn.Conv3d
+            )
+            adapter = conv_op(len(keys), manifest["in_channels"], 1)
+            pretrained_encoder = torch.nn.Sequential(
+                adapter, pretrained_encoder
+            )
+        network_config["feature_extraction"] = pretrained_encoder
+
     n_cat_deconfounder = (
         [len(x) for x in cat_vars] if cat_vars is not None else None
     )

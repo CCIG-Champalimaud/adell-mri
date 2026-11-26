@@ -242,6 +242,7 @@ def create_classification_network(
     start_decay: float | None = None,
     clinical_feature_means: torch.Tensor | None = None,
     clinical_feature_stds: torch.Tensor | None = None,
+    encoder_checkpoint: str | None = None,
 ):
     """
     Create a classification or deconfounded classification network.
@@ -272,6 +273,8 @@ def create_classification_network(
             clinical feature normalization.
         clinical_feature_stds (torch.Tensor, optional): Standard
             deviations for clinical feature normalization.
+        encoder_checkpoint (str, optional): Self-supervised checkpoint used
+            to initialise the encoder. Defaults to None.
 
     Returns:
         A PyTorch Lightning classification module.
@@ -312,6 +315,7 @@ def create_classification_network(
             mixup_alpha=mixup_alpha_val,
             partial_mixup=partial_mixup_val,
             optimizer_eps=optimizer_eps,
+            encoder_checkpoint=encoder_checkpoint,
         )
     else:
         return get_classification_network(
@@ -333,4 +337,5 @@ def create_classification_network(
             mixup_alpha=mixup_alpha_val,
             partial_mixup=partial_mixup_val,
             optimizer_eps=optimizer_eps,
+            encoder_checkpoint=encoder_checkpoint,
         )

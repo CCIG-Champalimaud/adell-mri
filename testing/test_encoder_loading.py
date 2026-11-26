@@ -12,6 +12,10 @@ from adell_mri.utils.encoder_loading import (
     load_ssl_encoder,
     read_encoder_manifest,
 )
+from adell_mri.utils.network_factories import (
+    get_classification_network,
+    get_segmentation_network,
+)
 
 
 def _resnet_checkpoint() -> dict:
@@ -206,6 +210,101 @@ def test_encoder_unet_forward(
     output, _, bottleneck = model(x, return_features=True)
     assert output.shape == (2, 1, *input_shape)
     assert bottleneck.ndim == len(input_shape) + 2
+
+
+def test_segmentation_encoder_unet_factory():
+    network = get_segmentation_network(
+        net_type="encoder_unet",
+        network_config={
+            "spatial_dimensions": 2,
+            "in_channels": 1,
+            "depth": [8, 16, 32],
+            "kernel_sizes": [3, 3, 3],
+            "loss_fn": torch.nn.BCEWithLogitsLoss(),
+            "batch_size": 2,
+            "learning_rate": 1e-4,
+            "conv_type": "regular",
+            "link_type": "identity",
+            "upscale_type": "transpose",
+            "norm_type": "batch",
+            "activation_fn": torch.nn.ReLU,
+            "padding": 1,
+        },
+        bottleneck_classification=False,
+        clinical_feature_keys=[],
+        all_aux_keys=[],
+        clinical_feature_params=None,
+        clinical_feature_key_net=None,
+        aux_key_net=None,
+        max_epochs=1,
+        encoding_operations=[None],
+        picai_eval=False,
+        lr_encoder=None,
+        encoder_checkpoint=[_resnet_checkpoint()],
+        deep_supervision=False,
+        n_classes=2,
+        keys=["image"],
+        optimizer_str="adamw",
+        train_loader_call=None,
+        random_crop_size=[32, 32],
+        crop_size=None,
+        pad_size=None,
+        resize_size=None,
+        semi_supervised=False,
+        max_steps_optim=10,
+    )
+    output = network(torch.rand(2, 1, 32, 32))
+    assert output[0].shape == (2, 1, 32, 32)
+
+
+def test_classification_cat_uses_ssl_encoder():
+    network = get_classification_network(
+        net_type="cat",
+        network_config={
+            "spatial_dimensions": 2,
+            "loss_fn": torch.nn.BCEWithLogitsLoss(),
+            "classification_structure": [16, 8],
+            "batch_size": 2,
+            "learning_rate": 1e-4,
+        },
+        dropout_param=0.0,
+        seed=42,
+        n_classes=2,
+        keys=["image"],
+        clinical_feature_keys=[],
+        train_loader_call=None,
+        max_epochs=1,
+        warmup_steps=0,
+        start_decay=1,
+        crop_size=[32, 32],
+        encoder_checkpoint=_resnet_checkpoint(),
+    )
+    output = network(torch.rand(2, 1, 32, 32))
+    assert output.shape == (2, 1)
+
+
+def test_classification_vit_uses_ssl_encoder():
+    network = get_classification_network(
+        net_type="vit",
+        network_config={
+            "loss_fn": torch.nn.BCEWithLogitsLoss(),
+            "batch_size": 2,
+            "learning_rate": 1e-4,
+        },
+        dropout_param=0.0,
+        seed=42,
+        n_classes=2,
+        keys=["image"],
+        clinical_feature_keys=[],
+        train_loader_call=None,
+        max_epochs=1,
+        warmup_steps=0,
+        start_decay=1,
+        crop_size=[32, 32],
+        encoder_checkpoint=_vit_checkpoint(),
+    )
+    output = network(torch.rand(2, 1, 32, 32))
+    assert output.shape == (2, 1)
 
 
 def test_encoder_unet_input_adapter():
