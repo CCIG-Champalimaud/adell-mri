@@ -85,6 +85,12 @@ Older checkpoints can be converted with:
 python utils/add-encoder-config.py --checkpoint old_ssl.ckpt
 ```
 
+The script recovers the encoder architecture from the checkpoint metadata or `hyper_parameters`. If the normalization/activation settings cannot be recovered, pass the original SSL YAML explicitly:
+
+```
+python utils/add-encoder-config.py --checkpoint old_ssl.ckpt --config_file ssl.yaml
+```
+
 ## Simplified library map
 
 ### Modules and networks
