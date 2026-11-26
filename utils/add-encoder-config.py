@@ -11,8 +11,21 @@ import argparse
 from pathlib import Path
 
 import torch
+import yaml
 
-from adell_mri.utils.encoder_loading import MANIFEST_KEY, read_encoder_manifest
+from adell_mri.utils.encoder_loading import (
+    MANIFEST_KEY,
+    build_encoder_manifest,
+    read_encoder_manifest,
+)
+
+_FAMILY_TO_NET_TYPE = {
+    "resnet": "resnet",
+    "convnext": "convnext",
+    "vit": "vit",
+    "mae": "vit",
+    "unet": "unet_encoder",
+}
 
 
 def parse_arguments() -> argparse.Namespace:
@@ -35,6 +48,13 @@ def parse_arguments() -> argparse.Namespace:
         default=None,
         help="Path to the output checkpoint. Defaults to "
         "<checkpoint>_with_encoder_config.ckpt.",
+    )
+    parser.add_argument(
+        "--config_file",
+        default=None,
+        help="Optional SSL YAML configuration. Use this when the checkpoint "
+        "does not contain enough metadata to recover the normalization or "
+        "activation functions.",
     )
     return parser.parse_args()
 
@@ -62,7 +82,27 @@ def main() -> None:
             f"{checkpoint_path} already contains an {MANIFEST_KEY} entry"
         )
 
-    manifest = read_encoder_manifest(checkpoint)
+    inferred_manifest = read_encoder_manifest(checkpoint)
+    manifest = inferred_manifest
+    if args.config_file is not None:
+        with open(args.config_file, "r") as config_file:
+            network_config = yaml.safe_load(config_file)
+        family = inferred_manifest["family"]
+        ssl_method = (
+            "mae"
+            if family == "mae"
+            else inferred_manifest.get("ssl_method", "unknown")
+        )
+        manifest = build_encoder_manifest(
+            net_type=_FAMILY_TO_NET_TYPE[family],
+            ssl_method=ssl_method,
+            network_config=network_config,
+            spatial_dim=inferred_manifest.get("spatial_dim"),
+            in_channels=inferred_manifest.get("in_channels"),
+        )
+        if family in {"vit", "mae"} and manifest.get("image_size") is None:
+            manifest["image_size"] = inferred_manifest.get("image_size")
+
     checkpoint[MANIFEST_KEY] = manifest
     torch.save(checkpoint, output_path)
     print(f"Wrote {output_path} with encoder family '{manifest['family']}'")
