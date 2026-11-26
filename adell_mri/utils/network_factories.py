@@ -415,7 +415,6 @@ def get_segmentation_network(
     picai_eval: bool,
     lr_encoder: float,
     encoder_checkpoint: str,
-    res_config_file: str | None,
     deep_supervision: bool,
     n_classes: int,
     keys: list[str],
@@ -451,9 +450,8 @@ def get_segmentation_network(
         encoding_operations (list[torch.nn.Module]): the encoding operations.
         picai_eval (bool): whether to use picai evaluation.
         lr_encoder (float): the learning rate for the encoder.
-        encoder_checkpoint (str): the checkpoint of the encoder.
-        res_config_file (str | None): the configuration file for the residual
-            network.
+        encoder_checkpoint (str): self-supervised checkpoint used to initialise
+            the encoder. Required when ``net_type == "encoder_unet"``.
         deep_supervision (bool): whether to use deep supervision.
         n_classes (int): the number of classes.
         keys (list[str]): the keys of the input data.
@@ -541,11 +539,6 @@ def get_segmentation_network(
             **boilerplate,
             **network_config,
         )
-        if encoder_checkpoint is not None and res_config_file is None:
-            for encoder, ckpt in zip(unet.encoders, encoder_checkpoint):
-                encoder.load_state_dict(
-                    torch.load(ckpt, weights_only=False)["state_dict"]
-                )
 
     elif net_type == "encoder_unet":
         if encoder_checkpoint is None:

@@ -567,21 +567,17 @@ argument_factory = {
             "swin",
             "monai_swin",
             "monai_unetr",
+            "encoder_unet",
         ],
         default="unet",
         help="Specifies which UNet model is used",
-    ),
-    "res_config_file": dict(
-        action="store",
-        default=None,
-        help="Uses a ResNet as a backbone (depths are inferred from this). \
-            This config file is then used to parameterise the ResNet.",
     ),
     "encoder_checkpoint": dict(
         action="store",
         default=None,
         nargs="+",
-        help="Checkpoint for encoder backbone checkpoint",
+        help="Self-supervised checkpoint used to initialise the encoder. \
+            Requires --net_type encoder_unet for segmentation.",
     ),
     "lr_encoder": dict(
         action="store",
