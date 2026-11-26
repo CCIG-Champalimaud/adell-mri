@@ -211,6 +211,20 @@ def _build_conv_or_vit_manifest(
         spatial_dim = spatial_dim or backbone_args.get("spatial_dim", 2)
         prefix = "backbone."
 
+    if family != "vit" and adn_fn is None:
+        if config.get("norm_fn") is None:
+            logger.warning(
+                "Could not recover the encoder normalization; defaulting to "
+                "'batch'. Pass --config_file to the conversion script if the "
+                "checkpoint was trained with a different normalization."
+            )
+        if config.get("act_fn") is None:
+            logger.warning(
+                "Could not recover the encoder activation; defaulting to "
+                "'swish'. Pass --config_file to the conversion script if the "
+                "checkpoint was trained with a different activation."
+            )
+
     manifest = {
         "format_version": MANIFEST_FORMAT_VERSION,
         "family": family,
