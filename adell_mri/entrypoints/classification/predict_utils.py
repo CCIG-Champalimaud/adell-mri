@@ -220,7 +220,7 @@ def resolve_checkpoint_list(
     return checkpoints
 
 
-def configure_loss_fn(config, net_type, n_classes):
+def configure_loss_fn(config, net_type, n_classes, objective=None):
     """
     Assign a loss function to a network or ensemble config dict.
 
@@ -229,13 +229,17 @@ def configure_loss_fn(config, net_type, n_classes):
     Args:
         config (dict): Network or ensemble configuration. Mutated in-place.
         net_type (str or None): Network type string (e.g. ``"cat"``,
-            ``"ord"``, ``"unet"``). If ``None``, ordinal loss is never
-            selected.
+            ``"ord"``, ``"unet"``). Used to infer the objective when
+            ``objective`` is not provided.
         n_classes (int): Number of output classes.
+        objective (str, optional): Classification objective (``"cat"`` or
+            ``"ord"``). Defaults to None (inferred from ``net_type``).
     """
+    if objective is None:
+        objective = "ord" if net_type == "ord" else "cat"
     if n_classes == 2:
         config["loss_fn"] = torch.nn.BCEWithLogitsLoss()
-    elif net_type == "ord":
+    elif objective == "ord":
         config["loss_fn"] = OrdinalSigmoidalLoss(n_classes=n_classes)
     else:
         config["loss_fn"] = torch.nn.CrossEntropyLoss()
