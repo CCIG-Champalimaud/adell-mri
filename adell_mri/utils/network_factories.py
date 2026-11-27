@@ -1070,6 +1070,32 @@ def get_ssl_network_no_pl(
     return ssl
 
 
+def get_ssl_checkpoint_net_type(module: torch.nn.Module) -> str:
+    """
+    Returns the backbone family of an SSL module.
+
+    This reflects the architecture that was actually instantiated (which may
+    differ from the ``net_type`` CLI argument for some SSL methods), so that
+    the checkpoint metadata can be used to rebuild the encoder.
+
+    Args:
+        module (torch.nn.Module): an SSL Lightning module.
+
+    Returns:
+        str: one of ``"resnet"``, ``"convnext"``, ``"vit"``, ``"mae"`` or
+            ``"unet_encoder"``.
+    """
+    if isinstance(module, ViTMaskedAutoEncoderPL):
+        return "mae"
+    if isinstance(module, (IJEPAPL, DINOPL, iBOTPL)):
+        return "vit"
+    if isinstance(module, SelfSLConvNeXtPL):
+        return "convnext"
+    if isinstance(module, SelfSLUNetPL):
+        return "unet_encoder"
+    return "resnet"
+
+
 def get_ssl_checkpoint_metadata(checkpoint: dict[str, Any]) -> dict[str, Any]:
     """
     Retrieves the metadata stored in an SSL checkpoint.

@@ -18,6 +18,7 @@ from adell_mri.modules.self_supervised.pl import (
 from adell_mri.utils.network_factories import (
     convert_ssl_checkpoint,
     get_classification_network,
+    get_ssl_checkpoint_net_type,
     initialise_ssl_from_ckpt,
 )
 from adell_mri.utils.pl_callbacks import ModelCheckpointWithMetadata
@@ -221,6 +222,13 @@ def _build_ssl_pl(family: str):
             training_dataloader_call=None,
         )
     return module, backbone_args
+
+
+@pytest.mark.parametrize("family", ["resnet", "convnext"])
+def test_ssl_checkpoint_net_type(family):
+    module, _ = _build_ssl_pl(family)
+
+    assert get_ssl_checkpoint_net_type(module) == family
 
 
 @pytest.mark.parametrize("family", ["resnet", "convnext"])

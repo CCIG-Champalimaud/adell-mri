@@ -17,7 +17,7 @@ padding: "same"
 dropout_rate: 0.1
 dropout_param: 0
 activation_fn: "leaky_relu"
-n_channels: 1
+in_channels: 1
 depth: [32, 64, 128, 256]
 kernel_sizes: [3, 3, 3, 3]
 learning_rate: 0.005
