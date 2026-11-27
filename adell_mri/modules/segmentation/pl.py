@@ -28,6 +28,11 @@ from adell_mri.modules.segmentation.unetr import (
     MonaiUNETR,
     SWINUNet,
 )
+from adell_mri.utils.encoder_utils import (
+    freeze_encoder_parameters,
+    is_encoder_parameter,
+    set_encoder_eval,
+)
 from adell_mri.utils.optimizer_factory import (
     OPTIMIZER_EPS_DEFAULT,
     get_optimizer,
@@ -217,9 +222,7 @@ class UNetBasePL(pl.LightningModule, ABC):
         Keeps the encoder in evaluation mode when it is frozen.
         """
         if getattr(self, "lr_encoder", None) == 0:
-            for name, module in self.named_modules():
-                if name and ("encoder" in name or "encoding" in name):
-                    module.eval()
+            set_encoder_eval(self)
 
     @property
     def device(self):
@@ -584,16 +587,14 @@ class UNetBasePL(pl.LightningModule, ABC):
 
     def configure_optimizers(self) -> dict:
         if self.lr_encoder == 0:
-            for k, p in self.named_parameters():
-                if "encoding" in k or "encoder" in k:
-                    p.requires_grad = False
+            freeze_encoder_parameters(self)
 
         encoder_params = []
         rest_of_params = []
         for k, p in self.named_parameters():
             if not p.requires_grad:
                 continue
-            if "encoding" in k or "encoder" in k:
+            if is_encoder_parameter(k):
                 encoder_params.append(p)
             else:
                 rest_of_params.append(p)

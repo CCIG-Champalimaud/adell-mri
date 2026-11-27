@@ -48,6 +48,12 @@ from adell_mri.modules.classification.classification import (
 from adell_mri.modules.conformal_prediction import AdaptivePredictionSets
 from adell_mri.modules.layers.gaussian_process import GaussianProcessLayer
 from adell_mri.modules.learning_rate import CosineAnnealingWithWarmupLR
+from adell_mri.utils.encoder_utils import (
+    encoder_parameter_ids,
+    freeze_encoder_parameters,
+    is_encoder_parameter,
+    set_encoder_eval,
+)
 from adell_mri.utils.optimizer_factory import OPTIMIZER_EPS_DEFAULT
 from adell_mri.utils.python_logging import get_logger
 
@@ -163,31 +169,6 @@ def get_metric_dict(
     return metric_dict
 
 
-_ENCODER_PARAMETER_KEYS = (
-    "feature_extraction",
-    "encoder",
-    "encoding",
-    "network.embedding",
-    "network.tbs",
-    "network.res_net",
-    "embedding",
-    "tbs",
-)
-
-
-def _is_encoder_parameter(name: str) -> bool:
-    """
-    Checks whether a parameter name belongs to a pretrained encoder.
-
-    Args:
-        name (str): parameter name.
-
-    Returns:
-        bool: whether the parameter belongs to an encoder.
-    """
-    return any(key in name for key in _ENCODER_PARAMETER_KEYS)
-
-
 class ClassPLABC(pl.LightningModule, ABC):
     """
     Abstract classification class for LightningModules.
@@ -208,9 +189,7 @@ class ClassPLABC(pl.LightningModule, ABC):
         Keeps the encoder in evaluation mode when it is frozen.
         """
         if self.lr_encoder == 0:
-            for name, module in self.named_modules():
-                if name and _is_encoder_parameter(name):
-                    module.eval()
+            set_encoder_eval(self)
 
     def calculate_loss(
         self,
@@ -668,15 +647,9 @@ class ClassPLABC(pl.LightningModule, ABC):
                 and the name of the metric to monitor for early stopping.
         """
         if self.lr_encoder == 0:
-            for name, parameter in self.named_parameters():
-                if _is_encoder_parameter(name):
-                    parameter.requires_grad = False
+            freeze_encoder_parameters(self)
 
-        encoder_param_ids = {
-            id(parameter)
-            for name, parameter in self.named_parameters()
-            if _is_encoder_parameter(name)
-        }
+        encoder_param_ids = encoder_parameter_ids(self)
 
         gaussian_process_param_ids = set()
         for _, module in self.named_modules():
@@ -2560,9 +2533,7 @@ class DeconfoundedNetPL(DeconfoundedNetGeneric, ClassPLABC):
 
     def configure_optimizers(self) -> dict:
         if self.lr_encoder == 0:
-            for n, p in self.named_parameters():
-                if _is_encoder_parameter(n):
-                    p.requires_grad = False
+            freeze_encoder_parameters(self)
 
         params_confounder = []
         params_classifier = []
@@ -2572,7 +2543,7 @@ class DeconfoundedNetPL(DeconfoundedNetGeneric, ClassPLABC):
                 continue
             if "confound" in n:
                 params_confounder.append(p)
-            elif _is_encoder_parameter(n):
+            elif is_encoder_parameter(n):
                 params_encoder.append(p)
             else:
                 params_classifier.append(p)
