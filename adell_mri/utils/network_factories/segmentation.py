@@ -36,6 +36,41 @@ from adell_mri.utils.optimizer_factory import OPTIMIZER_EPS_DEFAULT
 from adell_mri.utils.torch_utils import ExponentialMovingAverage
 
 
+def _get_segmentation_size(*sizes):
+    """
+    Returns the first non-None spatial size.
+
+    Args:
+        *sizes: candidate sizes.
+
+    Returns:
+        The first non-None size, or None.
+    """
+    for size in sizes:
+        if size is not None:
+            return size
+    return None
+
+
+def _set_image_and_patch_size(
+    network_config: dict[str, Any], size, include_patch_size: bool
+) -> None:
+    """
+    Sets the image and (optionally) patch sizes in a network configuration.
+
+    Args:
+        network_config (dict[str, Any]): network configuration.
+        size: spatial size to use.
+        include_patch_size (bool): whether to slice the patch size too.
+    """
+    spatial_dimensions = network_config["spatial_dimensions"]
+    network_config["image_size"] = size[:spatial_dimensions]
+    if include_patch_size:
+        network_config["patch_size"] = network_config["patch_size"][
+            :spatial_dimensions
+        ]
+
+
 @compile_if_necessary
 def get_segmentation_network(
     net_type: str,
@@ -118,12 +153,9 @@ def get_segmentation_network(
             f"{ALLOWED_NET_TYPES['segmentation']}"
         )
 
-    def get_size(*size_list):
-        for size in size_list:
-            if size is not None:
-                return size
-
-    size = get_size(random_crop_size, crop_size, pad_size, resize_size)
+    size = _get_segmentation_size(
+        random_crop_size, crop_size, pad_size, resize_size
+    )
 
     boilerplate = dict(
         training_dataloader_call=train_loader_call,
@@ -219,9 +251,7 @@ def get_segmentation_network(
         )
 
     elif net_type == "unetr":
-        sd = network_config["spatial_dimensions"]
-        network_config["image_size"] = size[:sd]
-        network_config["patch_size"] = network_config["patch_size"][:sd]
+        _set_image_and_patch_size(network_config, size, True)
         unet = UNETRPL(
             image_key="image",
             deep_supervision=deep_supervision,
@@ -230,9 +260,7 @@ def get_segmentation_network(
         )
 
     elif net_type == "monai_unetr":
-        sd = network_config["spatial_dimensions"]
-        network_config["image_size"] = size[:sd]
-        network_config["patch_size"] = network_config["patch_size"][:sd]
+        _set_image_and_patch_size(network_config, size, True)
         unet = MonaiUNETRPL(
             image_key="image",
             deep_supervision=deep_supervision,
@@ -241,8 +269,7 @@ def get_segmentation_network(
         )
 
     elif net_type == "swin":
-        sd = network_config["spatial_dimensions"]
-        network_config["image_size"] = size[:sd]
+        _set_image_and_patch_size(network_config, size, False)
         unet = SWINUNetPL(
             image_key="image",
             deep_supervision=deep_supervision,
@@ -251,9 +278,7 @@ def get_segmentation_network(
         )
 
     elif net_type == "monai_swin":
-        sd = network_config["spatial_dimensions"]
-        network_config["image_size"] = size[:sd]
-        network_config["patch_size"] = network_config["patch_size"][:sd]
+        _set_image_and_patch_size(network_config, size, True)
         unet = MonaiSWINUNetPL(
             image_key="image",
             deep_supervision=deep_supervision,
