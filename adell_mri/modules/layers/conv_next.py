@@ -137,6 +137,16 @@ class ConvNeXtBackbone(torch.nn.Module):
 
         self.output_features = self.structure[-1][0]
 
+    @property
+    def out_channels(self) -> List[int]:
+        """
+        Number of output channels for each intermediate layer.
+
+        Returns:
+            List[int]: output channels for each element in the structure.
+        """
+        return [s[0] for s in self.structure]
+
     def get_ops(self):
         if self.spatial_dim == 2:
             self.res_op = ConvNeXtBlock2d
@@ -211,6 +221,18 @@ class ConvNeXtBackbone(torch.nn.Module):
                 X = pool_op(op(X))
                 output_list.append(X)
         return X, output_list
+
+    def forward_features(self, X: torch.Tensor) -> torch.Tensor:
+        """
+        Returns the bottleneck features of the backbone.
+
+        Args:
+            X (torch.Tensor): input tensor.
+
+        Returns:
+            torch.Tensor: bottleneck feature map.
+        """
+        return self.forward_regular(X)
 
     def forward_regular(self, X, batch_idx=None):
         X = self.input_layer(X)

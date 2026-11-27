@@ -107,6 +107,16 @@ class ResNetBackbone(torch.nn.Module):
 
         self.output_features = self.structure[-1][0]
 
+    @property
+    def out_channels(self) -> List[int]:
+        """
+        Number of output channels for each intermediate layer.
+
+        Returns:
+            List[int]: output channels for each element in the structure.
+        """
+        return [s[0] for s in self.structure]
+
     def get_ops(self):
         if self.spatial_dim == 2:
             if self.res_type == "resnet":
@@ -253,6 +263,18 @@ class ResNetBackbone(torch.nn.Module):
                 output_list.append(X)
             X = pooled_X
         return output_list
+
+    def forward_features(self, X: torch.Tensor) -> torch.Tensor:
+        """
+        Returns the bottleneck features of the backbone.
+
+        Args:
+            X (torch.Tensor): input tensor.
+
+        Returns:
+            torch.Tensor: bottleneck feature map.
+        """
+        return self.forward_regular(X)
 
     def forward_regular(
         self, X: torch.Tensor, batch_idx: int = None

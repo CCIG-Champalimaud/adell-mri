@@ -5,6 +5,7 @@ from typing import Sequence
 import einops
 import numpy as np
 import torch
+import torch.nn.functional as F
 
 from adell_mri.custom_types import (
     Callable,
@@ -1695,6 +1696,10 @@ class ViT(torch.nn.Module):
         self.learnable_embedding = learnable_embedding
         self.channel_to_token = channel_to_token
         self.patch_erasing = patch_erasing
+        # number of intermediate levels returned by
+        # forward_with_intermediate (inferred by downstream modules such as
+        # the U-Net encoder)
+        self.n_levels = None
 
         self.embedding = LinearEmbedding(
             image_size=self.image_size,
@@ -1783,6 +1788,131 @@ class ViT(torch.nn.Module):
             if i in return_at:
                 outputs.append(embeded_X)
         return embeded_X, outputs
+
+    def set_n_levels(self, n_levels: int) -> None:
+        """
+        Sets the number of intermediate levels used by
+        :meth:`forward_with_intermediate`.
+
+        Args:
+            n_levels (int): number of intermediate levels.
+
+        Raises:
+            ValueError: if ``n_levels`` is not a positive integer or exceeds
+                the number of transformer blocks.
+        """
+        if n_levels < 1:
+            raise ValueError(f"n_levels must be positive, got {n_levels}")
+        if n_levels > self.number_of_blocks:
+            raise ValueError(
+                f"n_levels ({n_levels}) cannot exceed the number of blocks "
+                f"({self.number_of_blocks})"
+            )
+        self.n_levels = int(n_levels)
+
+    @property
+    def out_channels(self) -> List[int]:
+        """
+        Number of output channels for each intermediate layer.
+
+        Returns:
+            List[int]: one entry per intermediate level.
+        """
+        n_levels = (
+            self.n_levels
+            if self.n_levels is not None
+            else self.number_of_blocks
+        )
+        return [self.input_dim_primary for _ in range(n_levels)]
+
+    def _tokens_to_map(self, X: torch.Tensor) -> torch.Tensor:
+        """
+        Reshapes a token sequence into a channel-first feature map.
+
+        Args:
+            X (torch.Tensor): token tensor of shape ``(batch, tokens, dim)``.
+
+        Returns:
+            torch.Tensor: feature map of shape ``(batch, dim, *grid)``.
+
+        Raises:
+            ValueError: if the number of tokens does not match the patch grid.
+        """
+        n_prefix = self.n_registers + int(self.use_class_token)
+        grid = [s // p for s, p in zip(self.image_size, self.patch_size)]
+        n_tokens = int(np.prod(grid))
+        if X.shape[1] - n_prefix != n_tokens:
+            raise ValueError(
+                "The number of tokens does not match the patch grid. "
+                "forward_with_intermediate only supports non-windowed "
+                "embeddings where n_tokens == prod(image_size // patch_size)."
+            )
+        X = X[:, n_prefix:]
+        X = move_axis(X, 1, -1)
+        return X.reshape(X.shape[0], X.shape[1], *grid)
+
+    def forward_features(self, X: torch.Tensor) -> torch.Tensor:
+        """
+        Returns the final token sequence reshaped as a feature map.
+
+        Args:
+            X (torch.Tensor): input tensor of shape ``(batch, in_channels,
+                *image_size)``.
+
+        Returns:
+            torch.Tensor: feature map of shape ``(batch, input_dim_primary,
+                *grid)``.
+        """
+        X, _ = self.forward(X)
+        return self._tokens_to_map(X)
+
+    def forward_with_intermediate(
+        self, X: torch.Tensor, n_levels: int = None
+    ) -> Tuple[torch.Tensor, TensorList]:
+        """
+        Returns intermediate transformer outputs at multiple resolutions.
+
+        The outputs of evenly spaced transformer blocks are reshaped into
+        channel-first feature maps and resampled to a geometric resolution
+        pyramid so that they can be used as skip connections in a U-Net.
+
+        Args:
+            X (torch.Tensor): input tensor of shape ``(batch, in_channels,
+                *image_size)``.
+            n_levels (int, optional): number of intermediate levels. Defaults
+                to ``self.n_levels`` (or the number of blocks if unset).
+
+        Returns:
+            Tuple[torch.Tensor, TensorList]: the bottleneck feature map and a
+                list of intermediate feature maps (ordered from the highest to
+                the lowest resolution).
+        """
+        n_levels = n_levels or self.n_levels or self.number_of_blocks
+        self.set_n_levels(n_levels)
+
+        block_indices = (
+            [
+                int(round(i * (self.number_of_blocks - 1) / (n_levels - 1)))
+                for i in range(n_levels)
+            ]
+            if n_levels > 1
+            else [self.number_of_blocks - 1]
+        )
+        block_indices = sorted(set(block_indices))
+
+        final, outputs = self.forward(X, return_at=block_indices[:-1])
+        maps = [self._tokens_to_map(x) for x in outputs + [final]]
+
+        output_list = []
+        spatial_shape = X.shape[2:]
+        for i, feature_map in enumerate(maps):
+            target_shape = [
+                max(int(np.ceil(s / (2 ** (i + 1)))), 1) for s in spatial_shape
+            ]
+            output_list.append(
+                F.interpolate(feature_map, size=target_shape, mode="nearest")
+            )
+        return output_list[-1], output_list
 
 
 class FactorizedViT(torch.nn.Module):
