@@ -46,6 +46,42 @@ def resnet_checkpoint() -> dict:
     return {"state_dict": network.state_dict(), "encoder_config": manifest}
 
 
+def resnet3d_checkpoint() -> dict:
+    """
+    Returns a tiny 3D ResNet self-supervised checkpoint.
+
+    Returns:
+        dict: checkpoint containing a state dict and encoder manifest.
+    """
+    backbone_args = {
+        "spatial_dim": 3,
+        "in_channels": 1,
+        "structure": [[8, 8, 3, 1], [16, 16, 3, 1]],
+        "maxpool_structure": [[2, 2, 2], [2, 2, 2]],
+        "adn_fn": get_adn_fn(3, "batch", "relu", 0.0),
+    }
+    network = ResNet(
+        backbone_args=backbone_args,
+        projection_head_args={
+            "in_channels": 16,
+            "structure": [16, 8],
+            "adn_fn": torch.nn.Identity,
+        },
+    )
+    manifest = build_encoder_manifest(
+        net_type="resnet",
+        ssl_method="simclr",
+        network_config={
+            "backbone_args": backbone_args,
+            "norm_fn": "batch",
+            "act_fn": "relu",
+        },
+        spatial_dim=3,
+        in_channels=1,
+    )
+    return {"state_dict": network.state_dict(), "encoder_config": manifest}
+
+
 def convnext_checkpoint() -> dict:
     """
     Returns a tiny ConvNeXt self-supervised checkpoint.
