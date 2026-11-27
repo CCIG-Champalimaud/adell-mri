@@ -11,6 +11,10 @@ from adell_mri.modules.layers.res_net import ResNetBackbone
 from adell_mri.modules.layers.vit import ViT
 from adell_mri.modules.segmentation.unet import UNet
 from adell_mri.modules.self_supervised.autoencoders import ViTMaskedAutoEncoder
+from adell_mri.modules.self_supervised.pl import (
+    SelfSLConvNeXtPL,
+    SelfSLResNetPL,
+)
 from adell_mri.utils.network_factories import (
     convert_ssl_checkpoint,
     get_classification_network,
@@ -169,6 +173,77 @@ def test_ssl_checkpoint_saving_and_loading(tmp_path, family):
     loaded_weights = getattr(loaded, "model", loaded)
     assert type(loaded_weights).__name__ == type(encoder).__name__
     _assert_same_weights(encoder, loaded_weights)
+
+
+def _build_ssl_pl(family: str):
+    """
+    Builds a small SSL Lightning module.
+
+    Args:
+        family (str): either "resnet" or "convnext".
+
+    Returns:
+        tuple: the SSL module and its backbone arguments.
+    """
+    structure = [(8, 8, 3, 1), (16, 16, 3, 1), (32, 32, 3, 1)]
+    projection_head_args = {
+        "in_channels": 32,
+        "structure": [32, 16],
+        "adn_fn": torch.nn.Identity,
+    }
+    if family == "resnet":
+        backbone_args = {
+            "spatial_dim": 3,
+            "in_channels": 1,
+            "structure": structure,
+            "adn_fn": torch.nn.Identity,
+            "res_type": "resnet",
+        }
+        module = SelfSLResNetPL(
+            backbone_args=backbone_args,
+            projection_head_args=projection_head_args,
+            prediction_head_args=None,
+            ssl_method="simclr",
+            training_dataloader_call=None,
+        )
+    else:
+        backbone_args = {
+            "spatial_dim": 3,
+            "in_channels": 1,
+            "structure": structure,
+            "adn_fn": torch.nn.Identity,
+        }
+        module = SelfSLConvNeXtPL(
+            backbone_args=backbone_args,
+            projection_head_args=projection_head_args,
+            prediction_head_args=None,
+            ssl_method="simclr",
+            training_dataloader_call=None,
+        )
+    return module, backbone_args
+
+
+@pytest.mark.parametrize("family", ["resnet", "convnext"])
+def test_ssl_pl_checkpoint_roundtrip(tmp_path, family):
+    module, backbone_args = _build_ssl_pl(family)
+    metadata = {
+        "network_config": {"backbone_args": backbone_args},
+        "net_type": family,
+        "ssl_method": "simclr",
+    }
+    callback = ModelCheckpointWithMetadata(metadata=metadata)
+    checkpoint = {
+        "state_dict": module.state_dict(),
+        "callbacks": {type(callback).__name__: callback.state_dict()},
+        "epoch": 0,
+        "global_step": 0,
+    }
+    path = str(tmp_path / "pl.ckpt")
+    torch.save(checkpoint, path)
+
+    loaded = initialise_ssl_from_ckpt(path)
+
+    _assert_same_weights(module.backbone, loaded)
 
 
 @pytest.mark.parametrize("family", FAMILIES)
