@@ -9,7 +9,6 @@ from tqdm import tqdm
 
 from adell_mri.constants import DEFAULT_SEED
 from adell_mri.entrypoints.assemble_args import Parser
-from adell_mri.entrypoints.classification._utils import resolve_objective
 from adell_mri.entrypoints.classification.predict_utils import (
     ClassificationPredictionAccumulator,
     configure_loss_fn,
@@ -166,7 +165,7 @@ def main(arguments):
     ).transforms()
 
     post_proc_fn, extra_args = resolve_postprocessing(
-        args.type, resolve_objective(args), args.n_classes, caller_logger=logger
+        args.type, args.objective, args.n_classes, caller_logger=logger
     )
 
     global_output = []
@@ -193,7 +192,7 @@ def main(arguments):
         configure_loss_fn(
             ensemble_config,
             args.n_classes,
-            objective=resolve_objective(args),
+            objective=args.objective,
         )
 
         checkpoint_list = resolve_checkpoint_list(
@@ -231,7 +230,7 @@ def main(arguments):
                             if args.encoder_checkpoint is None
                             else args.encoder_checkpoint[i]
                         ),
-                        objective=resolve_objective(args),
+                        objective=args.objective,
                     )
                     for i, (net_type, network_config) in enumerate(
                         zip(args.net_types, network_configs)

@@ -20,7 +20,6 @@ from adell_mri.entrypoints.classification._utils import (
     create_transform_arguments,
     extract_confounder_info,
     resolve_n_classes_and_labels,
-    resolve_objective,
     use_deconfounding,
 )
 from adell_mri.modules.config_parsing import parse_config_cat, parse_config_unet
@@ -465,7 +464,7 @@ def main(arguments):
             network_config,
             n_classes,
             class_weights,
-            objective=resolve_objective(args),
+            objective=args.objective,
         )
 
         def train_loader_call(augment: bool = True):
@@ -634,7 +633,7 @@ def main(arguments):
             )[0]
             for k in test_metrics:
                 out = test_metrics[k]
-                if n_classes == 2 or resolve_objective(args) == "ord":
+                if n_classes == 2 or args.objective == "ord":
                     try:
                         value = float(out.detach().numpy())
                     except Exception:

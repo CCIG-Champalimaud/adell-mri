@@ -13,7 +13,6 @@ from adell_mri.entrypoints.classification._utils import (
     create_transform_arguments,
     extract_confounder_info,
     resolve_n_classes_and_labels,
-    resolve_objective,
     use_deconfounding,
 )
 from adell_mri.modules.classification.pl import AveragingEnsemblePL
@@ -208,7 +207,7 @@ def main(arguments):
         configure_loss_fn(
             network_config,
             n_classes,
-            objective=resolve_objective(args),
+            objective=args.objective,
         )
 
         test_loader = monai.data.ThreadDataLoader(

@@ -10,7 +10,6 @@ from lightning.pytorch.callbacks import EarlyStopping, RichProgressBar
 from sklearn.model_selection import StratifiedKFold, train_test_split
 
 from adell_mri.entrypoints.assemble_args import Parser
-from adell_mri.entrypoints.classification._utils import resolve_objective
 from adell_mri.modules.classification.pl import GenericEnsemblePL
 from adell_mri.modules.config_parsing import (
     parse_config_cat,
@@ -469,7 +468,7 @@ def main(arguments):
         python_logger.info(
             "Initializing loss with class_weights: %s", class_weights
         )
-        objective = resolve_objective(args)
+        objective = args.objective
         if n_classes == 2:
             ensemble_config["loss_fn"] = torch.nn.BCEWithLogitsLoss(
                 class_weights

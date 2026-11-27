@@ -20,19 +20,6 @@ from adell_mri.utils.network_factories import (
 from adell_mri.utils.optimizer_factory import optimizer_eps_from_precision
 
 
-def resolve_objective(args) -> str:
-    """
-    Resolves the classification objective from the CLI arguments.
-
-    Args:
-        args: Parsed CLI arguments with an ``objective`` attribute.
-
-    Returns:
-        str: either ``"cat"`` or ``"ord"``.
-    """
-    return getattr(args, "objective", None) or "cat"
-
-
 def use_deconfounding(args) -> bool:
     """
     Check whether deconfounding is requested based on CLI arguments.
@@ -298,7 +285,7 @@ def create_classification_network(
     seed = getattr(args, "seed", 42)
     n_classes_val = getattr(args, "n_classes", n_classes if n_classes else 2)
     net_type = getattr(args, "net_type", "resnet")
-    objective = resolve_objective(args)
+    objective = args.objective
     encoder_checkpoint = getattr(args, "encoder_checkpoint", None)
     if encoder_checkpoint is not None:
         encoder_checkpoint = encoder_checkpoint[0]

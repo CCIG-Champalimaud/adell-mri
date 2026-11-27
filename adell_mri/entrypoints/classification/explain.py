@@ -26,7 +26,6 @@ from adell_mri.entrypoints.classification._utils import (
     create_classification_network,
     create_transform_arguments,
     extract_confounder_info,
-    resolve_objective,
     use_deconfounding,
 )
 from adell_mri.modules.config_parsing import parse_config_cat, parse_config_unet
@@ -439,7 +438,7 @@ def main(arguments):
     configure_loss_fn(
         network_config,
         args.n_classes,
-        objective=resolve_objective(args),
+        objective=args.objective,
     )
 
     if args.prediction_ids:
@@ -495,7 +494,7 @@ def main(arguments):
             )
             network = network.eval().to(args.dev)
 
-            is_ordinal = resolve_objective(args) == "ord"
+            is_ordinal = args.objective == "ord"
             is_binary = args.n_classes == 2 and not is_ordinal
 
             if is_ordinal:

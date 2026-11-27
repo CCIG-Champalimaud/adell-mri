@@ -448,7 +448,7 @@ argument_factory = {
     ),
     "classification_objective": dict(
         type=str,
-        default=None,
+        default="cat",
         choices=["cat", "ord"],
         help="Classification objective (independent of the network type).",
     ),
