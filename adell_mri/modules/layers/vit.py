@@ -1907,7 +1907,7 @@ class ViT(torch.nn.Module):
         spatial_shape = X.shape[2:]
         for i, feature_map in enumerate(maps):
             target_shape = [
-                max(int(np.ceil(s / (2 ** (i + 1)))), 1) for s in spatial_shape
+                max(int(np.ceil(s / (2**i))), 1) for s in spatial_shape
             ]
             output_list.append(
                 F.interpolate(feature_map, size=target_shape, mode="nearest")

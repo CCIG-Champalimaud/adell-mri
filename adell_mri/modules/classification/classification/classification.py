@@ -736,12 +736,7 @@ class UNetEncoder(UNet):
         Returns:
             torch.Tensor
         """
-        encoding_out = []
-        curr = X
-        for op, op_ds in self.encoding_operations:
-            curr = op(curr)
-            encoding_out.append(curr)
-            curr = op_ds(curr)
+        curr = self.encoder.forward_features(X)
         if self.prediction_head is None:
             return curr
         out = curr.flatten(start_dim=2).max(-1).values

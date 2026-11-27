@@ -563,6 +563,7 @@ argument_factory = {
             "unet",
             "unetpp",
             "brunet",
+            "pretrained_encoder_unet",
             "unetr",
             "swin",
             "monai_swin",
@@ -571,17 +572,11 @@ argument_factory = {
         default="unet",
         help="Specifies which UNet model is used",
     ),
-    "res_config_file": dict(
-        action="store",
-        default=None,
-        help="Uses a ResNet as a backbone (depths are inferred from this). \
-            This config file is then used to parameterise the ResNet.",
-    ),
     "encoder_checkpoint": dict(
         action="store",
         default=None,
         nargs="+",
-        help="Checkpoint for encoder backbone checkpoint",
+        help="SSL checkpoint used to initialise the pretrained encoder.",
     ),
     "lr_encoder": dict(
         action="store",

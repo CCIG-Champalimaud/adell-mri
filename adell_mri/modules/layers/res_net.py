@@ -115,7 +115,7 @@ class ResNetBackbone(torch.nn.Module):
         Returns:
             List[int]: output channels for each element in the structure.
         """
-        return [s[0] for s in self.structure]
+        return [self.structure[0][0], *[s[0] for s in self.structure]]
 
     def get_ops(self):
         if self.spatial_dim == 2:
@@ -222,15 +222,20 @@ class ResNetBackbone(torch.nn.Module):
         self, X: torch.Tensor, after_pool: bool = False, batch_idx: int = None
     ):
         X = self.input_layer(X)
+        output_list = [X]
         X = self.first_pooling(X)
-        output_list = []
-        for op, be_op, pool_op in zip(
-            self.operations, self.be_operations, self.pooling_operations
+        n_stages = len(self.operations)
+        for i, (op, be_op, pool_op) in enumerate(
+            zip(self.operations, self.be_operations, self.pooling_operations)
         ):
             if self.batch_ensemble > 0:
                 X = be_op(X, batch_idx, mod=op)
             else:
                 X = op(X)
+            if i == n_stages - 1:
+                # the last stage is the bottleneck, so it is not pooled
+                output_list.append(X)
+                break
             pooled_X = pool_op(X)
             if after_pool is True:
                 output_list.append(pooled_X)

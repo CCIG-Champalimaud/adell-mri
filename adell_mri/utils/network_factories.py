@@ -91,6 +91,7 @@ ALLOWED_NET_TYPES = {
         "unet",
         "brunet",
         "unetpp",
+        "pretrained_encoder_unet",
         "unetr",
         "monai_unetr",
         "swin",
@@ -405,11 +406,8 @@ def get_segmentation_network(
     clinical_feature_key_net: str,
     aux_key_net: str,
     max_epochs: int,
-    encoding_operations: list[torch.nn.Module],
     picai_eval: bool,
     lr_encoder: float,
-    encoder_checkpoint: str,
-    res_config_file: str | None,
     deep_supervision: bool,
     n_classes: int,
     keys: list[str],
@@ -425,6 +423,7 @@ def get_segmentation_network(
     semi_supervised: bool = False,
     max_steps_optim: int = None,
     seed: int = DEFAULT_SEED,
+    encoder: list[torch.nn.Module] = None,
 ) -> LightningModule:
     """
     Returns a segmentation network.
@@ -442,12 +441,8 @@ def get_segmentation_network(
             network.
         aux_key_net (str): the key of the auxiliary features in the network.
         max_epochs (int): the maximum number of epochs.
-        encoding_operations (list[torch.nn.Module]): the encoding operations.
         picai_eval (bool): whether to use picai evaluation.
         lr_encoder (float): the learning rate for the encoder.
-        encoder_checkpoint (str): the checkpoint of the encoder.
-        res_config_file (str | None): the configuration file for the residual
-            network.
         deep_supervision (bool): whether to use deep supervision.
         n_classes (int): the number of classes.
         keys (list[str]): the keys of the input data.
@@ -467,6 +462,8 @@ def get_segmentation_network(
             optimization. Defaults to None.
         seed (int, optional): the seed for the random number generator.
             Defaults to 42.
+        encoder (list[torch.nn.Module], optional): encoder module(s) used in
+            place of the standard U-Net encoder. Defaults to None.
 
     Returns:
         A :class:`LightningModule` segmentation network.
@@ -504,6 +501,9 @@ def get_segmentation_network(
         optimizer_eps=optimizer_eps,
     )
 
+    if encoder is None:
+        encoder = [None]
+
     if net_type == "unet" and semi_supervised is True:
         ema_params = {
             "decay": 0.99,
@@ -511,9 +511,8 @@ def get_segmentation_network(
             "n_steps": max_steps_optim,
         }
         ema = ExponentialMovingAverage(**ema_params)
-        encoding_operations = encoding_operations[0]
         unet = UNetContrastiveSemiSL(
-            encoding_operations=encoding_operations,
+            encoder=encoder[0],
             image_key="image",
             semi_sl_image_key_1="semi_sl_image_1",
             semi_sl_image_key_2="semi_sl_image_2",
@@ -528,32 +527,25 @@ def get_segmentation_network(
         nc = network_config["in_channels"]
         network_config["in_channels"] = nc // len(keys)
         unet = BrUNetPL(
-            encoders=encoding_operations,
+            encoders=encoder,
             image_keys=keys,
             n_input_branches=len(keys),
             deep_supervision=deep_supervision,
             **boilerplate,
             **network_config,
         )
-        if encoder_checkpoint is not None and res_config_file is None:
-            for encoder, ckpt in zip(unet.encoders, encoder_checkpoint):
-                encoder.load_state_dict(
-                    torch.load(ckpt, weights_only=False)["state_dict"]
-                )
 
     elif net_type == "unetpp":
-        encoding_operations = encoding_operations[0]
         unet = UNetPlusPlusPL(
-            encoding_operations=encoding_operations,
+            encoder=encoder[0],
             image_key="image",
             **boilerplate,
             **network_config,
         )
 
-    elif net_type == "unet":
-        encoding_operations = encoding_operations[0]
+    elif net_type in ["unet", "pretrained_encoder_unet"]:
         unet = UNetPL(
-            encoding_operations=encoding_operations,
+            encoder=encoder[0],
             image_key="image",
             deep_supervision=deep_supervision,
             **boilerplate,

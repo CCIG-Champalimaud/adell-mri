@@ -97,7 +97,6 @@ def main(arguments):
             "config_file",
             "module_path",
             ("segmentation_net_type", "net_type"),
-            "res_config_file",
             "encoder_checkpoint",
             "lr_encoder",
             "dev",

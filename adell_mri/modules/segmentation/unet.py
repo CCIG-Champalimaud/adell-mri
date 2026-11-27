@@ -28,6 +28,75 @@ from adell_mri.modules.layers.self_attention import (
 from adell_mri.modules.layers.utils import crop_to_size
 
 
+class StandardEncoder(torch.nn.Module):
+    """
+    Default U-Net encoder. Wraps a list of (operation, downsampling
+    operation) pairs behind the encoder interface expected by the U-Net.
+    """
+
+    def __init__(
+        self,
+        operations: List[ModuleList],
+        out_channels: List[int],
+    ) -> None:
+        """
+        Args:
+            operations (List[ModuleList]): list of ``[operation,
+                downsampling_operation]`` pairs.
+            out_channels (List[int]): number of output channels for each
+                operation.
+        """
+        super().__init__()
+        self.operations = torch.nn.ModuleList(operations)
+        self.out_channels = list(out_channels)
+
+    def forward_with_intermediate(
+        self, X: torch.Tensor
+    ) -> tuple[torch.Tensor, List[torch.Tensor]]:
+        """
+        Runs the encoder and returns the bottleneck and skip features.
+
+        Args:
+            X (torch.Tensor): input tensor.
+
+        Returns:
+            tuple[torch.Tensor, List[torch.Tensor]]: the bottleneck tensor and
+                the list of skip features (ordered from the highest to the
+                lowest resolution).
+        """
+        output_list = []
+        curr = X
+        for op, op_ds in self.operations:
+            curr = op(curr)
+            output_list.append(curr)
+            curr = op_ds(curr)
+        return curr, output_list
+
+    def forward(self, X: torch.Tensor) -> torch.Tensor:
+        """
+        Runs the encoder and returns the bottleneck.
+
+        Args:
+            X (torch.Tensor): input tensor.
+
+        Returns:
+            torch.Tensor: the bottleneck tensor.
+        """
+        return self.forward_with_intermediate(X)[0]
+
+    def forward_features(self, X: torch.Tensor) -> torch.Tensor:
+        """
+        Runs the encoder and returns the bottleneck.
+
+        Args:
+            X (torch.Tensor): input tensor.
+
+        Returns:
+            torch.Tensor: the bottleneck tensor.
+        """
+        return self.forward(X)
+
+
 class UNet(torch.nn.Module):
     """
     Standard U-Net [1] implementation. Features some useful additions
@@ -43,7 +112,7 @@ class UNet(torch.nn.Module):
     def __init__(
         self,
         spatial_dimensions: int = 2,
-        encoding_operations: List[ModuleList] = None,
+        encoder: torch.nn.Module = None,
         conv_type: str = "regular",
         link_type: str = "identity",
         upscale_type: str = "upsample",
@@ -70,10 +139,13 @@ class UNet(torch.nn.Module):
         Args:
         spatial_dimensions (int, optional): number of dimensions for the
             input (not counting batch or channels). Defaults to 2.
-        encoding_operations (List[ModuleList], optional): backbone operations
-            (uses these rather than a standard U-Net encoder).
-            Must be a list where each element is a list containing a
-            convolutional operation and a downsampling operation.
+        encoder (torch.nn.Module, optional): encoder module used in place of
+            the standard U-Net encoder. Must expose a
+            ``forward_with_intermediate`` method returning the bottleneck and
+            a list of skip feature maps (ordered from the highest to the
+            lowest resolution) as well as an ``out_channels`` attribute.
+            Defaults to None (a standard U-Net encoder is built from
+            ``depth``).
         conv_type (str, optional): types of base convolutional operations.
             For now it supports regular convolutions ("regular"), residual
             convolutions ("resnet") and convolutions followed by squeeze
@@ -133,7 +205,7 @@ class UNet(torch.nn.Module):
 
         super().__init__()
         self.spatial_dimensions = spatial_dimensions
-        self.encoding_operations = encoding_operations
+        self.encoder = encoder
         self.conv_type = conv_type
         self.link_type = link_type
         self.upscale_type = upscale_type
@@ -161,10 +233,7 @@ class UNet(torch.nn.Module):
             self.get_drop_op()
 
             self.get_conv_op()
-            if self.encoding_operations is None:
-                self.init_encoder()
-            else:
-                self.init_encoder_backbone()
+            self.init_encoder()
 
         elif parent_class is False:
             # initialize all layers
@@ -172,10 +241,7 @@ class UNet(torch.nn.Module):
             self.get_drop_op()
 
             self.get_conv_op()
-            if self.encoding_operations is None:
-                self.init_encoder()
-            else:
-                self.init_encoder_backbone()
+            self.init_encoder()
             self.init_upscale_ops()
             self.init_link_ops()
             self.init_decoder()
@@ -542,8 +608,36 @@ class UNet(torch.nn.Module):
 
     def init_encoder(self):
         """
-        Initializes the encoder operations."""
-        self.encoding_operations = torch.nn.ModuleList([])
+        Initializes the encoder.
+
+        If no encoder was provided, a standard U-Net encoder is built from
+        ``depth``, ``kernel_sizes`` and ``strides``. Otherwise, the decoder
+        widths are inferred from the encoder ``out_channels``.
+        """
+        if self.encoder is None:
+            self.encoder = self.build_standard_encoder()
+        else:
+            if not hasattr(self.encoder, "forward_with_intermediate"):
+                raise TypeError(
+                    "encoder must implement a forward_with_intermediate "
+                    "method returning (bottleneck, intermediates)"
+                )
+            if not hasattr(self.encoder, "out_channels"):
+                raise TypeError("encoder must expose an out_channels attribute")
+            if hasattr(self.encoder, "set_n_levels"):
+                self.encoder.set_n_levels(len(self.depth))
+            self.depth = list(self.encoder.out_channels)
+            self.align_decoder_params()
+
+    def build_standard_encoder(self) -> StandardEncoder:
+        """
+        Builds a standard U-Net encoder from the configured depth, kernel
+        sizes and strides.
+
+        Returns:
+            StandardEncoder: the default U-Net encoder.
+        """
+        operations = torch.nn.ModuleList([])
         previous_d = self.in_channels
         for i in range(len(self.depth) - 1):
             d, k, s = self.depth[i], self.kernel_sizes[i], self.strides[i]
@@ -551,7 +645,7 @@ class UNet(torch.nn.Module):
                 s = [s for _ in range(self.spatial_dimensions)]
             if isinstance(k, int) is True:
                 k = [k for _ in range(self.spatial_dimensions)]
-            p = [int(i // 2) for i in k]
+            p = [int(j // 2) for j in k]
             op = torch.nn.Sequential(
                 self.conv_op_enc(
                     previous_d,
@@ -566,9 +660,7 @@ class UNet(torch.nn.Module):
                 self.conv_op_enc(d, d, kernel_size=k, stride=s, padding=p),
                 self.adn_fn(d),
             )
-            self.encoding_operations.append(
-                torch.nn.ModuleList([op, op_downsample])
-            )
+            operations.append(torch.nn.ModuleList([op, op_downsample]))
             previous_d = d
         op = torch.nn.Sequential(
             self.conv_op_enc(
@@ -581,26 +673,25 @@ class UNet(torch.nn.Module):
             self.adn_fn(self.depth[-1]),
         )
         op_downsample = torch.nn.Identity()
-        self.encoding_operations.append(
-            torch.nn.ModuleList([op, op_downsample])
-        )
+        operations.append(torch.nn.ModuleList([op, op_downsample]))
+        return StandardEncoder(operations, self.depth)
 
-    def init_encoder_backbone(self):
+    def align_decoder_params(self) -> None:
         """
-        Initializes the encoder operations."""
-        if self.spatial_dimensions == 2:
-            mp = torch.nn.MaxPool2d
-        elif self.spatial_dimensions == 3:
-            mp = torch.nn.MaxPool3d
-        for i in range(len(self.encoding_operations)):
-            s = self.strides[i]
-            if isinstance(s, int):
-                s = [s for _ in range(self.spatial_dimensions)]
-            s = np.array(s)
-            self.encoding_operations[i][1] = mp(
-                kernel_size=tuple(s), stride=tuple(s), padding=tuple(s // 2)
-            )
-        self.encoding_operations[-1][1] = torch.nn.Identity()
+        Aligns ``kernel_sizes`` and ``strides`` with the depth inferred from
+        the encoder so that the decoder can be built.
+        """
+        n_levels = len(self.depth)
+        if len(self.kernel_sizes) != n_levels:
+            kernel_sizes = list(self.kernel_sizes)
+            while len(kernel_sizes) < n_levels:
+                kernel_sizes.append(3)
+            self.kernel_sizes = kernel_sizes[:n_levels]
+        if len(self.strides) != n_levels:
+            strides = list(self.strides)
+            while len(strides) < n_levels:
+                strides.append(2)
+            self.strides = strides[:n_levels]
 
     def init_decoder(self):
         """
@@ -739,6 +830,29 @@ class UNet(torch.nn.Module):
             )
             self.feature_conditioning_ops.append(op)
 
+    def match_input_size(
+        self, output: torch.Tensor, X: torch.Tensor
+    ) -> torch.Tensor:
+        """
+        Resamples the output to the spatial size of the input when they
+        differ (e.g. when using encoders with aggressive downsampling).
+
+        Args:
+            output (torch.Tensor): network output.
+            X (torch.Tensor): network input.
+
+        Returns:
+            torch.Tensor: output resampled to the input spatial size.
+        """
+        if output.shape[2:] != X.shape[2:]:
+            mode = {3: "linear", 4: "bilinear", 5: "trilinear"}[
+                len(output.shape)
+            ]
+            output = F.interpolate(
+                output, X.shape[2:], mode=mode, align_corners=True
+            )
+        return output
+
     def unsqueeze_to_dim(
         self, X: torch.Tensor, target: torch.Tensor
     ) -> torch.Tensor:
@@ -788,18 +902,13 @@ class UNet(torch.nn.Module):
             X_feature_conditioning = X_feature_conditioning - self.f_mean
             X_feature_conditioning = X_feature_conditioning / self.f_std
 
-        encoding_out = []
-        curr = X
-        for op, op_ds in self.encoding_operations:
-            curr = op(curr)
-            encoding_out.append(curr)
-            curr = op_ds(curr)
-        bottleneck = curr
+        bottleneck, encoding_out = self.encoder.forward_with_intermediate(X)
         if return_bottleneck is True:
             return None, None, bottleneck
         elif self.encoder_only is True:
             return bottleneck
 
+        curr = bottleneck
         deep_outputs = []
         for i in range(len(self.decoding_operations)):
             op = self.decoding_operations[i]
@@ -836,6 +945,7 @@ class UNet(torch.nn.Module):
             curr = self.final_layer[:-1](curr)
         else:
             curr = self.final_layer(curr)
+        curr = self.match_input_size(curr, X)
         if return_features is True:
             return curr, final_features, bottleneck
 
@@ -876,7 +986,7 @@ class BrUNet(UNet, torch.nn.Module):
         self,
         spatial_dimensions: int = 2,
         n_input_branches: int = 1,
-        encoders: List[ModuleList] = None,
+        encoders: List[torch.nn.Module] = None,
         conv_type: str = "regular",
         link_type: str = "identity",
         upscale_type: str = "upsample",
@@ -902,9 +1012,12 @@ class BrUNet(UNet, torch.nn.Module):
         Args:
         spatial_dimensions (int, optional): number of dimensions for the
             input (not counting batch or channels). Defaults to 2.
-        encoder (List[ModuleList], optional): a list of backbone operations
-            which will be executed in parallel and whose output at each
-            layer must be conformant (have the same channels).
+        encoders (List[torch.nn.Module], optional): a list of encoder modules
+            which will be executed in parallel and whose output at each layer
+            must be conformant (have the same channels). Each encoder must
+            implement ``forward_with_intermediate`` and expose
+            ``out_channels``. Defaults to None (one standard U-Net encoder per
+            input branch).
         conv_type (str, optional): types of base convolutional operations.
             For now it supports regular convolutions ("regular"), residual
             convolutions ("resnet") and convolutions followed by squeeze
@@ -993,7 +1106,7 @@ class BrUNet(UNet, torch.nn.Module):
         if self.encoders is None:
             self.init_encoders()
         else:
-            self.init_backbone_encoders()
+            self.validate_encoders()
         self.init_merge_ops()
 
         if self.encoder_only is not True:
@@ -1008,68 +1121,33 @@ class BrUNet(UNet, torch.nn.Module):
 
     def init_encoders(self):
         """
-        Initializes the encoder operations."""
+        Initializes one standard encoder per input branch."""
         self.encoders = torch.nn.ModuleList([])
         for _ in range(self.n_input_branches):
-            encoding_operations = torch.nn.ModuleList([])
-            previous_d = self.in_channels
-            for i in range(len(self.depth) - 1):
-                d, k, s = self.depth[i], self.kernel_sizes[i], self.strides[i]
-                if isinstance(s, int) is True:
-                    s = [s for _ in range(self.spatial_dimensions)]
-                if isinstance(k, int) is True:
-                    k = [k for _ in range(self.spatial_dimensions)]
-                p = [int(i // 2) for i in k]
-                op = torch.nn.Sequential(
-                    self.conv_op_enc(
-                        previous_d,
-                        d,
-                        kernel_size=k,
-                        stride=1,
-                        padding=self.padding,
-                    ),
-                    self.adn_fn(d),
-                )
-                op_downsample = torch.nn.Sequential(
-                    self.conv_op_enc(d, d, kernel_size=k, stride=s, padding=p),
-                    self.adn_fn(d),
-                )
-                encoding_operations.append(
-                    torch.nn.ModuleList([op, op_downsample])
-                )
-                previous_d = d
-            op = torch.nn.Sequential(
-                self.conv_op_enc(
-                    self.depth[-2],
-                    self.depth[-1],
-                    kernel_size=k,
-                    stride=1,
-                    padding=self.padding,
-                ),
-                self.adn_fn(self.depth[-1]),
-            )
-            op_downsample = torch.nn.Identity()
-            encoding_operations.append(torch.nn.ModuleList([op, op_downsample]))
-            self.encoders.append(encoding_operations)
+            self.encoders.append(self.build_standard_encoder())
 
-    def init_backbone_encoders(self):
+    def validate_encoders(self):
         """
-        Initializes the encoder operations."""
-        n_encoders = len(self.encoders)
+        Validates user-provided encoders and aligns the decoder
+        hyperparameters with the encoder output channels.
+        """
         assert (
-            n_encoders == self.n_input_branches
-        ), "n_input_branches and \
-            len(self.encoders) must be the same"
-        if self.spatial_dimensions == 2:
-            mp = torch.nn.MaxPool2d
-        elif self.spatial_dimensions == 3:
-            mp = torch.nn.MaxPool3d
-        for i in range(self.n_input_branches):
-            for j in range(len(self.encoders[i])):
-                self.encoders[i][j][1] = mp(
-                    self.kernel_sizes[j], 2, self.kernel_sizes[j] // 2
+            len(self.encoders) == self.n_input_branches
+        ), "n_input_branches and len(self.encoders) must be the same"
+        for encoder in self.encoders:
+            if not hasattr(encoder, "forward_with_intermediate"):
+                raise TypeError(
+                    "every encoder must implement a "
+                    "forward_with_intermediate method"
                 )
-            self.encoders[i][-1][1] = torch.nn.Identity()
+            if not hasattr(encoder, "out_channels"):
+                raise TypeError(
+                    "every encoder must expose an out_channels attribute"
+                )
+            if hasattr(encoder, "set_n_levels"):
+                encoder.set_n_levels(len(self.depth))
+        self.depth = list(self.encoders[0].out_channels)
+        self.align_decoder_params()
 
     def init_merge_ops(self):
         """
@@ -1173,12 +1251,11 @@ class BrUNet(UNet, torch.nn.Module):
         for i in range(self.n_input_branches):
             curr = X[i]
             w = self.unsqueeze_to_dim(X_weights[i], curr)
-            encoding_operations = self.encoders[i]
-            for op, op_ds in encoding_operations:
-                curr = op(curr)
-                encoding_out_pre_merge[i].append(curr * w)
-                curr = op_ds(curr)
-            bottleneck_features_pre_merge.append(curr * w)
+            bottleneck, encoding_out = self.encoders[
+                i
+            ].forward_with_intermediate(curr)
+            encoding_out_pre_merge[i] = [x * w for x in encoding_out]
+            bottleneck_features_pre_merge.append(bottleneck * w)
         w_sum = self.unsqueeze_to_dim(sum(X_weights), X[0])
 
         # start by merging bottleneck with the last merge operation and
@@ -1246,6 +1323,7 @@ class BrUNet(UNet, torch.nn.Module):
             curr = self.final_layer[:-1](curr)
         else:
             curr = self.final_layer(curr)
+        curr = self.match_input_size(curr, X[0])
         if return_features is True:
             return curr, final_features, bottleneck
 

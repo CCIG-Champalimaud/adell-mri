@@ -7,8 +7,7 @@ import torch
 from tqdm import trange
 
 from adell_mri.entrypoints.assemble_args import Parser
-from adell_mri.modules.config_parsing import parse_config_ssl, parse_config_unet
-from adell_mri.modules.layers import ResNet
+from adell_mri.modules.config_parsing import parse_config_unet
 from adell_mri.modules.segmentation.pl import (
     evaluate,
     get_lesions,
@@ -19,7 +18,10 @@ from adell_mri.utils.dataset import Dataset
 from adell_mri.utils.generic_utils import collate_last_slice, safe_collate
 from adell_mri.utils.inference import SegmentationInference, TensorListReduction
 from adell_mri.utils.monai_transforms import SlicesToFirst
-from adell_mri.utils.network_factories import get_segmentation_network
+from adell_mri.utils.network_factories import (
+    get_segmentation_network,
+    initialise_ssl_from_ckpt,
+)
 from adell_mri.utils.parser import parse_ids
 
 torch.backends.cudnn.benchmark = True
@@ -66,7 +68,7 @@ def main(arguments):
             "keep_largest_connected_component",
             "config_file",
             ("segmentation_net_type", "net_type"),
-            "res_config_file",
+            "encoder_checkpoint",
             "checkpoint",
             "one_to_one",
             "per_sample",
@@ -213,49 +215,18 @@ def main(arguments):
     else:
         all_feature_params = None
 
-    if args.res_config_file is not None:
-        _, network_config_ssl = parse_config_ssl(
-            args.res_config_file, 0.0, len(keys), network_config["batch_size"]
-        )
-        for k in ["weight_decay", "learning_rate", "batch_size"]:
-            if k in network_config_ssl:
-                del network_config_ssl[k]
-        if args.net_type == "brunet":
-            n = len(keys)
-            nc = network_config_ssl["backbone_args"]["in_channels"]
-            network_config_ssl["backbone_args"]["in_channels"] = nc // n
-            res_net = [ResNet(**network_config_ssl) for _ in keys]
-        else:
-            res_net = [ResNet(**network_config_ssl)]
-        backbone = [x.backbone for x in res_net]
-        network_config["depth"] = [
-            backbone[0].structure[0][0],
-            *[x[0] for x in backbone[0].structure],
-        ]
-        network_config["kernel_sizes"] = [3 for _ in network_config["depth"]]
-        # the last sum is for the bottleneck layer
-        network_config["strides"] = [2]
-        network_config["strides"].extend(
-            network_config_ssl["backbone_args"]["maxpool_structure"]
-        )
-        res_ops = [[x.input_layer, *x.operations] for x in backbone]
-        res_pool_ops = [
-            [x.first_pooling, *x.pooling_operations] for x in backbone
-        ]
-
-        encoding_operations = [torch.nn.ModuleList([]) for _ in res_ops]
-        for i in range(len(res_ops)):
-            A = res_ops[i]
-            B = res_pool_ops[i]
-            for a, b in zip(A, B):
-                encoding_operations[i].append(torch.nn.ModuleList([a, b]))
-        encoding_operations = torch.nn.ModuleList(encoding_operations)
-    else:
-        encoding_operations = [None]
+    encoder = None
+    if args.net_type == "pretrained_encoder_unet":
+        if args.encoder_checkpoint is None:
+            raise ValueError(
+                "--encoder_checkpoint is required when "
+                "--net_type pretrained_encoder_unet"
+            )
+        encoder = initialise_ssl_from_ckpt(args.encoder_checkpoint[0])
 
     network_args = dict(
         net_type=args.net_type,
-        encoding_operations=encoding_operations,
+        encoder=None if encoder is None else [encoder],
         network_config=network_config,
         bottleneck_classification=args.bottleneck_classification,
         clinical_feature_keys=feature_keys,
@@ -266,8 +237,6 @@ def main(arguments):
         max_epochs=100,
         picai_eval=args.picai_eval,
         lr_encoder=None,
-        encoder_checkpoint=args.bottleneck_classification,
-        res_config_file=args.res_config_file,
         deep_supervision=False,
         n_classes=n_classes,
         keys=keys,

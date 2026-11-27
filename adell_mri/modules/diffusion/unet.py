@@ -46,7 +46,7 @@ class DiffusionUNet(UNet):
         if "in_channels" not in kwargs:
             raise Exception("in_channels must be defined")
         kwargs["n_classes"] = kwargs["in_channels"]
-        kwargs["encoding_operations"] = None
+        kwargs["encoder"] = None
         kwargs["bottleneck_classification"] = False
         kwargs["feature_conditioning"] = None
         super().__init__(*args, **kwargs)
@@ -130,7 +130,7 @@ class DiffusionUNet(UNet):
             t = t + cls
         encoding_out = []
         curr = X
-        for (op, op_ds), eca in zip(self.encoding_operations, self.encoder_eca):
+        for (op, op_ds), eca in zip(self.encoder.operations, self.encoder_eca):
             curr = op(curr)
             curr = eca(curr, t)
             encoding_out.append(curr)

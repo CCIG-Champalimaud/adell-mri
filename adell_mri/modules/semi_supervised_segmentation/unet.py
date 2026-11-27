@@ -73,12 +73,7 @@ class UNetSemiSL(UNet):
             X_feature_conditioning = X_feature_conditioning - self.f_mean
             X_feature_conditioning = X_feature_conditioning / self.f_std
 
-        encoding_out = []
-        curr = X
-        for op, op_ds in self.encoding_operations:
-            curr = op(curr)
-            encoding_out.append(curr)
-            curr = op_ds(curr)
+        curr, encoding_out = self.encoder.forward_with_intermediate(X)
         return encoding_out, curr, X_skip_layer, X_feature_conditioning
 
     def _run_decoder(
@@ -173,6 +168,7 @@ class UNetSemiSL(UNet):
             curr = self.final_layer[:-1](curr)
         else:
             curr = self.final_layer(curr)
+        curr = self.match_input_size(curr, X)
         if return_features is True:
             return curr, final_features, bottleneck
 
@@ -220,4 +216,4 @@ class UNetSemiSL(UNet):
         if apply_linear_transformation is True:
             curr = self.linear_transformation(curr)
 
-        return curr
+        return self.match_input_size(curr, X)

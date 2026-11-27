@@ -254,7 +254,7 @@ def get_last_conv_layer(
     if hasattr(network, "model"):
         network = network.model
     if net_type == "unet":
-        ops = list(network.encoding_operations)
+        ops = list(network.encoder.operations)
         return ops[-1][0]
     elif net_type == "vgg":
         if hasattr(network, "network"):

@@ -2,13 +2,12 @@
 Standard U-Net++ implementation.
 """
 
-from typing import Dict, List
+from typing import Dict
 
 import numpy as np
 import torch
 import torch.nn.functional as F
 
-from adell_mri.custom_types import ModuleList
 from adell_mri.modules.layers.standard_blocks import DenseBlock
 from adell_mri.modules.layers.utils import crop_to_size
 from adell_mri.modules.segmentation.unet import UNet
@@ -26,7 +25,7 @@ class UNetPlusPlus(UNet):
     def __init__(
         self,
         spatial_dimensions: int = 2,
-        encoding_operations: List[ModuleList] = None,
+        encoder: torch.nn.Module = None,
         conv_type: str = "regular",
         link_type: str = "identity",
         upscale_type: str = "upsample",
@@ -50,10 +49,10 @@ class UNetPlusPlus(UNet):
         Args:
             spatial_dimensions (int, optional): number of dimensions for the
                 input (not counting batch or channels). Defaults to 2.
-            encoding_operations (List[ModuleList], optional): encoding
-                operations (uses these rather than a standard U-Net encoder).
-                Must be a list where each element is of length and composed of
-                an encoding operation and a downsampling operation.
+            encoder (torch.nn.Module, optional): encoder module used in place
+                of the standard U-Net encoder. Must implement
+                ``forward_with_intermediate`` and expose ``out_channels``.
+                Defaults to None (standard U-Net encoder).
             conv_type (str, optional): types of base convolutional operations.
                 For now it only supports convolutions ("regular"). Defaults to
                 "regular".
@@ -108,7 +107,7 @@ class UNetPlusPlus(UNet):
         """
         super().__init__(
             spatial_dimensions=spatial_dimensions,
-            encoding_operations=encoding_operations,
+            encoder=encoder,
             conv_type=conv_type,
             upscale_type=upscale_type,
             interpolation=interpolation,
@@ -133,10 +132,7 @@ class UNetPlusPlus(UNet):
         self.get_drop_op()
 
         self.get_conv_op()
-        if self.encoding_operations is None:
-            self.init_encoder()
-        else:
-            self.init_encoder_backbone()
+        self.init_encoder()
         self.init_upscale_ops()
         self.init_link_ops()
         self.init_decoder()
@@ -242,13 +238,8 @@ class UNetPlusPlus(UNet):
             X_feature_conditioning = X_feature_conditioning - self.f_mean
             X_feature_conditioning = X_feature_conditioning / self.f_std
 
-        encoding_out = []
-        curr = X
-        for op, op_ds in self.encoding_operations:
-            curr = op(curr)
-            encoding_out.append(curr)
-            curr = op_ds(curr)
-        bottleneck = curr
+        bottleneck, encoding_out = self.encoder.forward_with_intermediate(X)
+        curr = bottleneck
         link_outputs = []
         for i in range(len(self.decoding_operations)):
             op = self.decoding_operations[i]
@@ -287,6 +278,7 @@ class UNetPlusPlus(UNet):
         final_features = curr
 
         curr = self.final_layer(curr)
+        curr = self.match_input_size(curr, X)
         if return_logits is False:
             curr = self.final_act(curr)
         if return_features is True:
