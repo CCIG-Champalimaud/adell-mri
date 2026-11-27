@@ -6,6 +6,7 @@ modules for various types of networks, including classification, segmentation,
 self-supervised learning, and generative models.
 """
 
+import inspect
 import os
 from functools import wraps
 from typing import Any, Callable
@@ -36,6 +37,9 @@ from adell_mri.modules.diffusion.embedder import Embedder
 # gan
 from adell_mri.modules.gan.pl import GANPL
 from adell_mri.modules.layers.adn_fn import get_adn_fn
+from adell_mri.modules.layers.conv_next import ConvNeXtBackbone
+from adell_mri.modules.layers.res_net import ResNetBackbone
+from adell_mri.modules.layers.vit import ViT
 
 # segmentation
 from adell_mri.modules.segmentation.pl import (
@@ -1019,6 +1023,253 @@ def get_ssl_network_no_pl(
             ssl = ResNet(**network_config)
 
     return ssl
+
+
+def get_ssl_checkpoint_metadata(checkpoint: dict[str, Any]) -> dict[str, Any]:
+    """
+    Retrieves the metadata stored in an SSL checkpoint.
+
+    Args:
+        checkpoint (dict[str, Any]): the loaded checkpoint.
+
+    Returns:
+        dict[str, Any]: the checkpoint metadata.
+
+    Raises:
+        ValueError: if no metadata is found in the checkpoint.
+    """
+    metadata = checkpoint.get("metadata")
+    if metadata is None:
+        callbacks = checkpoint.get("callbacks", {})
+        for key, value in callbacks.items():
+            if (
+                "ModelCheckpointWithMetadata" in key
+                and isinstance(value, dict)
+                and "metadata" in value
+            ):
+                metadata = value["metadata"]
+                break
+    if metadata is None:
+        raise ValueError(
+            "No metadata found in the checkpoint. This checkpoint does not "
+            "contain the information required to rebuild its encoder."
+        )
+    return metadata
+
+
+def infer_ssl_net_type(state_dict: dict[str, Any]) -> str:
+    """
+    Infers the backbone family of an SSL checkpoint from its state dict keys.
+
+    Args:
+        state_dict (dict[str, Any]): the checkpoint state dict.
+
+    Returns:
+        str: one of ``"resnet"``, ``"convnext"``, ``"vit"``, ``"mae"`` or
+            ``"unet_encoder"``.
+
+    Raises:
+        ValueError: if the backbone family cannot be inferred.
+    """
+    keys = list(state_dict.keys())
+    if any(k.startswith("backbone.operations.0.0.dwconv") for k in keys):
+        return "convnext"
+    if any(k.startswith("backbone.") for k in keys):
+        return "resnet"
+    if any(k.startswith("encoder_.") for k in keys):
+        return "vit"
+    if any(k.startswith("model.encoder.") for k in keys):
+        return "mae"
+    if any(
+        k.startswith(("encoding_operations.", "encoder.operations."))
+        for k in keys
+    ):
+        return "unet_encoder"
+    raise ValueError(
+        "Could not infer the backbone family from the checkpoint state dict. "
+        "Please specify net_type explicitly."
+    )
+
+
+def _load_ssl_encoder(
+    net_type: str,
+    network_config: dict[str, Any],
+) -> tuple[torch.nn.Module, str | None]:
+    """
+    Instantiates the encoder stored in an SSL checkpoint.
+
+    Args:
+        net_type (str): the backbone family.
+        network_config (dict[str, Any]): the stored SSL network configuration.
+
+    Returns:
+        tuple[torch.nn.Module, str | None]: the encoder and the state dict
+            prefix corresponding to it (None when the encoder state dict is
+            not nested).
+
+    Raises:
+        ValueError: if the net type is not supported.
+    """
+    if net_type == "vit":
+        return ViT(**network_config["backbone_args"]), "encoder_."
+    if net_type == "mae":
+        raise NotImplementedError(
+            "MAE checkpoints are not yet supported as pretrained encoders."
+        )
+    if net_type == "convnext":
+        backbone_args = {
+            k: v
+            for k, v in network_config["backbone_args"].items()
+            if k != "res_type"
+        }
+        return ConvNeXtBackbone(**backbone_args), "backbone."
+    if net_type == "unet_encoder":
+        parameters = inspect.signature(UNet.__init__).parameters
+        kwargs = {k: v for k, v in network_config.items() if k in parameters}
+        kwargs.pop("encoder", None)
+        unet = UNet(encoder_only=True, **kwargs)
+        return unet, None
+    if net_type == "resnet":
+        return ResNetBackbone(**network_config["backbone_args"]), "backbone."
+    raise ValueError(f"net_type '{net_type}' is not supported")
+
+
+def initialise_ssl_from_ckpt(
+    checkpoint_path: str, device: str = "cpu"
+) -> torch.nn.Module:
+    """
+    Initialises an SSL-pretrained encoder from a checkpoint.
+
+    Args:
+        checkpoint_path (str): path to the SSL checkpoint.
+        device (str, optional): device used to load the checkpoint. Defaults
+            to "cpu".
+
+    Returns:
+        torch.nn.Module: the encoder with the pretrained weights loaded.
+
+    Raises:
+        ValueError: if the checkpoint metadata does not contain the
+            information required to rebuild the encoder.
+        RuntimeError: if no encoder weights could be loaded.
+    """
+    checkpoint = torch.load(
+        checkpoint_path, map_location=device, weights_only=False
+    )
+    metadata = get_ssl_checkpoint_metadata(checkpoint)
+    network_config = metadata.get("network_config")
+    if network_config is None:
+        raise ValueError(
+            "The checkpoint metadata does not contain a network_config. "
+            "Use the checkpoint conversion utility to update it."
+        )
+    net_type = metadata.get("net_type")
+    if net_type is None:
+        raise ValueError(
+            "The checkpoint metadata does not contain a net_type. Use the "
+            "checkpoint conversion utility to update it."
+        )
+
+    encoder, prefix = _load_ssl_encoder(net_type, network_config)
+    state_dict = checkpoint["state_dict"]
+
+    if prefix is None:
+        if net_type == "unet_encoder":
+            remapped = {
+                (
+                    "encoder.operations." + k[len("encoding_operations.") :]
+                    if k.startswith("encoding_operations.")
+                    else k
+                ): v
+                for k, v in state_dict.items()
+            }
+            encoder.load_state_dict(remapped, strict=False)
+            return encoder.encoder
+        encoder.load_state_dict(state_dict, strict=False)
+        return encoder
+
+    encoder_state_dict = {
+        k[len(prefix) :]: v
+        for k, v in state_dict.items()
+        if k.startswith(prefix)
+    }
+    if len(encoder_state_dict) == 0:
+        raise RuntimeError(
+            f"No encoder weights found in the checkpoint using prefix "
+            f"'{prefix}'."
+        )
+    encoder.load_state_dict(encoder_state_dict)
+    return encoder
+
+
+def convert_ssl_checkpoint(
+    checkpoint_path: str,
+    output_path: str = None,
+    ssl_method: str = None,
+    net_type: str = None,
+) -> str:
+    """
+    Converts an old SSL checkpoint into one that can be consumed by
+    :func:`initialise_ssl_from_ckpt`.
+
+    Args:
+        checkpoint_path (str): path to the checkpoint to convert.
+        output_path (str, optional): path where the converted checkpoint is
+            written. Defaults to None (the input path is overwritten).
+        ssl_method (str, optional): SSL method used to train the model. If
+            omitted, the stored value (if any) is used.
+        net_type (str, optional): backbone family. If omitted, it is inferred
+            from the state dict keys when possible.
+
+    Returns:
+        str: path to the converted checkpoint, or to the input checkpoint if
+            it was already in the new format.
+
+    Raises:
+        ValueError: if the metadata is missing or the backbone family cannot
+            be inferred.
+    """
+    output_path = output_path or checkpoint_path
+    checkpoint = torch.load(
+        checkpoint_path, map_location="cpu", weights_only=False
+    )
+    metadata = get_ssl_checkpoint_metadata(checkpoint)
+
+    resolved_net_type = net_type or metadata.get("net_type")
+    resolved_ssl_method = ssl_method or metadata.get("ssl_method")
+    if resolved_net_type is None:
+        resolved_net_type = infer_ssl_net_type(checkpoint["state_dict"])
+
+    if (
+        metadata.get("net_type") is not None
+        and metadata.get("ssl_method") is not None
+        and output_path == checkpoint_path
+    ):
+        logger.info(
+            "Checkpoint %s is already in the new format", checkpoint_path
+        )
+        return checkpoint_path
+
+    metadata["net_type"] = resolved_net_type
+    if resolved_ssl_method is not None:
+        metadata["ssl_method"] = resolved_ssl_method
+
+    callbacks = checkpoint.get("callbacks", {})
+    updated_callback = False
+    for key, value in callbacks.items():
+        if (
+            "ModelCheckpointWithMetadata" in key
+            and isinstance(value, dict)
+            and "metadata" in value
+        ):
+            value["metadata"] = metadata
+            updated_callback = True
+    if updated_callback is False:
+        checkpoint["metadata"] = metadata
+
+    torch.save(checkpoint, output_path)
+    logger.info("Saved converted checkpoint to %s", output_path)
+    return output_path
 
 
 @compile_if_necessary

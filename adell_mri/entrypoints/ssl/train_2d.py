@@ -381,6 +381,8 @@ def main(arguments):
             "train_pids": train_pids,
             "network_config": network_config,
             "transform_arguments": transform_args,
+            "ssl_method": args.ssl_method,
+            "net_type": args.net_type,
         },
     )
     if ckpt_callback is not None:
