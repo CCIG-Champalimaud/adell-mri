@@ -83,6 +83,7 @@ def main(arguments):
             ("classification_net_types", "net_types"),
             ("classification_objective", "objective"),
             "encoder_checkpoint",
+            "lr_encoder",
             "module_paths",
             "dev",
             "n_workers",
@@ -548,6 +549,7 @@ def main(arguments):
                         else args.encoder_checkpoint[i]
                     ),
                     objective=objective,
+                    lr_encoder=getattr(args, "lr_encoder", None),
                 )
                 for i, (net_type, network_config) in enumerate(
                     zip(args.net_types, network_configs)

@@ -59,6 +59,7 @@ def main(arguments):
             ("classification_net_type", "net_type"),
             ("classification_objective", "objective"),
             "encoder_checkpoint",
+            "lr_encoder",
             "params_from",
             "dataset_json",
             "image_keys",

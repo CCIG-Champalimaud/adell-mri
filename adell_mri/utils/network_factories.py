@@ -157,6 +157,8 @@ def get_classification_network(
     optimizer_eps: float = OPTIMIZER_EPS_DEFAULT,
     encoder_checkpoint: str = None,
     objective: str = None,
+    encoder: torch.nn.Module = None,
+    lr_encoder: float = None,
 ) -> LightningModule:
     """
     Returns a classification network.
@@ -183,6 +185,12 @@ def get_classification_network(
             the pretrained encoder. Defaults to None.
         objective (str, optional): classification objective (``"cat"`` or
             ``"ord"``). Defaults to None (inferred from ``net_type``).
+        encoder (torch.nn.Module, optional): pre-built encoder module. When
+            omitted and ``net_type`` is ``"pretrained_encoder"``, the encoder
+            is built from ``encoder_checkpoint``. Defaults to None.
+        lr_encoder (float, optional): learning rate used for the encoder
+            alone. A value of 0 freezes the encoder. Defaults to None (the
+            value stored in the SSL checkpoint, if any).
 
     Returns:
         A :class:`LightningModule` classification network.
@@ -263,12 +271,19 @@ def get_classification_network(
                 **network_config,
             )
     elif net_type == "pretrained_encoder":
-        if encoder_checkpoint is None:
-            raise ValueError(
-                "encoder_checkpoint is required when net_type is "
-                "'pretrained_encoder'"
-            )
-        encoder = initialise_ssl_from_ckpt(encoder_checkpoint)
+        if encoder is None:
+            if encoder_checkpoint is None:
+                raise ValueError(
+                    "encoder_checkpoint is required when net_type is "
+                    "'pretrained_encoder'"
+                )
+            encoder = initialise_ssl_from_ckpt(encoder_checkpoint)
+        resolved_lr_encoder = lr_encoder
+        if resolved_lr_encoder is None:
+            resolved_lr_encoder = getattr(encoder, "lr_encoder", None)
+        if resolved_lr_encoder == 0.0:
+            for param in encoder.parameters():
+                param.requires_grad = False
         for k in [
             "net_type",
             "in_channels",
@@ -284,6 +299,7 @@ def get_classification_network(
             network = OrdNetEncoderPL(
                 encoder=encoder,
                 adn_fn=adn_fn,
+                lr_encoder=resolved_lr_encoder,
                 **boilerplate_args,
                 **network_config,
             )
@@ -291,6 +307,7 @@ def get_classification_network(
             network = CatNetEncoderPL(
                 encoder=encoder,
                 adn_fn=adn_fn,
+                lr_encoder=resolved_lr_encoder,
                 **boilerplate_args,
                 **network_config,
             )
@@ -368,6 +385,7 @@ def get_deconfounded_classification_network(
     mixup_alpha: float | None = None,
     partial_mixup: float | None = None,
     optimizer_eps: float = OPTIMIZER_EPS_DEFAULT,
+    lr_encoder: float = None,
 ) -> LightningModule:
     """
     Returns a deconfounded classification network.
@@ -391,6 +409,8 @@ def get_deconfounded_classification_network(
         label_smoothing (float): the label smoothing parameter.
         mixup_alpha (float): the mixup alpha parameter.
         partial_mixup (float): the partial mixup parameter.
+        lr_encoder (float, optional): learning rate used for the encoder
+            alone. A value of 0 freezes the encoder. Defaults to None.
 
     Returns:
         A :class:`LightningModule` deconfounded classification network.
@@ -434,6 +454,7 @@ def get_deconfounded_classification_network(
         n_features_deconfounder=n_features_deconfounder,
         n_cat_deconfounder=n_cat_deconfounder,
         n_cont_deconfounder=cont_vars,
+        lr_encoder=lr_encoder,
         cat_confounder_key=cat_confounder_key,
         cont_confounder_key=cont_confounder_key,
         exclude_surrogate_variables=exclude_surrogate_variables,
@@ -1389,24 +1410,26 @@ def initialise_ssl_from_ckpt(
                 for k, v in state_dict.items()
             }
             encoder.load_state_dict(remapped, strict=False)
-            return encoder.encoder
-        encoder.load_state_dict(state_dict, strict=False)
-        return encoder
+            encoder = encoder.encoder
+        else:
+            encoder.load_state_dict(state_dict, strict=False)
+    else:
+        encoder_state_dict = {
+            k[len(prefix) :]: v
+            for k, v in state_dict.items()
+            if k.startswith(prefix)
+        }
+        if len(encoder_state_dict) == 0:
+            raise RuntimeError(
+                f"No encoder weights found in the checkpoint using prefix "
+                f"'{prefix}'."
+            )
+        if net_type == "mae":
+            encoder.model.load_state_dict(encoder_state_dict)
+        else:
+            encoder.load_state_dict(encoder_state_dict)
 
-    encoder_state_dict = {
-        k[len(prefix) :]: v
-        for k, v in state_dict.items()
-        if k.startswith(prefix)
-    }
-    if len(encoder_state_dict) == 0:
-        raise RuntimeError(
-            f"No encoder weights found in the checkpoint using prefix "
-            f"'{prefix}'."
-        )
-    if net_type == "mae":
-        encoder.model.load_state_dict(encoder_state_dict)
-        return encoder
-    encoder.load_state_dict(encoder_state_dict)
+    encoder.lr_encoder = metadata.get("lr_encoder")
     return encoder
 
 

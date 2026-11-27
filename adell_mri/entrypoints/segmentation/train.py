@@ -724,9 +724,14 @@ def main(arguments):
                     "--net_type pretrained_encoder_unet"
                 )
             encoder = initialise_ssl_from_ckpt(args.encoder_checkpoint[0])
-            if args.lr_encoder == 0.0:
+            encoder_lr = args.lr_encoder
+            if encoder_lr is None:
+                encoder_lr = getattr(encoder, "lr_encoder", None)
+            if encoder_lr == 0.0:
                 for param in encoder.parameters():
                     param.requires_grad = False
+        else:
+            encoder_lr = args.lr_encoder
 
         unet = get_segmentation_network(
             net_type=args.net_type,
@@ -740,7 +745,7 @@ def main(arguments):
             max_epochs=args.max_epochs,
             encoder=None if encoder is None else [encoder],
             picai_eval=args.picai_eval,
-            lr_encoder=args.lr_encoder,
+            lr_encoder=encoder_lr,
             start_decay=args.start_decay,
             warmup_steps=args.warmup_steps,
             deep_supervision=args.deep_supervision,

@@ -322,6 +322,20 @@ def create_classification_network(
     encoder_checkpoint = getattr(args, "encoder_checkpoint", None)
     if encoder_checkpoint is not None:
         encoder_checkpoint = encoder_checkpoint[0]
+    encoder_module = None
+    encoder_lr = getattr(args, "lr_encoder", None)
+    if net_type == "pretrained_encoder":
+        if encoder_checkpoint is None:
+            raise ValueError(
+                "encoder_checkpoint is required when net_type is "
+                "'pretrained_encoder'"
+            )
+        encoder_module = initialise_ssl_from_ckpt(encoder_checkpoint)
+        if encoder_lr is None:
+            encoder_lr = getattr(encoder_module, "lr_encoder", None)
+        if encoder_lr == 0.0:
+            for param in encoder_module.parameters():
+                param.requires_grad = False
     label_smoothing_val = getattr(args, "label_smoothing", None)
     mixup_alpha_val = getattr(args, "mixup_alpha", None)
     partial_mixup_val = getattr(args, "partial_mixup", None)
@@ -330,15 +344,8 @@ def create_classification_network(
     )
 
     if cat_key is not None or cont_key is not None:
-        if net_type == "pretrained_encoder":
-            if encoder_checkpoint is None:
-                raise ValueError(
-                    "encoder_checkpoint is required when net_type is "
-                    "'pretrained_encoder'"
-                )
-            network_config[
-                "feature_extraction_module"
-            ] = initialise_ssl_from_ckpt(encoder_checkpoint)
+        if encoder_module is not None:
+            network_config["feature_extraction_module"] = encoder_module
         return get_deconfounded_classification_network(
             network_config=network_config,
             dropout_param=dropout_param,
@@ -363,6 +370,7 @@ def create_classification_network(
             mixup_alpha=mixup_alpha_val,
             partial_mixup=partial_mixup_val,
             optimizer_eps=optimizer_eps,
+            lr_encoder=encoder_lr,
         )
     else:
         return get_classification_network(
@@ -386,4 +394,6 @@ def create_classification_network(
             optimizer_eps=optimizer_eps,
             encoder_checkpoint=encoder_checkpoint,
             objective=objective,
+            encoder=encoder_module,
+            lr_encoder=encoder_lr,
         )

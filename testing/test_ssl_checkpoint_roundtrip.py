@@ -118,6 +118,7 @@ def _write_checkpoint(
     family: str,
     name: str = "ssl.ckpt",
     include_net_type: bool = True,
+    lr_encoder: float = None,
 ):
     """
     Writes an SSL checkpoint using the production checkpoint callback.
@@ -138,6 +139,8 @@ def _write_checkpoint(
     if include_net_type is True:
         metadata["net_type"] = family
         metadata["ssl_method"] = ssl_method
+    if lr_encoder is not None:
+        metadata["lr_encoder"] = lr_encoder
     callback = ModelCheckpointWithMetadata(metadata=metadata)
     checkpoint = {
         "state_dict": state_dict,
@@ -167,12 +170,13 @@ def _assert_same_weights(encoder: torch.nn.Module, loaded: torch.nn.Module):
 
 @pytest.mark.parametrize("family", FAMILIES)
 def test_ssl_checkpoint_saving_and_loading(tmp_path, family):
-    path, encoder = _write_checkpoint(tmp_path, family)
+    path, encoder = _write_checkpoint(tmp_path, family, lr_encoder=0.001)
 
     loaded = initialise_ssl_from_ckpt(path)
 
     loaded_weights = getattr(loaded, "model", loaded)
     assert type(loaded_weights).__name__ == type(encoder).__name__
+    assert loaded.lr_encoder == 0.001
     _assert_same_weights(encoder, loaded_weights)
 
 
@@ -238,6 +242,7 @@ def test_ssl_pl_checkpoint_roundtrip(tmp_path, family):
         "network_config": {"backbone_args": backbone_args},
         "net_type": family,
         "ssl_method": "simclr",
+        "lr_encoder": module.learning_rate,
     }
     callback = ModelCheckpointWithMetadata(metadata=metadata)
     checkpoint = {
@@ -251,6 +256,7 @@ def test_ssl_pl_checkpoint_roundtrip(tmp_path, family):
 
     loaded = initialise_ssl_from_ckpt(path)
 
+    assert loaded.lr_encoder == module.learning_rate
     _assert_same_weights(module.backbone, loaded)
 
 
@@ -334,3 +340,48 @@ def test_pretrained_encoder_classification(tmp_path, family, objective):
 
     n_outputs = 3 if objective == "cat" else 2
     assert output.shape == (INPUT_SHAPE[0], n_outputs)
+
+
+def _build_classification_network(path: str):
+    return get_classification_network(
+        net_type="pretrained_encoder",
+        network_config={},
+        dropout_param=0.0,
+        seed=42,
+        n_classes=3,
+        keys=["image"],
+        clinical_feature_keys=[],
+        train_loader_call=None,
+        max_epochs=1,
+        warmup_steps=0,
+        start_decay=1,
+        crop_size=list(INPUT_SHAPE[2:]),
+        encoder_checkpoint=path,
+        objective="cat",
+    )
+
+
+def test_pretrained_encoder_freezes_with_zero_lr(tmp_path):
+    path, _ = _write_checkpoint(tmp_path, "resnet", lr_encoder=0.0)
+
+    network = _build_classification_network(path)
+
+    encoder_params = [
+        p for n, p in network.named_parameters() if "encoder" in n
+    ]
+    assert len(encoder_params) > 0
+    assert all(not p.requires_grad for p in encoder_params)
+
+
+def test_pretrained_encoder_uses_separate_encoder_lr(tmp_path):
+    path, _ = _write_checkpoint(tmp_path, "resnet", lr_encoder=0.01)
+
+    network = _build_classification_network(path)
+    optimizer = network.configure_optimizers()["optimizer"]
+
+    assert optimizer.param_groups[0]["lr"] == 0.01
+    encoder_param_ids = {
+        id(p) for n, p in network.named_parameters() if "encoder" in n
+    }
+    group_param_ids = {id(p) for p in optimizer.param_groups[0]["params"]}
+    assert encoder_param_ids <= group_param_ids
