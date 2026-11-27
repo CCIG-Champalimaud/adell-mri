@@ -24,10 +24,12 @@ from adell_mri.modules.classification.classification.deconfounded_classification
 
 # confounder-free classification
 from adell_mri.modules.classification.pl import (
+    CatNetEncoderPL,
     ClassNetPL,
     DeconfoundedNetPL,
     FactorizedViTClassifierPL,
     HybridClassifierPL,
+    OrdNetEncoderPL,
     OrdNetPL,
     UNetEncoderPL,
     ViTClassifierPL,
@@ -90,6 +92,7 @@ ALLOWED_NET_TYPES = {
         "cat",
         "ord",
         "vgg",
+        "pretrained_encoder",
     ],
     "segmentation": [
         "unet",
@@ -149,6 +152,8 @@ def get_classification_network(
     mixup_alpha: float | None = None,
     partial_mixup: float | None = None,
     optimizer_eps: float = OPTIMIZER_EPS_DEFAULT,
+    encoder_checkpoint: str = None,
+    objective: str = None,
 ) -> LightningModule:
     """
     Returns a classification network.
@@ -171,6 +176,10 @@ def get_classification_network(
         label_smoothing (float): the label smoothing parameter.
         mixup_alpha (float): the mixup alpha parameter.
         partial_mixup (float): the partial mixup parameter.
+        encoder_checkpoint (str, optional): SSL checkpoint used to initialise
+            the pretrained encoder. Defaults to None.
+        objective (str, optional): classification objective (``"cat"`` or
+            ``"ord"``). Defaults to None (inferred from ``net_type``).
 
     Returns:
         A :class:`LightningModule` classification network.
@@ -250,6 +259,39 @@ def get_classification_network(
                 **boilerplate_args,
                 **network_config,
             )
+    elif net_type == "pretrained_encoder":
+        if encoder_checkpoint is None:
+            raise ValueError(
+                "encoder_checkpoint is required when net_type is "
+                "'pretrained_encoder'"
+            )
+        encoder = initialise_ssl_from_ckpt(encoder_checkpoint)
+        for k in [
+            "net_type",
+            "in_channels",
+            "n_classes",
+            "adn_fn",
+            "feature_extraction",
+        ]:
+            if k in network_config:
+                del network_config[k]
+        if objective is None:
+            objective = "cat"
+        if objective == "ord":
+            network = OrdNetEncoderPL(
+                encoder=encoder,
+                adn_fn=adn_fn,
+                **boilerplate_args,
+                **network_config,
+            )
+        else:
+            network = CatNetEncoderPL(
+                encoder=encoder,
+                adn_fn=adn_fn,
+                **boilerplate_args,
+                **network_config,
+            )
+
     elif "ord" in net_type:
         for k in ["net_type", "in_channels", "n_classes", "adn_fn"]:
             if k in network_config:

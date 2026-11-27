@@ -10,6 +10,7 @@ from lightning.pytorch.callbacks import EarlyStopping, RichProgressBar
 from sklearn.model_selection import StratifiedKFold, train_test_split
 
 from adell_mri.entrypoints.assemble_args import Parser
+from adell_mri.entrypoints.classification._utils import resolve_objective
 from adell_mri.modules.classification.pl import GenericEnsemblePL
 from adell_mri.modules.config_parsing import (
     parse_config_cat,
@@ -80,6 +81,8 @@ def main(arguments):
             "ensemble_config_file",
             "branched",
             ("classification_net_types", "net_types"),
+            ("classification_objective", "objective"),
+            "encoder_checkpoint",
             "module_paths",
             "dev",
             "n_workers",
@@ -465,11 +468,12 @@ def main(arguments):
         python_logger.info(
             "Initializing loss with class_weights: %s", class_weights
         )
+        objective = resolve_objective(args)
         if n_classes == 2:
             ensemble_config["loss_fn"] = torch.nn.BCEWithLogitsLoss(
                 class_weights
             )
-        elif args.net_types[0] == "ord":
+        elif objective == "ord":
             ensemble_config["loss_fn"] = OrdinalSigmoidalLoss(
                 n_classes, class_weights
             )
@@ -538,9 +542,15 @@ def main(arguments):
                     mixup_alpha=args.mixup_alpha,
                     partial_mixup=args.partial_mixup,
                     optimizer_eps=optimizer_eps_from_precision(args.precision),
+                    encoder_checkpoint=(
+                        None
+                        if args.encoder_checkpoint is None
+                        else args.encoder_checkpoint[i]
+                    ),
+                    objective=objective,
                 )
-                for net_type, network_config in zip(
-                    args.net_types, network_configs
+                for i, (net_type, network_config) in enumerate(
+                    zip(args.net_types, network_configs)
                 )
             ]
         else:

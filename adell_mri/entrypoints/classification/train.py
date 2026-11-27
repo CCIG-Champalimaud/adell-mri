@@ -20,6 +20,7 @@ from adell_mri.entrypoints.classification._utils import (
     create_transform_arguments,
     extract_confounder_info,
     resolve_n_classes_and_labels,
+    resolve_objective,
     use_deconfounding,
 )
 from adell_mri.modules.config_parsing import parse_config_cat, parse_config_unet
@@ -56,6 +57,8 @@ def main(arguments):
     parser.add_argument_by_key(
         [
             ("classification_net_type", "net_type"),
+            ("classification_objective", "objective"),
+            "encoder_checkpoint",
             "params_from",
             "dataset_json",
             "image_keys",
@@ -458,7 +461,11 @@ def main(arguments):
 
         logger.info("Initializing loss with class_weights: %s", class_weights)
         configure_loss_fn(
-            network_config, args.net_type, n_classes, class_weights
+            network_config,
+            args.net_type,
+            n_classes,
+            class_weights,
+            objective=resolve_objective(args),
         )
 
         def train_loader_call(augment: bool = True):
@@ -627,7 +634,7 @@ def main(arguments):
             )[0]
             for k in test_metrics:
                 out = test_metrics[k]
-                if n_classes == 2 or args.net_type == "ord":
+                if n_classes == 2 or resolve_objective(args) == "ord":
                     try:
                         value = float(out.detach().numpy())
                     except Exception:

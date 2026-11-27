@@ -26,6 +26,7 @@ from adell_mri.entrypoints.classification._utils import (
     create_classification_network,
     create_transform_arguments,
     extract_confounder_info,
+    resolve_objective,
     use_deconfounding,
 )
 from adell_mri.modules.config_parsing import parse_config_cat, parse_config_unet
@@ -260,9 +261,11 @@ def get_last_conv_layer(
         if hasattr(network, "network"):
             return network.network.conv3
         return network.conv3
-    elif net_type in ("cat", "ord"):
+    elif net_type in ("cat", "ord", "pretrained_encoder"):
         inner = network.network if hasattr(network, "network") else network
         fe = inner.feature_extraction
+        if hasattr(fe, "encoder") and hasattr(fe.encoder, "operations"):
+            return fe.encoder.operations[-1]
         if hasattr(fe, "operations"):
             return fe.operations[-1]
         if hasattr(fe, "res_blocks"):
@@ -310,6 +313,8 @@ def main(arguments):
     parser.add_argument_by_key(
         [
             ("classification_net_type", "net_type"),
+            ("classification_objective", "objective"),
+            "encoder_checkpoint",
             "params_from",
             "dataset_json",
             "image_keys",
@@ -435,6 +440,7 @@ def main(arguments):
         network_config,
         None if use_deconfounding(args) else args.net_type,
         args.n_classes,
+        objective=resolve_objective(args),
     )
 
     if args.prediction_ids:
@@ -490,7 +496,7 @@ def main(arguments):
             )
             network = network.eval().to(args.dev)
 
-            is_ordinal = args.net_type == "ord"
+            is_ordinal = resolve_objective(args) == "ord"
             is_binary = args.n_classes == 2 and not is_ordinal
 
             if is_ordinal:

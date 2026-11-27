@@ -13,6 +13,7 @@ from adell_mri.entrypoints.classification._utils import (
     create_classification_network,
     create_transform_arguments,
     extract_confounder_info,
+    resolve_objective,
     use_deconfounding,
 )
 from adell_mri.entrypoints.classification.predict_utils import (
@@ -41,6 +42,8 @@ def main(arguments):
     parser.add_argument_by_key(
         [
             ("classification_net_type", "net_type"),
+            ("classification_objective", "objective"),
+            "encoder_checkpoint",
             "params_from",
             "dataset_json",
             "image_keys",
@@ -158,7 +161,7 @@ def main(arguments):
 
     post_proc_fn, extra_args = resolve_postprocessing(
         args.type,
-        None if use_deconfounding(args) else args.net_type,
+        None if use_deconfounding(args) else resolve_objective(args),
         args.n_classes,
         caller_logger=logger,
     )
@@ -187,6 +190,7 @@ def main(arguments):
             network_config,
             None if use_deconfounding(args) else args.net_type,
             args.n_classes,
+            objective=resolve_objective(args),
         )
 
         checkpoint_list = resolve_checkpoint_list(

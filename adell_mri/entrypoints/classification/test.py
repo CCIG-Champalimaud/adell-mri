@@ -13,6 +13,7 @@ from adell_mri.entrypoints.classification._utils import (
     create_transform_arguments,
     extract_confounder_info,
     resolve_n_classes_and_labels,
+    resolve_objective,
     use_deconfounding,
 )
 from adell_mri.modules.classification.pl import AveragingEnsemblePL
@@ -38,6 +39,8 @@ def main(arguments):
     parser.add_argument_by_key(
         [
             ("classification_net_type", "net_type"),
+            ("classification_objective", "objective"),
+            "encoder_checkpoint",
             "params_from",
             "dataset_json",
             "image_keys",
@@ -202,7 +205,12 @@ def main(arguments):
 
         torch.ones([1]).to("cuda" if "cuda" in args.dev else "cpu")
 
-        configure_loss_fn(network_config, args.net_type, n_classes)
+        configure_loss_fn(
+            network_config,
+            args.net_type,
+            n_classes,
+            objective=resolve_objective(args),
+        )
 
         test_loader = monai.data.ThreadDataLoader(
             test_dataset,

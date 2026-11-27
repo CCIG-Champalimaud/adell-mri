@@ -34,6 +34,8 @@ from adell_mri.modules.classification.classification import (
     AveragingEnsemble,
     CatNet,
     DeconfoundedNetGeneric,
+    EncoderCatNet,
+    EncoderOrdNet,
     FactorizedViTClassifier,
     GenericEnsemble,
     HybridClassifier,
@@ -865,6 +867,7 @@ class ClassNetPL(ClassPLABC):
                 "training_dataloader_call",
                 "training_batch_preproc",
                 "loss_fn",
+                "encoder",
             ]
         )
         self.setup_network()
@@ -1012,6 +1015,7 @@ class OrdNetPL(ClassPLABC):
                 "training_dataloader_call",
                 "training_batch_preproc",
                 "loss_fn",
+                "encoder",
             ]
         )
         self.setup_network()
@@ -1175,6 +1179,43 @@ class OrdNetPL(ClassPLABC):
         )
         self.update_metrics(prediction, y, self.test_metrics, log=False)
         return loss + roc_loss, prediction
+
+
+class CatNetEncoderPL(ClassNetPL):
+    """
+    Categorical classification network that uses a pretrained encoder as
+    feature extractor.
+    """
+
+    def setup_network(self):
+        """Builds the encoder-based categorical network."""
+        self.network = EncoderCatNet(*self.args, **self.kwargs)
+        self.forward = self.network.forward
+        self.n_classes = self.network.n_classes
+        if (
+            hasattr(self.network, "gaussian_process")
+            and self.network.gaussian_process
+        ):
+            self.gaussian_process = True
+
+
+class OrdNetEncoderPL(OrdNetPL):
+    """
+    Ordinal classification network that uses a pretrained encoder as
+    feature extractor.
+    """
+
+    def setup_network(self):
+        """Builds the encoder-based ordinal network."""
+        self.network = EncoderOrdNet(*self.args, **self.kwargs)
+        self.forward = self.network.forward
+        self.n_classes = self.network.n_classes
+        if (
+            hasattr(self.network, "gaussian_process")
+            and self.network.gaussian_process
+        ):
+            self.gaussian_process = True
+            self.gaussian_process_head = self.network.gaussian_process_head
 
 
 class SegCatNetPL(SegCatNet, pl.LightningModule):
@@ -1499,6 +1540,7 @@ class UNetEncoderPL(UNetEncoder, ClassPLABC):
                 "training_dataloader_call",
                 "training_batch_preproc",
                 "loss_fn",
+                "encoder",
             ]
         )
         self.setup_metrics()
@@ -1633,6 +1675,7 @@ class GenericEnsemblePL(GenericEnsemble, _EnsemblePLBase):
                 "training_dataloader_call",
                 "training_batch_preproc",
                 "loss_fn",
+                "encoder",
             ]
         )
         self.setup_metrics()
@@ -1801,6 +1844,7 @@ class ViTClassifierPL(ViTClassifier, ClassPLABC):
                 "training_dataloader_call",
                 "training_batch_preproc",
                 "loss_fn",
+                "encoder",
             ]
         )
         self.setup_metrics()
@@ -1887,6 +1931,7 @@ class FactorizedViTClassifierPL(FactorizedViTClassifier, ClassPLABC):
                 "training_dataloader_call",
                 "training_batch_preproc",
                 "loss_fn",
+                "encoder",
             ]
         )
         self.setup_metrics()

@@ -422,15 +422,38 @@ argument_factory = {
     ),
     "classification_net_type": dict(
         default="cat",
-        choices=["cat", "ord", "unet", "vit", "factorized_vit", "vgg"],
+        choices=[
+            "cat",
+            "ord",
+            "unet",
+            "vit",
+            "factorized_vit",
+            "vgg",
+            "pretrained_encoder",
+        ],
         help="Classification type",
     ),
     "classification_net_types": dict(
         type=str,
         nargs="+",
         default=["cat"],
-        choices=["cat", "ord", "unet", "vit", "factorized_vit", "vgg"],
+        choices=[
+            "cat",
+            "ord",
+            "unet",
+            "vit",
+            "factorized_vit",
+            "vgg",
+            "pretrained_encoder",
+        ],
         help="Classification types",
+    ),
+    "classification_objective": dict(
+        type=str,
+        default=None,
+        choices=["cat", "ord"],
+        help="Classification objective. If unset, it is inferred from the "
+        "network type for backwards compatibility.",
     ),
     "image_masking": dict(
         action="store_true",

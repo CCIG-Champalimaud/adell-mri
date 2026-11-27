@@ -8,6 +8,7 @@ from lightning.pytorch import Trainer
 
 from adell_mri.constants import DEFAULT_SEED
 from adell_mri.entrypoints.assemble_args import Parser
+from adell_mri.entrypoints.classification._utils import resolve_objective
 from adell_mri.modules.classification.pl import GenericEnsemblePL
 from adell_mri.modules.config_parsing import (
     parse_config_cat,
@@ -52,6 +53,8 @@ def main(arguments):
             "config_files",
             "ensemble_config_file",
             ("classification_net_types", "net_types"),
+            ("classification_objective", "objective"),
+            "encoder_checkpoint",
             "module_paths",
             "test_ids",
             "one_to_one",
@@ -204,7 +207,7 @@ def main(arguments):
 
         if n_classes == 2:
             ensemble_config["loss_fn"] = torch.nn.BCEWithLogitsLoss()
-        elif args.net_types[0] == "ord":
+        elif resolve_objective(args) == "ord":
             ensemble_config["loss_fn"] = OrdinalSigmoidalLoss(
                 n_classes=n_classes
             )
@@ -247,9 +250,15 @@ def main(arguments):
                         label_smoothing=None,
                         mixup_alpha=None,
                         partial_mixup=None,
+                        encoder_checkpoint=(
+                            None
+                            if args.encoder_checkpoint is None
+                            else args.encoder_checkpoint[i]
+                        ),
+                        objective=resolve_objective(args),
                     )
-                    for net_type, network_config in zip(
-                        args.net_types, network_configs
+                    for i, (net_type, network_config) in enumerate(
+                        zip(args.net_types, network_configs)
                     )
                 ]
             else:

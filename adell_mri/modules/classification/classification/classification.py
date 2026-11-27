@@ -455,6 +455,8 @@ class OrdNet(CatNet):
         super().__init__(*args, **kwargs)
 
     def init_classification_layer(self):
+        if self.classification_structure is None:
+            self.classification_structure = [self.last_size for _ in range(3)]
         self.gp = GlobalPooling()
         if self.gaussian_process:
             self.classification_layer = torch.nn.Sequential(
@@ -542,6 +544,85 @@ class OrdNet(CatNet):
         if return_only_pre_bias is True:
             return pre_bias
         return p_ordinal
+
+
+class EncoderFeatureExtractor(torch.nn.Module):
+    """
+    Adapts an encoder module (e.g. a pretrained ResNet, ConvNeXt or ViT
+    backbone) to the feature extraction interface used by
+    :class:`CatNet`/:class:`OrdNet`.
+    """
+
+    def __init__(self, encoder: torch.nn.Module) -> None:
+        """
+        Args:
+            encoder (torch.nn.Module): encoder exposing ``forward_features``
+                and ``out_channels``.
+        """
+        super().__init__()
+        self.encoder = encoder
+        self.out_channels = encoder.out_channels
+        self.last_size = int(encoder.out_channels[-1])
+
+    def forward(self, X: torch.Tensor, *args, **kwargs) -> torch.Tensor:
+        """
+        Extracts the bottleneck features from the encoder.
+
+        Args:
+            X (torch.Tensor): input tensor.
+
+        Returns:
+            torch.Tensor: bottleneck features.
+        """
+        return self.encoder.forward_features(X)
+
+
+class EncoderCatNet(CatNet):
+    """
+    Categorical classification network that uses a pretrained encoder as
+    feature extractor.
+    """
+
+    def __init__(self, encoder: torch.nn.Module, *args, **kwargs):
+        """
+        Args:
+            encoder (torch.nn.Module): encoder exposing ``forward_features``
+                and ``out_channels``.
+            args, kwargs: same arguments as :class:`CatNet` (except
+                ``feature_extraction``).
+        """
+        super().__init__(
+            *args, feature_extraction=EncoderFeatureExtractor(encoder), **kwargs
+        )
+
+    def init_layers(self) -> None:
+        """Uses the encoder output channels as feature size."""
+        self.last_size = self.feature_extraction.last_size
+        self.output_features = self.last_size
+
+
+class EncoderOrdNet(OrdNet):
+    """
+    Ordinal classification network that uses a pretrained encoder as feature
+    extractor.
+    """
+
+    def __init__(self, encoder: torch.nn.Module, *args, **kwargs):
+        """
+        Args:
+            encoder (torch.nn.Module): encoder exposing ``forward_features``
+                and ``out_channels``.
+            args, kwargs: same arguments as :class:`OrdNet` (except
+                ``feature_extraction``).
+        """
+        super().__init__(
+            *args, feature_extraction=EncoderFeatureExtractor(encoder), **kwargs
+        )
+
+    def init_layers(self) -> None:
+        """Uses the encoder output channels as feature size."""
+        self.last_size = self.feature_extraction.last_size
+        self.output_features = self.last_size
 
 
 class SegCatNet(torch.nn.Module):
