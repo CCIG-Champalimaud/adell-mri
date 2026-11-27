@@ -37,7 +37,24 @@ from adell_mri.utils.torch_utils import ExponentialMovingAverage
 logger = get_logger(__name__)
 
 
-class BarlowTwinsPL(ResNet, pl.LightningModule):
+class EncoderConfigCheckpointMixin:
+    """
+    Stores the encoder manifest in saved checkpoints.
+    """
+
+    def on_save_checkpoint(self, checkpoint: dict) -> None:
+        """
+        Stores the encoder manifest in the checkpoint.
+
+        Args:
+            checkpoint (dict): checkpoint dictionary.
+        """
+        encoder_config = getattr(self, "encoder_config", None)
+        if encoder_config is not None:
+            checkpoint["encoder_config"] = encoder_config
+
+
+class BarlowTwinsPL(EncoderConfigCheckpointMixin, ResNet, pl.LightningModule):
     def __init__(
         self,
         image_key: str = "image",
@@ -66,16 +83,6 @@ class BarlowTwinsPL(ResNet, pl.LightningModule):
         self.encoder_config = None
 
         self.setup_metrics()
-
-    def on_save_checkpoint(self, checkpoint: dict) -> None:
-        """
-        Stores the encoder manifest in the checkpoint.
-
-        Args:
-            checkpoint (dict): checkpoint dictionary.
-        """
-        if self.encoder_config is not None:
-            checkpoint["encoder_config"] = self.encoder_config
 
     def calculate_loss(self, y1, y2, update=True):
         loss = self.loss(y1, y2, update=True)
@@ -177,7 +184,7 @@ class BarlowTwinsPL(ResNet, pl.LightningModule):
                 )
 
 
-class SelfSLBasePL(pl.LightningModule, ABC):
+class SelfSLBasePL(EncoderConfigCheckpointMixin, pl.LightningModule, ABC):
     """
     Abstract method for non-contrastive PL modules. Features some very
     basic but helpful functions which I use consistently when training
@@ -189,16 +196,11 @@ class SelfSLBasePL(pl.LightningModule, ABC):
 
         self.optimizer_eps = OPTIMIZER_EPS_DEFAULT
         self.encoder_config = None
-
-    def on_save_checkpoint(self, checkpoint: dict) -> None:
-        """
-        Stores the encoder manifest in the checkpoint.
-
-        Args:
-            checkpoint (dict): checkpoint dictionary.
-        """
-        if self.encoder_config is not None:
-            checkpoint["encoder_config"] = self.encoder_config
+        self.loss_str_dict = {
+            "standard": [None],
+            "vicreg": ["inv", "var", "cov"],
+            "vicregl": ["inv", "var", "cov", "local"],
+        }
 
     def train_dataloader(self) -> torch.utils.data.DataLoader:
         return self.training_dataloader_call(self.batch_size)
@@ -595,12 +597,6 @@ class SelfSLResNetPL(ResNet, SelfSLBasePL):
         if self.ema is not None:
             self.ema.update(self)
 
-        self.loss_str_dict = {
-            "standard": [None],
-            "vicreg": ["inv", "var", "cov"],
-            "vicregl": ["inv", "var", "cov", "local"],
-        }
-
         self.save_hyperparameters()
         self.setup_metrics()
 
@@ -623,18 +619,6 @@ class SelfSLResNetPL(ResNet, SelfSLBasePL):
             box_2 = batch[self.box_key_2]
             other_args = [box_1, box_2]
         return ret_string_1, ret_string_2, other_args
-
-    def training_step(self, batch, batch_idx):
-        loss = self.step(batch, "loss", self.train_metrics, train=True)
-        return loss
-
-    def validation_step(self, batch, batch_idx):
-        loss = self.step(batch, "val_loss", self.val_metrics)
-        return loss
-
-    def test_step(self, batch, batch_idx):
-        loss = self.step(batch, "test_loss", self.test_metrics)
-        return loss
 
 
 class SelfSLUNetPL(UNet, SelfSLBasePL):
@@ -760,12 +744,6 @@ class SelfSLUNetPL(UNet, SelfSLBasePL):
         if self.ema is not None:
             self.ema.update(self)
 
-        self.loss_str_dict = {
-            "standard": [None],
-            "vicreg": ["inv", "var", "cov"],
-            "vicregl": ["inv", "var", "cov", "local"],
-        }
-
         self.save_hyperparameters()
         self.setup_metrics()
 
@@ -780,18 +758,6 @@ class SelfSLUNetPL(UNet, SelfSLBasePL):
             box_2 = batch[self.box_key_2]
             other_args = [box_1, box_2]
         return None, None, other_args
-
-    def training_step(self, batch, batch_idx):
-        loss = self.step(batch, "loss", self.train_metrics, train=True)
-        return loss
-
-    def validation_step(self, batch, batch_idx):
-        loss = self.step(batch, "val_loss", self.val_metrics)
-        return loss
-
-    def test_step(self, batch, batch_idx):
-        loss = self.step(batch, "test_loss", self.test_metrics)
-        return loss
 
 
 class SelfSLConvNeXtPL(ConvNeXt, SelfSLBasePL):
@@ -916,12 +882,6 @@ class SelfSLConvNeXtPL(ConvNeXt, SelfSLBasePL):
         self.init_loss()
         if self.ema is not None:
             self.ema.update(self)
-
-        self.loss_str_dict = {
-            "standard": [None],
-            "vicreg": ["inv", "var", "cov"],
-            "vicregl": ["inv", "var", "cov", "local"],
-        }
 
         self.save_hyperparameters()
         self.setup_metrics()
@@ -1460,7 +1420,7 @@ class iBOTPL(iBOT, SelfSLBasePL):
         return loss
 
 
-class ViTMaskedAutoEncoderPL(pl.LightningModule):
+class ViTMaskedAutoEncoderPL(EncoderConfigCheckpointMixin, pl.LightningModule):
     """
     LightningModule for training ViTMaskedAutoEncoder.
     """
@@ -1540,16 +1500,6 @@ class ViTMaskedAutoEncoderPL(pl.LightningModule):
         self.n_epochs = n_epochs
         self.start_decay = start_decay
         self.optimizer_eps = optimizer_eps
-
-    def on_save_checkpoint(self, checkpoint: dict) -> None:
-        """
-        Stores the encoder manifest in the checkpoint.
-
-        Args:
-            checkpoint (dict): checkpoint dictionary.
-        """
-        if self.encoder_config is not None:
-            checkpoint["encoder_config"] = self.encoder_config
 
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """
