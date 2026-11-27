@@ -125,6 +125,10 @@ def main(arguments):
     all_keys_t = [*all_keys, *feature_keys]
     if args.resize_size is not None:
         args.resize_size = [round(x) for x in args.resize_size]
+    if args.crop_size is not None:
+        args.crop_size = [round(x) for x in args.crop_size]
+    if args.pad_size is not None:
+        args.pad_size = [round(x) for x in args.pad_size]
 
     data_dict = Dataset(args.dataset_json)
     if args.excluded_ids is not None:
@@ -186,7 +190,9 @@ def main(arguments):
     transforms = SegmentationTransforms(**transform_arguments).transforms()
 
     if network_config["spatial_dimensions"] == 2:
-        transforms.append(SlicesToFirst(["image", "mask"]))
+        transforms = monai.transforms.Compose(
+            [*transforms.transforms, SlicesToFirst(["image", "mask"])]
+        )
         collate_fn = collate_last_slice
     else:
         collate_fn = safe_collate  # noqa

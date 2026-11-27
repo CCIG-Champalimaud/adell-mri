@@ -87,14 +87,14 @@ class EncoderUNet(UNet):
 
     def _probe_shape(self) -> list[int]:
         if self.probe_input_shape is not None:
-            return list(self.probe_input_shape)
+            return [int(size) for size in self.probe_input_shape]
         if isinstance(self.encoder, ViT):
             image_size = getattr(self.encoder.embedding, "image_size", None)
             if image_size is not None:
-                return list(image_size)
+                return [int(size) for size in image_size]
         image_size = getattr(self.encoder, "image_size", None)
         if image_size is not None:
-            return list(image_size)
+            return [int(size) for size in image_size]
         return [64 for _ in range(self.spatial_dimensions)]
 
     def _encoder_forward(

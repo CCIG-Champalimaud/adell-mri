@@ -124,6 +124,10 @@ def main(arguments):
     all_keys_t = [*all_keys, *feature_keys]
     if args.resize_size is not None:
         args.resize_size = [round(x) for x in args.resize_size]
+    if args.crop_size is not None:
+        args.crop_size = [round(x) for x in args.crop_size]
+    if args.pad_size is not None:
+        args.pad_size = [round(x) for x in args.pad_size]
 
     data_dict = Dataset(args.dataset_json)
     data_dict.filter_dictionary(
@@ -254,8 +258,10 @@ def main(arguments):
         pred_ids = [k for k in args.prediction_ids[pred_idx] if k in data_dict]
         curr_dict = data_dict[pred_ids]
 
-        transform_input = transforms[0]
-        transforms_preprocess = transforms[1:]
+        transform_input = transforms.transforms[0]
+        transforms_preprocess = monai.transforms.Compose(
+            transforms.transforms[1:]
+        )
         transforms_postprocess = monai.transforms.Invertd(
             "image", transforms_preprocess
         )

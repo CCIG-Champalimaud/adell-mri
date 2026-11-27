@@ -144,6 +144,7 @@ def main(arguments):
             "warmup_steps",
             ("class_weights", "class_weights", {"default": [1.0]}),
             "semi_supervised",
+            "spectral_norm_power_iterations",
         ]
     )
 
