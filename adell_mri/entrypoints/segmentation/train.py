@@ -11,6 +11,10 @@ from lightning.pytorch.utilities.combined_loader import CombinedLoader
 from sklearn.model_selection import KFold, train_test_split
 
 from adell_mri.entrypoints.assemble_args import Parser
+from adell_mri.entrypoints.segmentation._utils import (
+    if_none_else,
+    validate_encoder_checkpoint,
+)
 from adell_mri.modules.config_parsing import parse_config_unet
 from adell_mri.transform_factory import (
     SegmentationTransforms,
@@ -61,12 +65,6 @@ warnings.filterwarnings(
     "ignore",
     message=".*unable to generate class balanced samples.*",
 )
-
-
-def if_none_else(x, obj):
-    if x is None:
-        return obj
-    return x
 
 
 def main(arguments):
@@ -151,15 +149,7 @@ def main(arguments):
 
     args = parser.parse_args(arguments)
 
-    if args.encoder_checkpoint is not None and args.net_type != "encoder_unet":
-        raise ValueError(
-            "--encoder_checkpoint can only be used with "
-            "--net_type encoder_unet"
-        )
-    if args.net_type == "encoder_unet" and args.encoder_checkpoint is None:
-        raise ValueError(
-            "--net_type encoder_unet requires --encoder_checkpoint"
-        )
+    validate_encoder_checkpoint(args, require_checkpoint=True)
 
     g, rng = get_generator_and_rng(args.seed)
 

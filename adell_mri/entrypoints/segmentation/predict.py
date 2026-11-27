@@ -9,6 +9,12 @@ import torch
 from tqdm import tqdm
 
 from adell_mri.entrypoints.assemble_args import Parser
+from adell_mri.entrypoints.segmentation._utils import (
+    if_none_else,
+    inter_size,
+    read_encoder_config_from_checkpoint,
+    validate_encoder_checkpoint,
+)
 from adell_mri.modules.config_parsing import parse_config_unet
 from adell_mri.transform_factory.transforms import SegmentationTransforms
 from adell_mri.utils.dataset import Dataset
@@ -20,35 +26,6 @@ from adell_mri.utils.parser import parse_ids
 from adell_mri.utils.sitk_writer import SitkWriter
 
 torch.backends.cudnn.benchmark = True
-
-
-def if_none_else(x, obj):
-    if x is None:
-        return obj
-    return x
-
-
-def _read_encoder_config_from_checkpoint(checkpoint):
-    if checkpoint is None:
-        raise ValueError(
-            "--net_type encoder_unet requires --encoder_checkpoint or a "
-            "trained checkpoint containing an encoder_config entry"
-        )
-    path = (
-        checkpoint[0] if isinstance(checkpoint, (list, tuple)) else checkpoint
-    )
-    ckpt = torch.load(path, map_location="cpu", weights_only=False)
-    encoder_config = ckpt.get("encoder_config")
-    if encoder_config is None:
-        raise ValueError(
-            "The checkpoint does not contain an encoder_config entry. "
-            "Provide --encoder_checkpoint explicitly."
-        )
-    return encoder_config
-
-
-def inter_size(a, b):
-    return len(set.intersection(set(a), set(b)))
 
 
 def main(arguments):
@@ -102,11 +79,7 @@ def main(arguments):
 
     args = parser.parse_args(arguments)
 
-    if args.encoder_checkpoint is not None and args.net_type != "encoder_unet":
-        raise ValueError(
-            "--encoder_checkpoint can only be used with "
-            "--net_type encoder_unet"
-        )
+    validate_encoder_checkpoint(args)
 
     if args.possible_labels == 2 or args.positive_labels is not None:
         n_classes = 2
@@ -237,7 +210,7 @@ def main(arguments):
         all_feature_params = None
 
     if args.net_type == "encoder_unet" and args.encoder_checkpoint is None:
-        encoder_config = _read_encoder_config_from_checkpoint(args.checkpoint)
+        encoder_config = read_encoder_config_from_checkpoint(args.checkpoint)
         args.encoder_checkpoint = [
             {"state_dict": {}, "encoder_config": encoder_config}
         ]

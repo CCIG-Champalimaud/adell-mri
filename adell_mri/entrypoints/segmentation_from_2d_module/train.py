@@ -11,6 +11,7 @@ from sklearn.model_selection import KFold, train_test_split
 from tqdm import tqdm
 
 from adell_mri.entrypoints.assemble_args import Parser
+from adell_mri.entrypoints.segmentation._utils import if_none_else
 from adell_mri.modules.config_parsing import parse_config_unet
 from adell_mri.modules.layers.adn_fn import get_adn_fn
 from adell_mri.modules.segmentation.pl import MIMUNetPL
@@ -49,12 +50,6 @@ from adell_mri.utils.sitk_utils import (
 from adell_mri.utils.torch_utils import get_generator_and_rng, get_global_rank
 
 torch.backends.cudnn.benchmark = True
-
-
-def if_none_else(x, obj):
-    if x is None:
-        return obj
-    return x
 
 
 def get_first(*lists):
