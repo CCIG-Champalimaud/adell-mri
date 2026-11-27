@@ -740,6 +740,7 @@ class UNet(torch.nn.Module):
         encoding_out: list[torch.Tensor],
         X_skip_layer: torch.Tensor = None,
         X_feature_conditioning: torch.Tensor = None,
+        crop: bool = True,
     ) -> tuple[torch.Tensor, list[torch.Tensor]]:
         """
         Runs the decoder.
@@ -752,6 +753,8 @@ class UNet(torch.nn.Module):
                 Defaults to None.
             X_feature_conditioning (torch.Tensor, optional): feature
                 conditioning tensor. Defaults to None.
+            crop (bool, optional): crops the decoder and skip tensors to their
+                smallest common shape. Defaults to True.
 
         Returns:
             tuple[torch.Tensor, list[torch.Tensor]]: the decoder output and the
@@ -777,12 +780,13 @@ class UNet(torch.nn.Module):
                 )
                 encoded = torch.multiply(encoded, transformed_features)
             curr = up(curr)
-            sh = list(curr.shape)[2:]
-            sh2 = list(encoded.shape)[2:]
-            if np.prod(sh) < np.prod(sh2):
-                encoded = crop_to_size(encoded, sh)
-            if np.prod(sh) > np.prod(sh2):
-                curr = crop_to_size(curr, sh2)
+            if crop:
+                sh = list(curr.shape)[2:]
+                sh2 = list(encoded.shape)[2:]
+                if np.prod(sh) < np.prod(sh2):
+                    encoded = crop_to_size(encoded, sh)
+                if np.prod(sh) > np.prod(sh2):
+                    curr = crop_to_size(curr, sh2)
             curr = torch.concat((curr, encoded), dim=1)
             curr = op(curr)
             deep_outputs.append(curr)

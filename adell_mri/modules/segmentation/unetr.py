@@ -6,7 +6,6 @@ from typing import Callable, Dict, List, Union
 
 import numpy as np
 import torch
-import torch.nn.functional as F
 
 from adell_mri.custom_types import Size2dOr3d
 from adell_mri.modules.layers.adn_fn import get_adn_fn
@@ -384,29 +383,13 @@ class UNETR(UNet, torch.nn.Module):
         elif self.encoder_only is True:
             return bottleneck
 
-        deep_outputs = []
-        for i in range(len(self.decoding_operations)):
-            op = self.decoding_operations[i]
-            link_op = self.link_ops[i]
-            up = self.upscale_ops[i]
-            if X_skip_layer is not None:
-                S = encoding_out[-i - 2].shape[2:]
-                xfl = F.interpolate(X_skip_layer, S, mode="nearest")
-                link_op_input = torch.cat([encoding_out[-i - 2], xfl], axis=1)
-            else:
-                link_op_input = encoding_out[-i - 2]
-            encoded = link_op(link_op_input)
-            if X_feature_conditioning is not None:
-                feat_op = self.feature_conditioning_ops[i]
-                transformed_features = feat_op(X_feature_conditioning)
-                transformed_features = self.unsqueeze_to_dim(
-                    transformed_features, encoded
-                )
-                encoded = torch.multiply(encoded, transformed_features)
-            curr = up(curr)
-            curr = torch.concat((curr, encoded), dim=1)
-            curr = op(curr)
-            deep_outputs.append(curr)
+        curr, deep_outputs = self._forward_decoder(
+            curr,
+            encoding_out,
+            X_skip_layer=X_skip_layer,
+            X_feature_conditioning=X_feature_conditioning,
+            crop=False,
+        )
 
         final_features = curr
         if return_logits is True:
@@ -983,29 +966,13 @@ class SWINUNet(UNet):
         elif self.encoder_only is True:
             return bottleneck
 
-        deep_outputs = []
-        for i in range(len(self.decoding_operations)):
-            op = self.decoding_operations[i]
-            link_op = self.link_ops[i]
-            up = self.upscale_ops[i]
-            if X_skip_layer is not None:
-                S = encoding_out[-i - 2].shape[2:]
-                xfl = F.interpolate(X_skip_layer, S, mode="nearest")
-                link_op_input = torch.cat([encoding_out[-i - 2], xfl], axis=1)
-            else:
-                link_op_input = encoding_out[-i - 2]
-            encoded = link_op(link_op_input)
-            if X_feature_conditioning is not None:
-                feat_op = self.feature_conditioning_ops[i]
-                transformed_features = feat_op(X_feature_conditioning)
-                transformed_features = self.unsqueeze_to_dim(
-                    transformed_features, encoded
-                )
-                encoded = torch.multiply(encoded, transformed_features)
-            curr = up(curr)
-            curr = torch.concat((curr, encoded), dim=1)
-            curr = op(curr)
-            deep_outputs.append(curr)
+        curr, deep_outputs = self._forward_decoder(
+            curr,
+            encoding_out,
+            X_skip_layer=X_skip_layer,
+            X_feature_conditioning=X_feature_conditioning,
+            crop=False,
+        )
 
         final_features = curr
         curr = torch.cat([X_encoded_first, curr], 1)
