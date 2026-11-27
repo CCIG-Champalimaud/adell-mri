@@ -890,6 +890,56 @@ def get_segmentation_network(
     return unet
 
 
+def _default_resnet_backbone_args() -> dict[str, Any]:
+    """
+    Returns the default ResNet backbone arguments for SSL methods.
+
+    Returns:
+        dict[str, Any]: default backbone arguments.
+    """
+    return {
+        "spatial_dim": 2,
+        "in_channels": 1,
+        "structure": [
+            (64, 64, 3, 2),
+            (128, 128, 3, 2),
+            (256, 256, 3, 2),
+            (512, 512, 3, 2),
+        ],
+        "maxpool_structure": [2, 2, 2, 2],
+        "adn_fn": torch.nn.Identity,
+        "res_type": "resnet",
+    }
+
+
+def _default_resnet_projection_head_args() -> dict[str, Any]:
+    """
+    Returns the default ResNet projection head arguments for SSL methods.
+
+    Returns:
+        dict[str, Any]: default projection head arguments.
+    """
+    return {
+        "in_channels": 512,
+        "structure": [512, 128],
+        "adn_fn": torch.nn.Identity,
+    }
+
+
+def _default_resnet_prediction_head_args() -> dict[str, Any]:
+    """
+    Returns the default ResNet prediction head arguments for SSL methods.
+
+    Returns:
+        dict[str, Any]: default prediction head arguments.
+    """
+    return {
+        "in_channels": 128,
+        "structure": [512, 128],
+        "adn_fn": torch.nn.Identity,
+    }
+
+
 def _vit_backbone_defaults() -> dict[str, Any]:
     """
     Returns the default ViT backbone arguments for the SSL methods that
@@ -1025,39 +1075,18 @@ def get_ssl_network(
         # These methods use the standard ResNet architecture
         config = {
             "backbone_args": network_config.get(
-                "backbone_args",
-                {
-                    "spatial_dim": 2,
-                    "in_channels": 1,
-                    "structure": [
-                        (64, 64, 3, 2),
-                        (128, 128, 3, 2),
-                        (256, 256, 3, 2),
-                        (512, 512, 3, 2),
-                    ],
-                    "maxpool_structure": [2, 2, 2, 2],
-                    "adn_fn": torch.nn.Identity,
-                    "res_type": "resnet",
-                },
+                "backbone_args", _default_resnet_backbone_args()
             ),
             "projection_head_args": network_config.get(
                 "projection_head_args",
-                {
-                    "in_channels": 512,
-                    "structure": [512, 128],
-                    "adn_fn": torch.nn.Identity,
-                },
+                _default_resnet_projection_head_args(),
             ),
             "prediction_head_args": (
                 None
                 if ssl_method == "simclr"
                 else network_config.get(
                     "prediction_head_args",
-                    {
-                        "in_channels": 128,
-                        "structure": [512, 128],
-                        "adn_fn": torch.nn.Identity,
-                    },
+                    _default_resnet_prediction_head_args(),
                 )
             ),
             "ssl_method": ssl_method,
@@ -1213,20 +1242,7 @@ def get_ssl_network(
         # barlow twins-specific configuration (resnet backbone, projector
         # head whose output is used directly in the cross-correlation loss)
         backbone_args: dict = network_config.get(
-            "backbone_args",
-            {
-                "spatial_dim": 2,
-                "in_channels": 1,
-                "structure": [
-                    (64, 64, 3, 2),
-                    (128, 128, 3, 2),
-                    (256, 256, 3, 2),
-                    (512, 512, 3, 2),
-                ],
-                "maxpool_structure": [2, 2, 2, 2],
-                "adn_fn": torch.nn.Identity,
-                "res_type": "resnet",
-            },
+            "backbone_args", _default_resnet_backbone_args()
         )
         projection_head_args: dict = network_config.get(
             "projection_head_args",
