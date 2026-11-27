@@ -207,7 +207,6 @@ def main(arguments):
 
         configure_loss_fn(
             network_config,
-            args.net_type,
             n_classes,
             objective=resolve_objective(args),
         )

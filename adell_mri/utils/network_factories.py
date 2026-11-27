@@ -89,11 +89,10 @@ logger = get_logger(__name__)
 
 ALLOWED_NET_TYPES = {
     "classification": [
+        "resnet",
         "unet",
         "vit",
         "factorized_vit",
-        "cat",
-        "ord",
         "vgg",
         "pretrained_encoder",
     ],
@@ -184,7 +183,7 @@ def get_classification_network(
         encoder_checkpoint (str, optional): SSL checkpoint used to initialise
             the pretrained encoder. Defaults to None.
         objective (str, optional): classification objective (``"cat"`` or
-            ``"ord"``). Defaults to None (inferred from ``net_type``).
+            ``"ord"``). Defaults to ``"cat"``.
         encoder (torch.nn.Module, optional): pre-built encoder module. When
             omitted and ``net_type`` is ``"pretrained_encoder"``, the encoder
             is built from ``encoder_checkpoint``. Defaults to None.
@@ -199,6 +198,21 @@ def get_classification_network(
         raise ValueError(
             f"net_type '{net_type}' not valid, has to be one of \
             {ALLOWED_NET_TYPES['classification']}"
+        )
+    if objective is None:
+        objective = "cat"
+    if objective not in ["cat", "ord"]:
+        raise ValueError(
+            f"objective '{objective}' not valid, has to be one of "
+            "['cat', 'ord']"
+        )
+    if objective == "ord" and net_type not in [
+        "resnet",
+        "pretrained_encoder",
+    ]:
+        raise ValueError(
+            "objective 'ord' is only supported for the 'resnet' and "
+            "'pretrained_encoder' net types"
         )
     if net_type == "unet":
         act_fn = network_config["activation_fn"]
@@ -312,24 +326,37 @@ def get_classification_network(
                 **network_config,
             )
 
-    elif "ord" in net_type:
+    elif net_type == "resnet":
         for k in ["net_type", "in_channels", "n_classes", "adn_fn"]:
             if k in network_config:
                 del network_config[k]
-        network = OrdNetPL(
+        if objective == "ord":
+            network = OrdNetPL(
+                adn_fn=adn_fn,
+                **boilerplate_args,
+                **network_config,
+            )
+        else:
+            network = ClassNetPL(
+                net_type="cat",
+                adn_fn=adn_fn,
+                **boilerplate_args,
+                **network_config,
+            )
+    elif net_type == "vgg":
+        for k in ["net_type", "in_channels", "n_classes", "adn_fn"]:
+            if k in network_config:
+                del network_config[k]
+        network = ClassNetPL(
+            net_type="vgg",
             adn_fn=adn_fn,
             **boilerplate_args,
             **network_config,
         )
     else:
-        for k in ["in_channels", "n_classes", "adn_fn"]:
-            if k in network_config:
-                del network_config[k]
-        network = ClassNetPL(
-            net_type=net_type,
-            adn_fn=adn_fn,
-            **boilerplate_args,
-            **network_config,
+        raise ValueError(
+            f"net_type '{net_type}' is not supported by the classification "
+            "factory"
         )
 
     if len(clinical_feature_keys) > 0:

@@ -261,7 +261,7 @@ def get_last_conv_layer(
         if hasattr(network, "network"):
             return network.network.conv3
         return network.conv3
-    elif net_type in ("cat", "ord", "pretrained_encoder"):
+    elif net_type in ("resnet", "pretrained_encoder"):
         inner = network.network if hasattr(network, "network") else network
         fe = inner.feature_extraction
         if hasattr(fe, "encoder") and hasattr(fe.encoder, "operations"):
@@ -438,7 +438,6 @@ def main(arguments):
 
     configure_loss_fn(
         network_config,
-        None if use_deconfounding(args) else args.net_type,
         args.n_classes,
         objective=resolve_objective(args),
     )

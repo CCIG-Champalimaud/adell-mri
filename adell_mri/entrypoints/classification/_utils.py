@@ -25,24 +25,12 @@ def resolve_objective(args) -> str:
     Resolves the classification objective from the CLI arguments.
 
     Args:
-        args: Parsed CLI arguments. If ``objective`` is set it takes
-            precedence; otherwise the objective is inferred from ``net_type``
-            for backwards compatibility.
+        args: Parsed CLI arguments with an ``objective`` attribute.
 
     Returns:
         str: either ``"cat"`` or ``"ord"``.
     """
-    objective = getattr(args, "objective", None)
-    if objective is not None:
-        return objective
-    net_type = getattr(args, "net_type", None)
-    if net_type is None:
-        net_types = getattr(args, "net_types", None)
-        if net_types:
-            net_type = net_types[0]
-    if net_type is not None and "ord" in net_type:
-        return "ord"
-    return "cat"
+    return getattr(args, "objective", None) or "cat"
 
 
 def use_deconfounding(args) -> bool:
@@ -223,28 +211,20 @@ def create_transform_arguments(
 
 def configure_loss_fn(
     network_config,
-    net_type,
     n_classes,
     class_weights=None,
-    objective=None,
+    objective="cat",
 ):
     """
     Assign a loss function to a network config dict in-place.
 
     Args:
         network_config (dict): Network configuration. Mutated in-place.
-        net_type (str or None): Network type string (e.g. ``"cat"``,
-            ``"ord"``, ``"unet"``). Used to infer the objective when
-            ``objective`` is not provided.
         n_classes (int): Number of output classes.
         class_weights (torch.Tensor, optional): Per-class loss weights.
         objective (str, optional): Classification objective (``"cat"`` or
-            ``"ord"``). Defaults to None (inferred from ``net_type``).
+            ``"ord"``). Defaults to ``"cat"``.
     """
-    if objective is None:
-        objective = (
-            "ord" if net_type is not None and "ord" in net_type else "cat"
-        )
     if n_classes == 2:
         network_config["loss_fn"] = (
             torch.nn.BCEWithLogitsLoss(class_weights)
@@ -317,7 +297,7 @@ def create_classification_network(
     dropout_param = getattr(args, "dropout_param", 0)
     seed = getattr(args, "seed", 42)
     n_classes_val = getattr(args, "n_classes", n_classes if n_classes else 2)
-    net_type = getattr(args, "net_type", "cat")
+    net_type = getattr(args, "net_type", "resnet")
     objective = resolve_objective(args)
     encoder_checkpoint = getattr(args, "encoder_checkpoint", None)
     if encoder_checkpoint is not None:

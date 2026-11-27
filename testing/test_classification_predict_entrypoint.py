@@ -114,7 +114,7 @@ def _build_checkpoint(setup):
         "loss_fn": torch.nn.BCEWithLogitsLoss(),
     }
     network = get_classification_network(
-        net_type="cat",
+        net_type="resnet",
         network_config=network_config,
         dropout_param=0,
         seed=None,
@@ -177,7 +177,7 @@ def _build_ensemble_checkpoint(setup):
         "loss_fn": torch.nn.BCEWithLogitsLoss(),
     }
     inner = get_classification_network(
-        net_type="cat",
+        net_type="resnet",
         network_config=network_config,
         dropout_param=0,
         seed=42,
@@ -229,7 +229,7 @@ def _load_output(path):
 def _cat_base_args(setup, output_path):
     return [
         "--net_type",
-        "cat",
+        "resnet",
         "--dataset_json",
         setup["dataset_json"],
         "--image_keys",
@@ -252,7 +252,7 @@ def _cat_base_args(setup, output_path):
 def _deconfounder_base_args(setup, output_path):
     return [
         "--net_type",
-        "cat",
+        "resnet",
         "--dataset_json",
         setup["dataset_json"],
         "--image_keys",
@@ -287,7 +287,7 @@ def _ensemble_base_args(setup, output_path):
         "--ensemble_config_file",
         setup["ensemble_config_file"],
         "--net_types",
-        "cat",
+        "resnet",
         "--dev",
         "cpu",
         "--crop_size",

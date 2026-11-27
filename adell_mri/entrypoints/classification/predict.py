@@ -188,7 +188,6 @@ def main(arguments):
 
         configure_loss_fn(
             network_config,
-            None if use_deconfounding(args) else args.net_type,
             args.n_classes,
             objective=resolve_objective(args),
         )

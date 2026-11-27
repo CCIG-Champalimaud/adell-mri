@@ -192,7 +192,6 @@ def main(arguments):
 
         configure_loss_fn(
             ensemble_config,
-            args.net_types[0],
             args.n_classes,
             objective=resolve_objective(args),
         )

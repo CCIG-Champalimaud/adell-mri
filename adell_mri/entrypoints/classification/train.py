@@ -463,7 +463,6 @@ def main(arguments):
         logger.info("Initializing loss with class_weights: %s", class_weights)
         configure_loss_fn(
             network_config,
-            args.net_type,
             n_classes,
             class_weights,
             objective=resolve_objective(args),
