@@ -526,20 +526,6 @@ class UNet(torch.nn.Module):
                     ]
                 )
 
-    def interpolate_depths(self, a: int, b: int, n=3) -> List[int]:
-        """
-                Interpolates between two whole numbers. Not really used.
-
-        Args:
-            a (int): start integer
-            b (int): final integer
-            n (int, optional): number of points. Defaults to 3.
-
-        Returns:
-            (List[int]): list of `n` integers sampled between `a` and `b`.
-        """
-        return list(np.linspace(a, b, n, dtype=np.int32))
-
     def init_encoder(self):
         """
         Initializes the encoder operations."""

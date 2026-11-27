@@ -69,10 +69,6 @@ def if_none_else(x, obj):
     return x
 
 
-def inter_size(a, b):
-    return len(set.intersection(set(a), set(b)))
-
-
 def main(arguments):
     logger = get_python_logger(__name__)
     parser = Parser()

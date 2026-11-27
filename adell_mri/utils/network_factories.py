@@ -408,9 +408,7 @@ def get_classification_network(
                 **network_config,
             )
         elif net_type == "factorized_vit":
-            for k in ["embed_method"]:
-                if k in network_config:
-                    del network_config[k]
+            network_config.pop("embed_method", None)
             network = FactorizedViTClassifierPL(
                 adn_fn=get_adn_fn(
                     1, "identity", act_fn="gelu", dropout_param=dropout_param
@@ -420,8 +418,7 @@ def get_classification_network(
             )
     elif "ord" in net_type:
         for k in ["net_type", "in_channels", "n_classes", "adn_fn"]:
-            if k in network_config:
-                del network_config[k]
+            network_config.pop(k, None)
         network = OrdNetPL(
             adn_fn=adn_fn,
             **boilerplate_args,
@@ -429,8 +426,7 @@ def get_classification_network(
         )
     else:
         for k in ["in_channels", "n_classes", "adn_fn"]:
-            if k in network_config:
-                del network_config[k]
+            network_config.pop(k, None)
         network = ClassNetPL(
             net_type=net_type,
             adn_fn=adn_fn,

@@ -415,7 +415,7 @@ class SelfSLBasePL(pl.LightningModule, ABC):
             lr=self.learning_rate,
             eps=self.optimizer_eps,
         )
-        lr_schedulers = lr_schedulers = CosineAnnealingWithWarmupLR(
+        lr_schedulers = CosineAnnealingWithWarmupLR(
             optimizer,
             T_max=n,
             start_decay=self.start_decay,
@@ -1110,7 +1110,7 @@ class IJEPAPL(IJEPA, SelfSLBasePL):
             weight_decay=self.weight_decay,
             eps=self.optimizer_eps,
         )
-        lr_schedulers = lr_schedulers = CosineAnnealingWithWarmupLR(
+        lr_schedulers = CosineAnnealingWithWarmupLR(
             optimizer,
             T_max=n,
             start_decay=self.start_decay,

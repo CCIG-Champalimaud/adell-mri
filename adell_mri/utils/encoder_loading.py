@@ -29,8 +29,6 @@ logger = get_logger(__name__)
 MANIFEST_KEY = "encoder_config"
 MANIFEST_FORMAT_VERSION = 1
 
-_FAMILIES = {"resnet", "convnext", "vit", "mae", "unet"}
-
 # Keys from the training wrapper that should never be transferred to an
 # encoder.
 _EXCLUDED_PATTERNS = (

@@ -347,7 +347,6 @@ class UNetBasePL(pl.LightningModule, ABC):
             prediction, pred_class = output
         else:
             prediction, pred_class, deep_outputs = output
-        prediction = prediction
 
         loss = self.calculate_loss(prediction, y)
         if self.deep_supervision is True:
@@ -1429,7 +1428,6 @@ class MIMUNetPL(MIMUNet, UNetBasePL):
             prediction = output
         else:
             prediction, deep_outputs = output
-        prediction = prediction
 
         if self.training is False:
             y, prediction = self.crop_if_necessary(y, prediction)

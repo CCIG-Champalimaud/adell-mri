@@ -54,7 +54,7 @@ from adell_mri.utils.python_logging import get_logger
 logger = get_logger(__name__)
 
 try:
-    import monai
+    import monai  # noqa: F401
 
     has_monai = True
 except ModuleNotFoundError:
@@ -1305,7 +1305,7 @@ class SegCatNetPL(SegCatNet, pl.LightningModule):
         self.learning_rate = learning_rate
         self.batch_size = batch_size
         self.weight_decay = weight_decay
-        self.trainig_dataloader_call = training_dataloader_call
+        self.training_dataloader_call = training_dataloader_call
         self.loss_fn = loss_fn
         self.loss_params = loss_params
         self.n_epochs = n_epochs
