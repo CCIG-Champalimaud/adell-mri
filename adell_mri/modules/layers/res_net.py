@@ -6,7 +6,7 @@ from typing import OrderedDict
 
 import torch
 
-from adell_mri.custom_types import List, ModuleList, Tuple, Union
+from adell_mri.custom_types import List, Tuple, Union
 from adell_mri.modules.layers.batch_ensemble import BatchEnsembleWrapper
 from adell_mri.modules.layers.res_blocks import (
     ConvNeXtBlock2d,
@@ -22,30 +22,6 @@ from adell_mri.modules.layers.standard_blocks import (
     ConvolutionalBlock2d,
     ConvolutionalBlock3d,
 )
-
-
-def resnet_to_encoding_ops(res_net: List[torch.nn.Module]) -> ModuleList:
-    """
-    Convenience function generating UNet encoder from ResNet.
-
-        Args:
-            res_net (torch.nn.Module): a list of ResNet objects.
-
-        Returns:
-            encoding_operations: ModuleList of ModuleList objects containing
-                pairs of convolutions and pooling operations.
-    """
-    backbone = [x.backbone for x in res_net]
-    res_ops = [[x.input_layer, *x.operations] for x in backbone]
-    res_pool_ops = [[x.first_pooling, *x.pooling_operations] for x in backbone]
-    encoding_operations = [torch.nn.ModuleList([]) for _ in res_ops]
-    for i in range(len(res_ops)):
-        A = res_ops[i]
-        B = res_pool_ops[i]
-        for a, b in zip(A, B):
-            encoding_operations[i].append(torch.nn.ModuleList([a, b]))
-    encoding_operations = torch.nn.ModuleList(encoding_operations)
-    return encoding_operations
 
 
 class ResNetBackbone(torch.nn.Module):
