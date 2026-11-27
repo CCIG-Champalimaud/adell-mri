@@ -1413,7 +1413,8 @@ class TransformerBlockStack(torch.nn.Module):
                 X, attention = X
             if i in return_at:
                 outputs.append(X)
-                attentions.append(attention)
+                if return_attention is True:
+                    attentions.append(attention)
         if return_attention is True:
             if return_at == []:
                 return X, outputs, [attention]

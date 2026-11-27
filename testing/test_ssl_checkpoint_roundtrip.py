@@ -10,6 +10,7 @@ from adell_mri.modules.layers.conv_next import ConvNeXtBackbone
 from adell_mri.modules.layers.res_net import ResNetBackbone
 from adell_mri.modules.layers.vit import ViT
 from adell_mri.modules.segmentation.unet import UNet
+from adell_mri.modules.self_supervised.autoencoders import ViTMaskedAutoEncoder
 from adell_mri.utils.network_factories import (
     convert_ssl_checkpoint,
     get_classification_network,
@@ -17,7 +18,7 @@ from adell_mri.utils.network_factories import (
 )
 from adell_mri.utils.pl_callbacks import ModelCheckpointWithMetadata
 
-FAMILIES = ["resnet", "convnext", "vit"]
+FAMILIES = ["resnet", "convnext", "vit", "mae"]
 INPUT_SHAPE = (2, 1, 16, 16, 16)
 
 
@@ -54,6 +55,38 @@ def _build_encoder(family: str):
             }
         }
         return encoder, config, "backbone.", "byol"
+    if family == "mae":
+        encoder_args = {
+            "image_size": [16, 16, 16],
+            "patch_size": [4, 4, 4],
+            "in_channels": 1,
+            "embed_dim": 32,
+            "number_of_blocks": 4,
+            "hidden_dim": 64,
+            "n_heads": 2,
+            "mlp_structure": [64],
+        }
+        decoder_args = {
+            "number_of_blocks": 2,
+            "hidden_dim": 64,
+            "n_heads": 2,
+            "mlp_structure": [64],
+        }
+        encoder = ViTMaskedAutoEncoder(
+            image_size=(16, 16, 16),
+            patch_size=(4, 4, 4),
+            in_channels=1,
+            input_dim_size=32,
+            encoder_args=encoder_args,
+            decoder_args=decoder_args,
+            mask_fraction=0.5,
+        )
+        config = {
+            "encoder_args": encoder_args,
+            "decoder_args": decoder_args,
+            "mask_fraction": 0.5,
+        }
+        return encoder, config, "model.", "mae"
     encoder = ViT(
         image_size=(16, 16, 16),
         patch_size=(4, 4, 4),
@@ -133,8 +166,9 @@ def test_ssl_checkpoint_saving_and_loading(tmp_path, family):
 
     loaded = initialise_ssl_from_ckpt(path)
 
-    assert type(loaded).__name__ == type(encoder).__name__
-    _assert_same_weights(encoder, loaded)
+    loaded_weights = getattr(loaded, "model", loaded)
+    assert type(loaded_weights).__name__ == type(encoder).__name__
+    _assert_same_weights(encoder, loaded_weights)
 
 
 @pytest.mark.parametrize("family", FAMILIES)
@@ -169,7 +203,7 @@ def test_conversion_of_old_checkpoint(tmp_path):
     _assert_same_weights(encoder, loaded)
 
 
-@pytest.mark.parametrize("family", ["resnet", "vit"])
+@pytest.mark.parametrize("family", ["resnet", "vit", "mae"])
 def test_pretrained_encoder_segmentation(tmp_path, family):
     path, _ = _write_checkpoint(tmp_path, family)
     encoder = initialise_ssl_from_ckpt(path)
@@ -190,7 +224,7 @@ def test_pretrained_encoder_segmentation(tmp_path, family):
     assert output.shape == (INPUT_SHAPE[0], 1, *INPUT_SHAPE[2:])
 
 
-@pytest.mark.parametrize("family", ["resnet", "vit"])
+@pytest.mark.parametrize("family", ["resnet", "vit", "mae"])
 @pytest.mark.parametrize("objective", ["cat", "ord"])
 def test_pretrained_encoder_classification(tmp_path, family, objective):
     path, _ = _write_checkpoint(tmp_path, family)

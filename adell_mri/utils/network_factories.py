@@ -11,7 +11,9 @@ import os
 from functools import wraps
 from typing import Any, Callable
 
+import numpy as np
 import torch
+import torch.nn.functional as F
 from lightning.pytorch import LightningModule
 
 from adell_mri.constants import DEFAULT_SEED
@@ -42,8 +44,6 @@ from adell_mri.modules.layers.adn_fn import get_adn_fn
 from adell_mri.modules.layers.conv_next import ConvNeXtBackbone
 from adell_mri.modules.layers.res_net import ResNetBackbone
 from adell_mri.modules.layers.vit import ViT
-
-# segmentation
 from adell_mri.modules.segmentation.pl import (
     UNETRPL,
     BrUNetPL,
@@ -53,6 +53,9 @@ from adell_mri.modules.segmentation.pl import (
     UNetPL,
     UNetPlusPlusPL,
 )
+
+# segmentation
+from adell_mri.modules.self_supervised.autoencoders import ViTMaskedAutoEncoder
 
 # self-supervised learning
 from adell_mri.modules.self_supervised.pl import (
@@ -1133,6 +1136,132 @@ def infer_ssl_net_type(state_dict: dict[str, Any]) -> str:
     )
 
 
+class MAEEncoder(torch.nn.Module):
+    """
+    Wraps the encoder of a masked autoencoder so that it exposes the same
+    interface as the other pretrained encoders.
+    """
+
+    def __init__(self, model: torch.nn.Module) -> None:
+        """
+        Args:
+            model (torch.nn.Module): a :class:`ViTMaskedAutoEncoder` instance.
+        """
+        super().__init__()
+        self.model = model
+        self.n_levels = None
+
+    def set_n_levels(self, n_levels: int) -> None:
+        """
+        Sets the number of intermediate levels.
+
+        Args:
+            n_levels (int): number of intermediate levels.
+
+        Raises:
+            ValueError: if ``n_levels`` is not valid.
+        """
+        n_blocks = self.model.encoder.number_of_blocks
+        if n_levels < 1:
+            raise ValueError(f"n_levels must be positive, got {n_levels}")
+        if n_levels > n_blocks:
+            raise ValueError(
+                f"n_levels ({n_levels}) cannot exceed the number of blocks "
+                f"({n_blocks})"
+            )
+        self.n_levels = int(n_levels)
+
+    @property
+    def out_channels(self) -> list[int]:
+        """
+        Number of output channels for each intermediate layer.
+
+        Returns:
+            list[int]: one entry per intermediate level.
+        """
+        n_blocks = self.model.encoder.number_of_blocks
+        n_levels = self.n_levels if self.n_levels is not None else n_blocks
+        return [self.model.n_features for _ in range(n_levels)]
+
+    def _tokens_to_map(self, X: torch.Tensor) -> torch.Tensor:
+        """
+        Reshapes a token sequence into a channel-first feature map.
+
+        Args:
+            X (torch.Tensor): token tensor of shape ``(batch, tokens, dim)``.
+
+        Returns:
+            torch.Tensor: feature map of shape ``(batch, dim, *grid)``.
+        """
+        grid = [
+            s // p
+            for s, p in zip(
+                self.model.proj.image_size, self.model.proj.patch_size
+            )
+        ]
+        X = X.transpose(1, 2)
+        return X.reshape(X.shape[0], X.shape[1], *grid)
+
+    def forward_features(self, X: torch.Tensor) -> torch.Tensor:
+        """
+        Returns the final token sequence reshaped as a feature map.
+
+        Args:
+            X (torch.Tensor): input tensor.
+
+        Returns:
+            torch.Tensor: feature map.
+        """
+        embedded = self.model.proj(X)
+        X, _ = self.model.encoder(embedded)
+        return self._tokens_to_map(X)
+
+    def forward_with_intermediate(
+        self, X: torch.Tensor, n_levels: int = None
+    ) -> tuple[torch.Tensor, list[torch.Tensor]]:
+        """
+        Returns intermediate transformer outputs at multiple resolutions.
+
+        Args:
+            X (torch.Tensor): input tensor.
+            n_levels (int, optional): number of intermediate levels. Defaults
+                to ``self.n_levels`` (or the number of blocks if unset).
+
+        Returns:
+            tuple[torch.Tensor, list[torch.Tensor]]: the bottleneck feature map
+                and the list of intermediate feature maps.
+        """
+        n_blocks = self.model.encoder.number_of_blocks
+        n_levels = n_levels or self.n_levels or n_blocks
+        self.set_n_levels(n_levels)
+        if n_levels > 1:
+            block_indices = sorted(
+                set(
+                    int(round(i * (n_blocks - 1) / (n_levels - 1)))
+                    for i in range(n_levels)
+                )
+            )
+        else:
+            block_indices = [n_blocks - 1]
+
+        embedded = self.model.proj(X)
+        final, outputs = self.model.encoder(
+            embedded, return_at=block_indices[:-1]
+        )
+        maps = [self._tokens_to_map(x) for x in outputs + [final]]
+
+        output_list = []
+        spatial_shape = X.shape[2:]
+        for i, feature_map in enumerate(maps):
+            target_shape = [
+                max(int(np.ceil(s / (2**i))), 1) for s in spatial_shape
+            ]
+            output_list.append(
+                F.interpolate(feature_map, size=target_shape, mode="nearest")
+            )
+        return output_list[-1], output_list
+
+
 def _load_ssl_encoder(
     net_type: str,
     network_config: dict[str, Any],
@@ -1155,9 +1284,17 @@ def _load_ssl_encoder(
     if net_type == "vit":
         return ViT(**network_config["backbone_args"]), "encoder_."
     if net_type == "mae":
-        raise NotImplementedError(
-            "MAE checkpoints are not yet supported as pretrained encoders."
+        encoder_args = network_config["encoder_args"]
+        model = ViTMaskedAutoEncoder(
+            image_size=encoder_args.get("image_size", (224, 224)),
+            patch_size=encoder_args.get("patch_size", (16, 16)),
+            in_channels=encoder_args.get("in_channels", 1),
+            input_dim_size=encoder_args.get("embed_dim", 96),
+            encoder_args=encoder_args,
+            decoder_args=network_config.get("decoder_args", {}),
+            mask_fraction=network_config.get("mask_fraction", 0.75),
         )
+        return MAEEncoder(model), "model."
     if net_type == "convnext":
         backbone_args = {
             k: v
@@ -1240,6 +1377,9 @@ def initialise_ssl_from_ckpt(
             f"No encoder weights found in the checkpoint using prefix "
             f"'{prefix}'."
         )
+    if net_type == "mae":
+        encoder.model.load_state_dict(encoder_state_dict)
+        return encoder
     encoder.load_state_dict(encoder_state_dict)
     return encoder
 
