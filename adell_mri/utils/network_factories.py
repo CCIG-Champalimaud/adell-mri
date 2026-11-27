@@ -1429,7 +1429,10 @@ def initialise_ssl_from_ckpt(
         else:
             encoder.load_state_dict(encoder_state_dict)
 
-    encoder.lr_encoder = metadata.get("lr_encoder")
+    lr_encoder = metadata.get("lr_encoder")
+    if lr_encoder is None:
+        lr_encoder = network_config.get("learning_rate")
+    encoder.lr_encoder = lr_encoder
     return encoder
 
 
@@ -1484,6 +1487,11 @@ def convert_ssl_checkpoint(
     metadata["net_type"] = resolved_net_type
     if resolved_ssl_method is not None:
         metadata["ssl_method"] = resolved_ssl_method
+    if metadata.get("lr_encoder") is None:
+        network_config = metadata.get("network_config", {})
+        lr_encoder = network_config.get("learning_rate")
+        if lr_encoder is not None:
+            metadata["lr_encoder"] = lr_encoder
 
     callbacks = checkpoint.get("callbacks", {})
     updated_callback = False

@@ -134,6 +134,7 @@ def _write_checkpoint(
         tuple: checkpoint path and the encoder used to build it.
     """
     encoder, config, prefix, ssl_method = _build_encoder(family)
+    config["learning_rate"] = 0.005
     state_dict = {prefix + k: v for k, v in encoder.state_dict().items()}
     metadata = {"network_config": config}
     if include_net_type is True:
@@ -289,6 +290,7 @@ def test_conversion_of_old_checkpoint(tmp_path):
     )
     loaded = initialise_ssl_from_ckpt(converted_path)
 
+    assert loaded.lr_encoder == 0.005
     _assert_same_weights(encoder, loaded)
 
 
