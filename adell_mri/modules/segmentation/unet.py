@@ -676,6 +676,30 @@ class UNet(torch.nn.Module):
         operations.append(torch.nn.ModuleList([op, op_downsample]))
         return StandardEncoder(operations, self.depth)
 
+    def load_state_dict(
+        self, state_dict: dict, strict: bool = True, assign: bool = False
+    ):
+        """
+        Loads a state dict, remapping legacy ``encoding_operations`` keys to
+        the encoder module.
+
+        Args:
+            state_dict (dict): state dict to load.
+            strict (bool, optional): whether to strictly enforce key matching.
+                Defaults to True.
+            assign (bool, optional): whether to assign tensor values rather
+                than copying them. Defaults to False.
+
+        Returns:
+            The result of :meth:`torch.nn.Module.load_state_dict`.
+        """
+        remapped = {}
+        for key, value in state_dict.items():
+            if key.startswith("encoding_operations."):
+                key = "encoder.operations." + key[len("encoding_operations.") :]
+            remapped[key] = value
+        return super().load_state_dict(remapped, strict=strict, assign=assign)
+
     def align_decoder_params(self) -> None:
         """
         Aligns ``kernel_sizes`` and ``strides`` with the depth inferred from

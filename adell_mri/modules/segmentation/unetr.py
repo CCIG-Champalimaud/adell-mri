@@ -94,10 +94,6 @@ class UNETR(UNet, torch.nn.Module):
                 Transformer. Defaults to torch.nn.Identity.
             spatial_dimensions (int, optional): number of dimensions for the
                 input (not counting batch or channels). Defaults to 2.
-            encoding_operations (List[ModuleList], optional): backbone operations
-                (uses these rather than a standard U-Net encoder).
-                Must be a list where each element is a list containing a
-                convolutional operation and a downsampling operation.
             conv_type (str, optional): types of base convolutional operations.
                 For now it supports regular convolutions ("regular"), residual
                 convolutions ("resnet") and convolutions followed by squeeze
@@ -500,10 +496,6 @@ class MonaiUNETR(UNet, torch.nn.Module):
                 Transformer. Defaults to torch.nn.Identity.
             spatial_dimensions (int, optional): number of dimensions for the
                 input (not counting batch or channels). Defaults to 2.
-            encoding_operations (List[ModuleList], optional): backbone operations
-                (uses these rather than a standard U-Net encoder).
-                Must be a list where each element is a list containing a
-                convolutional operation and a downsampling operation.
             conv_type (str, optional): types of base convolutional operations.
                 For now it supports regular convolutions ("regular"), residual
                 convolutions ("resnet") and convolutions followed by squeeze
@@ -702,10 +694,6 @@ class SWINUNet(UNet):
                 Transformer. Defaults to torch.nn.Identity.
             spatial_dimensions (int, optional): number of dimensions for the
                 input (not counting batch or channels). Defaults to 2.
-            encoding_operations (List[ModuleList], optional): backbone operations
-                (uses these rather than a standard U-Net encoder).
-                Must be a list where each element is a list containing a
-                convolutional operation and a downsampling operation.
             conv_type (str, optional): types of base convolutional operations.
                 For now it supports regular convolutions ("regular"), residual
                 convolutions ("resnet") and convolutions followed by squeeze
@@ -1103,10 +1091,6 @@ class MonaiSWINUNet(UNet):
                 Transformer. Defaults to torch.nn.Identity.
             spatial_dimensions (int, optional): number of dimensions for the
                 input (not counting batch or channels). Defaults to 2.
-            encoding_operations (List[ModuleList], optional): backbone operations
-                (uses these rather than a standard U-Net encoder).
-                Must be a list where each element is a list containing a
-                convolutional operation and a downsampling operation.
             conv_type (str, optional): types of base convolutional operations.
                 For now it supports regular convolutions ("regular"), residual
                 convolutions ("resnet") and convolutions followed by squeeze
