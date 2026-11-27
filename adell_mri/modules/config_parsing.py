@@ -27,6 +27,45 @@ def _load_yaml(config_file: str) -> dict[str, Any]:
         return yaml.safe_load(o)
 
 
+def _load_yaml_with_batch_size(config_file: str) -> dict[str, Any]:
+    """
+    Loads a YAML configuration and ensures ``batch_size`` is set.
+
+    Args:
+        config_file (str): path to the YAML configuration file.
+
+    Returns:
+        dict[str, Any]: parsed configuration.
+    """
+    network_config = _load_yaml(config_file)
+    network_config.setdefault("batch_size", 1)
+    return network_config
+
+
+def _get_adn_names(
+    network_config: dict[str, Any],
+    default_norm: str = "batch",
+    default_act: str = "swish",
+) -> tuple[str, str]:
+    """
+    Returns the normalization and activation names from a configuration.
+
+    Args:
+        network_config (dict[str, Any]): network configuration.
+        default_norm (str, optional): fallback normalization name. Defaults to
+            "batch".
+        default_act (str, optional): fallback activation name. Defaults to
+            "swish".
+
+    Returns:
+        tuple[str, str]: normalization and activation names.
+    """
+    return (
+        network_config.get("norm_fn", default_norm),
+        network_config.get("act_fn", default_act),
+    )
+
+
 def parse_config_unet(config_file, n_keys, n_classes):
     """
     Parses a segmentation network configuration file.
@@ -85,8 +124,7 @@ def parse_config_cat(config_file):
 
 
 def parse_config_ensemble(config_file: str, n_classes: int):
-    with open(config_file, "r") as o:
-        network_config = yaml.safe_load(o)
+    network_config = _load_yaml(config_file)
 
     if "head_adn_fn" in network_config:
         network_config["head_adn_fn"] = get_adn_fn(
@@ -98,11 +136,7 @@ def parse_config_ensemble(config_file: str, n_classes: int):
 def parse_config_ssl(
     config_file: str, dropout_param: float, n_keys: int, is_vit=False
 ):
-    with open(config_file, "r") as o:
-        network_config = yaml.safe_load(o)
-
-    if "batch_size" not in network_config:
-        network_config["batch_size"] = 1
+    network_config = _load_yaml_with_batch_size(config_file)
 
     backbone_key = (
         "backbone_args" if "backbone_args" in network_config else "encoder_args"
@@ -113,35 +147,21 @@ def parse_config_ssl(
     else:
         sd = len(network_config[backbone_key]["patch_size"])
 
-    if is_vit is False:
-        network_config[backbone_key]["adn_fn"] = get_adn_fn(
-            sd,
-            network_config["norm_fn"],
-            network_config["act_fn"],
-            dropout_param=dropout_param,
+    norm_fn, act_fn = _get_adn_names(network_config)
+
+    def adn_fn(spatial_dim: int):
+        return get_adn_fn(
+            spatial_dim, norm_fn, act_fn, dropout_param=dropout_param
         )
 
-        network_config["projection_head_args"]["adn_fn"] = get_adn_fn(
-            1,
-            network_config["norm_fn"],
-            network_config["act_fn"],
-            dropout_param=dropout_param,
-        )
+    if is_vit is False:
+        network_config[backbone_key]["adn_fn"] = adn_fn(sd)
+        network_config["projection_head_args"]["adn_fn"] = adn_fn(1)
 
     if "prediction_head_args" in network_config:
-        network_config["prediction_head_args"]["adn_fn"] = get_adn_fn(
-            1,
-            network_config["norm_fn"],
-            network_config["act_fn"],
-            dropout_param=dropout_param,
-        )
+        network_config["prediction_head_args"]["adn_fn"] = adn_fn(1)
     if "projection_head_args" in network_config:
-        network_config["projection_head_args"]["adn_fn"] = get_adn_fn(
-            1,
-            network_config["norm_fn"],
-            network_config["act_fn"],
-            dropout_param=dropout_param,
-        )
+        network_config["projection_head_args"]["adn_fn"] = adn_fn(1)
     network_config_correct = {
         k: network_config[k]
         for k in network_config
@@ -159,20 +179,11 @@ def parse_config_ssl(
 def parse_config_2d_classifier_3d(
     config_file: str, dropout_param: float, mil_method: str = "standard"
 ):
-    with open(config_file, "r") as o:
-        network_config = yaml.safe_load(o)
+    network_config = _load_yaml_with_batch_size(config_file)
 
-    if "batch_size" not in network_config:
-        network_config["batch_size"] = 1
-
-    if "norm_fn" in network_config:
-        norm_fn = network_config["norm_fn"]
-    else:
-        norm_fn = "layer"
-    if "act_fn" in network_config:
-        act_fn = network_config["act_fn"]
-    else:
-        act_fn = "gelu"
+    norm_fn, act_fn = _get_adn_names(
+        network_config, default_norm="layer", default_act="gelu"
+    )
 
     if "classification_adn_fn" in network_config:
         network_config["classification_adn_fn"] = get_adn_fn(
@@ -201,11 +212,7 @@ def parse_config_gan(
     spatial_dims: int = 2,
     **kwargs,
 ):
-    with open(config_file, "r") as o:
-        network_config = yaml.safe_load(o)
-
-    if "batch_size" not in network_config:
-        network_config["batch_size"] = 1
+    network_config = _load_yaml_with_batch_size(config_file)
 
     generator_config = network_config["generator"]
     discriminator_config = network_config["discriminator"]
