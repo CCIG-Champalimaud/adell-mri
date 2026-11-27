@@ -189,7 +189,7 @@ def get_classification_network(
             is built from ``encoder_checkpoint``. Defaults to None.
         lr_encoder (float, optional): learning rate used for the encoder
             alone. A value of 0 freezes the encoder. Defaults to None (the
-            value stored in the SSL checkpoint, if any).
+            encoder uses the global learning rate).
 
     Returns:
         A :class:`LightningModule` classification network.
@@ -293,8 +293,6 @@ def get_classification_network(
                 )
             encoder = initialise_ssl_from_ckpt(encoder_checkpoint)
         resolved_lr_encoder = lr_encoder
-        if resolved_lr_encoder is None:
-            resolved_lr_encoder = getattr(encoder, "lr_encoder", None)
         if resolved_lr_encoder == 0.0:
             for param in encoder.parameters():
                 param.requires_grad = False
@@ -1456,10 +1454,6 @@ def initialise_ssl_from_ckpt(
         else:
             encoder.load_state_dict(encoder_state_dict)
 
-    lr_encoder = metadata.get("lr_encoder")
-    if lr_encoder is None:
-        lr_encoder = network_config.get("learning_rate")
-    encoder.lr_encoder = lr_encoder
     return encoder
 
 
@@ -1514,11 +1508,6 @@ def convert_ssl_checkpoint(
     metadata["net_type"] = resolved_net_type
     if resolved_ssl_method is not None:
         metadata["ssl_method"] = resolved_ssl_method
-    if metadata.get("lr_encoder") is None:
-        network_config = metadata.get("network_config", {})
-        lr_encoder = network_config.get("learning_rate")
-        if lr_encoder is not None:
-            metadata["lr_encoder"] = lr_encoder
 
     callbacks = checkpoint.get("callbacks", {})
     updated_callback = False

@@ -311,8 +311,6 @@ def create_classification_network(
                 "'pretrained_encoder'"
             )
         encoder_module = initialise_ssl_from_ckpt(encoder_checkpoint)
-        if encoder_lr is None:
-            encoder_lr = getattr(encoder_module, "lr_encoder", None)
         if encoder_lr == 0.0:
             for param in encoder_module.parameters():
                 param.requires_grad = False

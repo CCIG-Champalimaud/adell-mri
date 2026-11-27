@@ -725,8 +725,6 @@ def main(arguments):
                 )
             encoder = initialise_ssl_from_ckpt(args.encoder_checkpoint[0])
             encoder_lr = args.lr_encoder
-            if encoder_lr is None:
-                encoder_lr = getattr(encoder, "lr_encoder", None)
             if encoder_lr == 0.0:
                 for param in encoder.parameters():
                     param.requires_grad = False

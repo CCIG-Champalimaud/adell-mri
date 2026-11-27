@@ -118,7 +118,6 @@ def _write_checkpoint(
     family: str,
     name: str = "ssl.ckpt",
     include_net_type: bool = True,
-    lr_encoder: float = None,
 ):
     """
     Writes an SSL checkpoint using the production checkpoint callback.
@@ -134,14 +133,11 @@ def _write_checkpoint(
         tuple: checkpoint path and the encoder used to build it.
     """
     encoder, config, prefix, ssl_method = _build_encoder(family)
-    config["learning_rate"] = 0.005
     state_dict = {prefix + k: v for k, v in encoder.state_dict().items()}
     metadata = {"network_config": config}
     if include_net_type is True:
         metadata["net_type"] = family
         metadata["ssl_method"] = ssl_method
-    if lr_encoder is not None:
-        metadata["lr_encoder"] = lr_encoder
     callback = ModelCheckpointWithMetadata(metadata=metadata)
     checkpoint = {
         "state_dict": state_dict,
@@ -171,13 +167,12 @@ def _assert_same_weights(encoder: torch.nn.Module, loaded: torch.nn.Module):
 
 @pytest.mark.parametrize("family", FAMILIES)
 def test_ssl_checkpoint_saving_and_loading(tmp_path, family):
-    path, encoder = _write_checkpoint(tmp_path, family, lr_encoder=0.001)
+    path, encoder = _write_checkpoint(tmp_path, family)
 
     loaded = initialise_ssl_from_ckpt(path)
 
     loaded_weights = getattr(loaded, "model", loaded)
     assert type(loaded_weights).__name__ == type(encoder).__name__
-    assert loaded.lr_encoder == 0.001
     _assert_same_weights(encoder, loaded_weights)
 
 
@@ -243,7 +238,6 @@ def test_ssl_pl_checkpoint_roundtrip(tmp_path, family):
         "network_config": {"backbone_args": backbone_args},
         "net_type": family,
         "ssl_method": "simclr",
-        "lr_encoder": module.learning_rate,
     }
     callback = ModelCheckpointWithMetadata(metadata=metadata)
     checkpoint = {
@@ -257,7 +251,6 @@ def test_ssl_pl_checkpoint_roundtrip(tmp_path, family):
 
     loaded = initialise_ssl_from_ckpt(path)
 
-    assert loaded.lr_encoder == module.learning_rate
     _assert_same_weights(module.backbone, loaded)
 
 
@@ -290,7 +283,6 @@ def test_conversion_of_old_checkpoint(tmp_path):
     )
     loaded = initialise_ssl_from_ckpt(converted_path)
 
-    assert loaded.lr_encoder == 0.005
     _assert_same_weights(encoder, loaded)
 
 
@@ -344,7 +336,7 @@ def test_pretrained_encoder_classification(tmp_path, family, objective):
     assert output.shape == (INPUT_SHAPE[0], n_outputs)
 
 
-def _build_classification_network(path: str):
+def _build_classification_network(path: str, lr_encoder: float = None):
     return get_classification_network(
         net_type="pretrained_encoder",
         network_config={},
@@ -360,13 +352,14 @@ def _build_classification_network(path: str):
         crop_size=list(INPUT_SHAPE[2:]),
         encoder_checkpoint=path,
         objective="cat",
+        lr_encoder=lr_encoder,
     )
 
 
 def test_pretrained_encoder_freezes_with_zero_lr(tmp_path):
-    path, _ = _write_checkpoint(tmp_path, "resnet", lr_encoder=0.0)
+    path, _ = _write_checkpoint(tmp_path, "resnet")
 
-    network = _build_classification_network(path)
+    network = _build_classification_network(path, lr_encoder=0.0)
 
     encoder_params = [
         p for n, p in network.named_parameters() if "encoder" in n
@@ -376,9 +369,9 @@ def test_pretrained_encoder_freezes_with_zero_lr(tmp_path):
 
 
 def test_pretrained_encoder_uses_separate_encoder_lr(tmp_path):
-    path, _ = _write_checkpoint(tmp_path, "resnet", lr_encoder=0.01)
+    path, _ = _write_checkpoint(tmp_path, "resnet")
 
-    network = _build_classification_network(path)
+    network = _build_classification_network(path, lr_encoder=0.01)
     optimizer = network.configure_optimizers()["optimizer"]
 
     assert optimizer.param_groups[0]["lr"] == 0.01

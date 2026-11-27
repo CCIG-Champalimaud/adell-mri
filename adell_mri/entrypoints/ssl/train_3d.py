@@ -326,7 +326,6 @@ def main(arguments):
             "transform_arguments": transform_args,
             "ssl_method": args.ssl_method,
             "net_type": get_ssl_checkpoint_net_type(ssl),
-            "lr_encoder": getattr(ssl, "learning_rate", None),
         },
     )
     if ckpt_callback is not None:
