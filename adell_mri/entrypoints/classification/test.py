@@ -38,6 +38,8 @@ def main(arguments):
     parser.add_argument_by_key(
         [
             ("classification_net_type", "net_type"),
+            ("classification_objective", "objective"),
+            "encoder_checkpoint",
             "params_from",
             "dataset_json",
             "image_keys",
@@ -202,7 +204,11 @@ def main(arguments):
 
         torch.ones([1]).to("cuda" if "cuda" in args.dev else "cpu")
 
-        configure_loss_fn(network_config, args.net_type, n_classes)
+        configure_loss_fn(
+            network_config,
+            n_classes,
+            objective=args.objective,
+        )
 
         test_loader = monai.data.ThreadDataLoader(
             test_dataset,

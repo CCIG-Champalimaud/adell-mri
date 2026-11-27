@@ -56,6 +56,9 @@ def main(arguments):
     parser.add_argument_by_key(
         [
             ("classification_net_type", "net_type"),
+            ("classification_objective", "objective"),
+            "encoder_checkpoint",
+            "lr_encoder",
             "params_from",
             "dataset_json",
             "image_keys",
@@ -458,7 +461,10 @@ def main(arguments):
 
         logger.info("Initializing loss with class_weights: %s", class_weights)
         configure_loss_fn(
-            network_config, args.net_type, n_classes, class_weights
+            network_config,
+            n_classes,
+            class_weights,
+            objective=args.objective,
         )
 
         def train_loader_call(augment: bool = True):
@@ -627,7 +633,7 @@ def main(arguments):
             )[0]
             for k in test_metrics:
                 out = test_metrics[k]
-                if n_classes == 2 or args.net_type == "ord":
+                if n_classes == 2 or args.objective == "ord":
                     try:
                         value = float(out.detach().numpy())
                     except Exception:

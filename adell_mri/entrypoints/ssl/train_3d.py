@@ -15,6 +15,7 @@ from adell_mri.utils.dataset import Dataset
 from adell_mri.utils.generic_utils import safe_collate
 from adell_mri.utils.network_factories import (
     get_ema,
+    get_ssl_checkpoint_net_type,
     get_ssl_network,
     get_stop_gradients,
 )
@@ -323,6 +324,8 @@ def main(arguments):
             "train_pids": train_pids,
             "network_config": network_config,
             "transform_arguments": transform_args,
+            "ssl_method": args.ssl_method,
+            "net_type": get_ssl_checkpoint_net_type(ssl),
         },
     )
     if ckpt_callback is not None:

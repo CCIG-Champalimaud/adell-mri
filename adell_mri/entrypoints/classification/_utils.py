@@ -15,6 +15,7 @@ from adell_mri.modules.classification.losses import OrdinalSigmoidalLoss
 from adell_mri.utils.network_factories import (
     get_classification_network,
     get_deconfounded_classification_network,
+    initialise_ssl_from_ckpt,
 )
 from adell_mri.utils.optimizer_factory import optimizer_eps_from_precision
 
@@ -195,17 +196,21 @@ def create_transform_arguments(
     return transform_kwargs
 
 
-def configure_loss_fn(network_config, net_type, n_classes, class_weights=None):
+def configure_loss_fn(
+    network_config,
+    n_classes,
+    class_weights=None,
+    objective="cat",
+):
     """
     Assign a loss function to a network config dict in-place.
 
     Args:
         network_config (dict): Network configuration. Mutated in-place.
-        net_type (str or None): Network type string (e.g. ``"cat"``,
-            ``"ord"``, ``"unet"``). If ``None``, ordinal loss is never
-            selected.
         n_classes (int): Number of output classes.
         class_weights (torch.Tensor, optional): Per-class loss weights.
+        objective (str, optional): Classification objective (``"cat"`` or
+            ``"ord"``). Defaults to ``"cat"``.
     """
     if n_classes == 2:
         network_config["loss_fn"] = (
@@ -213,7 +218,7 @@ def configure_loss_fn(network_config, net_type, n_classes, class_weights=None):
             if class_weights is not None
             else torch.nn.BCEWithLogitsLoss()
         )
-    elif net_type == "ord":
+    elif objective == "ord":
         network_config["loss_fn"] = OrdinalSigmoidalLoss(
             n_classes, class_weights
         )
@@ -279,7 +284,23 @@ def create_classification_network(
     dropout_param = getattr(args, "dropout_param", 0)
     seed = getattr(args, "seed", 42)
     n_classes_val = getattr(args, "n_classes", n_classes if n_classes else 2)
-    net_type = getattr(args, "net_type", "cat")
+    net_type = getattr(args, "net_type", "resnet")
+    objective = args.objective
+    encoder_checkpoint = getattr(args, "encoder_checkpoint", None)
+    if encoder_checkpoint is not None:
+        encoder_checkpoint = encoder_checkpoint[0]
+    encoder_module = None
+    encoder_lr = getattr(args, "lr_encoder", None)
+    if net_type == "pretrained_encoder":
+        if encoder_checkpoint is None:
+            raise ValueError(
+                "encoder_checkpoint is required when net_type is "
+                "'pretrained_encoder'"
+            )
+        encoder_module = initialise_ssl_from_ckpt(encoder_checkpoint)
+        if encoder_lr == 0.0:
+            for param in encoder_module.parameters():
+                param.requires_grad = False
     label_smoothing_val = getattr(args, "label_smoothing", None)
     mixup_alpha_val = getattr(args, "mixup_alpha", None)
     partial_mixup_val = getattr(args, "partial_mixup", None)
@@ -288,6 +309,8 @@ def create_classification_network(
     )
 
     if cat_key is not None or cont_key is not None:
+        if encoder_module is not None:
+            network_config["feature_extraction_module"] = encoder_module
         return get_deconfounded_classification_network(
             network_config=network_config,
             dropout_param=dropout_param,
@@ -312,6 +335,7 @@ def create_classification_network(
             mixup_alpha=mixup_alpha_val,
             partial_mixup=partial_mixup_val,
             optimizer_eps=optimizer_eps,
+            lr_encoder=encoder_lr,
         )
     else:
         return get_classification_network(
@@ -333,4 +357,8 @@ def create_classification_network(
             mixup_alpha=mixup_alpha_val,
             partial_mixup=partial_mixup_val,
             optimizer_eps=optimizer_eps,
+            encoder_checkpoint=encoder_checkpoint,
+            objective=objective,
+            encoder=encoder_module,
+            lr_encoder=encoder_lr,
         )

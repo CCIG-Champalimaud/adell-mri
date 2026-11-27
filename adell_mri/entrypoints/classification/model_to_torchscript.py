@@ -70,8 +70,15 @@ def main(arguments):
     parser.add_argument(
         "--net_type",
         dest="net_type",
-        help="Classification type.",
-        choices=["cat", "ord", "unet", "vit", "factorized_vit"],
+        help="Classification architecture.",
+        choices=["resnet", "unet", "vit", "factorized_vit", "vgg"],
+        default="resnet",
+    )
+    parser.add_argument(
+        "--objective",
+        dest="objective",
+        help="Classification objective.",
+        choices=["cat", "ord"],
         default="cat",
     )
     parser.add_argument(
@@ -177,6 +184,7 @@ def main(arguments):
             label_smoothing=False,
             mixup_alpha=False,
             partial_mixup=False,
+            objective=args.objective,
         )
     else:
         network = get_classification_network(
@@ -197,6 +205,7 @@ def main(arguments):
             label_smoothing=False,
             mixup_alpha=False,
             partial_mixup=False,
+            objective=args.objective,
         )
 
     load_checkpoint_to_model(

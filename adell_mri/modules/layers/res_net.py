@@ -6,7 +6,7 @@ from typing import OrderedDict
 
 import torch
 
-from adell_mri.custom_types import List, ModuleList, Tuple, Union
+from adell_mri.custom_types import List, Tuple, Union
 from adell_mri.modules.layers.batch_ensemble import BatchEnsembleWrapper
 from adell_mri.modules.layers.res_blocks import (
     ConvNeXtBlock2d,
@@ -22,30 +22,6 @@ from adell_mri.modules.layers.standard_blocks import (
     ConvolutionalBlock2d,
     ConvolutionalBlock3d,
 )
-
-
-def resnet_to_encoding_ops(res_net: List[torch.nn.Module]) -> ModuleList:
-    """
-    Convenience function generating UNet encoder from ResNet.
-
-        Args:
-            res_net (torch.nn.Module): a list of ResNet objects.
-
-        Returns:
-            encoding_operations: ModuleList of ModuleList objects containing
-                pairs of convolutions and pooling operations.
-    """
-    backbone = [x.backbone for x in res_net]
-    res_ops = [[x.input_layer, *x.operations] for x in backbone]
-    res_pool_ops = [[x.first_pooling, *x.pooling_operations] for x in backbone]
-    encoding_operations = [torch.nn.ModuleList([]) for _ in res_ops]
-    for i in range(len(res_ops)):
-        A = res_ops[i]
-        B = res_pool_ops[i]
-        for a, b in zip(A, B):
-            encoding_operations[i].append(torch.nn.ModuleList([a, b]))
-    encoding_operations = torch.nn.ModuleList(encoding_operations)
-    return encoding_operations
 
 
 class ResNetBackbone(torch.nn.Module):
@@ -106,6 +82,16 @@ class ResNetBackbone(torch.nn.Module):
         self.init_layers()
 
         self.output_features = self.structure[-1][0]
+
+    @property
+    def out_channels(self) -> List[int]:
+        """
+        Number of output channels for each intermediate layer.
+
+        Returns:
+            List[int]: output channels for each element in the structure.
+        """
+        return [self.structure[0][0], *[s[0] for s in self.structure]]
 
     def get_ops(self):
         if self.spatial_dim == 2:
@@ -212,15 +198,20 @@ class ResNetBackbone(torch.nn.Module):
         self, X: torch.Tensor, after_pool: bool = False, batch_idx: int = None
     ):
         X = self.input_layer(X)
+        output_list = [X]
         X = self.first_pooling(X)
-        output_list = []
-        for op, be_op, pool_op in zip(
-            self.operations, self.be_operations, self.pooling_operations
+        n_stages = len(self.operations)
+        for i, (op, be_op, pool_op) in enumerate(
+            zip(self.operations, self.be_operations, self.pooling_operations)
         ):
             if self.batch_ensemble > 0:
                 X = be_op(X, batch_idx, mod=op)
             else:
                 X = op(X)
+            if i == n_stages - 1:
+                # the last stage is the bottleneck, so it is not pooled
+                output_list.append(X)
+                break
             pooled_X = pool_op(X)
             if after_pool is True:
                 output_list.append(pooled_X)
@@ -253,6 +244,18 @@ class ResNetBackbone(torch.nn.Module):
                 output_list.append(X)
             X = pooled_X
         return output_list
+
+    def forward_features(self, X: torch.Tensor) -> torch.Tensor:
+        """
+        Returns the bottleneck features of the backbone.
+
+        Args:
+            X (torch.Tensor): input tensor.
+
+        Returns:
+            torch.Tensor: bottleneck feature map.
+        """
+        return self.forward_regular(X)
 
     def forward_regular(
         self, X: torch.Tensor, batch_idx: int = None

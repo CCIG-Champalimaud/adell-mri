@@ -220,7 +220,7 @@ def resolve_checkpoint_list(
     return checkpoints
 
 
-def configure_loss_fn(config, net_type, n_classes):
+def configure_loss_fn(config, n_classes, objective="cat"):
     """
     Assign a loss function to a network or ensemble config dict.
 
@@ -228,21 +228,20 @@ def configure_loss_fn(config, net_type, n_classes):
 
     Args:
         config (dict): Network or ensemble configuration. Mutated in-place.
-        net_type (str or None): Network type string (e.g. ``"cat"``,
-            ``"ord"``, ``"unet"``). If ``None``, ordinal loss is never
-            selected.
         n_classes (int): Number of output classes.
+        objective (str, optional): Classification objective (``"cat"`` or
+            ``"ord"``). Defaults to ``"cat"``.
     """
     if n_classes == 2:
         config["loss_fn"] = torch.nn.BCEWithLogitsLoss()
-    elif net_type == "ord":
+    elif objective == "ord":
         config["loss_fn"] = OrdinalSigmoidalLoss(n_classes=n_classes)
     else:
         config["loss_fn"] = torch.nn.CrossEntropyLoss()
 
 
 def resolve_postprocessing(
-    prediction_type, net_type, n_classes, *, caller_logger
+    prediction_type, objective, n_classes, *, caller_logger
 ):
     """
     Select the post-processing function and extra predict-step arguments.
@@ -251,8 +250,9 @@ def resolve_postprocessing(
         prediction_type (str): Desired prediction output type. One of
             ``"probability"``, ``"logit"``, ``"pre_bias"``, ``"features"``,
             or ``"attention"``.
-        net_type (str or None): Network type string. Only used to validate
-            the ``"pre_bias"`` prediction type (which requires ``"ord"``).
+        objective (str or None): Classification objective. Only used to
+            validate the ``"pre_bias"`` prediction type (which requires
+            ``"ord"``).
         n_classes (int): Number of output classes (determines Softmax vs
             Sigmoid for ``"probability"``).
         caller_logger (logging.Logger): Logger from the calling module, used
@@ -267,7 +267,7 @@ def resolve_postprocessing(
         - *extra_args*: Keyword arguments forwarded to
           :meth:`~predict_step`. Empty for ``"probability"`` and
           ``"logit"``; ``{"return_only_pre_bias": True}`` for ``"pre_bias"``
-          (only when ``net_type == "ord"``); ``{"return_features": True}``
+          (only when ``objective == "ord"``); ``{"return_features": True}``
           for ``"features"``; ``{"return_attention": True}`` for
           ``"attention"``.
     """
@@ -280,7 +280,7 @@ def resolve_postprocessing(
     else:
         post_proc_fn = torch.nn.Identity()
         if prediction_type == "pre_bias":
-            if net_type == "ord":
+            if objective == "ord":
                 extra_args = {"return_only_pre_bias": True}
             else:
                 caller_logger.warning(

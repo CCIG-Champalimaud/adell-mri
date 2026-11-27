@@ -52,6 +52,8 @@ def main(arguments):
             "config_files",
             "ensemble_config_file",
             ("classification_net_types", "net_types"),
+            ("classification_objective", "objective"),
+            "encoder_checkpoint",
             "module_paths",
             "test_ids",
             "one_to_one",
@@ -204,7 +206,7 @@ def main(arguments):
 
         if n_classes == 2:
             ensemble_config["loss_fn"] = torch.nn.BCEWithLogitsLoss()
-        elif args.net_types[0] == "ord":
+        elif args.objective == "ord":
             ensemble_config["loss_fn"] = OrdinalSigmoidalLoss(
                 n_classes=n_classes
             )
@@ -247,9 +249,15 @@ def main(arguments):
                         label_smoothing=None,
                         mixup_alpha=None,
                         partial_mixup=None,
+                        encoder_checkpoint=(
+                            None
+                            if args.encoder_checkpoint is None
+                            else args.encoder_checkpoint[i]
+                        ),
+                        objective=args.objective,
                     )
-                    for net_type, network_config in zip(
-                        args.net_types, network_configs
+                    for i, (net_type, network_config) in enumerate(
+                        zip(args.net_types, network_configs)
                     )
                 ]
             else:

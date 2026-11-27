@@ -1,3 +1,4 @@
+import pytest
 import torch
 
 from adell_mri.utils.network_factories import get_classification_network
@@ -106,7 +107,7 @@ def test_classnetpl():
     args = COMMON_ARGS.copy()
     args.update(
         {
-            "net_type": "cat",
+            "net_type": "resnet",
             "network_config": network_config,
             "clinical_feature_keys": [],
         }
@@ -121,6 +122,36 @@ def test_classnetpl():
     out = net(x)
     assert isinstance(out, torch.Tensor)
     assert out.shape[0] == batch_size
+
+
+def test_objective_decoupled_from_net_type():
+    network_config = {
+        "act_fn": "relu",
+        "norm_fn": "batch",
+    }
+    args = COMMON_ARGS.copy()
+    args.update(
+        {
+            "net_type": "resnet",
+            "network_config": network_config.copy(),
+            "clinical_feature_keys": [],
+        }
+    )
+    cat_net = get_classification_network(objective="cat", **args)
+    assert "ClassNetPL" in type(cat_net).__name__
+
+    ord_net = get_classification_network(
+        objective="ord", **{**args, "network_config": network_config.copy()}
+    )
+    assert "OrdNetPL" in type(ord_net).__name__
+
+    vgg_args = {
+        **args,
+        "network_config": network_config.copy(),
+    }
+    vgg_args.pop("net_type")
+    with pytest.raises(ValueError):
+        get_classification_network(net_type="vgg", objective="ord", **vgg_args)
 
 
 def test_hybrid_unet():
@@ -213,7 +244,7 @@ def test_hybrid_classnetpl():
     args = COMMON_ARGS.copy()
     args.update(
         {
-            "net_type": "cat",
+            "net_type": "resnet",
             "network_config": network_config,
             "clinical_feature_keys": ["age", "psa"],
             "clinical_feature_means": torch.zeros(2),

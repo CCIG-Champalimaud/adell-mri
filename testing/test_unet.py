@@ -6,7 +6,7 @@ import pytest
 import torch
 
 from adell_mri.modules.layers.adn_fn import ActDropNormBuilder
-from adell_mri.modules.layers.res_net import ResNet, resnet_to_encoding_ops
+from adell_mri.modules.layers.res_net import ResNet
 from adell_mri.modules.segmentation.unet import UNet
 
 h, w, d, c = 32, 32, 16, 1
@@ -178,7 +178,6 @@ def test_unet_from_encoder(D, sd, strides):
             norm_fn=torch.nn.BatchNorm3d
         )
     res_net = ResNet(**resnet_args)
-    encoding_operations = resnet_to_encoding_ops([res_net])[0]
     if sd == 2:
         i = torch.rand(size=[1, c, h, w])
         output_size = [1, 1, h, w]
@@ -189,7 +188,7 @@ def test_unet_from_encoder(D, sd, strides):
     D_unet = [D[0], *D]
     a = UNet(
         sd,
-        encoding_operations=encoding_operations,
+        encoder=res_net.backbone,
         depth=D_unet,
         upscale_type="transpose",
         padding="same",

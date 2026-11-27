@@ -6,11 +6,14 @@ modules for various types of networks, including classification, segmentation,
 self-supervised learning, and generative models.
 """
 
+import inspect
 import os
 from functools import wraps
 from typing import Any, Callable
 
+import numpy as np
 import torch
+import torch.nn.functional as F
 from lightning.pytorch import LightningModule
 
 from adell_mri.constants import DEFAULT_SEED
@@ -23,10 +26,12 @@ from adell_mri.modules.classification.classification.deconfounded_classification
 
 # confounder-free classification
 from adell_mri.modules.classification.pl import (
+    CatNetEncoderPL,
     ClassNetPL,
     DeconfoundedNetPL,
     FactorizedViTClassifierPL,
     HybridClassifierPL,
+    OrdNetEncoderPL,
     OrdNetPL,
     UNetEncoderPL,
     ViTClassifierPL,
@@ -36,8 +41,9 @@ from adell_mri.modules.diffusion.embedder import Embedder
 # gan
 from adell_mri.modules.gan.pl import GANPL
 from adell_mri.modules.layers.adn_fn import get_adn_fn
-
-# segmentation
+from adell_mri.modules.layers.conv_next import ConvNeXtBackbone
+from adell_mri.modules.layers.res_net import ResNetBackbone
+from adell_mri.modules.layers.vit import ViT
 from adell_mri.modules.segmentation.pl import (
     UNETRPL,
     BrUNetPL,
@@ -47,6 +53,9 @@ from adell_mri.modules.segmentation.pl import (
     UNetPL,
     UNetPlusPlusPL,
 )
+
+# segmentation
+from adell_mri.modules.self_supervised.autoencoders import ViTMaskedAutoEncoder
 
 # self-supervised learning
 from adell_mri.modules.self_supervised.pl import (
@@ -80,17 +89,18 @@ logger = get_logger(__name__)
 
 ALLOWED_NET_TYPES = {
     "classification": [
+        "resnet",
         "unet",
         "vit",
         "factorized_vit",
-        "cat",
-        "ord",
         "vgg",
+        "pretrained_encoder",
     ],
     "segmentation": [
         "unet",
         "brunet",
         "unetpp",
+        "pretrained_encoder_unet",
         "unetr",
         "monai_unetr",
         "swin",
@@ -144,6 +154,10 @@ def get_classification_network(
     mixup_alpha: float | None = None,
     partial_mixup: float | None = None,
     optimizer_eps: float = OPTIMIZER_EPS_DEFAULT,
+    encoder_checkpoint: str = None,
+    objective: str = None,
+    encoder: torch.nn.Module = None,
+    lr_encoder: float = None,
 ) -> LightningModule:
     """
     Returns a classification network.
@@ -166,6 +180,16 @@ def get_classification_network(
         label_smoothing (float): the label smoothing parameter.
         mixup_alpha (float): the mixup alpha parameter.
         partial_mixup (float): the partial mixup parameter.
+        encoder_checkpoint (str, optional): SSL checkpoint used to initialise
+            the pretrained encoder. Defaults to None.
+        objective (str, optional): classification objective (``"cat"`` or
+            ``"ord"``). Defaults to ``"cat"``.
+        encoder (torch.nn.Module, optional): pre-built encoder module. When
+            omitted and ``net_type`` is ``"pretrained_encoder"``, the encoder
+            is built from ``encoder_checkpoint``. Defaults to None.
+        lr_encoder (float, optional): learning rate used for the encoder
+            alone. A value of 0 freezes the encoder. Defaults to None (the
+            encoder uses the global learning rate).
 
     Returns:
         A :class:`LightningModule` classification network.
@@ -174,6 +198,21 @@ def get_classification_network(
         raise ValueError(
             f"net_type '{net_type}' not valid, has to be one of \
             {ALLOWED_NET_TYPES['classification']}"
+        )
+    if objective is None:
+        objective = "cat"
+    if objective not in ["cat", "ord"]:
+        raise ValueError(
+            f"objective '{objective}' not valid, has to be one of "
+            "['cat', 'ord']"
+        )
+    if objective == "ord" and net_type not in [
+        "resnet",
+        "pretrained_encoder",
+    ]:
+        raise ValueError(
+            "objective 'ord' is only supported for the 'resnet' and "
+            "'pretrained_encoder' net types"
         )
     if net_type == "unet":
         act_fn = network_config["activation_fn"]
@@ -245,24 +284,77 @@ def get_classification_network(
                 **boilerplate_args,
                 **network_config,
             )
-    elif "ord" in net_type:
+    elif net_type == "pretrained_encoder":
+        if encoder is None:
+            if encoder_checkpoint is None:
+                raise ValueError(
+                    "encoder_checkpoint is required when net_type is "
+                    "'pretrained_encoder'"
+                )
+            encoder = initialise_ssl_from_ckpt(encoder_checkpoint)
+        resolved_lr_encoder = lr_encoder
+        if resolved_lr_encoder == 0.0:
+            for param in encoder.parameters():
+                param.requires_grad = False
+        for k in [
+            "net_type",
+            "in_channels",
+            "n_classes",
+            "adn_fn",
+            "feature_extraction",
+        ]:
+            if k in network_config:
+                del network_config[k]
+        if objective is None:
+            objective = "cat"
+        if objective == "ord":
+            network = OrdNetEncoderPL(
+                encoder=encoder,
+                adn_fn=adn_fn,
+                lr_encoder=resolved_lr_encoder,
+                **boilerplate_args,
+                **network_config,
+            )
+        else:
+            network = CatNetEncoderPL(
+                encoder=encoder,
+                adn_fn=adn_fn,
+                lr_encoder=resolved_lr_encoder,
+                **boilerplate_args,
+                **network_config,
+            )
+
+    elif net_type == "resnet":
         for k in ["net_type", "in_channels", "n_classes", "adn_fn"]:
             if k in network_config:
                 del network_config[k]
-        network = OrdNetPL(
+        if objective == "ord":
+            network = OrdNetPL(
+                adn_fn=adn_fn,
+                **boilerplate_args,
+                **network_config,
+            )
+        else:
+            network = ClassNetPL(
+                net_type="cat",
+                adn_fn=adn_fn,
+                **boilerplate_args,
+                **network_config,
+            )
+    elif net_type == "vgg":
+        for k in ["net_type", "in_channels", "n_classes", "adn_fn"]:
+            if k in network_config:
+                del network_config[k]
+        network = ClassNetPL(
+            net_type="vgg",
             adn_fn=adn_fn,
             **boilerplate_args,
             **network_config,
         )
     else:
-        for k in ["in_channels", "n_classes", "adn_fn"]:
-            if k in network_config:
-                del network_config[k]
-        network = ClassNetPL(
-            net_type=net_type,
-            adn_fn=adn_fn,
-            **boilerplate_args,
-            **network_config,
+        raise ValueError(
+            f"net_type '{net_type}' is not supported by the classification "
+            "factory"
         )
 
     if len(clinical_feature_keys) > 0:
@@ -318,6 +410,7 @@ def get_deconfounded_classification_network(
     mixup_alpha: float | None = None,
     partial_mixup: float | None = None,
     optimizer_eps: float = OPTIMIZER_EPS_DEFAULT,
+    lr_encoder: float = None,
 ) -> LightningModule:
     """
     Returns a deconfounded classification network.
@@ -341,6 +434,8 @@ def get_deconfounded_classification_network(
         label_smoothing (float): the label smoothing parameter.
         mixup_alpha (float): the mixup alpha parameter.
         partial_mixup (float): the partial mixup parameter.
+        lr_encoder (float, optional): learning rate used for the encoder
+            alone. A value of 0 freezes the encoder. Defaults to None.
 
     Returns:
         A :class:`LightningModule` deconfounded classification network.
@@ -384,6 +479,7 @@ def get_deconfounded_classification_network(
         n_features_deconfounder=n_features_deconfounder,
         n_cat_deconfounder=n_cat_deconfounder,
         n_cont_deconfounder=cont_vars,
+        lr_encoder=lr_encoder,
         cat_confounder_key=cat_confounder_key,
         cont_confounder_key=cont_confounder_key,
         exclude_surrogate_variables=exclude_surrogate_variables,
@@ -405,11 +501,8 @@ def get_segmentation_network(
     clinical_feature_key_net: str,
     aux_key_net: str,
     max_epochs: int,
-    encoding_operations: list[torch.nn.Module],
     picai_eval: bool,
     lr_encoder: float,
-    encoder_checkpoint: str,
-    res_config_file: str | None,
     deep_supervision: bool,
     n_classes: int,
     keys: list[str],
@@ -425,6 +518,7 @@ def get_segmentation_network(
     semi_supervised: bool = False,
     max_steps_optim: int = None,
     seed: int = DEFAULT_SEED,
+    encoder: list[torch.nn.Module] = None,
 ) -> LightningModule:
     """
     Returns a segmentation network.
@@ -442,12 +536,8 @@ def get_segmentation_network(
             network.
         aux_key_net (str): the key of the auxiliary features in the network.
         max_epochs (int): the maximum number of epochs.
-        encoding_operations (list[torch.nn.Module]): the encoding operations.
         picai_eval (bool): whether to use picai evaluation.
         lr_encoder (float): the learning rate for the encoder.
-        encoder_checkpoint (str): the checkpoint of the encoder.
-        res_config_file (str | None): the configuration file for the residual
-            network.
         deep_supervision (bool): whether to use deep supervision.
         n_classes (int): the number of classes.
         keys (list[str]): the keys of the input data.
@@ -467,6 +557,8 @@ def get_segmentation_network(
             optimization. Defaults to None.
         seed (int, optional): the seed for the random number generator.
             Defaults to 42.
+        encoder (list[torch.nn.Module], optional): encoder module(s) used in
+            place of the standard U-Net encoder. Defaults to None.
 
     Returns:
         A :class:`LightningModule` segmentation network.
@@ -504,6 +596,9 @@ def get_segmentation_network(
         optimizer_eps=optimizer_eps,
     )
 
+    if encoder is None:
+        encoder = [None]
+
     if net_type == "unet" and semi_supervised is True:
         ema_params = {
             "decay": 0.99,
@@ -511,9 +606,8 @@ def get_segmentation_network(
             "n_steps": max_steps_optim,
         }
         ema = ExponentialMovingAverage(**ema_params)
-        encoding_operations = encoding_operations[0]
         unet = UNetContrastiveSemiSL(
-            encoding_operations=encoding_operations,
+            encoder=encoder[0],
             image_key="image",
             semi_sl_image_key_1="semi_sl_image_1",
             semi_sl_image_key_2="semi_sl_image_2",
@@ -528,32 +622,25 @@ def get_segmentation_network(
         nc = network_config["in_channels"]
         network_config["in_channels"] = nc // len(keys)
         unet = BrUNetPL(
-            encoders=encoding_operations,
+            encoders=encoder,
             image_keys=keys,
             n_input_branches=len(keys),
             deep_supervision=deep_supervision,
             **boilerplate,
             **network_config,
         )
-        if encoder_checkpoint is not None and res_config_file is None:
-            for encoder, ckpt in zip(unet.encoders, encoder_checkpoint):
-                encoder.load_state_dict(
-                    torch.load(ckpt, weights_only=False)["state_dict"]
-                )
 
     elif net_type == "unetpp":
-        encoding_operations = encoding_operations[0]
         unet = UNetPlusPlusPL(
-            encoding_operations=encoding_operations,
+            encoder=encoder[0],
             image_key="image",
             **boilerplate,
             **network_config,
         )
 
-    elif net_type == "unet":
-        encoding_operations = encoding_operations[0]
+    elif net_type in ["unet", "pretrained_encoder_unet"]:
         unet = UNetPL(
-            encoding_operations=encoding_operations,
+            encoder=encoder[0],
             image_key="image",
             deep_supervision=deep_supervision,
             **boilerplate,
@@ -1027,6 +1114,417 @@ def get_ssl_network_no_pl(
             ssl = ResNet(**network_config)
 
     return ssl
+
+
+def get_ssl_checkpoint_net_type(module: torch.nn.Module) -> str:
+    """
+    Returns the backbone family of an SSL module.
+
+    This reflects the architecture that was actually instantiated (which may
+    differ from the ``net_type`` CLI argument for some SSL methods), so that
+    the checkpoint metadata can be used to rebuild the encoder.
+
+    Args:
+        module (torch.nn.Module): an SSL Lightning module.
+
+    Returns:
+        str: one of ``"resnet"``, ``"convnext"``, ``"vit"``, ``"mae"`` or
+            ``"unet_encoder"``.
+    """
+    if isinstance(module, ViTMaskedAutoEncoderPL):
+        return "mae"
+    if isinstance(module, (IJEPAPL, DINOPL, iBOTPL)):
+        return "vit"
+    if isinstance(module, SelfSLConvNeXtPL):
+        return "convnext"
+    if isinstance(module, SelfSLUNetPL):
+        return "unet_encoder"
+    return "resnet"
+
+
+def get_ssl_checkpoint_metadata(checkpoint: dict[str, Any]) -> dict[str, Any]:
+    """
+    Retrieves the metadata stored in an SSL checkpoint.
+
+    Args:
+        checkpoint (dict[str, Any]): the loaded checkpoint.
+
+    Returns:
+        dict[str, Any]: the checkpoint metadata.
+
+    Raises:
+        ValueError: if no metadata is found in the checkpoint.
+    """
+    metadata = checkpoint.get("metadata")
+    if metadata is None:
+        callbacks = checkpoint.get("callbacks", {})
+        for key, value in callbacks.items():
+            if (
+                "ModelCheckpointWithMetadata" in key
+                and isinstance(value, dict)
+                and "metadata" in value
+            ):
+                metadata = value["metadata"]
+                break
+    if metadata is None:
+        raise ValueError(
+            "No metadata found in the checkpoint. This checkpoint does not "
+            "contain the information required to rebuild its encoder."
+        )
+    return metadata
+
+
+def infer_ssl_net_type(state_dict: dict[str, Any]) -> str:
+    """
+    Infers the backbone family of an SSL checkpoint from its state dict keys.
+
+    Args:
+        state_dict (dict[str, Any]): the checkpoint state dict.
+
+    Returns:
+        str: one of ``"resnet"``, ``"convnext"``, ``"vit"``, ``"mae"`` or
+            ``"unet_encoder"``.
+
+    Raises:
+        ValueError: if the backbone family cannot be inferred.
+    """
+    keys = list(state_dict.keys())
+    if any(k.startswith("backbone.operations.0.0.dwconv") for k in keys):
+        return "convnext"
+    if any(k.startswith("backbone.") for k in keys):
+        return "resnet"
+    if any(k.startswith("encoder_.") for k in keys):
+        return "vit"
+    if any(k.startswith("model.encoder.") for k in keys):
+        return "mae"
+    if any(
+        k.startswith(("encoding_operations.", "encoder.operations."))
+        for k in keys
+    ):
+        return "unet_encoder"
+    raise ValueError(
+        "Could not infer the backbone family from the checkpoint state dict. "
+        "Please specify net_type explicitly."
+    )
+
+
+class MAEEncoder(torch.nn.Module):
+    """
+    Wraps the encoder of a masked autoencoder so that it exposes the same
+    interface as the other pretrained encoders.
+    """
+
+    def __init__(self, model: torch.nn.Module) -> None:
+        """
+        Args:
+            model (torch.nn.Module): a :class:`ViTMaskedAutoEncoder` instance.
+        """
+        super().__init__()
+        self.model = model
+        self.n_levels = None
+
+    def set_n_levels(self, n_levels: int) -> None:
+        """
+        Sets the number of intermediate levels.
+
+        Args:
+            n_levels (int): number of intermediate levels.
+
+        Raises:
+            ValueError: if ``n_levels`` is not valid.
+        """
+        n_blocks = self.model.encoder.number_of_blocks
+        if n_levels < 1:
+            raise ValueError(f"n_levels must be positive, got {n_levels}")
+        if n_levels > n_blocks:
+            raise ValueError(
+                f"n_levels ({n_levels}) cannot exceed the number of blocks "
+                f"({n_blocks})"
+            )
+        self.n_levels = int(n_levels)
+
+    @property
+    def out_channels(self) -> list[int]:
+        """
+        Number of output channels for each intermediate layer.
+
+        Returns:
+            list[int]: one entry per intermediate level.
+        """
+        n_blocks = self.model.encoder.number_of_blocks
+        n_levels = self.n_levels if self.n_levels is not None else n_blocks
+        return [self.model.n_features for _ in range(n_levels)]
+
+    def _tokens_to_map(self, X: torch.Tensor) -> torch.Tensor:
+        """
+        Reshapes a token sequence into a channel-first feature map.
+
+        Args:
+            X (torch.Tensor): token tensor of shape ``(batch, tokens, dim)``.
+
+        Returns:
+            torch.Tensor: feature map of shape ``(batch, dim, *grid)``.
+        """
+        grid = [
+            s // p
+            for s, p in zip(
+                self.model.proj.image_size, self.model.proj.patch_size
+            )
+        ]
+        X = X.transpose(1, 2)
+        return X.reshape(X.shape[0], X.shape[1], *grid)
+
+    def forward_features(self, X: torch.Tensor) -> torch.Tensor:
+        """
+        Returns the final token sequence reshaped as a feature map.
+
+        Args:
+            X (torch.Tensor): input tensor.
+
+        Returns:
+            torch.Tensor: feature map.
+        """
+        embedded = self.model.proj(X)
+        X, _ = self.model.encoder(embedded)
+        return self._tokens_to_map(X)
+
+    def forward_with_intermediate(
+        self, X: torch.Tensor, n_levels: int = None
+    ) -> tuple[torch.Tensor, list[torch.Tensor]]:
+        """
+        Returns intermediate transformer outputs at multiple resolutions.
+
+        Args:
+            X (torch.Tensor): input tensor.
+            n_levels (int, optional): number of intermediate levels. Defaults
+                to ``self.n_levels`` (or the number of blocks if unset).
+
+        Returns:
+            tuple[torch.Tensor, list[torch.Tensor]]: the bottleneck feature map
+                and the list of intermediate feature maps.
+        """
+        n_blocks = self.model.encoder.number_of_blocks
+        n_levels = n_levels or self.n_levels or n_blocks
+        self.set_n_levels(n_levels)
+        if n_levels > 1:
+            block_indices = sorted(
+                set(
+                    int(round(i * (n_blocks - 1) / (n_levels - 1)))
+                    for i in range(n_levels)
+                )
+            )
+        else:
+            block_indices = [n_blocks - 1]
+
+        embedded = self.model.proj(X)
+        final, outputs = self.model.encoder(
+            embedded, return_at=block_indices[:-1]
+        )
+        maps = [self._tokens_to_map(x) for x in outputs + [final]]
+
+        output_list = []
+        spatial_shape = X.shape[2:]
+        for i, feature_map in enumerate(maps):
+            target_shape = [
+                max(int(np.ceil(s / (2**i))), 1) for s in spatial_shape
+            ]
+            output_list.append(
+                F.interpolate(feature_map, size=target_shape, mode="nearest")
+            )
+        return output_list[-1], output_list
+
+
+def _load_ssl_encoder(
+    net_type: str,
+    network_config: dict[str, Any],
+) -> tuple[torch.nn.Module, str | None]:
+    """
+    Instantiates the encoder stored in an SSL checkpoint.
+
+    Args:
+        net_type (str): the backbone family.
+        network_config (dict[str, Any]): the stored SSL network configuration.
+
+    Returns:
+        tuple[torch.nn.Module, str | None]: the encoder and the state dict
+            prefix corresponding to it (None when the encoder state dict is
+            not nested).
+
+    Raises:
+        ValueError: if the net type is not supported.
+    """
+    if net_type == "vit":
+        return ViT(**network_config["backbone_args"]), "encoder_."
+    if net_type == "mae":
+        encoder_args = network_config["encoder_args"]
+        model = ViTMaskedAutoEncoder(
+            image_size=encoder_args.get("image_size", (224, 224)),
+            patch_size=encoder_args.get("patch_size", (16, 16)),
+            in_channels=encoder_args.get("in_channels", 1),
+            input_dim_size=encoder_args.get("embed_dim", 96),
+            encoder_args=encoder_args,
+            decoder_args=network_config.get("decoder_args", {}),
+            mask_fraction=network_config.get("mask_fraction", 0.75),
+        )
+        return MAEEncoder(model), "model."
+    if net_type == "convnext":
+        backbone_args = {
+            k: v
+            for k, v in network_config["backbone_args"].items()
+            if k != "res_type"
+        }
+        return ConvNeXtBackbone(**backbone_args), "backbone."
+    if net_type == "unet_encoder":
+        parameters = inspect.signature(UNet.__init__).parameters
+        kwargs = {k: v for k, v in network_config.items() if k in parameters}
+        kwargs.pop("encoder", None)
+        unet = UNet(encoder_only=True, **kwargs)
+        return unet, None
+    if net_type == "resnet":
+        return ResNetBackbone(**network_config["backbone_args"]), "backbone."
+    raise ValueError(f"net_type '{net_type}' is not supported")
+
+
+def initialise_ssl_from_ckpt(
+    checkpoint_path: str, device: str = "cpu"
+) -> torch.nn.Module:
+    """
+    Initialises an SSL-pretrained encoder from a checkpoint.
+
+    Args:
+        checkpoint_path (str): path to the SSL checkpoint.
+        device (str, optional): device used to load the checkpoint. Defaults
+            to "cpu".
+
+    Returns:
+        torch.nn.Module: the encoder with the pretrained weights loaded.
+
+    Raises:
+        ValueError: if the checkpoint metadata does not contain the
+            information required to rebuild the encoder.
+        RuntimeError: if no encoder weights could be loaded.
+    """
+    checkpoint = torch.load(
+        checkpoint_path, map_location=device, weights_only=False
+    )
+    metadata = get_ssl_checkpoint_metadata(checkpoint)
+    network_config = metadata.get("network_config")
+    if network_config is None:
+        raise ValueError(
+            "The checkpoint metadata does not contain a network_config. "
+            "Use the checkpoint conversion utility to update it."
+        )
+    net_type = metadata.get("net_type")
+    if net_type is None:
+        raise ValueError(
+            "The checkpoint metadata does not contain a net_type. Use the "
+            "checkpoint conversion utility to update it."
+        )
+
+    encoder, prefix = _load_ssl_encoder(net_type, network_config)
+    state_dict = checkpoint["state_dict"]
+
+    if prefix is None:
+        if net_type == "unet_encoder":
+            remapped = {
+                (
+                    "encoder.operations." + k[len("encoding_operations.") :]
+                    if k.startswith("encoding_operations.")
+                    else k
+                ): v
+                for k, v in state_dict.items()
+            }
+            encoder.load_state_dict(remapped, strict=False)
+            encoder = encoder.encoder
+        else:
+            encoder.load_state_dict(state_dict, strict=False)
+    else:
+        encoder_state_dict = {
+            k[len(prefix) :]: v
+            for k, v in state_dict.items()
+            if k.startswith(prefix)
+        }
+        if len(encoder_state_dict) == 0:
+            raise RuntimeError(
+                f"No encoder weights found in the checkpoint using prefix "
+                f"'{prefix}'."
+            )
+        if net_type == "mae":
+            encoder.model.load_state_dict(encoder_state_dict)
+        else:
+            encoder.load_state_dict(encoder_state_dict)
+
+    return encoder
+
+
+def convert_ssl_checkpoint(
+    checkpoint_path: str,
+    output_path: str = None,
+    ssl_method: str = None,
+    net_type: str = None,
+) -> str:
+    """
+    Converts an old SSL checkpoint into one that can be consumed by
+    :func:`initialise_ssl_from_ckpt`.
+
+    Args:
+        checkpoint_path (str): path to the checkpoint to convert.
+        output_path (str, optional): path where the converted checkpoint is
+            written. Defaults to None (the input path is overwritten).
+        ssl_method (str, optional): SSL method used to train the model. If
+            omitted, the stored value (if any) is used.
+        net_type (str, optional): backbone family. If omitted, it is inferred
+            from the state dict keys when possible.
+
+    Returns:
+        str: path to the converted checkpoint, or to the input checkpoint if
+            it was already in the new format.
+
+    Raises:
+        ValueError: if the metadata is missing or the backbone family cannot
+            be inferred.
+    """
+    output_path = output_path or checkpoint_path
+    checkpoint = torch.load(
+        checkpoint_path, map_location="cpu", weights_only=False
+    )
+    metadata = get_ssl_checkpoint_metadata(checkpoint)
+
+    resolved_net_type = net_type or metadata.get("net_type")
+    resolved_ssl_method = ssl_method or metadata.get("ssl_method")
+    if resolved_net_type is None:
+        resolved_net_type = infer_ssl_net_type(checkpoint["state_dict"])
+
+    if (
+        metadata.get("net_type") is not None
+        and metadata.get("ssl_method") is not None
+        and output_path == checkpoint_path
+    ):
+        logger.info(
+            "Checkpoint %s is already in the new format", checkpoint_path
+        )
+        return checkpoint_path
+
+    metadata["net_type"] = resolved_net_type
+    if resolved_ssl_method is not None:
+        metadata["ssl_method"] = resolved_ssl_method
+
+    callbacks = checkpoint.get("callbacks", {})
+    updated_callback = False
+    for key, value in callbacks.items():
+        if (
+            "ModelCheckpointWithMetadata" in key
+            and isinstance(value, dict)
+            and "metadata" in value
+        ):
+            value["metadata"] = metadata
+            updated_callback = True
+    if updated_callback is False:
+        checkpoint["metadata"] = metadata
+
+    torch.save(checkpoint, output_path)
+    logger.info("Saved converted checkpoint to %s", output_path)
+    return output_path
 
 
 @compile_if_necessary

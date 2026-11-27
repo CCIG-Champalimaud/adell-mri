@@ -41,6 +41,8 @@ def main(arguments):
     parser.add_argument_by_key(
         [
             ("classification_net_type", "net_type"),
+            ("classification_objective", "objective"),
+            "encoder_checkpoint",
             "params_from",
             "dataset_json",
             "image_keys",
@@ -158,7 +160,7 @@ def main(arguments):
 
     post_proc_fn, extra_args = resolve_postprocessing(
         args.type,
-        None if use_deconfounding(args) else args.net_type,
+        None if use_deconfounding(args) else args.objective,
         args.n_classes,
         caller_logger=logger,
     )
@@ -185,8 +187,8 @@ def main(arguments):
 
         configure_loss_fn(
             network_config,
-            None if use_deconfounding(args) else args.net_type,
             args.n_classes,
+            objective=args.objective,
         )
 
         checkpoint_list = resolve_checkpoint_list(

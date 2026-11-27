@@ -54,6 +54,8 @@ def main(arguments):
             "config_files",
             "ensemble_config_file",
             ("classification_net_types", "net_types"),
+            ("classification_objective", "objective"),
+            "encoder_checkpoint",
             "module_paths",
             "prediction_ids",
             "one_to_one",
@@ -163,7 +165,7 @@ def main(arguments):
     ).transforms()
 
     post_proc_fn, extra_args = resolve_postprocessing(
-        args.type, args.net_types[0], args.n_classes, caller_logger=logger
+        args.type, args.objective, args.n_classes, caller_logger=logger
     )
 
     global_output = []
@@ -187,7 +189,11 @@ def main(arguments):
         # PL sometimes needs a little hint to detect GPUs.
         torch.ones([1]).to("cuda" if "cuda" in args.dev else "cpu")
 
-        configure_loss_fn(ensemble_config, args.net_types[0], args.n_classes)
+        configure_loss_fn(
+            ensemble_config,
+            args.n_classes,
+            objective=args.objective,
+        )
 
         checkpoint_list = resolve_checkpoint_list(
             args.checkpoints,
@@ -219,9 +225,15 @@ def main(arguments):
                         label_smoothing=None,
                         mixup_alpha=None,
                         partial_mixup=None,
+                        encoder_checkpoint=(
+                            None
+                            if args.encoder_checkpoint is None
+                            else args.encoder_checkpoint[i]
+                        ),
+                        objective=args.objective,
                     )
-                    for net_type, network_config in zip(
-                        args.net_types, network_configs
+                    for i, (net_type, network_config) in enumerate(
+                        zip(args.net_types, network_configs)
                     )
                 ]
             else:

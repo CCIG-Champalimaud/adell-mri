@@ -254,15 +254,17 @@ def get_last_conv_layer(
     if hasattr(network, "model"):
         network = network.model
     if net_type == "unet":
-        ops = list(network.encoding_operations)
+        ops = list(network.encoder.operations)
         return ops[-1][0]
     elif net_type == "vgg":
         if hasattr(network, "network"):
             return network.network.conv3
         return network.conv3
-    elif net_type in ("cat", "ord"):
+    elif net_type in ("resnet", "pretrained_encoder"):
         inner = network.network if hasattr(network, "network") else network
         fe = inner.feature_extraction
+        if hasattr(fe, "encoder") and hasattr(fe.encoder, "operations"):
+            return fe.encoder.operations[-1]
         if hasattr(fe, "operations"):
             return fe.operations[-1]
         if hasattr(fe, "res_blocks"):
@@ -310,6 +312,8 @@ def main(arguments):
     parser.add_argument_by_key(
         [
             ("classification_net_type", "net_type"),
+            ("classification_objective", "objective"),
+            "encoder_checkpoint",
             "params_from",
             "dataset_json",
             "image_keys",
@@ -433,8 +437,8 @@ def main(arguments):
 
     configure_loss_fn(
         network_config,
-        None if use_deconfounding(args) else args.net_type,
         args.n_classes,
+        objective=args.objective,
     )
 
     if args.prediction_ids:
@@ -490,7 +494,7 @@ def main(arguments):
             )
             network = network.eval().to(args.dev)
 
-            is_ordinal = args.net_type == "ord"
+            is_ordinal = args.objective == "ord"
             is_binary = args.n_classes == 2 and not is_ordinal
 
             if is_ordinal:
