@@ -162,6 +162,139 @@ def _feature_extractor_from_encoder(
     return encoder
 
 
+def _resolve_single_encoder_checkpoint(encoder_checkpoint, context: str):
+    """
+    Resolves a single encoder checkpoint from a CLI-style list.
+
+    Args:
+        encoder_checkpoint: checkpoint path, dict or list.
+        context (str): description used in error messages.
+
+    Returns:
+        The single checkpoint value.
+
+    Raises:
+        ValueError: if more than one checkpoint is provided.
+    """
+    if isinstance(encoder_checkpoint, (list, tuple)):
+        if len(encoder_checkpoint) != 1:
+            raise ValueError(
+                f"Only one encoder checkpoint can be used for {context}"
+            )
+        return encoder_checkpoint[0]
+    return encoder_checkpoint
+
+
+def _build_encoder_feature_extractor(
+    encoder_checkpoint, manifest: dict[str, Any], keys: list[str]
+) -> torch.nn.Module:
+    """
+    Builds a feature extractor returning a spatial map for a pretrained encoder.
+
+    Args:
+        encoder_checkpoint: self-supervised checkpoint.
+        manifest (dict[str, Any]): encoder manifest.
+        keys (list[str]): input image keys.
+
+    Returns:
+        torch.nn.Module: feature extractor.
+    """
+    pretrained_encoder = load_ssl_encoder(encoder_checkpoint, manifest=manifest)
+    feature_extractor = _feature_extractor_from_encoder(
+        pretrained_encoder, manifest["family"]
+    )
+    if manifest["in_channels"] != len(keys):
+        spatial_dimensions = manifest.get("spatial_dim", 3)
+        conv_op = (
+            torch.nn.Conv2d if spatial_dimensions == 2 else torch.nn.Conv3d
+        )
+        adapter = conv_op(len(keys), manifest["in_channels"], 1)
+        feature_extractor = torch.nn.Sequential(adapter, feature_extractor)
+    if manifest.get("image_size") is not None:
+        feature_extractor.input_shape = (
+            len(keys),
+            *[int(x) for x in manifest["image_size"]],
+        )
+    return feature_extractor
+
+
+def _prepare_classification_encoder(
+    net_type: str,
+    network_config: dict[str, Any],
+    encoder_checkpoint,
+    keys: list[str],
+) -> tuple[str, dict[str, Any], dict[str, Any] | None, Any]:
+    """
+    Prepares a classification configuration for a pretrained encoder.
+
+    Args:
+        net_type (str): requested classification network type.
+        network_config (dict[str, Any]): classification configuration.
+        encoder_checkpoint: self-supervised checkpoint.
+        keys (list[str]): input image keys.
+
+    Returns:
+        tuple: ``(net_type, network_config, manifest, post_load_checkpoint)``.
+            ``post_load_checkpoint`` is not None when the encoder weights must
+            be loaded into the constructed network with
+            :func:`load_encoder_into`.
+    """
+    if encoder_checkpoint is None:
+        return net_type, network_config, None, None
+
+    manifest = read_encoder_manifest(encoder_checkpoint)
+    manifest_family = manifest["family"]
+    post_load_checkpoint = None
+
+    if (
+        net_type == "unet"
+        and manifest_family == "unet"
+        and manifest["in_channels"] == len(keys)
+    ):
+        unet_args = dict(manifest["unet_args"])
+        if "activation_fn" in unet_args and isinstance(
+            unet_args["activation_fn"], str
+        ):
+            unet_args["activation_fn"] = activation_factory[
+                unet_args["activation_fn"]
+            ]
+        network_config.update(unet_args)
+        network_config["in_channels"] = manifest["in_channels"]
+        post_load_checkpoint = encoder_checkpoint
+    elif (
+        net_type == "vit"
+        and manifest_family in {"vit", "mae"}
+        and manifest["in_channels"] == len(keys)
+    ):
+        network_config.update(manifest["backbone_args"])
+        network_config.pop("in_channels", None)
+        network_config.pop("spatial_dimensions", None)
+        post_load_checkpoint = encoder_checkpoint
+    else:
+        if net_type not in {"cat", "ord"}:
+            logger.warning(
+                "The SSL encoder family '%s' is not compatible with "
+                "net_type '%s'; falling back to a %s classifier with the "
+                "pretrained encoder as the feature extractor.",
+                manifest_family,
+                net_type,
+                "ordinal" if net_type == "ord" else "categorical",
+            )
+            net_type = "ord" if net_type == "ord" else "cat"
+        network_config = {
+            k: v
+            for k, v in network_config.items()
+            if k in _CLASSIFICATION_PL_KEYS or k in _CATNET_KEYS
+        }
+        network_config["feature_extraction"] = _build_encoder_feature_extractor(
+            encoder_checkpoint, manifest, keys
+        )
+        network_config["in_channels"] = len(keys)
+        network_config["spatial_dimensions"] = manifest.get("spatial_dim", 3)
+
+    return net_type, network_config, manifest, post_load_checkpoint
+
+
 ALLOWED_NET_TYPES = {
     "classification": [
         "unet",
@@ -297,83 +430,17 @@ def get_classification_network(
         "start_decay": start_decay,
         "optimizer_eps": optimizer_eps,
     }
-    if isinstance(encoder_checkpoint, (list, tuple)):
-        if len(encoder_checkpoint) != 1:
-            raise ValueError(
-                "Only one encoder checkpoint can be used for classification"
-            )
-        encoder_checkpoint = encoder_checkpoint[0]
-
-    manifest = None
-    if encoder_checkpoint is not None:
-        manifest = read_encoder_manifest(encoder_checkpoint)
-        manifest_family = manifest["family"]
-
-        if (
-            net_type == "unet"
-            and manifest_family == "unet"
-            and manifest["in_channels"] == len(keys)
-        ):
-            unet_args = dict(manifest["unet_args"])
-            if "activation_fn" in unet_args and isinstance(
-                unet_args["activation_fn"], str
-            ):
-                unet_args["activation_fn"] = activation_factory[
-                    unet_args["activation_fn"]
-                ]
-            network_config.update(unet_args)
-            network_config["in_channels"] = manifest["in_channels"]
-        elif (
-            net_type == "vit"
-            and manifest_family in {"vit", "mae"}
-            and manifest["in_channels"] == len(keys)
-        ):
-            network_config.update(manifest["backbone_args"])
-            network_config.pop("in_channels", None)
-            network_config.pop("spatial_dimensions", None)
-        else:
-            if net_type not in {"cat", "ord"}:
-                logger.warning(
-                    "The SSL encoder family '%s' is not compatible with "
-                    "net_type '%s'; falling back to a %s classifier with the "
-                    "pretrained encoder as the feature extractor.",
-                    manifest_family,
-                    net_type,
-                    "ordinal" if net_type == "ord" else "categorical",
-                )
-                net_type = "ord" if net_type == "ord" else "cat"
-            network_config = {
-                k: v
-                for k, v in network_config.items()
-                if k in _CLASSIFICATION_PL_KEYS or k in _CATNET_KEYS
-            }
-            pretrained_encoder = load_ssl_encoder(
-                encoder_checkpoint, manifest=manifest
-            )
-            feature_extractor = _feature_extractor_from_encoder(
-                pretrained_encoder, manifest_family
-            )
-            if manifest["in_channels"] != len(keys):
-                spatial_dimensions = manifest.get("spatial_dim", 3)
-                conv_op = (
-                    torch.nn.Conv2d
-                    if spatial_dimensions == 2
-                    else torch.nn.Conv3d
-                )
-                adapter = conv_op(len(keys), manifest["in_channels"], 1)
-                feature_extractor = torch.nn.Sequential(
-                    adapter, feature_extractor
-                )
-            if manifest.get("image_size") is not None:
-                feature_extractor.input_shape = (
-                    len(keys),
-                    *[int(x) for x in manifest["image_size"]],
-                )
-            network_config["feature_extraction"] = feature_extractor
-            network_config["in_channels"] = len(keys)
-            network_config["spatial_dimensions"] = manifest.get(
-                "spatial_dim", 3
-            )
+    encoder_checkpoint = _resolve_single_encoder_checkpoint(
+        encoder_checkpoint, "classification"
+    )
+    (
+        net_type,
+        network_config,
+        manifest,
+        post_load_checkpoint,
+    ) = _prepare_classification_encoder(
+        net_type, network_config, encoder_checkpoint, keys
+    )
 
     if net_type == "unet":
         depth_val = network_config["depth"]
@@ -434,8 +501,8 @@ def get_classification_network(
             **network_config,
         )
 
-    if encoder_checkpoint is not None and net_type in {"unet", "vit"}:
-        load_encoder_into(network, encoder_checkpoint, prefix="")
+    if post_load_checkpoint is not None:
+        load_encoder_into(network, post_load_checkpoint, prefix="")
 
     if len(clinical_feature_keys) > 0:
         boilerplate_args_hybrid = {
@@ -524,13 +591,9 @@ def get_deconfounded_classification_network(
     Returns:
         A :class:`LightningModule` deconfounded classification network.
     """
-    if isinstance(encoder_checkpoint, (list, tuple)):
-        if len(encoder_checkpoint) != 1:
-            raise ValueError(
-                "Only one encoder checkpoint can be used for "
-                "deconfounded classification"
-            )
-        encoder_checkpoint = encoder_checkpoint[0]
+    encoder_checkpoint = _resolve_single_encoder_checkpoint(
+        encoder_checkpoint, "deconfounded classification"
+    )
 
     if "act_fn" in network_config:
         act_fn = network_config["act_fn"]
@@ -573,25 +636,9 @@ def get_deconfounded_classification_network(
         }
         network_config.pop("in_channels", None)
         network_config.pop("n_classes", None)
-        pretrained_encoder = load_ssl_encoder(
-            encoder_checkpoint, manifest=manifest
+        network_config["feature_extraction"] = _build_encoder_feature_extractor(
+            encoder_checkpoint, manifest, keys
         )
-        feature_extractor = _feature_extractor_from_encoder(
-            pretrained_encoder, manifest["family"]
-        )
-        if manifest["in_channels"] != len(keys):
-            spatial_dimensions = manifest.get("spatial_dim", 3)
-            conv_op = (
-                torch.nn.Conv2d if spatial_dimensions == 2 else torch.nn.Conv3d
-            )
-            adapter = conv_op(len(keys), manifest["in_channels"], 1)
-            feature_extractor = torch.nn.Sequential(adapter, feature_extractor)
-        if manifest.get("image_size") is not None:
-            feature_extractor.input_shape = (
-                len(keys),
-                *[int(x) for x in manifest["image_size"]],
-            )
-        network_config["feature_extraction"] = feature_extractor
         network_config["feature_extraction_module"] = "cat"
         network_config["n_dim"] = manifest.get("spatial_dim", 3)
 
